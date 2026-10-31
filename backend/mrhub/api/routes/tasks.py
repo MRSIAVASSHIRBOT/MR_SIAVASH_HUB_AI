@@ -2,7 +2,9 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from mrhub.api.dependencies import require_user
 from pydantic import BaseModel, Field
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
@@ -11,7 +13,7 @@ from mrhub.jobs.engine import JobEngine
 from mrhub.security.audit import AuditLogger
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(require_user)])
 policy = PolicyEngine()
 
 
