@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535)
     database_path: Path = Path("./data/mrhub.sqlite3")
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+    session_ttl_hours: int = Field(default=12, ge=1, le=168)
 
 
 @lru_cache
