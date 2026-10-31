@@ -6,7 +6,7 @@ from mrhub.providers.base import ModelProvider, ProviderRequest, ProviderRespons
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.types import ModelCapability, ModelDescriptor
 
-__all__ = ["ModelCapability", "ModelDescriptor", "ModelRequest", "ModelSelection", "ModelRouter"]
+__all__ = ["ModelCapability", "ModelDescriptor", "ModelRequest", "ModelRouter", "ModelSelection"]
 
 
 class ModelRequest(BaseModel):
