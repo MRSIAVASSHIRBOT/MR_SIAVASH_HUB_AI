@@ -1,9 +1,12 @@
-"""Model routing abstractions with no implicit network access."""
+"""Capability-aware model selection and explicit provider dispatch."""
 
 from dataclasses import dataclass
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
+
+from mrhub.providers.base import ProviderRequest, ProviderResponse
+from mrhub.providers.registry import ProviderRegistry
 
 
 @dataclass(frozen=True)
@@ -40,19 +43,20 @@ class ModelSelection(BaseModel):
     rationale: str
 
 
-class ModelProvider(Protocol):
-    descriptor: ModelDescriptor
-
-
 class ModelRouter:
-    """Selects from explicitly registered descriptors; it does not call providers."""
+    """Selects registered descriptors; dispatch occurs only via explicit adapters."""
 
-    def __init__(self) -> None:
+    def __init__(self, registry: ProviderRegistry | None = None) -> None:
         self._providers: dict[tuple[str, str], ModelDescriptor] = {}
+        self.registry = registry or ProviderRegistry()
 
     def register(self, descriptor: ModelDescriptor) -> None:
         key = (descriptor.provider, descriptor.model)
         self._providers[key] = descriptor
+
+    def register_provider(self, provider) -> None:
+        self.registry.register(provider)
+        self.register(provider.descriptor)
 
     def catalog(self) -> list[ModelDescriptor]:
         return sorted(
@@ -87,3 +91,11 @@ class ModelRouter:
             local=selected.local,
             rationale="Selected from registered available models by capability and priority",
         )
+
+    def generate(self, request: ModelRequest, payload: ProviderRequest) -> ProviderResponse:
+        selection = self.select(request)
+        provider = self.registry.get(selection.provider, selection.model)
+        health = provider.health()
+        if not health.available:
+            raise LookupError("Selected provider is unavailable")
+        return provider.generate(payload)
