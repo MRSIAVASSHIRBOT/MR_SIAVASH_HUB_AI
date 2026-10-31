@@ -24,7 +24,7 @@ def test_report_is_read_only_and_has_stable_sections(monkeypatch):
 
 def test_report_handles_unavailable_memory_and_disk(monkeypatch):
     monkeypatch.setattr(hardware, "_memory_bytes", lambda: None)
-    monkeypatch.setattr(hardware, "_windows_display_adapters", lambda: [])
+    monkeypatch.setattr(hardware, "_windows_display_adapters", list)
     monkeypatch.setattr(
         hardware.shutil,
         "disk_usage",
