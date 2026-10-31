@@ -1,12 +1,14 @@
 """Policy inspection endpoint for the local operator console."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from mrhub.api.dependencies import require_user
 from pydantic import BaseModel, Field
 
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import ActionRequest, PolicyEngine, PolicyResult
 
-router = APIRouter(prefix="/policy", tags=["policy"])
+router = APIRouter(prefix="/policy", tags=["policy"], dependencies=[Depends(require_user)])
 engine = PolicyEngine()
 
 
