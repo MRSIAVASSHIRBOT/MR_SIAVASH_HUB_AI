@@ -1,14 +1,17 @@
-"""Task API routes for the initial control-plane slice."""
+"""Task API routes for the shared job lifecycle."""
 
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from mrhub.domain.tasks import RiskClass, TaskRecord
+from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import JobEngine
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+policy = PolicyEngine()
 
 
 class CreateTaskRequest(BaseModel):
@@ -20,26 +23,40 @@ class CreateTaskRequest(BaseModel):
 def get_repository() -> TaskRepository:
     from mrhub.config import get_settings
 
-    settings = get_settings()
-    repository = TaskRepository(settings.database_path)
+    repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     return repository
 
 
+def get_engine() -> JobEngine:
+    return JobEngine(get_repository())
+
+
 @router.post("", response_model=TaskRecord, status_code=201)
 def create_task(payload: CreateTaskRequest) -> TaskRecord:
-    # This endpoint records a task request; it does not execute model output or tools.
+    decision = policy.evaluate(ActionRequest(
+        action="task.submit",
+        risk_class=payload.risk_class,
+    ))
+    if decision.decision is PolicyDecision.DENY:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
     task = TaskRecord(
         task_type=payload.task_type,
         description=payload.description,
         risk_class=payload.risk_class,
+        status=(
+            TaskStatus.WAITING_APPROVAL
+            if decision.decision is PolicyDecision.REQUIRE_APPROVAL
+            else TaskStatus.QUEUED
+        ),
     )
-    return get_repository().create(task)
+    return get_engine().submit(task)
 
 
 @router.get("/{task_id}", response_model=TaskRecord)
 def get_task(task_id: UUID) -> TaskRecord:
-    task = get_repository().get(task_id)
+    task = get_engine().get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
