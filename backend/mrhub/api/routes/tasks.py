@@ -56,7 +56,7 @@ def create_task(payload: CreateTaskRequest) -> TaskRecord:
     saved = JobEngine(repository).submit(task)
     AuditLogger(repository).record(
         event_type="task.submitted",
-        outcome="waiting_approval" if status is TaskStatus.WAITING_APPROVAL else "queued",
+        outcome="waiting_approval" if saved.status is TaskStatus.WAITING_APPROVAL else "queued",
         subject_id=str(saved.task_id),
         metadata={
             "task_type": saved.task_type,
