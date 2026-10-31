@@ -1,5 +1,6 @@
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.worker import WorkerEngine
 
 
@@ -90,3 +91,49 @@ def test_high_risk_task_fingerprint_is_checked_before_handler_lookup(tmp_path):
 def test_worker_returns_none_for_empty_queue(tmp_path):
     _repository, worker = make_worker(tmp_path)
     assert worker.run_once() is None
+
+def test_stale_running_task_is_recovered_as_failed_not_replayed(tmp_path):
+    repository, worker = make_worker(tmp_path)
+    task = TaskRecord(task_type="demo.echo", description="interrupted")
+    repository.create(task)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.RUNNING.value, str(task.task_id)),
+        )
+        connection.execute(
+            """
+            INSERT INTO worker_executions (task_id, attempt_count, started_at)
+            VALUES (?, 1, ?)
+            """,
+            (str(task.task_id), "2000-01-01T00:00:00+00:00"),
+        )
+
+    assert worker.run_once() is None
+    stored = repository.get(task.task_id)
+    assert stored is not None and stored.status is TaskStatus.FAILED
+    result = worker.get_result(task.task_id)
+    assert result is not None
+    assert result["error_code"] == "worker_interrupted"
+    assert result["recovered_at"] is not None
+
+
+def test_worker_does_not_overwrite_cancellation_after_handler_returns(tmp_path):
+    repository, worker = make_worker(tmp_path)
+    task = TaskRecord(task_type="demo.echo", description="cancel during handler")
+    repository.create(task)
+
+    def cancel_then_return(current_task):
+        JobEngine(repository).cancel(current_task.task_id)
+        return {"message": "handler returned"}
+
+    worker.handlers["demo.echo"] = cancel_then_return
+    completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.CANCELLED
+    stored = repository.get(task.task_id)
+    assert stored is not None and stored.status is TaskStatus.CANCELLED
+    result = worker.get_result(task.task_id)
+    assert result is not None
+    assert result["result"] is None
+    assert result["error_code"] == "cancelled_during_execution"
