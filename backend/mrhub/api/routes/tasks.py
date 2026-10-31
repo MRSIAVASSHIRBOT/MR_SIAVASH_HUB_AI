@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
@@ -17,7 +17,6 @@ policy = PolicyEngine()
 class CreateTaskRequest(BaseModel):
     task_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
     description: str = Field(default="", max_length=500)
-    risk_class: RiskClass = RiskClass.LOW
 
 
 def get_repository() -> TaskRepository:
@@ -34,9 +33,10 @@ def get_engine() -> JobEngine:
 
 @router.post("", response_model=TaskRecord, status_code=201)
 def create_task(payload: CreateTaskRequest) -> TaskRecord:
+    risk_class = policy.classify_task_type(payload.task_type)
     decision = policy.evaluate(ActionRequest(
         action="task.submit",
-        risk_class=payload.risk_class,
+        risk_class=risk_class,
     ))
     if decision.decision is PolicyDecision.DENY:
         raise HTTPException(status_code=403, detail=decision.reason)
@@ -44,7 +44,7 @@ def create_task(payload: CreateTaskRequest) -> TaskRecord:
     task = TaskRecord(
         task_type=payload.task_type,
         description=payload.description,
-        risk_class=payload.risk_class,
+        risk_class=risk_class,
         status=(
             TaskStatus.WAITING_APPROVAL
             if decision.decision is PolicyDecision.REQUIRE_APPROVAL
