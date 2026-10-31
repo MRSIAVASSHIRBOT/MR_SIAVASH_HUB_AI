@@ -3,13 +3,21 @@ from fastapi.testclient import TestClient
 from mrhub.main import create_app
 
 
-def test_protected_route_rejects_missing_session() -> None:
+def test_protected_route_rejects_missing_session(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "missing.sqlite3"))
+    from mrhub.config import get_settings
+
+    get_settings.cache_clear()
     client = TestClient(create_app())
     response = client.get("/tasks")
     assert response.status_code == 401
 
 
-def test_owner_setup_login_logout_and_revocation() -> None:
+def test_owner_setup_login_logout_and_revocation(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "auth.sqlite3"))
+    from mrhub.config import get_settings
+
+    get_settings.cache_clear()
     client = TestClient(create_app())
     password = "test-only-strong-password-2026"
 
@@ -32,7 +40,11 @@ def test_owner_setup_login_logout_and_revocation() -> None:
     assert client.get("/tasks").status_code == 401
 
 
-def test_setup_rejects_short_password() -> None:
+def test_setup_rejects_short_password(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "short.sqlite3"))
+    from mrhub.config import get_settings
+
+    get_settings.cache_clear()
     client = TestClient(create_app())
     response = client.post("/auth/setup", json={"password": "short"})
     assert response.status_code == 422
