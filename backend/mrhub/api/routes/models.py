@@ -1,20 +1,19 @@
-"""Model catalog endpoint; no provider calls are made by these routes."""
+"""Model catalog endpoint; only an explicit local stub adapter is registered."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from mrhub.api.dependencies import require_user
-from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRequest, ModelRouter
+from mrhub.providers.router import ModelRequest, ModelRouter
+from mrhub.providers.stub import StubProvider
 
 router = APIRouter(prefix="/models", tags=["models"], dependencies=[Depends(require_user)])
 router_instance = ModelRouter()
-router_instance.register(ModelDescriptor(
-    provider="mock", model="mock-text-v1", capability=ModelCapability(),
-    available=True, local=True, priority=10,
-))
+router_instance.register_provider(StubProvider())
 
 
 class RouteModelRequest(BaseModel):
+    requires_text: bool = True
     requires_vision: bool = False
     requires_audio: bool = False
     requires_tool_calling: bool = False
@@ -22,7 +21,7 @@ class RouteModelRequest(BaseModel):
 
 
 @router.get("")
-def list_models() -> list[ModelDescriptor]:
+def list_models():
     return router_instance.catalog()
 
 
