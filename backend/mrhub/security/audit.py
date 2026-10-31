@@ -20,6 +20,7 @@ class AuditEvent(BaseModel):
     subject_type: str = Field(default="task", max_length=40)
     subject_id: str | None = Field(default=None, max_length=80)
     actor_type: str = "system"
+    actor_id: str | None = Field(default=None, max_length=80)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, str | int | bool | None] = Field(default_factory=dict)
 
@@ -45,6 +46,8 @@ class AuditLogger:
         outcome: str,
         subject_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        actor_type: str = "system",
+        actor_id: str | None = None,
     ) -> AuditEvent:
         safe_metadata: dict[str, str | int | bool | None] = {}
         for key, value in (metadata or {}).items():
@@ -57,6 +60,8 @@ class AuditLogger:
             event_type=event_type,
             outcome=outcome,
             subject_id=subject_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
             metadata=safe_metadata,
         )
         self.repository.record_audit(event.model_dump(mode="json"))
