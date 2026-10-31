@@ -1,8 +1,9 @@
 """SQLite persistence for the initial local-first runtime."""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 from uuid import UUID
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
@@ -22,8 +23,20 @@ class TaskRepository:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS tasks (
@@ -42,7 +55,7 @@ class TaskRepository:
             )
 
     def create(self, task: TaskRecord) -> TaskRecord:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO tasks (
