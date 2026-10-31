@@ -1,0 +1,38 @@
+from fastapi.testclient import TestClient
+
+from mrhub.main import create_app
+
+
+def test_protected_route_rejects_missing_session() -> None:
+    client = TestClient(create_app())
+    response = client.get("/tasks")
+    assert response.status_code == 401
+
+
+def test_owner_setup_login_logout_and_revocation() -> None:
+    client = TestClient(create_app())
+    password = "test-only-strong-password-2026"
+
+    setup = client.post("/auth/setup", json={"password": password})
+    assert setup.status_code == 201
+    duplicate_setup = client.post("/auth/setup", json={"password": password})
+    assert duplicate_setup.status_code == 409
+
+    login = client.post(
+        "/auth/login",
+        json={"username": "owner", "password": password},
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    assert len(token) >= 40
+
+    client.headers.update({"Authorization": f"Bearer {token}"})
+    assert client.get("/tasks").status_code == 200
+    assert client.post("/auth/logout").status_code == 204
+    assert client.get("/tasks").status_code == 401
+
+
+def test_setup_rejects_short_password() -> None:
+    client = TestClient(create_app())
+    response = client.post("/auth/setup", json={"password": "short"})
+    assert response.status_code == 422
