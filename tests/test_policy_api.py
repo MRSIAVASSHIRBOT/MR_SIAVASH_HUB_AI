@@ -1,5 +1,5 @@
-from mrhub.config import get_settings
 from client_helpers import authenticated_client
+from mrhub.config import get_settings
 
 
 def test_high_risk_task_waits_for_approval(tmp_path, monkeypatch) -> None:
@@ -42,7 +42,7 @@ def test_job_cancel_endpoint(tmp_path, monkeypatch) -> None:
 
 
 def test_policy_api_ignores_client_claimed_approval() -> None:
-    client = TestClient(create_app())
+    client = authenticated_client()
     response = client.post(
         "/policy/evaluate",
         json={
