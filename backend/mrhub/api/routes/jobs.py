@@ -2,13 +2,15 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from mrhub.api.dependencies import require_user
 
 from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_user)])
 
 
 def engine() -> JobEngine:
