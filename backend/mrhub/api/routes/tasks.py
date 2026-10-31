@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
+from mrhub.security.audit import AuditLogger
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -51,7 +52,19 @@ def create_task(payload: CreateTaskRequest) -> TaskRecord:
             else TaskStatus.QUEUED
         ),
     )
-    return get_engine().submit(task)
+    repository = get_repository()
+    saved = JobEngine(repository).submit(task)
+    AuditLogger(repository).record(
+        event_type="task.submitted",
+        outcome="waiting_approval" if status is TaskStatus.WAITING_APPROVAL else "queued",
+        subject_id=str(saved.task_id),
+        metadata={
+            "task_type": saved.task_type,
+            "risk_class": saved.risk_class.value,
+            "decision": decision.decision.value,
+        },
+    )
+    return saved
 
 
 @router.get("/{task_id}", response_model=TaskRecord)
