@@ -41,3 +41,17 @@ def test_job_cancel_endpoint(tmp_path, monkeypatch) -> None:
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
     get_settings.cache_clear()
+
+def test_policy_api_ignores_client_claimed_approval() -> None:
+    client = TestClient(create_app())
+    response = client.post(
+        "/policy/evaluate",
+        json={
+            "action": "social.publish",
+            "risk_class": "high",
+            "external_side_effect": True,
+            "user_approved": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["decision"] == "require_approval"
