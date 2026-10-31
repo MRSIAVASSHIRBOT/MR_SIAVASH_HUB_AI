@@ -18,7 +18,7 @@ class Migration:
     checksum: str
 
     @classmethod
-    def build(cls, version: int, name: str, statements: tuple[str, ...]) -> "Migration":
+    def build(cls, version: int, name: str, statements: tuple[str, ...]) -> Migration:
         payload = f"{version}:{name}\n" + "\n".join(statements)
         return cls(
             version=version,
