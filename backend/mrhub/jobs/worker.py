@@ -9,9 +9,9 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from threading import Lock
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Callable
+from threading import Lock
 from uuid import UUID
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
@@ -153,7 +153,7 @@ class WorkerEngine:
 
         try:
             result = handler(task)
-        except Exception:
+        except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
             return self._finish_failure(task, "handler_failed")
 
