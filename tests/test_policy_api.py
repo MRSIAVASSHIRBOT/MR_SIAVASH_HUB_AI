@@ -1,7 +1,3 @@
-from fastapi.testclient import TestClient
-
-from mrhub.config import get_settings
-from mrhub.main import create_app
 from client_helpers import authenticated_client
 
 
@@ -21,7 +17,7 @@ def test_high_risk_task_waits_for_approval(tmp_path, monkeypatch) -> None:
 def test_unknown_task_type_requires_approval(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "unknown.sqlite3"))
     get_settings.cache_clear()
-    client = TestClient(create_app())
+    client = authenticated_client()
     response = client.post(
         "/tasks",
         json={"task_type": "unregistered.action", "risk_class": "low"},
