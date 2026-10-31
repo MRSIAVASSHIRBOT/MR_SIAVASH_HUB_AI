@@ -325,7 +325,7 @@ class WorkerEngine:
     def get_result(self, task_id: UUID) -> dict[str, object] | None:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT result_json, error_code, attempt_count, started_at, finished_at "
+                "SELECT result_json, error_code, attempt_count, started_at, finished_at, recovered_at "
                 "FROM worker_executions WHERE task_id = ?",
                 (str(task_id),),
             ).fetchone()
