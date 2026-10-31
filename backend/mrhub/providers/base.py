@@ -5,7 +5,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from mrhub.providers.router import ModelCapability, ModelDescriptor
+from mrhub.providers.types import ModelDescriptor
 
 
 class ProviderError(Exception):
