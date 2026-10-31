@@ -9,23 +9,29 @@ Build one end-to-end vertical slice before expanding module count. Prioritize re
 - [x] Define initial architecture
 - [x] Define module ownership
 - [x] Define initial threat model
-- [ ] Add architecture decision records
-- [ ] Define API and configuration schemas
-- [ ] Define test and quality gates
+- [x] Add architecture decision records
+- [x] Define initial API and configuration schemas
+- [x] Define initial test and quality gates
 
 Exit criteria: module boundaries, trust boundaries, and local runtime assumptions are reviewable.
 
 ## Phase 1 — Minimal working platform
-- Application configuration and structured logging
-- FastAPI application factory and health endpoint
-- SQLite schema and migration strategy
-- Task/job lifecycle with cancellation
-- Permission/policy service
-- Model provider interface and mock provider
-- Unit and API tests
+- [x] Application configuration
+- [x] FastAPI application factory and health endpoint
+- [x] SQLite task persistence
+- [x] Task state lifecycle with cancellation
+- [x] Initial policy evaluation service
+- [x] Capability-aware model routing abstraction
+- [x] Unit and API tests
+- [x] Backend CI workflow
+- [ ] Structured logging and audit event persistence
+- [ ] Worker execution with bounded concurrency
+- [ ] Authentication and approval identity
+- SQLite schema migration tooling
+- Model provider interface and a real provider adapter
 - Minimal React/TypeScript operator view
 
-Exit criteria: local app starts predictably, health checks pass, a mock task can be submitted, inspected, and cancelled.
+Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, and cancelled. Background execution remains disabled until worker isolation and authentication are implemented.
 
 ## Phase 2 — AI Core and Memory
 - One provider adapter at a time
