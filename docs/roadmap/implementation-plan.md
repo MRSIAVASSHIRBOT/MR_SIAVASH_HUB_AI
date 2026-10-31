@@ -30,11 +30,12 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Compare-and-set completion so late worker results cannot overwrite cancellation
 - [x] Local owner authentication, hashed password storage, expiring/revocable sessions
 - [x] Authenticated, one-time action-bound approval/rejection with approver audit identity
+- [x] Bounded retry policy for explicitly safe/idempotent handler types, with persisted attempt limits and exponential backoff
 - SQLite schema migration tooling
 - Model provider interface and a real provider adapter
 - Minimal React/TypeScript operator view
 
-Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Automatic background scheduling, multi-process worker coordination, retry orchestration, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process.
+Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
 
 ## Phase 2 — AI Core and Memory
 - One provider adapter at a time
@@ -91,6 +92,8 @@ Exit criteria: no capability can exceed its declared authorization scope.
 - Backup/restore verification
 - Update health checks and rollback
 - Multi-user isolation only after single-user security is established
+
+Exit criteria: a packaged single-user application can be installed, updated, backed up, and rolled back safely.
 
 ## Quality gates for every phase
 
