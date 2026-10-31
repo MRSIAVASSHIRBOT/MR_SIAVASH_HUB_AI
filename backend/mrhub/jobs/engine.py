@@ -6,6 +6,7 @@ from uuid import UUID
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.security.audit import AuditLogger
 
 
 class InvalidTaskTransition(ValueError):
@@ -44,7 +45,19 @@ class JobEngine:
             "status": target,
             "updated_at": datetime.now(UTC),
         })
-        return self.repository.update_status(task_id, current.status, updated)
+        saved = self.repository.update_status(task_id, current.status, updated)
+        AuditLogger(self.repository).record(
+            event_type="task.status_changed",
+            outcome="success",
+            subject_id=str(task_id),
+            metadata={
+                "task_type": current.task_type,
+                "previous_status": current.status.value,
+                "new_status": target.value,
+                "risk_class": current.risk_class.value,
+            },
+        )
+        return saved
 
     def cancel(self, task_id: UUID) -> TaskRecord:
         return self.transition(task_id, TaskStatus.CANCELLED)
