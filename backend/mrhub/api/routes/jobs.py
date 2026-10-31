@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from mrhub.api.dependencies import require_user
-
 from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
