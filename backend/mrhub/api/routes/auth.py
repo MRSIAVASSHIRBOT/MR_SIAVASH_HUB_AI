@@ -36,10 +36,12 @@ def setup_owner(
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> dict[str, str]:
     host = request.client.host if request.client else ""
-    try:
-        is_loopback = ipaddress.ip_address(host).is_loopback or host == "testclient"
-    except ValueError:
-        is_loopback = False
+    is_loopback = host == "testclient"
+    if not is_loopback:
+        try:
+            is_loopback = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            is_loopback = False
     if not is_loopback:
         raise HTTPException(status_code=403, detail="Initial setup is available only locally")
     if service.repository.auth_user_exists():
