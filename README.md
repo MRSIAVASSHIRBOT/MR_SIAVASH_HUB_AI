@@ -31,7 +31,9 @@ uvicorn mrhub.main:app --reload
 
 OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
-Initial endpoints include `GET /health`, `POST /tasks`, `GET /tasks`, `GET /tasks/{task_id}`, `POST /jobs/{task_id}/cancel`, `POST /policy/evaluate`, `GET /models`, and `POST /models/select`.
+On first launch, initialize the local owner account from the same machine using `POST /auth/setup` with a unique password of at least 14 characters. Then call `POST /auth/login`; send the returned bearer token in the `Authorization` header for protected endpoints. Sessions expire after 12 hours by default and can be revoked with `POST /auth/logout`. The setup endpoint is loopback-only and becomes permanently unavailable after the owner account is created.
+
+`GET /health`, `POST /auth/setup`, and `POST /auth/login` are public (setup is restricted to loopback). Task, job, policy, and model endpoints require a valid session. Initial protected endpoints include `POST /tasks`, `GET /tasks`, `GET /tasks/{task_id}`, `POST /jobs/{task_id}/cancel`, `POST /policy/evaluate`, `GET /models`, and `POST /models/select`.
 
 Run tests:
 
@@ -63,7 +65,7 @@ External publishing, spending, destructive operations, access to sensitive data,
 
 ## Current status
 
-The repository contains the architecture baseline and an initial control-plane slice: task records, policy evaluation, job state transitions/cancellation, and capability-aware model selection. The model router currently uses a mock descriptor and does not call an inference provider. Job lifecycle state is persisted, but background execution workers are not yet enabled.
+The repository contains the architecture baseline and an initial control-plane slice: task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, and local owner authentication with expiring sessions. The model router currently uses a mock descriptor and does not call an inference provider. Job lifecycle state is persisted, but background execution workers are not yet enabled.
 
 ## Documentation
 
