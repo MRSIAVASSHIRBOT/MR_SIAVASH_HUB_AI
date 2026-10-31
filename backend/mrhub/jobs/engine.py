@@ -1,6 +1,7 @@
 """Job lifecycle orchestration; this layer records state and never executes shell commands."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import ClassVar
 from uuid import UUID
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
@@ -12,7 +13,7 @@ class InvalidTaskTransition(ValueError):
 
 
 class JobEngine:
-    ALLOWED = {
+    ALLOWED: ClassVar[dict[TaskStatus, set[TaskStatus]]] = {
         TaskStatus.QUEUED: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
         TaskStatus.RUNNING: {
             TaskStatus.WAITING_APPROVAL, TaskStatus.SUCCEEDED,
@@ -41,7 +42,7 @@ class JobEngine:
             raise InvalidTaskTransition(f"Cannot transition {current.status} -> {target}")
         updated = current.model_copy(update={
             "status": target,
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         })
         return self.repository.update_status(task_id, current.status, updated)
 
