@@ -39,8 +39,6 @@ def test_owner_setup_login_logout_and_revocation(tmp_path, monkeypatch) -> None:
 
 def test_setup_rejects_short_password(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "short.sqlite3"))
-    from mrhub.config import get_settings
-
     get_settings.cache_clear()
     client = TestClient(create_app())
     response = client.post("/auth/setup", json={"password": "short"})
