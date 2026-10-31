@@ -1,11 +1,13 @@
 """Model catalog endpoint; no provider calls are made by these routes."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from mrhub.api.dependencies import require_user
 from pydantic import BaseModel
 
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRequest, ModelRouter
 
-router = APIRouter(prefix="/models", tags=["models"])
+router = APIRouter(prefix="/models", tags=["models"], dependencies=[Depends(require_user)])
 router_instance = ModelRouter()
 router_instance.register(ModelDescriptor(
     provider="mock", model="mock-text-v1", capability=ModelCapability(),
