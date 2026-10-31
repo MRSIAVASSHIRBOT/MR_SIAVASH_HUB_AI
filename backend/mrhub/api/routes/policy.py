@@ -16,9 +16,8 @@ class EvaluatePolicyRequest(BaseModel):
     granted_permissions: set[str] = set()
     required_permissions: set[str] = set()
     external_side_effect: bool = False
-    user_approved: bool = False
 
 
 @router.post("/evaluate", response_model=PolicyResult)
 def evaluate_policy(payload: EvaluatePolicyRequest) -> PolicyResult:
-    return engine.evaluate(ActionRequest(**payload.model_dump()))
+    return engine.evaluate(ActionRequest(**payload.model_dump(), user_approved=False))
