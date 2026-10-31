@@ -37,87 +37,11 @@ class TaskRepository:
             connection.close()
 
     def initialize(self) -> None:
+        """Apply all pending, versioned schema migrations."""
+        from mrhub.infrastructure.migrations import SchemaMigrator
+
         with self._connection() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    task_id TEXT PRIMARY KEY,
-                    task_type TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    risk_class TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    description TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS audit_events (
-                    event_id TEXT PRIMARY KEY,
-                    event_type TEXT NOT NULL,
-                    outcome TEXT NOT NULL,
-                    subject_type TEXT NOT NULL,
-                    subject_id TEXT,
-                    actor_type TEXT NOT NULL,
-                    actor_id TEXT,
-                    created_at TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL
-                )
-                """
-            )
-            audit_columns = {
-                row["name"] for row in connection.execute("PRAGMA table_info(audit_events)")
-            }
-            if "actor_id" not in audit_columns:
-                connection.execute("ALTER TABLE audit_events ADD COLUMN actor_id TEXT")
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS task_approvals (
-                    approval_id TEXT PRIMARY KEY,
-                    task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id),
-                    decision TEXT NOT NULL CHECK (decision IN ('approved', 'rejected')),
-                    approver_id TEXT NOT NULL REFERENCES auth_users(user_id),
-                    action_fingerprint TEXT NOT NULL,
-                    reason TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_approvals_created_at ON task_approvals(created_at)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS auth_users (
-                    user_id TEXT PRIMARY KEY,
-                    username TEXT NOT NULL UNIQUE,
-                    salt TEXT NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS auth_sessions (
-                    session_id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
-                    token_hash TEXT NOT NULL UNIQUE,
-                    expires_at TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)"
-            )
+            SchemaMigrator(connection).migrate()
 
     def create(self, task: TaskRecord) -> TaskRecord:
         with self._connection() as connection:
