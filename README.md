@@ -79,3 +79,8 @@ The repository contains the architecture baseline and initial control-plane slic
 
 ## License
 License selection is pending. No license grant should be inferred until a license file is added.
+
+
+## Model resource planning
+
+A conservative RAM-fit estimator is available in `mrhub.diagnostics.resource_advisor`. It consumes the read-only hardware report and an explicit model profile, reserves system memory, reports uncertainty, and never starts inference. See `docs/operations/model-resource-advisor.md`.
