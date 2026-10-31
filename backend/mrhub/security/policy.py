@@ -31,6 +31,19 @@ class PolicyResult(BaseModel):
 class PolicyEngine:
     """Small explicit policy engine. Unknown permissions are never inferred."""
 
+    LOW_RISK_TASK_TYPES = {
+        "demo.echo",
+        "analysis.summarize",
+        "content.draft",
+        "memory.search",
+    }
+
+    def classify_task_type(self, task_type: str) -> RiskClass:
+        """Classify task types server-side; unknown types require approval."""
+        if task_type in self.LOW_RISK_TASK_TYPES:
+            return RiskClass.LOW
+        return RiskClass.HIGH
+
     def evaluate(self, request: ActionRequest) -> PolicyResult:
         if request.risk_class is RiskClass.PROHIBITED:
             return PolicyResult(decision=PolicyDecision.DENY, reason="Prohibited risk class")
