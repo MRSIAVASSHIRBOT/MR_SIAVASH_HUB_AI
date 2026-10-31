@@ -31,6 +31,8 @@ uvicorn mrhub.main:app --reload
 
 OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 
+Initial endpoints include `GET /health`, `POST /tasks`, `GET /tasks`, `GET /tasks/{task_id}`, `POST /jobs/{task_id}/cancel`, `POST /policy/evaluate`, `GET /models`, and `POST /models/select`.
+
 Run tests:
 
 ```powershell
@@ -61,7 +63,7 @@ External publishing, spending, destructive operations, access to sensitive data,
 
 ## Current status
 
-The repository contains the architecture baseline and the first API/database slice. The task endpoints currently record and inspect task metadata only; they do not execute agents, models, or external tools.
+The repository contains the architecture baseline and an initial control-plane slice: task records, policy evaluation, job state transitions/cancellation, and capability-aware model selection. The model router currently uses a mock descriptor and does not call an inference provider. Job lifecycle state is persisted, but background execution workers are not yet enabled.
 
 ## Documentation
 
