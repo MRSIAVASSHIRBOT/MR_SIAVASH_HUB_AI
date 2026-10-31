@@ -17,15 +17,17 @@ def test_high_risk_task_waits_for_approval(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
 
 
-def test_prohibited_task_is_rejected(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "deny.sqlite3"))
+def test_unknown_task_type_requires_approval(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "unknown.sqlite3"))
     get_settings.cache_clear()
     client = TestClient(create_app())
     response = client.post(
         "/tasks",
-        json={"task_type": "restricted.action", "risk_class": "prohibited"},
+        json={"task_type": "unregistered.action", "risk_class": "low"},
     )
-    assert response.status_code == 403
+    assert response.status_code == 201
+    assert response.json()["status"] == "waiting_approval"
+    assert response.json()["risk_class"] == "high"
     get_settings.cache_clear()
 
 
