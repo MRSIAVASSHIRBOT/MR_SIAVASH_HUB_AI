@@ -1,6 +1,7 @@
 """One-time local owner setup and session endpoints."""
 
 import ipaddress
+import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -46,7 +47,10 @@ def setup_owner(
         raise HTTPException(status_code=403, detail="Initial setup is available only locally")
     if service.repository.auth_user_exists():
         raise HTTPException(status_code=409, detail="Owner account is already initialized")
-    service.initialize_owner(payload.password)
+    try:
+        service.initialize_owner(payload.password)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="Owner account is already initialized") from exc
     return {"status": "owner_initialized", "next": "POST /auth/login"}
 
 
