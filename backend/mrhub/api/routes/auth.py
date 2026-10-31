@@ -51,7 +51,7 @@ def setup_owner(
 @router.post("/login", response_model=SessionResponse)
 def login(
     payload: LoginRequest,
-    service: AuthService = Depends(get_auth_service),
+    service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> SessionResponse:
     result = service.login(payload.username, payload.password)
     if result is None:
@@ -68,7 +68,7 @@ def login(
 def logout(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     _user: Annotated[AuthenticatedUser, Depends(require_user)],
-    service: AuthService = Depends(get_auth_service),
+    service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> None:
     if credentials is not None:
         service.logout(credentials.credentials)
