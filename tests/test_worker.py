@@ -1,13 +1,15 @@
+from datetime import UTC, datetime, timedelta
+
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
-from mrhub.jobs.worker import WorkerEngine
+from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
 
 
-def make_worker(tmp_path):
+def make_worker(tmp_path, clock=None):
     repository = TaskRepository(tmp_path / "worker.sqlite3")
     repository.initialize()
-    return repository, WorkerEngine(repository)
+    return repository, WorkerEngine(repository, clock=clock)
 
 
 def test_worker_executes_only_registered_echo_handler(tmp_path):
@@ -92,6 +94,7 @@ def test_worker_returns_none_for_empty_queue(tmp_path):
     _repository, worker = make_worker(tmp_path)
     assert worker.run_once() is None
 
+
 def test_stale_running_task_is_recovered_as_failed_not_replayed(tmp_path):
     repository, worker = make_worker(tmp_path)
     task = TaskRecord(task_type="demo.echo", description="interrupted")
@@ -137,3 +140,89 @@ def test_worker_does_not_overwrite_cancellation_after_handler_returns(tmp_path):
     assert result is not None
     assert result["result"] is None
     assert result["error_code"] == "cancelled_during_execution"
+
+
+def test_retryable_echo_error_is_scheduled_with_exponential_backoff(tmp_path):
+    now = [datetime(2026, 11, 1, 10, 0, tzinfo=UTC)]
+    repository, worker = make_worker(tmp_path, clock=lambda: now[0])
+    task = TaskRecord(task_type="demo.echo", description="retry me")
+    repository.create(task)
+    calls = []
+
+    def transient_then_success(current_task):
+        calls.append(current_task.task_id)
+        if len(calls) == 1:
+            raise RetryableWorkerError("temporary condition")
+        return {"message": "recovered"}
+
+    worker.handlers["demo.echo"] = transient_then_success
+
+    first = worker.run_once()
+    assert first is not None and first.status is TaskStatus.QUEUED
+    result = worker.get_result(task.task_id)
+    assert result is not None
+    assert result["attempt_count"] == 1
+    assert result["error_code"] == "retry_scheduled"
+    assert result["next_attempt_at"] == (now[0] + timedelta(seconds=5)).isoformat()
+
+    assert worker.run_once() is None
+    now[0] += timedelta(seconds=5)
+    second = worker.run_once()
+    assert second is not None and second.status is TaskStatus.SUCCEEDED
+    assert worker.get_result(task.task_id)["attempt_count"] == 2
+
+
+def test_retry_limit_fails_after_three_attempts(tmp_path):
+    now = [datetime(2026, 11, 1, 10, 0, tzinfo=UTC)]
+    repository, worker = make_worker(tmp_path, clock=lambda: now[0])
+    task = TaskRecord(task_type="demo.echo", description="always transient")
+    repository.create(task)
+    worker.handlers["demo.echo"] = lambda _task: (_ for _ in ()).throw(
+        RetryableWorkerError("temporary")
+    )
+
+    for delay in (0, 5, 10):
+        now[0] += timedelta(seconds=delay)
+        completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.FAILED
+    result = worker.get_result(task.task_id)
+    assert result is not None
+    assert result["attempt_count"] == 3
+    assert result["error_code"] == "retry_limit_exceeded"
+
+
+def test_retry_is_not_permitted_for_unregistered_task_types(tmp_path):
+    repository, worker = make_worker(tmp_path)
+    task = TaskRecord(task_type="unknown.operation", description="not retryable")
+    repository.create(task)
+    # Simulate a future handler accidentally being registered without retry policy.
+    worker.handlers[task.task_type] = lambda _task: (_ for _ in ()).throw(
+        RetryableWorkerError("temporary")
+    )
+
+    completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.FAILED
+    result = worker.get_result(task.task_id)
+    assert result is not None and result["error_code"] == "retry_not_permitted"
+
+
+def test_retry_schedule_survives_worker_recreation(tmp_path):
+    now = [datetime(2026, 11, 1, 10, 0, tzinfo=UTC)]
+    repository, worker = make_worker(tmp_path, clock=lambda: now[0])
+    task = TaskRecord(task_type="demo.echo", description="persist schedule")
+    repository.create(task)
+    worker.handlers["demo.echo"] = lambda _task: (_ for _ in ()).throw(
+        RetryableWorkerError("temporary")
+    )
+
+    scheduled = worker.run_once()
+    assert scheduled is not None and scheduled.status is TaskStatus.QUEUED
+
+    recreated = WorkerEngine(repository, clock=lambda: now[0])
+    assert recreated.run_once() is None
+    now[0] += timedelta(seconds=5)
+    recreated.handlers["demo.echo"] = lambda _task: {"message": "done"}
+    completed = recreated.run_once()
+    assert completed is not None and completed.status is TaskStatus.SUCCEEDED
