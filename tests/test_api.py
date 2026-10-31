@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from tests.client_helpers import authenticated_client
 
 
 def test_health_endpoint() -> None:
@@ -14,7 +15,7 @@ def test_health_endpoint() -> None:
 def test_task_create_and_read(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     get_settings.cache_clear()
-    client = TestClient(create_app())
+    client = authenticated_client()
 
     created = client.post(
         "/tasks",
@@ -34,6 +35,6 @@ def test_task_create_and_read(tmp_path, monkeypatch) -> None:
 
 
 def test_task_type_validation() -> None:
-    client = TestClient(create_app())
+    client = authenticated_client()
     response = client.post("/tasks", json={"task_type": "bad task name"})
     assert response.status_code == 422
