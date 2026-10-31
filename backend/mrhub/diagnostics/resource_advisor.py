@@ -67,8 +67,8 @@ def assess_model_resources(
             "status": "invalid_profile",
             "model": name if isinstance(name, str) else None,
             "reasons": [
-                "A valid name, positive finite minimum RAM, recommended RAM >= minimum, "
-                "and requires_gpu flag are required."
+                ("A valid name, positive finite minimum RAM, recommended RAM >= minimum, "
+                "and requires_gpu flag are required.")
             ],
             "starts_inference": False,
         }
