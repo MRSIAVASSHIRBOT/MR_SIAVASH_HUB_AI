@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.health import router as health_router
 from mrhub.api.routes.jobs import router as jobs_router
 from mrhub.api.routes.models import router as models_router
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
         TaskRepository(settings.database_path).initialize()
 
     app.include_router(health_router)
+    app.include_router(auth_router)
     app.include_router(tasks_router)
     app.include_router(jobs_router)
     app.include_router(policy_router)
