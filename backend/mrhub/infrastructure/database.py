@@ -1,5 +1,6 @@
 """SQLite persistence for the initial local-first runtime."""
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from collections.abc import Iterable, Iterator
@@ -52,6 +53,23 @@ class TaskRepository:
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    event_id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    subject_type TEXT NOT NULL,
+                    subject_id TEXT,
+                    actor_type TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at)"
             )
 
     def create(self, task: TaskRecord) -> TaskRecord:
@@ -131,3 +149,47 @@ class TaskRepository:
             if cursor.rowcount != 1:
                 raise RuntimeError("Task state changed concurrently; reload before retrying")
         return updated
+
+    def record_audit(self, event: dict[str, object]) -> None:
+        """Persist a sanitized audit event."""
+        with self._connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO audit_events (
+                    event_id, event_type, outcome, subject_type,
+                    subject_id, actor_type, created_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event["event_id"],
+                    event["event_type"],
+                    event["outcome"],
+                    event["subject_type"],
+                    event["subject_id"],
+                    event["actor_type"],
+                    event["created_at"],
+                    json.dumps(event["metadata"], ensure_ascii=False, sort_keys=True),
+                ),
+            )
+
+    def list_audit(self, limit: int = 100) -> list[dict[str, object]]:
+        """Return recent audit events for internal diagnostics."""
+        bounded_limit = max(1, min(limit, 500))
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
+        return [
+            {
+                "event_id": row["event_id"],
+                "event_type": row["event_type"],
+                "outcome": row["outcome"],
+                "subject_type": row["subject_type"],
+                "subject_id": row["subject_id"],
+                "actor_type": row["actor_type"],
+                "created_at": row["created_at"],
+                "metadata": json.loads(row["metadata_json"]),
+            }
+            for row in rows
+        ]
