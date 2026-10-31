@@ -59,7 +59,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
 
 
 def test_migration_checksum_drift_fails_closed(tmp_path, monkeypatch):
-    import mrhub.infrastructure.migrations as migrations
+    from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "drift.sqlite3")
     SchemaMigrator(connection).migrate()
@@ -75,7 +75,7 @@ def test_migration_checksum_drift_fails_closed(tmp_path, monkeypatch):
 
 
 def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):
-    import mrhub.infrastructure.migrations as migrations
+    from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "rollback.sqlite3")
     original = migrations.MIGRATIONS
