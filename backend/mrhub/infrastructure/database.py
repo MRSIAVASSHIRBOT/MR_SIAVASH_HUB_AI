@@ -2,8 +2,8 @@
 
 import sqlite3
 from contextlib import contextmanager
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Iterable, Iterator
 from uuid import UUID
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
