@@ -27,7 +27,7 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Structured audit event persistence with metadata allow-listing
 - [ ] Worker execution with bounded concurrency
 - [x] Local owner authentication, hashed password storage, expiring/revocable sessions
-- [ ] Approval identity and action-bound approval workflow
+- [x] Authenticated, one-time action-bound approval/rejection with approver audit identity
 - SQLite schema migration tooling
 - Model provider interface and a real provider adapter
 - Minimal React/TypeScript operator view
