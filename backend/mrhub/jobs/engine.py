@@ -24,6 +24,7 @@ class JobEngine:
         TaskStatus.SUCCEEDED: set(),
         TaskStatus.FAILED: set(),
         TaskStatus.CANCELLED: set(),
+        TaskStatus.REJECTED: set(),
     }
 
     def __init__(self, repository: TaskRepository) -> None:
