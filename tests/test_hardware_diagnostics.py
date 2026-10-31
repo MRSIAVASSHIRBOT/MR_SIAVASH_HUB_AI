@@ -5,7 +5,7 @@ from mrhub.diagnostics import hardware
 
 def test_report_is_read_only_and_has_stable_sections(monkeypatch):
     monkeypatch.setattr(hardware, "_memory_bytes", lambda: 16 * 1024**3)
-    monkeypatch.setattr(hardware, "_windows_display_adapters", lambda: [])
+    monkeypatch.setattr(hardware, "_windows_display_adapters", list)
     monkeypatch.setattr(
         hardware.shutil,
         "disk_usage",
