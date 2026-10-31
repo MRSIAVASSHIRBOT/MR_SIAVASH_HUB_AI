@@ -1,12 +1,11 @@
-from mrhub.providers.base import ProviderRequest, ProviderUnavailableError
+from mrhub.providers.base import ProviderRequest
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRequest, ModelRouter
 from mrhub.providers.stub import StubProvider
 
 
 def test_stub_provider_is_explicit_and_does_not_claim_inference():
-    provider = StubProvider()
-    response = provider.generate(ProviderRequest(input_text="hello"))
+    response = StubProvider().generate(ProviderRequest(input_text="hello"))
     assert response.provider == "stub"
     assert response.finish_reason == "stub"
     assert "No model inference was performed" in response.output_text
@@ -26,8 +25,7 @@ def test_registry_rejects_duplicate_provider_model():
 
 def test_router_dispatches_only_to_registered_adapter():
     router = ModelRouter()
-    provider = StubProvider()
-    router.register_provider(provider)
+    router.register_provider(StubProvider())
     response = router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
     assert response.provider == "stub"
 
