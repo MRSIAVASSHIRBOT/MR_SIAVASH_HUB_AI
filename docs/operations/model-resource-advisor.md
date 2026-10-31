@@ -35,3 +35,11 @@ can materially change real-world behavior.
 
 This is a planning function only. It does not select a provider, authorize a
 task, start a model, change system configuration, or make network requests.
+
+
+## Authenticated API
+
+The protected `POST /models/assess` endpoint accepts a hardware report and
+explicit model profile, then returns the same deterministic assessment. It is
+read-only and never invokes a provider or starts inference. Like the other
+model endpoints, it requires an authenticated local session.
