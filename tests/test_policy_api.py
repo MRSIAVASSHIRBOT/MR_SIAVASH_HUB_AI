@@ -1,3 +1,4 @@
+from mrhub.config import get_settings
 from client_helpers import authenticated_client
 
 
@@ -31,7 +32,7 @@ def test_unknown_task_type_requires_approval(tmp_path, monkeypatch) -> None:
 def test_job_cancel_endpoint(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "cancel.sqlite3"))
     get_settings.cache_clear()
-    client = TestClient(create_app())
+    client = authenticated_client()
     created = client.post("/tasks", json={"task_type": "demo.echo"})
     task_id = created.json()["task_id"]
     cancelled = client.post(f"/jobs/{task_id}/cancel")
