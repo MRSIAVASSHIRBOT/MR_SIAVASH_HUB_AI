@@ -107,6 +107,8 @@ def decide_approval(
             "previous_status": TaskStatus.WAITING_APPROVAL.value,
             "new_status": target.value,
         },
+        actor_type="user",
+        actor_id=user.user_id,
     )
     return ApprovalResponse(
         approval_id=approval["approval_id"],
