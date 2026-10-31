@@ -1,0 +1,100 @@
+"""SQLite persistence for the initial local-first runtime."""
+
+import sqlite3
+from pathlib import Path
+from typing import Iterable
+from uuid import UUID
+
+from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+
+
+class TaskRepository:
+    """Small repository abstraction; each operation owns its connection."""
+
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
+
+    def _connect(self) -> sqlite3.Connection:
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(self.database_path, timeout=5.0)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        return connection
+
+    def initialize(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tasks (
+                    task_id TEXT PRIMARY KEY,
+                    task_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    risk_class TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    description TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)"
+            )
+
+    def create(self, task: TaskRecord) -> TaskRecord:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_id, task_type, status, risk_class,
+                    created_at, updated_at, description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(task.task_id),
+                    task.task_type,
+                    task.status.value,
+                    task.risk_class.value,
+                    task.created_at.isoformat(),
+                    task.updated_at.isoformat(),
+                    task.description,
+                ),
+            )
+        return task
+
+    def get(self, task_id: UUID) -> TaskRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (str(task_id),)
+            ).fetchone()
+        if row is None:
+            return None
+        return TaskRecord(
+            task_id=UUID(row["task_id"]),
+            task_type=row["task_type"],
+            status=TaskStatus(row["status"]),
+            risk_class=RiskClass(row["risk_class"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            description=row["description"],
+        )
+
+    def list_recent(self, limit: int = 50) -> Iterable[TaskRecord]:
+        bounded_limit = max(1, min(limit, 100))
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
+        return [
+            TaskRecord(
+                task_id=UUID(row["task_id"]),
+                task_type=row["task_type"],
+                status=TaskStatus(row["status"]),
+                risk_class=RiskClass(row["risk_class"]),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                description=row["description"],
+            )
+            for row in rows
+        ]
