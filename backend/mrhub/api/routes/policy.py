@@ -13,8 +13,8 @@ engine = PolicyEngine()
 class EvaluatePolicyRequest(BaseModel):
     action: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.:-]+$")
     risk_class: RiskClass
-    granted_permissions: set[str] = set()
-    required_permissions: set[str] = set()
+    granted_permissions: set[str] = Field(default_factory=set)
+    required_permissions: set[str] = Field(default_factory=set)
     external_side_effect: bool = False
 
 
