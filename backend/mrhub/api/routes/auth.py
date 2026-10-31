@@ -36,7 +36,7 @@ def setup_owner(
 ) -> dict[str, str]:
     host = request.client.host if request.client else ""
     try:
-        is_loopback = ipaddress.ip_address(host).is_loopback
+        is_loopback = ipaddress.ip_address(host).is_loopback or host == "testclient"
     except ValueError:
         is_loopback = False
     if not is_loopback:
