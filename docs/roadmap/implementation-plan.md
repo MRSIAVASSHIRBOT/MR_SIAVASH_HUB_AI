@@ -33,6 +33,7 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Versioned SQLite schema migration tooling with transactional application, checksums, legacy-column upgrades, and unknown-version protection
 - [x] Typed model-provider contract, explicit registry, capability-aware dispatch, and deterministic local stub adapter
 - [x] Loopback-only Ollama local inference adapter with opt-in activation, bounded requests, health checks, and sanitized errors
+- [x] Read-only host hardware report for local model planning (CPU, memory, disk, and safe GPU-name probe)
 - [ ] Real remote provider adapter (separate opt-in milestone; explicit secrets and network policy required)
 - [ ] Minimal React/TypeScript operator view
 
