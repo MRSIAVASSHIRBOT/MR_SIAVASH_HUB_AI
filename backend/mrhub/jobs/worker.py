@@ -11,7 +11,7 @@ import json
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 from uuid import UUID
 
@@ -42,6 +42,8 @@ class WorkerEngine:
     """Executes only allow-listed deterministic handlers with bounded concurrency."""
 
     MAX_CONCURRENCY = 1
+    STALE_AFTER_SECONDS = 300
+
     def __init__(self, repository: TaskRepository) -> None:
         self.repository = repository
         self.database_path = repository.database_path
@@ -84,10 +86,67 @@ class WorkerEngine:
                 )
                 """
             )
+            columns = {
+                row["name"] for row in connection.execute(
+                    "PRAGMA table_info(worker_executions)"
+                )
+            }
+            if "recovered_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE worker_executions ADD COLUMN recovered_at TEXT"
+                )
 
     @staticmethod
     def _echo(task: TaskRecord) -> dict[str, str]:
         return {"message": task.description, "task_type": task.task_type}
+
+    def _recover_interrupted(self) -> None:
+        """Fail stale running tasks rather than silently replaying possibly completed work."""
+        cutoff = (
+            datetime.now(UTC) - timedelta(seconds=self.STALE_AFTER_SECONDS)
+        ).isoformat()
+        now = datetime.now(UTC).isoformat()
+        recovered: list[TaskRecord] = []
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT t.* FROM tasks AS t
+                JOIN worker_executions AS e ON e.task_id = t.task_id
+                WHERE t.status = ? AND e.started_at < ?
+                """,
+                (TaskStatus.RUNNING.value, cutoff),
+            ).fetchall()
+            for row in rows:
+                task = TaskRecord(
+                    task_id=UUID(row["task_id"]),
+                    task_type=row["task_type"],
+                    status=TaskStatus.RUNNING,
+                    risk_class=RiskClass(row["risk_class"]),
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    description=row["description"],
+                )
+                cursor = connection.execute(
+                    """
+                    UPDATE tasks SET status = ?, updated_at = ?
+                    WHERE task_id = ? AND status = ?
+                    """,
+                    (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
+                )
+                if cursor.rowcount == 1:
+                    connection.execute(
+                        """
+                        UPDATE worker_executions
+                        SET error_code = 'worker_interrupted',
+                            finished_at = ?, recovered_at = ?
+                        WHERE task_id = ?
+                        """,
+                        (now, now, str(task.task_id)),
+                    )
+                    recovered.append(task)
+        for task in recovered:
+            self._audit(task, "failed", "worker_interrupted")
 
     def _claim(self) -> TaskRecord | None:
         """Atomically claim one queued task; BEGIN IMMEDIATE serializes competing workers."""
@@ -144,6 +203,7 @@ class WorkerEngine:
             return self._run_once()
 
     def _run_once(self) -> TaskRecord | None:
+        self._recover_interrupted()
         task = self._claim()
         if task is None:
             return None
@@ -171,28 +231,35 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_failed")
 
         now = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
-            connection.execute(
+        with self._connection() as connection:
+            cursor = connection.execute(
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
                 """,
                 (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
             )
-            connection.execute(
-                """
-                UPDATE worker_executions
-                SET result_json = ?, error_code = NULL, finished_at = ?
-                WHERE task_id = ?
-                """,
-                (json.dumps(result, ensure_ascii=False, sort_keys=True), now, str(task.task_id)),
-            )
-        self._audit(task, "succeeded", "worker_completed")
-        return task.model_copy(update={"status": TaskStatus.SUCCEEDED, "updated_at": now})
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """
+                    UPDATE worker_executions
+                    SET result_json = ?, error_code = NULL, finished_at = ?
+                    WHERE task_id = ?
+                    """,
+                    (json.dumps(result, ensure_ascii=False, sort_keys=True), now, str(task.task_id)),
+                )
+        saved = self.repository.get(task.task_id)
+        if saved is None:
+            raise WorkerError("Claimed task disappeared during execution")
+        if saved.status is TaskStatus.SUCCEEDED:
+            self._audit(task, "succeeded", "worker_completed")
+        else:
+            self._mark_cancelled(task)
+        return saved
 
     def _finish_failure(self, task: TaskRecord, error_code: str) -> TaskRecord:
         now = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
@@ -210,6 +277,19 @@ class WorkerEngine:
         self._audit(task, "failed", error_code)
         return task.model_copy(update={"status": TaskStatus.FAILED, "updated_at": now})
 
+    def _mark_cancelled(self, task: TaskRecord) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self._connection() as connection:
+            connection.execute(
+                """
+                UPDATE worker_executions
+                SET error_code = 'cancelled_during_execution', finished_at = ?
+                WHERE task_id = ?
+                """,
+                (now, str(task.task_id)),
+            )
+        self._audit(task, "cancelled", "cancelled_during_execution")
+
     def _audit(self, task: TaskRecord, outcome: str, reason_code: str) -> None:
         AuditLogger(self.repository).record(
             event_type="task.worker_finished",
@@ -220,10 +300,11 @@ class WorkerEngine:
                 "risk_class": task.risk_class.value,
                 "reason_code": reason_code,
                 "previous_status": TaskStatus.RUNNING.value,
-                "new_status": (
-                    TaskStatus.SUCCEEDED.value if outcome == "succeeded"
-                    else TaskStatus.FAILED.value
-                ),
+                "new_status": {
+                    "succeeded": TaskStatus.SUCCEEDED.value,
+                    "cancelled": TaskStatus.CANCELLED.value,
+                    "failed": TaskStatus.FAILED.value,
+                }[outcome],
             },
         )
 
@@ -242,4 +323,5 @@ class WorkerEngine:
             "attempt_count": row["attempt_count"],
             "started_at": row["started_at"],
             "finished_at": row["finished_at"],
+            "recovered_at": row["recovered_at"],
         }
