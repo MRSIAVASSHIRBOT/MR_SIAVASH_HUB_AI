@@ -9,9 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager
 from collections.abc import Callable
 from datetime import UTC, datetime
 from threading import Lock
+from collections.abc import Iterator
 from uuid import UUID
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
@@ -57,8 +59,20 @@ class WorkerEngine:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS worker_executions (
@@ -78,7 +92,7 @@ class WorkerEngine:
 
     def _claim(self) -> TaskRecord | None:
         """Atomically claim one queued task; BEGIN IMMEDIATE serializes competing workers."""
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT * FROM tasks WHERE status = ? ORDER BY created_at LIMIT 1",
