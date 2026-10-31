@@ -71,6 +71,31 @@ class TaskRepository:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at)"
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_users (
+                    user_id TEXT PRIMARY KEY,
+                    username TEXT NOT NULL UNIQUE,
+                    salt TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at)"
+            )
 
     def create(self, task: TaskRecord) -> TaskRecord:
         with self._connection() as connection:
@@ -193,3 +218,56 @@ class TaskRepository:
             }
             for row in rows
         ]
+
+    def auth_user_exists(self) -> bool:
+        with self._connection() as connection:
+            return connection.execute("SELECT 1 FROM auth_users LIMIT 1").fetchone() is not None
+
+    def create_auth_user(
+        self, user_id: str, username: str, salt: str, password_hash: str
+    ) -> None:
+        from datetime import UTC, datetime
+
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, username, salt, password_hash, datetime.now(UTC).isoformat()),
+            )
+
+    def get_auth_user(self, username: str) -> dict[str, str] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT user_id, username, salt, password_hash FROM auth_users WHERE username = ?",
+                (username,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def create_auth_session(
+        self, session_id: str, user_id: str, token_hash: str, expires_at: str
+    ) -> None:
+        from datetime import UTC, datetime
+
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO auth_sessions (session_id, user_id, token_hash, expires_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, user_id, token_hash, expires_at, datetime.now(UTC).isoformat()),
+            )
+
+    def get_auth_session(self, token_hash: str) -> dict[str, str] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT s.user_id, s.expires_at, u.username
+                FROM auth_sessions AS s
+                JOIN auth_users AS u ON u.user_id = s.user_id
+                WHERE s.token_hash = ?
+                """,
+                (token_hash,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def delete_auth_session(self, token_hash: str) -> None:
+        with self._connection() as connection:
+            connection.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
