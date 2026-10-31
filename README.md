@@ -3,13 +3,11 @@
 An integrated, modular AI workspace designed for local-first and hybrid execution.
 
 ## Product direction
-
 MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabilities for agents, memory, workflows, developer assistance, content production, integrations, and defensive security.
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
 
 ## Engineering principles
-
 - **Local-first, hybrid-capable:** run feasible workloads locally and route heavier tasks to explicitly configured providers.
 - **Modular monolith first:** maintain clear module contracts without introducing distributed-system overhead prematurely.
 - **Secure by default:** least privilege, explicit tool grants, secret isolation, audit trails, and approval gates for sensitive actions.
@@ -18,7 +16,6 @@ The initial release is designed for one primary user while keeping clean boundar
 - **Testable:** unit, integration, end-to-end, and security checks are part of the delivery process.
 
 ## Quick start
-
 Requires Python 3.11 or newer.
 
 ```powershell
@@ -35,6 +32,12 @@ On first launch, initialize the local owner account from the same machine using 
 
 `GET /health`, `POST /auth/setup`, and `POST /auth/login` are public (setup is restricted to loopback). Task, job, policy, and model endpoints require a valid session. `POST /tasks/{task_id}/approval` records a one-time owner-authenticated approval or rejection bound to a SHA-256 fingerprint of task identity, type, risk class, and description; the decision and task transition are persisted together. `GET /tasks/{task_id}/approval` retrieves the decision. Rejected tasks enter a terminal state. Initial protected endpoints also include `POST /tasks`, `GET /tasks`, `GET /tasks/{task_id}`, `POST /jobs/{task_id}/cancel`, `POST /policy/evaluate`, `GET /models`, and `POST /models/select`.
 
+## Model provider interface
+
+Provider adapters implement a typed contract for model metadata, request/response validation, health status, and generation. A registry resolves the selected provider/model pair; the router performs capability matching and refuses silent local-to-cloud fallback. Provider errors expose stable reason codes rather than request contents or credentials.
+
+The only adapter currently registered is `stub-text-v1`. It is deterministic test infrastructure, not an AI model, and does not perform inference or make network calls. No API keys, paid services, remote calls, or local model runtime are configured. Real local and remote adapters remain separate milestones and must add timeout, secret-handling, resource, and policy tests before activation.
+
 Run tests:
 
 ```powershell
@@ -42,7 +45,6 @@ pytest
 ```
 
 ## Initial capability domains
-
 1. AI Core and Model Router
 2. Agent Orchestrator
 3. Memory and Retrieval
@@ -58,22 +60,18 @@ pytest
 These are product domains, not separate competing backends. Shared infrastructure is implemented once and exposed through stable interfaces.
 
 ## Safety and trust boundaries
-
 The platform is intended for legitimate personal productivity, software development, content creation, and defensive/authorized security work. It will not include credential theft, phishing kits, covert tracking, malware or payload generation, unauthorized access, or evasion features.
 
 External publishing, spending, destructive operations, access to sensitive data, and other high-impact actions require explicit policy checks and, where configured, user approval.
 
 ## Current status
-
-The repository contains the architecture baseline and an initial control-plane slice: versioned SQLite schema migrations, task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, local owner authentication, and action-bound approvals. Database initialization applies pending migrations transactionally, records version/name/checksum/timestamp, preserves compatible legacy rows, and fails closed on checksum drift or unknown future versions. A pull-driven worker engine atomically claims queued tasks, persists execution results, records sanitized failure codes, and verifies approval fingerprints before considering high-risk work. It fails stale running tasks as interrupted instead of silently replaying them, and uses compare-and-set completion so cancellation cannot be overwritten by a late success result. Bounded retries are now available only for the deterministic, explicitly allow-listed `demo.echo` handler when it raises the typed `RetryableWorkerError`: at most three attempts, with persisted exponential backoff (5 then 10 seconds). Retry schedules survive worker recreation, and cancellation wins over a retry transition. Unknown or unapproved handler types are never retried. Interrupted running tasks still fail closed rather than being replayed. Only `demo.echo` is registered; no model inference, shell, network, filesystem, or external publishing operation is enabled. Worker execution remains explicitly pull-driven and intended for a single local worker process; distributed leases, forced interruption, and general retry orchestration for side-effecting handlers are not implemented.
+The repository contains the architecture baseline and initial control-plane slice: versioned SQLite schema migrations, task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, local owner authentication, action-bound approvals, and a pull-driven worker with fail-closed dispatch and bounded retry for deterministic demo tasks. The provider layer now has typed contracts, an explicit registry, capability-aware dispatch, and a deterministic local stub. The stub performs no inference. No real model calls, network access, shell, filesystem operations, or external publishing are enabled in provider/worker execution. Worker execution remains explicitly pull-driven and intended for a single local worker process; distributed leases and forced interruption of synchronous handlers are not implemented.
 
 ## Documentation
-
 - `docs/architecture/overview.md` — system architecture
 - `docs/architecture/module-boundaries.md` — module ownership and contracts
 - `docs/security/threat-model.md` — trust boundaries and security controls
 - `docs/roadmap/implementation-plan.md` — staged delivery plan
 
 ## License
-
 License selection is pending. No license grant should be inferred until a license file is added.
