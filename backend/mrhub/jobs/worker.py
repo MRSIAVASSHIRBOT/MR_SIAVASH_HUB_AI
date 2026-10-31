@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from threading import Lock
 from datetime import UTC, datetime
 from typing import Callable
 from uuid import UUID
@@ -40,11 +41,10 @@ class WorkerEngine:
     """Executes only allow-listed deterministic handlers with bounded concurrency."""
 
     MAX_CONCURRENCY = 1
-    MAX_ATTEMPTS = 2
-
     def __init__(self, repository: TaskRepository) -> None:
         self.repository = repository
         self.database_path = repository.database_path
+        self._run_lock = Lock()
         self.handlers: dict[str, Callable[[TaskRecord], dict[str, str]]] = {
             "demo.echo": self._echo,
         }
@@ -126,7 +126,11 @@ class WorkerEngine:
             return task.model_copy(update={"status": TaskStatus.RUNNING, "updated_at": now})
 
     def run_once(self) -> TaskRecord | None:
-        """Execute at most one task. Returns None when the queue is empty."""
+        """Execute at most one task; serialize calls through this worker instance."""
+        with self._run_lock:
+            return self._run_once()
+
+    def _run_once(self) -> TaskRecord | None:
         task = self._claim()
         if task is None:
             return None
