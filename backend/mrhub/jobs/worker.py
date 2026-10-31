@@ -267,7 +267,7 @@ class WorkerEngine:
             result = handler(task)
         except RetryableWorkerError:
             return self._schedule_retry_or_fail(task)
-        except Exception:
+        except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
             return self._finish_failure(task, "handler_failed")
 
