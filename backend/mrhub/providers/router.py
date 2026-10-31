@@ -69,9 +69,7 @@ class ModelRouter:
         if request.requires_tool_calling:
             candidates = [item for item in candidates if item.capability.tool_calling]
         if request.prefer_local:
-            local = [item for item in candidates if item.local]
-            if local:
-                candidates = local
+            candidates = [item for item in candidates if item.local]
         if not candidates:
             raise LookupError("No available model satisfies the requested capabilities")
         selected = sorted(
