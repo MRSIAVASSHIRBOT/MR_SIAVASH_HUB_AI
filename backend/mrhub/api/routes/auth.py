@@ -1,6 +1,7 @@
 """One-time local owner setup and session endpoints."""
 
 import ipaddress
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
@@ -32,7 +33,7 @@ class SessionResponse(BaseModel):
 def setup_owner(
     payload: SetupRequest,
     request: Request,
-    service: AuthService = Depends(get_auth_service),
+    service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> dict[str, str]:
     host = request.client.host if request.client else ""
     try:
@@ -65,8 +66,8 @@ def login(
 
 @router.post("/logout", status_code=204)
 def logout(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    _user: AuthenticatedUser = Depends(require_user),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    _user: Annotated[AuthenticatedUser, Depends(require_user)],
     service: AuthService = Depends(get_auth_service),
 ) -> None:
     if credentials is not None:
