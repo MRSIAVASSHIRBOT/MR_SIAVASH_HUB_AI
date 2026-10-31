@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from mrhub.providers.base import ProviderRequest, ProviderResponse
+from mrhub.providers.base import ModelProvider, ProviderRequest, ProviderResponse
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.types import ModelCapability, ModelDescriptor
 
@@ -10,6 +10,7 @@ from mrhub.providers.types import ModelCapability, ModelDescriptor
 class ModelRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
+    requires_text: bool = True
     requires_vision: bool = False
     requires_audio: bool = False
     requires_tool_calling: bool = False
@@ -33,7 +34,7 @@ class ModelRouter:
     def register(self, descriptor: ModelDescriptor) -> None:
         self._providers[(descriptor.provider, descriptor.model)] = descriptor
 
-    def register_provider(self, provider) -> None:
+    def register_provider(self, provider: ModelProvider) -> None:
         self.registry.register(provider)
         self.register(provider.descriptor)
 
@@ -45,6 +46,8 @@ class ModelRouter:
 
     def select(self, request: ModelRequest) -> ModelSelection:
         candidates = [item for item in self._providers.values() if item.available]
+        if request.requires_text:
+            candidates = [item for item in candidates if item.capability.text]
         if request.requires_vision:
             candidates = [item for item in candidates if item.capability.vision]
         if request.requires_audio:
