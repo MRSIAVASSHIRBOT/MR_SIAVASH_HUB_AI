@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
-from tests.client_helpers import authenticated_client
+from client_helpers import authenticated_client
 
 
 def test_high_risk_task_waits_for_approval(tmp_path, monkeypatch) -> None:
