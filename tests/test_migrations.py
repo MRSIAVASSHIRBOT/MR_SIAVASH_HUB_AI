@@ -97,3 +97,17 @@ def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):
     ).fetchall() == []
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
     connection.close()
+
+
+def test_unknown_future_migration_version_fails_closed(tmp_path):
+    connection = connect(tmp_path / "unknown-version.sqlite3")
+    SchemaMigrator(connection).migrate()
+    connection.execute(
+        """INSERT INTO schema_migrations (version, name, checksum, applied_at)
+        VALUES (99, 'future_schema', 'future-checksum', '2026-01-01T00:00:00+00:00')"""
+    )
+    connection.commit()
+
+    with pytest.raises(MigrationError, match="unsupported migration versions"):
+        SchemaMigrator(connection).migrate()
+    connection.close()
