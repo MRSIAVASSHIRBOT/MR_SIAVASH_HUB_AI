@@ -220,6 +220,13 @@ class WorkerEngine:
             ):
                 return self._finish_failure(task, "approval_missing_or_stale")
 
+        current = self.repository.get(task.task_id)
+        if current is None:
+            raise WorkerError("Claimed task disappeared before dispatch")
+        if current.status is TaskStatus.CANCELLED:
+            self._mark_cancelled(task)
+            return current
+
         handler = self.handlers.get(task.task_type)
         if handler is None:
             return self._finish_failure(task, "handler_not_registered")
@@ -260,22 +267,29 @@ class WorkerEngine:
     def _finish_failure(self, task: TaskRecord, error_code: str) -> TaskRecord:
         now = datetime.now(UTC).isoformat()
         with self._connection() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
                 """,
                 (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
             )
-            connection.execute(
-                """
-                UPDATE worker_executions SET error_code = ?, finished_at = ?
-                WHERE task_id = ?
-                """,
-                (error_code, now, str(task.task_id)),
-            )
-        self._audit(task, "failed", error_code)
-        return task.model_copy(update={"status": TaskStatus.FAILED, "updated_at": now})
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """
+                    UPDATE worker_executions SET error_code = ?, finished_at = ?
+                    WHERE task_id = ?
+                    """,
+                    (error_code, now, str(task.task_id)),
+                )
+        saved = self.repository.get(task.task_id)
+        if saved is None:
+            raise WorkerError("Claimed task disappeared while recording failure")
+        if saved.status is TaskStatus.FAILED:
+            self._audit(task, "failed", error_code)
+        elif saved.status is TaskStatus.CANCELLED:
+            self._mark_cancelled(task)
+        return saved
 
     def _mark_cancelled(self, task: TaskRecord) -> None:
         now = datetime.now(UTC).isoformat()
@@ -309,7 +323,7 @@ class WorkerEngine:
         )
 
     def get_result(self, task_id: UUID) -> dict[str, object] | None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT result_json, error_code, attempt_count, started_at, finished_at "
                 "FROM worker_executions WHERE task_id = ?",
