@@ -120,6 +120,17 @@ class SchemaMigrator:
         )
         connection.commit()
 
+        known_versions = {migration.version for migration in MIGRATIONS}
+        recorded_versions = {
+            row["version"]
+            for row in connection.execute("SELECT version FROM schema_migrations")
+        }
+        unknown_versions = recorded_versions - known_versions
+        if unknown_versions:
+            raise MigrationError(
+                f"Database contains unsupported migration versions: {sorted(unknown_versions)}"
+            )
+
         for migration in MIGRATIONS:
             connection.execute("BEGIN IMMEDIATE")
             try:
