@@ -98,6 +98,7 @@ def collect_hardware_report() -> dict[str, Any]:
         disk_report = {"checked_path": root or ".", "status": "unavailable"}
 
     memory = _memory_bytes()
+    adapters = _windows_display_adapters()
     return {
         "schema_version": 1,
         "read_only": True,
@@ -117,8 +118,8 @@ def collect_hardware_report() -> dict[str, Any]:
         },
         "disk": disk_report,
         "gpu": {
-            "adapters": _windows_display_adapters(),
-            "status": "detected" if _windows_display_adapters() else "not_detected_by_safe_probe",
+            "adapters": adapters,
+            "status": "detected" if adapters else "not_detected_by_safe_probe",
             "note": "Adapter names only; dedicated VRAM and compute capability are not measured.",
         },
         "limitations": [
