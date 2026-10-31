@@ -20,7 +20,9 @@ class JobEngine:
             TaskStatus.WAITING_APPROVAL, TaskStatus.SUCCEEDED,
             TaskStatus.FAILED, TaskStatus.CANCELLED,
         },
-        TaskStatus.WAITING_APPROVAL: {TaskStatus.QUEUED, TaskStatus.CANCELLED},
+        TaskStatus.WAITING_APPROVAL: {
+            TaskStatus.QUEUED, TaskStatus.CANCELLED, TaskStatus.REJECTED,
+        },
         TaskStatus.SUCCEEDED: set(),
         TaskStatus.FAILED: set(),
         TaskStatus.CANCELLED: set(),
