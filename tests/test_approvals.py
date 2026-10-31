@@ -55,6 +55,8 @@ def test_owner_can_approve_pending_task_and_decision_is_audited(tmp_path, monkey
     assert any(
         event["event_type"] == "task.approval_decided"
         and event["outcome"] == "approved"
+        and event["actor_type"] == "user"
+        and event["actor_id"] == "local-owner"
         for event in events
     )
 
