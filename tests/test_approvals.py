@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
-from mrhub.main import create_app
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.main import create_app
 
 
 def make_authenticated_client(tmp_path, monkeypatch) -> TestClient:
