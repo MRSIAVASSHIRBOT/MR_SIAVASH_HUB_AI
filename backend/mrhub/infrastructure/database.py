@@ -63,13 +63,35 @@ class TaskRepository:
                     subject_type TEXT NOT NULL,
                     subject_id TEXT,
                     actor_type TEXT NOT NULL,
+                    actor_id TEXT,
                     created_at TEXT NOT NULL,
                     metadata_json TEXT NOT NULL
                 )
                 """
             )
+            audit_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(audit_events)")
+            }
+            if "actor_id" not in audit_columns:
+                connection.execute("ALTER TABLE audit_events ADD COLUMN actor_id TEXT")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS task_approvals (
+                    approval_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id),
+                    decision TEXT NOT NULL CHECK (decision IN ('approved', 'rejected')),
+                    approver_id TEXT NOT NULL REFERENCES auth_users(user_id),
+                    action_fingerprint TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_approvals_created_at ON task_approvals(created_at)"
             )
             connection.execute(
                 """
@@ -182,8 +204,8 @@ class TaskRepository:
                 """
                 INSERT INTO audit_events (
                     event_id, event_type, outcome, subject_type,
-                    subject_id, actor_type, created_at, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    subject_id, actor_type, actor_id, created_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event["event_id"],
@@ -192,6 +214,7 @@ class TaskRepository:
                     event["subject_type"],
                     event["subject_id"],
                     event["actor_type"],
+                    event.get("actor_id"),
                     event["created_at"],
                     json.dumps(event["metadata"], ensure_ascii=False, sort_keys=True),
                 ),
@@ -213,6 +236,7 @@ class TaskRepository:
                 "subject_type": row["subject_type"],
                 "subject_id": row["subject_id"],
                 "actor_type": row["actor_type"],
+                "actor_id": row["actor_id"],
                 "created_at": row["created_at"],
                 "metadata": json.loads(row["metadata_json"]),
             }
@@ -271,3 +295,52 @@ class TaskRepository:
     def delete_auth_session(self, token_hash: str) -> None:
         with self._connection() as connection:
             connection.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
+
+
+    def record_task_approval(
+        self,
+        approval: dict[str, str],
+        expected_status: TaskStatus,
+        target_status: TaskStatus,
+    ) -> None:
+        """Persist one immutable, action-bound decision and transition atomically."""
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE tasks SET status = ?, updated_at = ?
+                WHERE task_id = ? AND status = ?
+                """,
+                (
+                    target_status.value,
+                    approval["created_at"],
+                    approval["task_id"],
+                    expected_status.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("Task is no longer awaiting this approval")
+            connection.execute(
+                """
+                INSERT INTO task_approvals (
+                    approval_id, task_id, decision, approver_id,
+                    action_fingerprint, reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    approval["approval_id"],
+                    approval["task_id"],
+                    approval["decision"],
+                    approval["approver_id"],
+                    approval["action_fingerprint"],
+                    approval["reason"],
+                    approval["created_at"],
+                ),
+            )
+
+    def get_task_approval(self, task_id: UUID) -> dict[str, str] | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM task_approvals WHERE task_id = ?",
+                (str(task_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
