@@ -65,7 +65,7 @@ External publishing, spending, destructive operations, access to sensitive data,
 
 ## Current status
 
-The repository contains the architecture baseline and an initial control-plane slice: task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, and local owner authentication with expiring sessions. The model router currently uses a mock descriptor and does not call an inference provider. Job lifecycle state is persisted, but background execution workers are not yet enabled.
+The repository contains the architecture baseline and an initial control-plane slice: task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, local owner authentication, and action-bound approvals. A pull-driven worker engine now atomically claims queued tasks, persists execution results, records sanitized failure codes, and verifies approval fingerprints before considering high-risk work. Only the deterministic `demo.echo` handler is registered; unknown handlers fail closed. Worker execution is not started automatically by the API, and no model inference, shell, network, filesystem, or external publishing operation is enabled.
 
 ## Documentation
 
