@@ -33,5 +33,5 @@ class TaskRecord(BaseModel):
     status: TaskStatus = TaskStatus.QUEUED
     risk_class: RiskClass = RiskClass.LOW
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     description: str = Field(default="", max_length=500)
