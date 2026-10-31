@@ -32,11 +32,11 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Bounded retry policy for explicitly safe/idempotent handler types, with persisted attempt limits and exponential backoff
 - [x] Versioned SQLite schema migration tooling with transactional application, checksums, legacy-column upgrades, and unknown-version protection
 - [x] Typed model-provider contract, explicit registry, capability-aware dispatch, and deterministic local stub adapter
-- [ ] Real local inference adapter (separate milestone; resource benchmark required)
+- [x] Loopback-only Ollama local inference adapter with opt-in activation, bounded requests, health checks, and sanitized errors
 - [ ] Real remote provider adapter (separate opt-in milestone; explicit secrets and network policy required)
 - [ ] Minimal React/TypeScript operator view
 
-Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Provider dispatch is explicit and testable, but the current stub performs no inference. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
+Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Provider dispatch is explicit and testable; local Ollama inference is available only after explicit configuration, while the stub performs no inference. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
 
 ## Phase 2 — AI Core and Memory
 - One provider adapter at a time
