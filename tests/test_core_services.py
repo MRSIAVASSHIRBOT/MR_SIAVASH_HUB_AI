@@ -6,7 +6,10 @@ from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.providers.router import (
-    ModelCapability, ModelDescriptor, ModelRequest, ModelRouter,
+    ModelCapability,
+    ModelDescriptor,
+    ModelRequest,
+    ModelRouter,
 )
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
