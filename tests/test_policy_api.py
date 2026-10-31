@@ -10,7 +10,7 @@ def test_high_risk_task_waits_for_approval(tmp_path, monkeypatch) -> None:
     client = TestClient(create_app())
     response = client.post(
         "/tasks",
-        json={"task_type": "content.publish", "risk_class": "high"},
+        json={"task_type": "content.publish"},
     )
     assert response.status_code == 201
     assert response.json()["status"] == "waiting_approval"
@@ -35,7 +35,7 @@ def test_job_cancel_endpoint(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "cancel.sqlite3"))
     get_settings.cache_clear()
     client = TestClient(create_app())
-    created = client.post("/tasks", json={"task_type": "demo.task"})
+    created = client.post("/tasks", json={"task_type": "demo.echo"})
     task_id = created.json()["task_id"]
     cancelled = client.post(f"/jobs/{task_id}/cancel")
     assert cancelled.status_code == 200
