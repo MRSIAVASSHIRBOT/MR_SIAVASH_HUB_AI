@@ -42,6 +42,7 @@ def test_job_cancel_endpoint(tmp_path, monkeypatch) -> None:
     assert cancelled.json()["status"] == "cancelled"
     get_settings.cache_clear()
 
+
 def test_policy_api_ignores_client_claimed_approval() -> None:
     client = TestClient(create_app())
     response = client.post(
