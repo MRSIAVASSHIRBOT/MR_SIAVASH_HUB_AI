@@ -108,6 +108,15 @@ Docker Compose may be added after the local baseline is stable. PostgreSQL is in
 
 The technology choices are provisional until the first vertical slice is measured on the target laptop.
 
-## 9. Architecture decision records
+## 9. Database schema evolution
+
+- All schema changes are applied through `mrhub.infrastructure.migrations.SchemaMigrator`.
+- Each migration has an immutable increasing version, name, and SHA-256 checksum.
+- Pending migrations run in individual SQLite write transactions and are recorded in `schema_migrations` only after successful application.
+- Existing pre-migration databases are upgraded in place; the baseline migration adds missing compatibility columns without deleting existing rows.
+- Checksum drift and unknown recorded versions stop startup rather than attempting an unsafe automatic repair.
+- Migrations are forward-only in this phase. Backups and restore verification must be completed before production data is upgraded; automatic downgrade is intentionally not provided.
+
+## 10. Architecture decision records
 
 Material decisions must be recorded in `docs/architecture/decisions/` with context, alternatives, decision, consequences, and review triggers.
