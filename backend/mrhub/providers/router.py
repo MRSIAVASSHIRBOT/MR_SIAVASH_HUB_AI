@@ -1,30 +1,10 @@
 """Capability-aware model selection and explicit provider dispatch."""
 
-from dataclasses import dataclass
-from typing import Protocol
-
 from pydantic import BaseModel, ConfigDict
 
 from mrhub.providers.base import ProviderRequest, ProviderResponse
 from mrhub.providers.registry import ProviderRegistry
-
-
-@dataclass(frozen=True)
-class ModelCapability:
-    text: bool = True
-    vision: bool = False
-    audio: bool = False
-    tool_calling: bool = False
-
-
-@dataclass(frozen=True)
-class ModelDescriptor:
-    provider: str
-    model: str
-    capability: ModelCapability
-    available: bool = True
-    local: bool = False
-    priority: int = 100
+from mrhub.providers.types import ModelCapability, ModelDescriptor
 
 
 class ModelRequest(BaseModel):
@@ -51,8 +31,7 @@ class ModelRouter:
         self.registry = registry or ProviderRegistry()
 
     def register(self, descriptor: ModelDescriptor) -> None:
-        key = (descriptor.provider, descriptor.model)
-        self._providers[key] = descriptor
+        self._providers[(descriptor.provider, descriptor.model)] = descriptor
 
     def register_provider(self, provider) -> None:
         self.registry.register(provider)
