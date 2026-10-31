@@ -3,6 +3,8 @@
 from fastapi import FastAPI
 
 from mrhub.api.routes.health import router as health_router
+from mrhub.api.routes.models import router as models_router
+from mrhub.api.routes.policy import router as policy_router
 from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
@@ -22,6 +24,8 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(tasks_router)
+    app.include_router(policy_router)
+    app.include_router(models_router)
     return app
 
 
