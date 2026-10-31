@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 @dataclass(frozen=True)
@@ -72,11 +72,15 @@ class ModelRouter:
             candidates = [item for item in candidates if item.local]
         if not candidates:
             raise LookupError("No available model satisfies the requested capabilities")
-        selected = sorted(
+        selected = min(
             candidates,
-            key=lambda item: (not item.local if request.prefer_local else False,
-                              item.priority, item.provider, item.model),
-        )[0]
+            key=lambda item: (
+                not item.local if request.prefer_local else False,
+                item.priority,
+                item.provider,
+                item.model,
+            ),
+        )
         return ModelSelection(
             provider=selected.provider,
             model=selected.model,
