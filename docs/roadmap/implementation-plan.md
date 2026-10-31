@@ -1,7 +1,6 @@
 # Implementation Roadmap
 
 ## Delivery strategy
-
 Build one end-to-end vertical slice before expanding module count. Prioritize reliability, local resource constraints, and the first six-month focus on social content workflows and video production.
 
 ## Phase 0 — Architecture and guardrails
@@ -32,10 +31,12 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Authenticated, one-time action-bound approval/rejection with approver audit identity
 - [x] Bounded retry policy for explicitly safe/idempotent handler types, with persisted attempt limits and exponential backoff
 - [x] Versioned SQLite schema migration tooling with transactional application, checksums, legacy-column upgrades, and unknown-version protection
-- Model provider interface and a real provider adapter
-- Minimal React/TypeScript operator view
+- [x] Typed model-provider contract, explicit registry, capability-aware dispatch, and deterministic local stub adapter
+- [ ] Real local inference adapter (separate milestone; resource benchmark required)
+- [ ] Real remote provider adapter (separate opt-in milestone; explicit secrets and network policy required)
+- [ ] Minimal React/TypeScript operator view
 
-Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
+Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Provider dispatch is explicit and testable, but the current stub performs no inference. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
 
 ## Phase 2 — AI Core and Memory
 - One provider adapter at a time
@@ -96,7 +97,6 @@ Exit criteria: no capability can exceed its declared authorization scope.
 Exit criteria: a packaged single-user application can be installed, updated, backed up, and rolled back safely.
 
 ## Quality gates for every phase
-
 - Formatting and linting
 - Unit tests
 - Integration tests
@@ -107,5 +107,4 @@ Exit criteria: a packaged single-user application can be installed, updated, bac
 - Documentation and migration notes updated
 
 ## First vertical slice
-
 The first implementation slice should be deliberately small: configuration -> API health -> database -> task submission -> mock execution -> status query -> cancellation -> tests. This proves the platform's control plane before introducing real model providers or external side effects.
