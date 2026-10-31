@@ -25,14 +25,14 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Unit and API tests
 - [x] Backend CI workflow
 - [x] Structured audit event persistence with metadata allow-listing
-- [ ] Worker execution with bounded concurrency
+- [x] Pull-driven worker execution with atomic task claiming, per-instance serialization, persisted results, and fail-closed handler registry
 - [x] Local owner authentication, hashed password storage, expiring/revocable sessions
 - [x] Authenticated, one-time action-bound approval/rejection with approver audit identity
 - SQLite schema migration tooling
 - Model provider interface and a real provider adapter
 - Minimal React/TypeScript operator view
 
-Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, and cancelled. Background execution remains disabled until worker isolation and authentication are implemented.
+Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Automatic background scheduling, multi-process worker coordination, retry orchestration, and external side effects remain disabled pending further isolation and recovery work.
 
 ## Phase 2 — AI Core and Memory
 - One provider adapter at a time
