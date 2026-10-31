@@ -17,6 +17,26 @@ The initial release is designed for one primary user while keeping clean boundar
 - **Cost-aware:** prefer free and open-source components; external paid services remain opt-in.
 - **Testable:** unit, integration, end-to-end, and security checks are part of the delivery process.
 
+## Quick start
+
+Requires Python 3.11 or newer.
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+uvicorn mrhub.main:app --reload
+```
+
+OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
+
+Run tests:
+
+```powershell
+pytest
+```
+
 ## Initial capability domains
 
 1. AI Core and Model Router
@@ -41,7 +61,7 @@ External publishing, spending, destructive operations, access to sensitive data,
 
 ## Current status
 
-Repository bootstrap only. Architecture, threat model, module contracts, and implementation plan are being developed before application code is introduced.
+The repository contains the architecture baseline and the first API/database slice. The task endpoints currently record and inspect task metadata only; they do not execute agents, models, or external tools.
 
 ## Documentation
 
