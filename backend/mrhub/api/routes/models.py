@@ -1,10 +1,13 @@
 """Authenticated model catalog and explicitly enabled local inference endpoint."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.diagnostics.resource_advisor import assess_model_resources
 from mrhub.providers.base import ProviderError, ProviderRequest
 from mrhub.providers.ollama import OllamaProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
@@ -41,6 +44,12 @@ class GenerateModelRequest(BaseModel):
     max_output_tokens: int = Field(default=512, ge=1, le=2048)
 
 
+class AssessModelRequest(BaseModel):
+    hardware_report: dict[str, Any]
+    model_profile: dict[str, Any]
+    system_reserve_gib: float = Field(default=2.0, ge=0, le=64)
+
+
 @router.get("")
 def list_models():
     return build_model_router().catalog()
@@ -53,6 +62,15 @@ def select_model(payload: RouteModelRequest) -> dict[str, str | bool]:
     except LookupError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return selection.model_dump()
+
+
+@router.post("/assess")
+def assess_model(payload: AssessModelRequest):
+    return assess_model_resources(
+        payload.hardware_report,
+        payload.model_profile,
+        system_reserve_gib=payload.system_reserve_gib,
+    )
 
 
 @router.post("/generate")
