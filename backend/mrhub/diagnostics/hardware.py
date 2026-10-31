@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 
-def _memory_bytes() -> int | None:
-    """Return installed/visible physical memory where the OS exposes it."""
+def _memory_snapshot() -> tuple[int | None, int | None]:
+    """Return total and currently available physical memory in bytes."""
     if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
@@ -37,15 +37,21 @@ def _memory_bytes() -> int | None:
         status = MEMORYSTATUSEX()
         status.dwLength = ctypes.sizeof(status)
         if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return None
-        return int(status.ullTotalPhys)
+            return None, None
+        return int(status.ullTotalPhys), int(status.ullAvailPhys)
 
     try:
-        pages = os.sysconf("SC_PHYS_PAGES")
         page_size = os.sysconf("SC_PAGE_SIZE")
-        return int(pages * page_size)
+        total_pages = os.sysconf("SC_PHYS_PAGES")
+        available_pages = os.sysconf("SC_AVPHYS_PAGES")
+        return int(total_pages * page_size), int(available_pages * page_size)
     except (AttributeError, OSError, ValueError):
-        return None
+        return None, None
+
+
+def _memory_bytes() -> int | None:
+    """Backward-compatible helper returning total visible physical memory."""
+    return _memory_snapshot()[0]
 
 
 def _windows_display_adapters() -> list[dict[str, str]]:
@@ -56,7 +62,7 @@ def _windows_display_adapters() -> list[dict[str, str]]:
     try:
         import winreg
 
-        key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        key_path = r"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}"
         adapters: list[dict[str, str]] = []
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root:
             index = 0
@@ -97,10 +103,11 @@ def collect_hardware_report() -> dict[str, Any]:
     except OSError:
         disk_report = {"checked_path": root or ".", "status": "unavailable"}
 
-    memory = _memory_bytes()
+    total_memory, available_memory = _memory_snapshot()
     adapters = _windows_display_adapters()
+    gib = 1024 ** 3
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "read_only": True,
         "system": {
             "os": platform.system(),
@@ -113,8 +120,10 @@ def collect_hardware_report() -> dict[str, Any]:
             "processor_label": platform.processor() or "Not exposed by operating system",
         },
         "memory": {
-            "total_bytes": memory,
-            "total_gib": round(memory / (1024 ** 3), 2) if memory is not None else None,
+            "total_bytes": total_memory,
+            "total_gib": round(total_memory / gib, 2) if total_memory is not None else None,
+            "available_bytes": available_memory,
+            "available_gib": round(available_memory / gib, 2) if available_memory is not None else None,
         },
         "disk": disk_report,
         "gpu": {
@@ -124,6 +133,7 @@ def collect_hardware_report() -> dict[str, Any]:
         },
         "limitations": [
             "No benchmark or model inference was run.",
+            "Available memory is a point-in-time estimate and changes as applications run.",
             "GPU memory and compute capability are not measured.",
             "Disk capacity refers to the current working-drive root, not every volume.",
         ],
