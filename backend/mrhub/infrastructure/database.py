@@ -2,8 +2,8 @@
 
 import json
 import sqlite3
-from contextlib import contextmanager
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
