@@ -1,6 +1,6 @@
 """Task domain types."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
@@ -32,6 +32,6 @@ class TaskRecord(BaseModel):
     task_type: str = Field(min_length=1, max_length=80)
     status: TaskStatus = TaskStatus.QUEUED
     risk_class: RiskClass = RiskClass.LOW
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     description: str = Field(default="", max_length=500)
