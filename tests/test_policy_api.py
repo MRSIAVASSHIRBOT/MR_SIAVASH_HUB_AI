@@ -2,12 +2,13 @@ from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from tests.client_helpers import authenticated_client
 
 
 def test_high_risk_task_waits_for_approval(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "approval.sqlite3"))
     get_settings.cache_clear()
-    client = TestClient(create_app())
+    client = authenticated_client()
     response = client.post(
         "/tasks",
         json={"task_type": "content.publish"},
