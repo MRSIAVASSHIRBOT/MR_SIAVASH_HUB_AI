@@ -87,3 +87,12 @@ def test_model_router_rejects_unsupported_capability() -> None:
     ))
     with pytest.raises(LookupError):
         router.select(ModelRequest(requires_audio=True))
+
+def test_local_preference_never_falls_back_to_cloud() -> None:
+    router = ModelRouter()
+    router.register(ModelDescriptor(
+        provider="cloud", model="cloud-audio",
+        capability=ModelCapability(audio=True), local=False,
+    ))
+    with pytest.raises(LookupError):
+        router.select(ModelRequest(requires_audio=True, prefer_local=True))
