@@ -1,6 +1,6 @@
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.worker import WorkerEngine, action_fingerprint
+from mrhub.jobs.worker import WorkerEngine
 
 
 def make_worker(tmp_path):
