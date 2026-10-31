@@ -21,7 +21,6 @@ def test_task_create_and_read(tmp_path, monkeypatch) -> None:
         json={
             "task_type": "demo.echo",
             "description": "A harmless task record",
-            "risk_class": "low",
         },
     )
     assert created.status_code == 201
