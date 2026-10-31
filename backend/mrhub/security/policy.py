@@ -1,6 +1,8 @@
 """Deterministic policy checks for agent and tool actions."""
 
 from enum import StrEnum
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.domain.tasks import RiskClass
@@ -31,12 +33,12 @@ class PolicyResult(BaseModel):
 class PolicyEngine:
     """Small explicit policy engine. Unknown permissions are never inferred."""
 
-    LOW_RISK_TASK_TYPES = {
+    LOW_RISK_TASK_TYPES: ClassVar[frozenset[str]] = frozenset({
         "demo.echo",
         "analysis.summarize",
         "content.draft",
         "memory.search",
-    }
+    })
 
     def classify_task_type(self, task_type: str) -> RiskClass:
         """Classify task types server-side; unknown types require approval."""
