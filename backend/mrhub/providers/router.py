@@ -6,6 +6,8 @@ from mrhub.providers.base import ModelProvider, ProviderRequest, ProviderRespons
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.types import ModelCapability, ModelDescriptor
 
+__all__ = ["ModelCapability", "ModelDescriptor", "ModelRequest", "ModelSelection", "ModelRouter"]
+
 
 class ModelRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
