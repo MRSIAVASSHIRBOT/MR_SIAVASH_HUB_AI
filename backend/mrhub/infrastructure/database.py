@@ -76,7 +76,7 @@ class TaskRepository:
         return task
 
     def get(self, task_id: UUID) -> TaskRecord | None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM tasks WHERE task_id = ?", (str(task_id),)
             ).fetchone()
@@ -94,7 +94,7 @@ class TaskRepository:
 
     def list_recent(self, limit: int = 50) -> Iterable[TaskRecord]:
         bounded_limit = max(1, min(limit, 100))
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?",
                 (bounded_limit,),
@@ -111,3 +111,23 @@ class TaskRepository:
             )
             for row in rows
         ]
+
+    def update_status(self, task_id: UUID, expected: TaskStatus, updated: TaskRecord) -> TaskRecord:
+        """Compare-and-set status update prevents concurrent invalid transitions."""
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE tasks
+                SET status = ?, updated_at = ?
+                WHERE task_id = ? AND status = ?
+                """,
+                (
+                    updated.status.value,
+                    updated.updated_at.isoformat(),
+                    str(task_id),
+                    expected.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("Task state changed concurrently; reload before retrying")
+        return updated
