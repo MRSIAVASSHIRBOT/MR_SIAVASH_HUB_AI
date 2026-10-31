@@ -24,7 +24,7 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Capability-aware model routing abstraction
 - [x] Unit and API tests
 - [x] Backend CI workflow
-- [ ] Structured logging and audit event persistence
+- [x] Structured audit event persistence with metadata allow-listing
 - [ ] Worker execution with bounded concurrency
 - [ ] Authentication and approval identity
 - SQLite schema migration tooling
