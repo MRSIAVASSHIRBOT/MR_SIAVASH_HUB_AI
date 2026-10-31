@@ -31,7 +31,7 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Local owner authentication, hashed password storage, expiring/revocable sessions
 - [x] Authenticated, one-time action-bound approval/rejection with approver audit identity
 - [x] Bounded retry policy for explicitly safe/idempotent handler types, with persisted attempt limits and exponential backoff
-- SQLite schema migration tooling
+- [x] Versioned SQLite schema migration tooling with transactional application, checksums, legacy-column upgrades, and unknown-version protection
 - Model provider interface and a real provider adapter
 - Minimal React/TypeScript operator view
 
