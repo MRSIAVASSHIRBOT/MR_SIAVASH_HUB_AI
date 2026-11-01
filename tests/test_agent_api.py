@@ -296,8 +296,9 @@ def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
     from mrhub.agents.core import AgentPlanRequest
 
     parsed = AgentPlanRequest.model_validate(request)
-    from mrhub.api.routes.agent import _workflow_digest
     from mrhub.agents.core import AgentCore
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
+    from mrhub.api.routes.agent import _workflow_digest
     from mrhub.api.routes.models import build_model_router
     from mrhub.tools.builtins import build_tool_registry
     from mrhub.agents.workflow_runner import AgentWorkflowRunner
