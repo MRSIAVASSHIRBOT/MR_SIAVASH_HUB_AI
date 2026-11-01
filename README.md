@@ -44,6 +44,10 @@ Run tests:
 pytest
 ```
 
+## Local hardware diagnostics
+
+A read-only, standard-library host report is available for local model planning. From the repository root, run `python -m mrhub.diagnostics.hardware` in the configured project environment. See `docs/operations/hardware-diagnostics.md` for scope and limitations. The report is printed locally and is not uploaded.
+
 ## Initial capability domains
 1. AI Core and Model Router
 2. Agent Orchestrator
@@ -75,3 +79,11 @@ The repository contains the architecture baseline and initial control-plane slic
 
 ## License
 License selection is pending. No license grant should be inferred until a license file is added.
+
+
+## Model resource planning
+
+A conservative RAM-fit estimator is available in `mrhub.diagnostics.resource_advisor`. It consumes the read-only hardware report and an explicit model profile, reserves system memory, reports uncertainty, and never starts inference. See `docs/operations/model-resource-advisor.md`.
+
+
+A static, local model-profile registry is available through the authenticated `GET /models/profiles` endpoint. Its sample entries are explicitly unverified estimates, not model compatibility guarantees. See `docs/operations/model-profiles.md`.

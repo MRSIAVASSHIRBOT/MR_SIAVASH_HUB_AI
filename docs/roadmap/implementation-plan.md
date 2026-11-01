@@ -33,6 +33,8 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Versioned SQLite schema migration tooling with transactional application, checksums, legacy-column upgrades, and unknown-version protection
 - [x] Typed model-provider contract, explicit registry, capability-aware dispatch, and deterministic local stub adapter
 - [x] Loopback-only Ollama local inference adapter with opt-in activation, bounded requests, health checks, and sanitized errors
+- [x] Read-only host hardware report for local model planning (CPU, total/available memory, disk, and safe GPU-name probe)
+- [x] Conservative RAM resource advisor with explicit model profiles, safety reserve, unknown-data handling, and no inference side effects
 - [ ] Real remote provider adapter (separate opt-in milestone; explicit secrets and network policy required)
 - [ ] Minimal React/TypeScript operator view
 
@@ -108,3 +110,8 @@ Exit criteria: a packaged single-user application can be installed, updated, bac
 
 ## First vertical slice
 The first implementation slice should be deliberately small: configuration -> API health -> database -> task submission -> mock execution -> status query -> cancellation -> tests. This proves the platform's control plane before introducing real model providers or external side effects.
+
+
+- [x] Add static model-profile registry with stable IDs and explicit unverified/source labels
+- [x] Expose authenticated profile listing and lookup endpoints
+- [ ] Replace illustrative estimates with reviewed requirements for exact model/version and quantization before recommending specific models

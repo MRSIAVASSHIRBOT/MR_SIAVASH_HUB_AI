@@ -9,6 +9,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
+from mrhub.jobs.worker import WorkerEngine
 from mrhub.security.audit import AuditLogger
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
@@ -74,6 +75,17 @@ def get_task(task_id: UUID) -> TaskRecord:
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.get("/{task_id}/result")
+def get_task_result(task_id: UUID) -> dict[str, object]:
+    repository = get_repository()
+    if repository.get(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    result = WorkerEngine(repository).get_result(task_id)
+    if result is None:
+        raise HTTPException(status_code=409, detail="Task has not been processed yet")
+    return result
 
 
 @router.get("", response_model=list[TaskRecord])
