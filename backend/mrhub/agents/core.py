@@ -49,6 +49,7 @@ class AgentCore:
         *,
         on_step: Callable[[int, str, str | None], None] | None = None,
         on_step_result: Callable[[int, str], None] | None = None,
+        start_step: int = 2,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
         plan = self.plan(request)
@@ -65,7 +66,12 @@ class AgentCore:
             }
 
         results: list[dict[str, object]] = []
+        if start_step < 2:
+            raise ValueError("Tool execution start step must be at least 2")
+
         for step_number, requested_tool in enumerate(request.tools, start=2):
+            if step_number < start_step:
+                continue
             if on_step is not None:
                 on_step(step_number, "running", None)
             try:
