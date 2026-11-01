@@ -49,7 +49,8 @@ built-in tool remains the deterministic `text.echo` example.
 Every `POST /agent/execute` response now includes a durable run record.
 `GET /agent/runs/{run_id}` retrieves its status, provider/model identifiers,
 sanitized plan, tool names, execution count, stable error code, timestamp, and
-a SHA-256 digest of the original request.
+a SHA-256 digest of non-sensitive request metadata (goal length, tool names,
+and requested capabilities), not the raw prompt or tool payloads.
 
 For data minimization, the history table does not store the raw goal, tool
 payloads, or tool outputs. The immediate execution response still returns
