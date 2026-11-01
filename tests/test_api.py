@@ -54,7 +54,7 @@ def test_jobs_summary_reports_queue_without_starting_worker(tmp_path, monkeypatc
     body = response.json()
     assert body["total_tasks"] == 1
     assert body["status_counts"]["queued"] == 1
-    assert body["registered_handlers"] == ["demo.echo"]
+    assert body["registered_handlers"] == ["agent.workflow", "demo.echo"]
     assert body["execution_mode"] == "pull_driven"
     assert body["automatic_execution"] is False
     get_settings.cache_clear()
