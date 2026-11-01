@@ -34,3 +34,13 @@ def authenticated_client() -> TestClient:
         {"Authorization": f"Bearer {login.json()['access_token']}"}
     )
     return client
+
+
+def run_worker_once():
+    """Explicitly advance one queued job in tests that exercise pull-driven execution."""
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.worker import WorkerEngine
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    return WorkerEngine(repository).run_once()
