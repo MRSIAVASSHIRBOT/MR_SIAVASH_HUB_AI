@@ -45,7 +45,7 @@ def evaluate_repository_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     updated_at = metadata.get("updated_at")
     if isinstance(updated_at, str) and updated_at:
         try:
-            updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+            updated = datetime.fromisoformat(updated_at)
             if updated.tzinfo is None:
                 updated = updated.replace(tzinfo=UTC)
             age_days = max(0, (datetime.now(UTC) - updated.astimezone(UTC)).days)
