@@ -166,10 +166,13 @@ def update_memory(
     payload: MemoryUpdate,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
+    submitted = payload.model_dump(exclude_unset=True)
+    if any(value is None and key != "expires_at" for key, value in submitted.items()):
+        raise HTTPException(status_code=422, detail="Only expiry may be explicitly cleared")
     changes = {
         key: value
-        for key, value in payload.model_dump(exclude_unset=True).items()
-        if value is not None
+        for key, value in submitted.items()
+        if value is not None or key == "expires_at"
     }
     if not changes:
         raise HTTPException(status_code=422, detail="At least one non-null field is required")
