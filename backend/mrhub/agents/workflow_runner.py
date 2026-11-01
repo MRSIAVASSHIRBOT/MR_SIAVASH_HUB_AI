@@ -77,15 +77,22 @@ class AgentWorkflowRunner:
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise ValueError("Workflow plan contains no executable steps")
-        step_specs = [
-            {
-                "step_number": int(step["step"]),
-                "kind": str(step["kind"]),
-                "name": str(step.get("name") or step["kind"]),
-            }
-            for step in raw_steps
-            if isinstance(step, dict)
-        ]
+        step_specs = []
+        for step in raw_steps:
+            if not isinstance(step, dict):
+                continue
+            number = int(step["step"])
+            if number == 1:
+                kind = "provider_selection"
+                name = "provider_selection"
+            else:
+                requested_tool = request.tools[number - 2]
+                definition = self.core.tool_registry.get(requested_tool.name)
+                kind = "external_tool" if definition.external_side_effect else "safe_tool"
+                name = requested_tool.name
+            step_specs.append(
+                {"step_number": number, "kind": kind, "name": name}
+            )
         task = TaskRecord(
             task_type="agent.workflow",
             description="Agent workflow execution",
@@ -139,11 +146,13 @@ class AgentWorkflowRunner:
                 elif status == "failed":
                     attempt = attempts.get(number)
                     if attempt is not None:
+                        requested_tool = request.tools[number - 2]
+                        definition = self.core.tool_registry.get(requested_tool.name)
                         self.recovery.fail_step(
                             workflow_id,
                             attempt,
                             error_code or "tool_execution_failed",
-                            unknown_outcome=True,
+                            unknown_outcome=definition.external_side_effect,
                             lease=lease,
                         )
 
