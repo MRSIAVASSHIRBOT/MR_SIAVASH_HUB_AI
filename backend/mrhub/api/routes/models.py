@@ -1,5 +1,6 @@
 """Authenticated model catalog and explicitly enabled local inference endpoint."""
 
+from time import perf_counter
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,6 +40,10 @@ class RouteModelRequest(BaseModel):
     requires_audio: bool = False
     requires_tool_calling: bool = False
     prefer_local: bool = False
+
+
+class ProviderHealthCheckRequest(BaseModel):
+    timeout_seconds: float = Field(default=2.0, ge=0.1, le=5.0)
 
 
 class GenerateModelRequest(BaseModel):
@@ -109,6 +114,39 @@ def select_model(payload: RouteModelRequest) -> dict[str, str | bool]:
     except LookupError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return selection.model_dump()
+
+
+@router.post("/providers/health-check")
+def check_provider_health(payload: ProviderHealthCheckRequest) -> dict[str, object]:
+    """Explicitly probe registered providers with a bounded per-provider timeout."""
+    providers = build_model_router().registry._providers
+    results = []
+    for (provider_name, model_name), provider in sorted(providers.items()):
+        started = perf_counter()
+        try:
+            health = provider.health(timeout_seconds=payload.timeout_seconds)
+            available = health.available
+            reason_code = health.reason_code
+        except Exception:
+            available = False
+            reason_code = "provider_probe_error"
+        results.append(
+            {
+                "provider": provider_name,
+                "model": model_name,
+                "available": available,
+                "status": "healthy" if available else "unavailable",
+                "reason_code": reason_code,
+                "duration_ms": round((perf_counter() - started) * 1000, 2),
+            }
+        )
+    return {
+        "results": results,
+        "count": len(results),
+        "timeout_seconds": payload.timeout_seconds,
+        "inference_started": False,
+        "downloads_started": False,
+    }
 
 
 @router.get("/profiles")
