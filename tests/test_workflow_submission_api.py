@@ -1,5 +1,7 @@
 """API-level tests for owner-scoped queued workflow submission idempotency."""
 
+import sqlite3
+
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskStatus
@@ -96,3 +98,29 @@ def test_queued_workflow_state_is_updated_with_job_state():
     assert workflow.status_code == 200
     assert workflow.json()["status"] == "cancelled"
     assert _run_one_queued_workflow() is None
+
+
+
+def test_worker_fails_closed_when_encrypted_workflow_input_is_tampered():
+    client = authenticated_client()
+    response = client.post("/agent/workflows", json=_payload("tampered input test"))
+    assert response.status_code == 200
+    body = response.json()
+    workflow_id = body["workflow"]["workflow_id"]
+    task_id = body["workflow"]["task_id"]
+
+    settings = get_settings()
+    with sqlite3.connect(settings.database_path) as connection:
+        connection.execute(
+            "UPDATE workflow_execution_inputs SET payload_ciphertext = ? WHERE workflow_id = ?",
+            (b"tampered-ciphertext", workflow_id),
+        )
+
+    completed = _run_one_queued_workflow()
+    assert completed is not None
+    assert completed.task_id.hex == task_id.replace("-", "")
+    assert completed.status is TaskStatus.FAILED
+
+    workflow = client.get(f"/agent/workflows/{workflow_id}")
+    assert workflow.status_code == 200
+    assert workflow.json()["status"] == "failed"
