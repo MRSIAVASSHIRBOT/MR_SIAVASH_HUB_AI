@@ -3,6 +3,8 @@ from datetime import UTC, datetime, timedelta
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
+from mrhub.jobs.idempotency import IdempotencyRepository
+from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
 
 
@@ -226,3 +228,409 @@ def test_retry_schedule_survives_worker_recreation(tmp_path):
     recreated.handlers["demo.echo"] = lambda _task: {"message": "done"}
     completed = recreated.run_once()
     assert completed is not None and completed.status is TaskStatus.SUCCEEDED
+
+
+def test_two_worker_instances_do_not_execute_the_same_task_concurrently(tmp_path):
+    from threading import Event, Thread
+
+    repository = TaskRepository(tmp_path / "shared.sqlite3")
+    repository.initialize()
+    first = WorkerEngine(repository, lease_seconds=3)
+    second = WorkerEngine(repository, lease_seconds=3)
+    task = TaskRecord(task_type="demo.echo", description="one execution")
+    repository.create(task)
+    entered = Event()
+    release = Event()
+    calls = []
+
+    def blocked_handler(current_task):
+        calls.append(current_task.task_id)
+        entered.set()
+        assert release.wait(timeout=3)
+        return {"message": current_task.description}
+
+    first.handlers["demo.echo"] = blocked_handler
+    thread_result = []
+    thread = Thread(target=lambda: thread_result.append(first.run_once()))
+    thread.start()
+    assert entered.wait(timeout=2)
+
+    assert second.run_once() is None
+    release.set()
+    thread.join(timeout=3)
+
+    assert not thread.is_alive()
+    assert len(calls) == 1
+    assert thread_result[0] is not None
+    assert thread_result[0].status is TaskStatus.SUCCEEDED
+
+
+def test_worker_heartbeat_keeps_long_running_handler_lease_alive(tmp_path):
+    from threading import Event, Thread
+    from time import sleep
+
+    repository = TaskRepository(tmp_path / "heartbeat.sqlite3")
+    repository.initialize()
+    worker = WorkerEngine(repository, lease_seconds=1)
+    task = TaskRecord(task_type="demo.echo", description="heartbeat")
+    repository.create(task)
+    entered = Event()
+    release = Event()
+
+    def slow_handler(current_task):
+        entered.set()
+        assert release.wait(timeout=4)
+        return {"message": current_task.description}
+
+    worker.handlers["demo.echo"] = slow_handler
+    result = []
+    thread = Thread(target=lambda: result.append(worker.run_once()))
+    thread.start()
+    assert entered.wait(timeout=2)
+    sleep(1.3)
+
+    with repository._connection() as connection:
+        row = connection.execute(
+            "SELECT heartbeat_at, lease_expires_at FROM worker_executions WHERE task_id = ?",
+            (str(task.task_id),),
+        ).fetchone()
+    assert row is not None and row["heartbeat_at"] is not None
+    assert row["lease_expires_at"] is not None
+
+    release.set()
+    thread.join(timeout=3)
+    assert not thread.is_alive()
+    assert result[0] is not None and result[0].status is TaskStatus.SUCCEEDED
+
+
+def test_worker_with_lost_fencing_token_cannot_commit_result(tmp_path):
+    from threading import Event, Thread
+
+    from mrhub.jobs.leases import LeaseManager
+
+    repository = TaskRepository(tmp_path / "fencing.sqlite3")
+    repository.initialize()
+    worker = WorkerEngine(repository, lease_seconds=2)
+    task = TaskRecord(task_type="demo.echo", description="stale worker")
+    repository.create(task)
+    entered = Event()
+    release = Event()
+
+    def delayed_handler(current_task):
+        entered.set()
+        assert release.wait(timeout=3)
+        return {"message": "must not be committed"}
+
+    worker.handlers["demo.echo"] = delayed_handler
+    result = []
+    thread = Thread(target=lambda: result.append(worker.run_once()))
+    thread.start()
+    assert entered.wait(timeout=2)
+
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET lease_expires_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    successor = LeaseManager(repository.database_path).acquire(
+        str(task.task_id), "successor-worker"
+    )
+    assert successor is not None
+    release.set()
+    thread.join(timeout=3)
+
+    assert not thread.is_alive()
+    stored = repository.get(task.task_id)
+    assert stored is not None and stored.status is TaskStatus.RUNNING
+    persisted = worker.get_result(task.task_id)
+    assert persisted is not None and persisted["result"] is None
+    assert LeaseManager(repository.database_path).is_current(successor)
+
+
+
+def test_worker_completes_linked_idempotency_record(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-idempotency.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="linked request")
+    idempotency = IdempotencyRepository(repository.database_path)
+    idempotency.reserve_task("user:local", "worker-complete", "a" * 64, task)
+    worker = WorkerEngine(repository)
+
+    completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.SUCCEEDED
+    record = idempotency.get("user:local", "worker-complete")
+    assert record is not None and record.status == "completed"
+
+
+def test_interrupted_worker_marks_linked_idempotency_unknown_outcome(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-interrupted-idempotency.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="uncertain request")
+    idempotency = IdempotencyRepository(repository.database_path)
+    idempotency.reserve_task("user:local", "worker-interrupted", "b" * 64, task)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.RUNNING.value, str(task.task_id)),
+        )
+        connection.execute(
+            """
+            INSERT INTO worker_executions (task_id, attempt_count, started_at)
+            VALUES (?, 1, ?)
+            """,
+            (str(task.task_id), "2000-01-01T00:00:00+00:00"),
+        )
+        connection.execute(
+            """
+            UPDATE idempotency_records SET status = 'running'
+            WHERE scope = ? AND idempotency_key = ?
+            """,
+            ("user:local", "worker-interrupted"),
+        )
+
+    worker = WorkerEngine(repository)
+    assert worker.run_once() is None
+
+    record = idempotency.get("user:local", "worker-interrupted")
+    assert record is not None and record.status == "unknown_outcome"
+
+
+def test_handler_failure_marks_linked_idempotency_unknown_outcome(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-handler-failure.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="uncertain handler")
+    idempotency = IdempotencyRepository(repository.database_path)
+    idempotency.reserve_task("user:local", "worker-handler-failure", "c" * 64, task)
+    worker = WorkerEngine(repository)
+    worker.handlers["demo.echo"] = lambda _task: (_ for _ in ()).throw(
+        ValueError("private handler detail")
+    )
+
+    completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.FAILED
+    record = idempotency.get("user:local", "worker-handler-failure")
+    assert record is not None and record.status == "unknown_outcome"
+
+
+
+def test_worker_recovery_marks_interrupted_workflow_for_reconciliation(tmp_path):
+    repository = TaskRepository(tmp_path / "workflow-worker-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="interrupted workflow")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    recovery.start_step(workflow_id, 1)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id)
+
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert stored_workflow is not None
+    assert stored_workflow["status"] == "recovery_required"
+    assert stored_workflow["steps"][0]["status"] == "unknown_outcome"
+
+
+def test_worker_recovery_pauses_workflow_interrupted_before_first_step(tmp_path):
+    repository = TaskRepository(tmp_path / "workflow-paused-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="not yet dispatched")
+    workflow_id = recovery.create_run(
+        "b" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    decision = recovery.resume_decision(workflow_id, "b" * 64)
+
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert decision.decision == "resume"
+    assert decision.next_step == 1
+
+
+def test_worker_recovery_finishes_job_when_workflow_already_succeeded(tmp_path):
+    repository = TaskRepository(tmp_path / "workflow-finish-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="workflow already done")
+    workflow_id = recovery.create_run(
+        "c" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    attempt = recovery.start_step(workflow_id, 1)
+    recovery.complete_step(workflow_id, attempt, "d" * 64)
+    recovery.finish_run(workflow_id, "succeeded")
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    assert stored_task is not None and stored_task.status is TaskStatus.SUCCEEDED
+
+
+
+def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
+    repository = TaskRepository(tmp_path / "safe-workflow-worker-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="safe interrupted workflow")
+    workflow_id = recovery.create_run(
+        "d" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    recovery.start_step(workflow_id, 1)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id)
+    decision = recovery.resume_decision(workflow_id, "d" * 64)
+
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert stored_workflow is not None and stored_workflow["status"] == "paused"
+    assert stored_workflow["steps"][0]["status"] == "retry_wait"
+    assert decision.decision == "resume"
+    assert decision.next_step == 1
+
+
+
+def test_worker_fails_closed_for_workflow_without_encrypted_payload(tmp_path):
+    """A queued workflow without owner-bound encrypted input must never execute."""
+    repository, worker = make_worker(tmp_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="missing payload")
+    workflow_id = recovery.create_run(
+        "e" * 64,
+        [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
+        task=task,
+    )
+
+    result = worker.run_once()
+
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id)
+    assert result is not None and result.status is TaskStatus.FAILED
+    assert stored_task is not None and stored_task.status is TaskStatus.FAILED
+    assert stored_workflow is not None and stored_workflow["status"] == "failed"
+
+def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(tmp_path):
+    repository, _worker = make_worker(tmp_path)
+    repository.create_auth_user("owner-a", "owner-a", "salt", "hash")
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="cancel then crash")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+        task=task,
+        owner_user_id="owner-a",
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    with repository._connection() as connection:
+        connection.execute(
+            """
+            UPDATE worker_executions
+            SET started_at = ?, error_code = 'cancellation_requested'
+            WHERE task_id = ?
+            """,
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="owner-a")
+    assert stored_task is not None and stored_task.status is TaskStatus.CANCELLED
+    assert stored_workflow is not None and stored_workflow["status"] == "cancelled"
+    assert recovery.get_encrypted_payload(
+        workflow_id, owner_user_id="owner-a"
+    ) is None
+
+
+def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_path):
+    repository, _worker = make_worker(tmp_path)
+    repository.create_auth_user("owner-a", "owner-a", "salt", "hash")
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="external cancel then crash")
+    workflow_id = recovery.create_run(
+        "b" * 64,
+        [{"step_number": 1, "kind": "external_tool", "name": "custom.publish"}],
+        task=task,
+        owner_user_id="owner-a",
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    recovery.start_step(workflow_id, 1)
+    with repository._connection() as connection:
+        connection.execute(
+            """
+            UPDATE worker_executions
+            SET started_at = ?, error_code = 'cancellation_requested'
+            WHERE task_id = ?
+            """,
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="owner-a")
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert stored_workflow is not None
+    assert stored_workflow["status"] == "recovery_required"
+    assert stored_workflow["steps"][0]["status"] == "unknown_outcome"
+
+def test_worker_summary_includes_recovery_metrics_without_private_task_data(tmp_path):
+    repository, worker = make_worker(tmp_path)
+    task = TaskRecord(
+        task_type="demo.echo",
+        description="PRIVATE TASK DESCRIPTION MUST NOT APPEAR",
+    )
+    repository.create(task)
+
+    summary = worker.summary()
+
+    assert summary["total_tasks"] == 1
+    assert summary["status_counts"]["queued"] == 1
+    assert summary["workflow_status_counts"] == {}
+    assert summary["recovery_required_workflows"] == 0
+    assert summary["expired_running_leases"] == 0
+    assert summary["oldest_queued_age_seconds"] is not None
+    assert summary["execution_mode"] == "pull_driven"
+    assert summary["automatic_execution"] is False
+    assert "PRIVATE TASK DESCRIPTION MUST NOT APPEAR" not in str(summary)

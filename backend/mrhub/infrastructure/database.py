@@ -101,24 +101,43 @@ class TaskRepository:
             for row in rows
         ]
 
-    def update_status(self, task_id: UUID, expected: TaskStatus, updated: TaskRecord) -> TaskRecord:
-        """Compare-and-set status update prevents concurrent invalid transitions."""
+    def update_status(
+        self,
+        task_id: UUID,
+        expected: TaskStatus,
+        updated: TaskRecord,
+        *,
+        lease_owner: str | None = None,
+        fencing_token: int | None = None,
+        lease_now: str | None = None,
+    ) -> TaskRecord:
+        """Compare-and-set status update, optionally fenced by durable worker ownership."""
+        query = """
+            UPDATE tasks
+            SET status = ?, updated_at = ?
+            WHERE task_id = ? AND status = ?
+        """
+        parameters: tuple[object, ...] = (
+            updated.status.value,
+            updated.updated_at.isoformat(),
+            str(task_id),
+            expected.value,
+        )
+        if lease_owner is not None or fencing_token is not None or lease_now is not None:
+            if lease_owner is None or fencing_token is None or lease_now is None:
+                raise ValueError("All lease fencing fields are required together")
+            query += """
+                AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                )
+            """
+            parameters += (lease_owner, fencing_token, lease_now)
         with self._connection() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE tasks
-                SET status = ?, updated_at = ?
-                WHERE task_id = ? AND status = ?
-                """,
-                (
-                    updated.status.value,
-                    updated.updated_at.isoformat(),
-                    str(task_id),
-                    expected.value,
-                ),
-            )
+            cursor = connection.execute(query, parameters)
             if cursor.rowcount != 1:
-                raise RuntimeError("Task state changed concurrently; reload before retrying")
+                raise RuntimeError("Task state or lease changed concurrently; reload before retrying")
         return updated
 
     def record_audit(self, event: dict[str, object]) -> None:

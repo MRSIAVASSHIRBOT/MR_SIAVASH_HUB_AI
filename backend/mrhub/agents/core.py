@@ -1,5 +1,7 @@
 """Deterministic planning core connecting model routing, tools, and policy."""
 
+import hashlib
+import json
 from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -46,6 +48,9 @@ class AgentCore:
         request: AgentPlanRequest,
         *,
         on_step: Callable[[int, str, str | None], None] | None = None,
+        on_step_result: Callable[[int, str], None] | None = None,
+        start_step: int = 2,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
         plan = self.plan(request)
@@ -62,7 +67,25 @@ class AgentCore:
             }
 
         results: list[dict[str, object]] = []
+        if start_step < 2:
+            raise ValueError("Tool execution start step must be at least 2")
+
         for step_number, requested_tool in enumerate(request.tools, start=2):
+            if step_number < start_step:
+                continue
+            if should_cancel is not None and should_cancel():
+                return {
+                    "decision_mode": "controlled_tool_execution",
+                    "execution_started": bool(results),
+                    "execution_completed": False,
+                    "cancelled": True,
+                    "model_inference_started": False,
+                    "tools_executed": bool(results),
+                    "plan": plan,
+                    "results": results,
+                    "error_code": "cancelled",
+                    "blocked": False,
+                }
             if on_step is not None:
                 on_step(step_number, "running", None)
             try:
@@ -85,8 +108,26 @@ class AgentCore:
                     "blocked": True,
                 }
             results.append({"tool": requested_tool.name, "result": result})
+            if on_step_result is not None:
+                output_bytes = json.dumps(
+                    result, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                ).encode()
+                on_step_result(step_number, hashlib.sha256(output_bytes).hexdigest())
             if on_step is not None:
                 on_step(step_number, "succeeded", None)
+            if should_cancel is not None and should_cancel():
+                return {
+                    "decision_mode": "controlled_tool_execution",
+                    "execution_started": True,
+                    "execution_completed": False,
+                    "cancelled": True,
+                    "model_inference_started": False,
+                    "tools_executed": bool(results),
+                    "plan": plan,
+                    "results": results,
+                    "error_code": "cancelled",
+                    "blocked": False,
+                }
 
         return {
             "decision_mode": "controlled_tool_execution",

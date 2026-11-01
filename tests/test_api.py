@@ -54,7 +54,7 @@ def test_jobs_summary_reports_queue_without_starting_worker(tmp_path, monkeypatc
     body = response.json()
     assert body["total_tasks"] == 1
     assert body["status_counts"]["queued"] == 1
-    assert body["registered_handlers"] == ["demo.echo"]
+    assert body["registered_handlers"] == ["agent.workflow", "demo.echo"]
     assert body["execution_mode"] == "pull_driven"
     assert body["automatic_execution"] is False
     get_settings.cache_clear()
@@ -107,3 +107,217 @@ def test_task_result_endpoint_returns_not_found_for_unknown_task(tmp_path, monke
     response = client.get(f"/tasks/{uuid4()}/result")
     assert response.status_code == 404
     get_settings.cache_clear()
+
+
+
+def test_task_idempotency_key_returns_the_original_task(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotent-api.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    headers = {"Idempotency-Key": "create-task-once"}
+    payload = {
+        "task_type": "demo.echo",
+        "description": "same logical request",
+    }
+
+    first = client.post("/tasks", json=payload, headers=headers)
+    second = client.post("/tasks", json=payload, headers=headers)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.json()["task_id"] == first.json()["task_id"]
+    assert len(client.get("/tasks").json()) == 1
+    get_settings.cache_clear()
+
+
+def test_task_idempotency_key_rejects_different_request_body(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-conflict.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    headers = {"Idempotency-Key": "same-key-different-body"}
+
+    first = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "first request"},
+        headers=headers,
+    )
+    conflicting = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "different request"},
+        headers=headers,
+    )
+
+    assert first.status_code == 201
+    assert conflicting.status_code == 409
+    assert len(client.get("/tasks").json()) == 1
+    get_settings.cache_clear()
+
+
+def test_task_idempotency_key_rejects_blank_header(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-blank.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+
+    response = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "blank key"},
+        headers={"Idempotency-Key": "   "},
+    )
+
+    assert response.status_code == 422
+    assert client.get("/tasks").json() == []
+    get_settings.cache_clear()
+
+
+
+def test_task_idempotency_status_tracks_worker_completion(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-lifecycle.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    key = "track-worker-lifecycle"
+    created = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "track status"},
+        headers={"Idempotency-Key": key},
+    )
+    assert created.status_code == 201
+
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.idempotency import IdempotencyRepository
+    from mrhub.jobs.worker import WorkerEngine
+
+    database_path = get_settings().database_path
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    completed = WorkerEngine(repository).run_once()
+    assert completed is not None and completed.status.value == "succeeded"
+
+    record = IdempotencyRepository(database_path).get("user:local-owner", key)
+    assert record is not None and record.status == "completed"
+    get_settings.cache_clear()
+
+def test_lifespan_initializes_database_before_serving_requests(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "lifespan.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert database_path.exists()
+    finally:
+        get_settings.cache_clear()
+
+
+
+def test_api_responses_include_security_headers():
+    from fastapi.testclient import TestClient
+
+    from mrhub.main import create_app
+
+    response = TestClient(create_app()).get("/health")
+    assert response.status_code == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Permissions-Policy"] == (
+        "camera=(), microphone=(), geolocation=()"
+    )
+
+def test_readiness_endpoint_reports_migrated_database(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "ready.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/ready")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ready"
+        assert body["database"] == "ready"
+        assert body["schema_version"] >= 8
+        assert body["worker"] == "not_detected"
+        assert body["worker_heartbeat_age_seconds"] is None
+    finally:
+        get_settings.cache_clear()
+
+
+def test_readiness_endpoint_does_not_create_a_missing_database(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "missing.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    get_settings.cache_clear()
+    try:
+        response = TestClient(create_app()).get("/ready")
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Database is not ready"
+        assert not database_path.exists()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_readiness_can_require_a_live_worker_heartbeat(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "worker-required.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("MRH_REQUIRE_WORKER_FOR_READINESS", "true")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Worker process is not ready"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_readiness_recognizes_fresh_worker_heartbeat(tmp_path, monkeypatch) -> None:
+    import sqlite3
+    from datetime import UTC, datetime
+
+    database_path = tmp_path / "worker-heartbeat.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("MRH_REQUIRE_WORKER_FOR_READINESS", "true")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            with sqlite3.connect(database_path) as connection:
+                stamp = datetime.now(UTC).isoformat()
+                connection.execute(
+                    """INSERT INTO worker_instances
+                       (instance_id, process_id, started_at, heartbeat_at, status)
+                       VALUES ('test-worker', 123, ?, ?, 'running')""",
+                    (stamp, stamp),
+                )
+            response = client.get("/ready")
+        assert response.status_code == 200
+        assert response.json()["worker"] == "running"
+        assert response.json()["worker_heartbeat_age_seconds"] is not None
+    finally:
+        get_settings.cache_clear()
+
+
+
+def test_readiness_rejects_stale_worker_heartbeat(tmp_path, monkeypatch) -> None:
+    import sqlite3
+    from datetime import UTC, datetime, timedelta
+
+    database_path = tmp_path / "stale-worker-heartbeat.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("MRH_REQUIRE_WORKER_FOR_READINESS", "true")
+    monkeypatch.setenv("MRH_WORKER_HEARTBEAT_TIMEOUT_SECONDS", "5")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            stale_stamp = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    """INSERT INTO worker_instances
+                       (instance_id, process_id, started_at, heartbeat_at, status)
+                       VALUES ('stale-test-worker', 456, ?, ?, 'running')""",
+                    (stale_stamp, stale_stamp),
+                )
+            response = client.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Worker process is not ready"
+    finally:
+        get_settings.cache_clear()

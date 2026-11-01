@@ -12,11 +12,12 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from threading import Lock
-from uuid import UUID
+from threading import Event, Lock, Thread
+from uuid import UUID, uuid4
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import LeaseManager, WorkerLease
 from mrhub.security.audit import AuditLogger
 
 
@@ -56,14 +57,21 @@ class WorkerEngine:
         self,
         repository: TaskRepository,
         clock: Callable[[], datetime] | None = None,
+        lease_seconds: int = 60,
     ) -> None:
         self.repository = repository
         self.database_path = repository.database_path
         self._run_lock = Lock()
         self._clock = clock or (lambda: datetime.now(UTC))
-        self.handlers: dict[str, Callable[[TaskRecord], dict[str, str]]] = {
+        self._worker_id = str(uuid4())
+        self._lease_seconds = lease_seconds
+        self._lease_manager = LeaseManager(
+            self.database_path, lease_seconds=lease_seconds, clock=self._clock
+        )
+        self.handlers: dict[str, Callable[..., dict[str, object]]] = {
             "demo.echo": self._echo,
         }
+        self.handlers["agent.workflow"] = self._run_agent_workflow
         self._initialize()
 
     def _now(self) -> datetime:
@@ -92,51 +100,39 @@ class WorkerEngine:
             connection.close()
 
     def _initialize(self) -> None:
-        with self._connection() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS worker_executions (
-                    task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
-                    attempt_count INTEGER NOT NULL DEFAULT 0,
-                    result_json TEXT,
-                    error_code TEXT,
-                    started_at TEXT,
-                    finished_at TEXT
-                )
-                """
-            )
-            columns = {
-                row["name"] for row in connection.execute(
-                    "PRAGMA table_info(worker_executions)"
-                )
-            }
-            if "recovered_at" not in columns:
-                connection.execute(
-                    "ALTER TABLE worker_executions ADD COLUMN recovered_at TEXT"
-                )
-            if "next_attempt_at" not in columns:
-                connection.execute(
-                    "ALTER TABLE worker_executions ADD COLUMN next_attempt_at TEXT"
-                )
+        """Delegate all persistent schema creation and upgrades to versioned migrations."""
+        self.repository.initialize()
 
     @staticmethod
-    def _echo(task: TaskRecord) -> dict[str, str]:
+    def _echo(task: TaskRecord) -> dict[str, object]:
         return {"message": task.description, "task_type": task.task_type}
 
+    def _run_agent_workflow(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Dispatch a workflow using the worker's canonical lease."""
+        from mrhub.jobs.workflow_dispatch import WorkflowWorkerHandler
+
+        return WorkflowWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
+
     def _recover_interrupted(self) -> None:
-        """Fail stale running tasks rather than silently replaying possibly completed work."""
+        """Recover stale jobs without replaying an ambiguous workflow step."""
         cutoff = (self._now() - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
         now = self._now().isoformat()
-        recovered: list[TaskRecord] = []
+        recovered: list[tuple[TaskRecord, str, str]] = []
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
                 """
-                SELECT t.* FROM tasks AS t
+                SELECT t.*, e.error_code AS execution_error_code
+                FROM tasks AS t
                 JOIN worker_executions AS e ON e.task_id = t.task_id
                 WHERE t.status = ? AND e.started_at < ?
+                  AND (e.lease_expires_at IS NULL OR e.lease_expires_at <= ?)
                 """,
-                (TaskStatus.RUNNING.value, cutoff),
+                (TaskStatus.RUNNING.value, cutoff, now),
             ).fetchall()
             for row in rows:
                 task = TaskRecord(
@@ -148,13 +144,202 @@ class WorkerEngine:
                     updated_at=row["updated_at"],
                     description=row["description"],
                 )
+                workflow = connection.execute(
+                    """
+                    SELECT workflow_id, status FROM workflow_runs WHERE task_id = ?
+                    """,
+                    (str(task.task_id),),
+                ).fetchone()
+                if workflow is None:
+                    recovered_status = TaskStatus.FAILED
+                    audit_outcome = "failed"
+                    reason_code = "worker_interrupted"
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'unknown_outcome'
+                        WHERE task_id = ? AND status IN ('accepted', 'running')
+                        """,
+                        (str(task.task_id),),
+                    )
+                elif (
+                    workflow["status"] == "running"
+                    and row["execution_error_code"] == "cancellation_requested"
+                ):
+                    active_steps = connection.execute(
+                        """
+                        SELECT step_id, step_kind FROM workflow_steps
+                        WHERE workflow_id = ? AND status = 'running'
+                        """,
+                        (workflow["workflow_id"],),
+                    ).fetchall()
+                    has_unknown_outcome = False
+                    for step in active_steps:
+                        safe_to_retry = step["step_kind"] in {
+                            "provider_selection", "safe_tool"
+                        }
+                        attempt_status = "cancelled" if safe_to_retry else "unknown_outcome"
+                        step_status = "cancelled" if safe_to_retry else "unknown_outcome"
+                        if not safe_to_retry:
+                            has_unknown_outcome = True
+                        connection.execute(
+                            """
+                            UPDATE workflow_step_attempts
+                            SET status = ?, error_code = 'cancelled_worker_interrupted',
+                                finished_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (attempt_status, now, step["step_id"]),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE workflow_steps
+                            SET status = ?, error_code = 'cancelled_worker_interrupted',
+                                finished_at = ?, updated_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (step_status, now, now, step["step_id"]),
+                        )
+                    if has_unknown_outcome:
+                        workflow_status = "recovery_required"
+                        recovered_status = TaskStatus.WAITING_APPROVAL
+                        audit_outcome = "recovery_required"
+                        reason_code = "cancelled_worker_interrupted_unknown_outcome"
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
+                    else:
+                        workflow_status = "cancelled"
+                        recovered_status = TaskStatus.CANCELLED
+                        audit_outcome = "cancelled"
+                        reason_code = "cancellation_completed_after_worker_interruption"
+                        connection.execute(
+                            "DELETE FROM workflow_payloads WHERE workflow_id = ?",
+                            (workflow["workflow_id"],),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'failed'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
+                    connection.execute(
+                        """
+                        UPDATE workflow_runs
+                        SET status = ?, last_error_code = ?, updated_at = ?
+                        WHERE workflow_id = ? AND status = 'running'
+                        """,
+                        (workflow_status, reason_code, now, workflow["workflow_id"]),
+                    )
+                elif workflow["status"] == "succeeded":
+                    recovered_status = TaskStatus.SUCCEEDED
+                    audit_outcome = "succeeded"
+                    reason_code = "workflow_finished_before_job_commit"
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'completed'
+                        WHERE task_id = ? AND status = 'running'
+                        """,
+                        (str(task.task_id),),
+                    )
+                elif workflow["status"] in {"failed", "cancelled"}:
+                    recovered_status = (
+                        TaskStatus.CANCELLED
+                        if workflow["status"] == "cancelled"
+                        else TaskStatus.FAILED
+                    )
+                    audit_outcome = workflow["status"]
+                    reason_code = "workflow_terminal_before_job_commit"
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'failed'
+                        WHERE task_id = ? AND status IN ('accepted', 'running')
+                        """,
+                        (str(task.task_id),),
+                    )
+                elif workflow["status"] in {"recovery_required", "waiting_approval"}:
+                    recovered_status = TaskStatus.WAITING_APPROVAL
+                    audit_outcome = "recovery_required"
+                    reason_code = "workflow_recovery_already_required"
+                else:
+                    active_steps = connection.execute(
+                        """
+                        SELECT step_id, step_kind FROM workflow_steps
+                        WHERE workflow_id = ? AND status = 'running'
+                        """,
+                        (workflow["workflow_id"],),
+                    ).fetchall()
+                    has_unknown_outcome = False
+                    for step in active_steps:
+                        safe_to_retry = step["step_kind"] in {
+                            "provider_selection", "safe_tool"
+                        }
+                        attempt_status = "failed" if safe_to_retry else "unknown_outcome"
+                        step_status = "retry_wait" if safe_to_retry else "unknown_outcome"
+                        if not safe_to_retry:
+                            has_unknown_outcome = True
+                        connection.execute(
+                            """
+                            UPDATE workflow_step_attempts
+                            SET status = ?, error_code = 'worker_interrupted', finished_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (attempt_status, now, step["step_id"]),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE workflow_steps
+                            SET status = ?, error_code = 'worker_interrupted',
+                                finished_at = ?, updated_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (step_status, now, now, step["step_id"]),
+                        )
+                    workflow_status = (
+                        "recovery_required" if has_unknown_outcome else "paused"
+                    )
+                    reason_code = (
+                        "worker_interrupted"
+                        if has_unknown_outcome
+                        else "safe_step_interrupted"
+                        if active_steps
+                        else "worker_interrupted_before_step"
+                    )
+                    if has_unknown_outcome:
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
+                    connection.execute(
+                        """
+                        UPDATE workflow_runs
+                        SET status = ?, last_error_code = ?, updated_at = ?
+                        WHERE workflow_id = ? AND status IN ('queued', 'running', 'paused')
+                        """,
+                        (
+                            workflow_status,
+                            reason_code,
+                            now,
+                            workflow["workflow_id"],
+                        ),
+                    )
+                    recovered_status = TaskStatus.WAITING_APPROVAL
+                    audit_outcome = "recovery_required"
+
                 cursor = connection.execute(
                     """
                     UPDATE tasks SET status = ?, updated_at = ?
                     WHERE task_id = ? AND status = ?
                     """,
                     (
-                        TaskStatus.FAILED.value,
+                        recovered_status.value,
                         now,
                         str(task.task_id),
                         TaskStatus.RUNNING.value,
@@ -164,15 +349,15 @@ class WorkerEngine:
                     connection.execute(
                         """
                         UPDATE worker_executions
-                        SET error_code = 'worker_interrupted',
-                            finished_at = ?, recovered_at = ?, next_attempt_at = NULL
+                        SET error_code = ?, finished_at = ?, recovered_at = ?,
+                            next_attempt_at = NULL
                         WHERE task_id = ?
                         """,
-                        (now, now, str(task.task_id)),
+                        (reason_code, now, now, str(task.task_id)),
                     )
-                    recovered.append(task)
-        for task in recovered:
-            self._audit(task, "failed", "worker_interrupted")
+                    recovered.append((task, audit_outcome, reason_code))
+        for task, outcome, reason_code in recovered:
+            self._audit(task, outcome, reason_code)
 
     def _claim(self) -> TaskRecord | None:
         """Atomically claim one eligible queued task."""
@@ -227,6 +412,13 @@ class WorkerEngine:
                 """,
                 (str(task.task_id), now),
             )
+            connection.execute(
+                """
+                UPDATE idempotency_records SET status = 'running'
+                WHERE task_id = ? AND status = 'accepted'
+                """,
+                (str(task.task_id),),
+            )
             connection.commit()
             return task.model_copy(update={"status": TaskStatus.RUNNING, "updated_at": now})
 
@@ -241,35 +433,129 @@ class WorkerEngine:
         if task is None:
             return None
 
+        lease = self._lease_manager.acquire(str(task.task_id), self._worker_id)
+        if lease is None:
+            # Another owner or inconsistent persisted state: never dispatch without ownership.
+            return self.repository.get(task.task_id)
+
+        stop_heartbeat = Event()
+        lease_lost = Event()
+        heartbeat = Thread(
+            target=self._heartbeat_loop,
+            args=(lease, stop_heartbeat, lease_lost),
+            name=f"mrhub-lease-{task.task_id}",
+            daemon=True,
+        )
+        heartbeat.start()
+        try:
+            if not self._lease_manager.is_current(lease):
+                lease_lost.set()
+                return self.repository.get(task.task_id)
+            return self._execute_claimed(task, lease, lease_lost)
+        finally:
+            stop_heartbeat.set()
+            heartbeat.join(timeout=max(1.0, self._lease_seconds))
+            self._lease_manager.release(lease)
+
+    def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lease_lost: Event) -> None:
+        interval = max(0.1, self._lease_seconds / 3)
+        while not stop.wait(interval):
+            if self._lease_manager.heartbeat(lease) is None:
+                lease_lost.set()
+                return
+
+    def _execute_claimed(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> TaskRecord | None:
         approval = self.repository.get_task_approval(task.task_id)
         if task.risk_class in {RiskClass.HIGH, RiskClass.PROHIBITED}:
             if task.risk_class is RiskClass.PROHIBITED:
-                return self._finish_failure(task, "prohibited_task")
+                return self._finish_failure(task, "prohibited_task", lease=lease)
             if (
                 approval is None
                 or approval.get("decision") != "approved"
                 or approval.get("action_fingerprint") != action_fingerprint(task)
             ):
-                return self._finish_failure(task, "approval_missing_or_stale")
+                return self._finish_failure(task, "approval_missing_or_stale", lease=lease)
 
         current = self.repository.get(task.task_id)
         if current is None:
             raise WorkerError("Claimed task disappeared before dispatch")
         if current.status is TaskStatus.CANCELLED:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
             return current
+
+        if lease_lost.is_set():
+            return self.repository.get(task.task_id)
 
         handler = self.handlers.get(task.task_type)
         if handler is None:
-            return self._finish_failure(task, "handler_not_registered")
+            return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            result = handler(task)
+            if task.task_type == "agent.workflow":
+                result = handler(task, lease, lease_lost)
+            else:
+                result = handler(task)
         except RetryableWorkerError:
-            return self._schedule_retry_or_fail(task)
+            return self._schedule_retry_or_fail(task, lease=lease)
         except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
-            return self._finish_failure(task, "handler_failed")
+            return self._finish_failure(task, "handler_failed", lease=lease)
+
+        if lease_lost.is_set():
+            return self.repository.get(task.task_id)
+
+        # WorkflowRunner owns the workflow/job state transition. Persist its
+        # sanitized result under the worker's lease even when the task is already
+        # terminal, and do not overwrite paused/recovery-required states.
+        after_handler = self.repository.get(task.task_id)
+        if (
+            task.task_type == "agent.workflow"
+            and after_handler is not None
+            and after_handler.status is not TaskStatus.RUNNING
+        ):
+            now = self._now().isoformat()
+            if after_handler.status in {TaskStatus.SUCCEEDED, TaskStatus.CANCELLED}:
+                # Persist the terminal outcome without changing the task state.
+                # A cancellation must not leave worker_executions looking active,
+                # nor may this post-handler path turn a cancelled task into success.
+                terminal_success = after_handler.status is TaskStatus.SUCCEEDED
+                with self._connection() as connection:
+                    cursor = connection.execute(
+                        """
+                        UPDATE worker_executions
+                        SET result_json = ?, error_code = ?, finished_at = ?,
+                            next_attempt_at = NULL
+                        WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                          AND lease_expires_at > ?
+                        """,
+                        (
+                            json.dumps(result, ensure_ascii=False, sort_keys=True),
+                            None if terminal_success else "cancelled_during_execution",
+                            now,
+                            str(task.task_id),
+                            lease.owner,
+                            lease.fencing_token,
+                            now,
+                        ),
+                    )
+                    if cursor.rowcount != 1:
+                        raise WorkerError("Workflow result could not be persisted under its lease")
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = ?
+                        WHERE task_id = ? AND status = 'running'
+                        """,
+                        ("completed" if terminal_success else "failed", str(task.task_id)),
+                    )
+                self._audit(
+                    task,
+                    "succeeded" if terminal_success else "cancelled",
+                    "worker_completed" if terminal_success else "cancelled_during_execution",
+                )
+                return self.repository.get(task.task_id)
+            return after_handler
 
         now = self._now().isoformat()
         with self._connection() as connection:
@@ -277,8 +563,14 @@ class WorkerEngine:
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
+                  AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                  )
                 """,
-                (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
+                (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
+                 lease.owner, lease.fencing_token, now),
             )
             if cursor.rowcount == 1:
                 connection.execute(
@@ -294,18 +586,27 @@ class WorkerEngine:
                         str(task.task_id),
                     ),
                 )
+                connection.execute(
+                    """
+                    UPDATE idempotency_records SET status = 'completed'
+                    WHERE task_id = ? AND status = 'running'
+                    """,
+                    (str(task.task_id),),
+                )
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared during execution")
         if saved.status is TaskStatus.SUCCEEDED:
             self._audit(task, "succeeded", "worker_completed")
         else:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
         return saved
 
-    def _schedule_retry_or_fail(self, task: TaskRecord) -> TaskRecord:
+    def _schedule_retry_or_fail(
+        self, task: TaskRecord, *, lease: WorkerLease
+    ) -> TaskRecord:
         if task.task_type not in self.RETRY_SAFE_TASK_TYPES:
-            return self._finish_failure(task, "retry_not_permitted")
+            return self._finish_failure(task, "retry_not_permitted", lease=lease)
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT attempt_count FROM worker_executions WHERE task_id = ?",
@@ -313,7 +614,7 @@ class WorkerEngine:
             ).fetchone()
         attempts = row["attempt_count"] if row else self.MAX_ATTEMPTS
         if attempts >= self.MAX_ATTEMPTS:
-            return self._finish_failure(task, "retry_limit_exceeded")
+            return self._finish_failure(task, "retry_limit_exceeded", lease=lease)
 
         delay = min(
             self.RETRY_BASE_SECONDS * (2 ** max(attempts - 1, 0)),
@@ -326,12 +627,20 @@ class WorkerEngine:
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
+                  AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                  )
                 """,
                 (
                     TaskStatus.QUEUED.value,
                     now.isoformat(),
                     str(task.task_id),
                     TaskStatus.RUNNING.value,
+                    lease.owner,
+                    lease.fencing_token,
+                    now.isoformat(),
                 ),
             )
             if cursor.rowcount == 1:
@@ -350,18 +659,26 @@ class WorkerEngine:
         if saved.status is TaskStatus.QUEUED:
             self._audit(task, "queued", "retry_scheduled")
         elif saved.status is TaskStatus.CANCELLED:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
         return saved
 
-    def _finish_failure(self, task: TaskRecord, error_code: str) -> TaskRecord:
+    def _finish_failure(
+        self, task: TaskRecord, error_code: str, *, lease: WorkerLease
+    ) -> TaskRecord:
         now = self._now().isoformat()
         with self._connection() as connection:
             cursor = connection.execute(
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
+                  AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                  )
                 """,
-                (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
+                (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
+                 lease.owner, lease.fencing_token, now),
             )
             if cursor.rowcount == 1:
                 connection.execute(
@@ -372,16 +689,26 @@ class WorkerEngine:
                     """,
                     (error_code, now, str(task.task_id)),
                 )
+                idempotency_status = (
+                    "unknown_outcome" if error_code == "handler_failed" else "failed"
+                )
+                connection.execute(
+                    """
+                    UPDATE idempotency_records SET status = ?
+                    WHERE task_id = ? AND status IN ('accepted', 'running')
+                    """,
+                    (idempotency_status, str(task.task_id)),
+                )
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared while recording failure")
         if saved.status is TaskStatus.FAILED:
             self._audit(task, "failed", error_code)
         elif saved.status is TaskStatus.CANCELLED:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
         return saved
 
-    def _mark_cancelled(self, task: TaskRecord) -> None:
+    def _mark_cancelled(self, task: TaskRecord, *, lease: WorkerLease) -> None:
         now = self._now().isoformat()
         with self._connection() as connection:
             connection.execute(
@@ -389,9 +716,17 @@ class WorkerEngine:
                 UPDATE worker_executions
                 SET error_code = 'cancelled_during_execution', finished_at = ?,
                     next_attempt_at = NULL
-                WHERE task_id = ?
+                WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                  AND lease_expires_at > ?
                 """,
-                (now, str(task.task_id)),
+                (now, str(task.task_id), lease.owner, lease.fencing_token, now),
+            )
+            connection.execute(
+                """
+                UPDATE idempotency_records SET status = 'failed'
+                WHERE task_id = ? AND status IN ('accepted', 'running')
+                """,
+                (str(task.task_id),),
             )
         self._audit(task, "cancelled", "cancelled_during_execution")
 
@@ -401,6 +736,7 @@ class WorkerEngine:
             "cancelled": TaskStatus.CANCELLED.value,
             "failed": TaskStatus.FAILED.value,
             "queued": TaskStatus.QUEUED.value,
+            "recovery_required": TaskStatus.WAITING_APPROVAL.value,
         }[outcome]
         AuditLogger(self.repository).record(
             event_type="task.worker_finished",
@@ -416,7 +752,10 @@ class WorkerEngine:
         )
 
     def summary(self) -> dict[str, object]:
-        """Return bounded queue metadata without exposing task descriptions or results."""
+        """Return bounded queue/workflow diagnostics without task content or results."""
+        now = self._now()
+        now_text = now.isoformat()
+        stale_cutoff = (now - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT status, COUNT(*) AS total FROM tasks GROUP BY status"
@@ -425,13 +764,50 @@ class WorkerEngine:
                 "SELECT COUNT(*) AS total FROM worker_executions "
                 "WHERE next_attempt_at IS NOT NULL"
             ).fetchone()
+            workflow_rows = connection.execute(
+                "SELECT status, COUNT(*) AS total FROM workflow_runs GROUP BY status"
+            ).fetchall()
+            expired_lease_row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM tasks AS t
+                JOIN worker_executions AS e ON e.task_id = t.task_id
+                WHERE t.status = ? AND e.started_at < ?
+                  AND (e.lease_expires_at IS NULL OR e.lease_expires_at <= ?)
+                """,
+                (TaskStatus.RUNNING.value, stale_cutoff, now_text),
+            ).fetchone()
+            oldest_queued = connection.execute(
+                "SELECT MIN(created_at) AS created_at FROM tasks WHERE status = ?",
+                (TaskStatus.QUEUED.value,),
+            ).fetchone()
 
         status_counts = {status.value: 0 for status in TaskStatus}
         for row in rows:
             status_counts[row["status"]] = row["total"]
+        workflow_status_counts = {
+            row["status"]: row["total"] for row in workflow_rows
+        }
+        oldest_queued_age_seconds = None
+        if oldest_queued and oldest_queued["created_at"]:
+            try:
+                created_at = datetime.fromisoformat(oldest_queued["created_at"])
+                if created_at.tzinfo is not None:
+                    oldest_queued_age_seconds = max(
+                        0, int((now - created_at.astimezone(UTC)).total_seconds())
+                    )
+            except (TypeError, ValueError):
+                oldest_queued_age_seconds = None
         return {
+            "observed_at": now_text,
             "total_tasks": sum(status_counts.values()),
             "status_counts": status_counts,
+            "workflow_status_counts": workflow_status_counts,
+            "recovery_required_workflows": workflow_status_counts.get(
+                "recovery_required", 0
+            ),
+            "expired_running_leases": expired_lease_row["total"] if expired_lease_row else 0,
+            "oldest_queued_age_seconds": oldest_queued_age_seconds,
             "retry_scheduled": retry_row["total"] if retry_row else 0,
             "registered_handlers": sorted(self.handlers),
             "execution_mode": "pull_driven",

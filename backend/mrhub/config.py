@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     local_inference_base_url: str = "http://127.0.0.1:11434"
     local_inference_model: str | None = None
     local_inference_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
+    require_worker_for_readiness: bool = False
+    worker_heartbeat_timeout_seconds: int = Field(default=15, ge=3, le=300)
 
 
 @lru_cache
