@@ -293,7 +293,7 @@ def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     assert second.status_code == 200
     assert second.json()["status"] == "cancelled"
 
-def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeypatch) -> None:
+def test_worker_crash_after_external_side_effect_requires_reconciliation() -> None:
     """A crash after an external action must not replay the uncertain step."""
     from mrhub.domain.tasks import TaskStatus
     from mrhub.jobs.engine import JobEngine
