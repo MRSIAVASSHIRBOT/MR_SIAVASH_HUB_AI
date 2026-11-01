@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from threading import Event, Thread
 from uuid import uuid4
 
@@ -51,7 +52,7 @@ class AgentWorkflowRunner:
                 return
 
     def _record_execution_start(self, lease: WorkerLease) -> None:
-        now = self.lease_manager._now().isoformat()
+        now = datetime.now(UTC).isoformat()
         with self.repository._connection() as connection:
             cursor = connection.execute(
                 """
