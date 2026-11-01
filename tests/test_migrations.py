@@ -16,12 +16,12 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2, 3, 4]
+    assert migrator.migrate() == [1, 2, 3, 4, 5]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
@@ -31,7 +31,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     } <= worker_columns
     assert {
         "workflow_runs", "workflow_steps", "workflow_step_attempts",
-        "workflow_checkpoints", "idempotency_records",
+        "workflow_checkpoints", "idempotency_records", "agent_runs",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -66,7 +66,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
@@ -159,4 +159,26 @@ def test_unknown_future_migration_version_fails_closed(tmp_path):
 
     with pytest.raises(MigrationError, match="unsupported migration versions"):
         SchemaMigrator(connection).migrate()
+    connection.close()
+
+def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
+    from mrhub.agents.repository import AgentRunRepository
+    from mrhub.agents.workflow_repository import AgentWorkflowRepository
+
+    database_path = tmp_path / "agent-repositories.sqlite3"
+    AgentRunRepository(database_path).initialize()
+    AgentWorkflowRepository(database_path).initialize()
+
+    connection = connect(database_path)
+    versions = connection.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall()
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
+    tables = {
+        row["name"]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert {"agent_runs", "agent_workflows"} <= tables
     connection.close()
