@@ -13,7 +13,7 @@ from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.agents.worker_dispatch import enqueue_workflow
-from mrhub.agents.execution_inputs import ExecutionInputError, ExecutionInputUnavailable
+from mrhub.agents.execution_inputs import ExecutionInputUnavailable
 from mrhub.agents.submission_repository import (
     IdempotencyConflict,
     WorkflowSubmissionRepository,
