@@ -18,13 +18,14 @@ def health() -> dict[str, str]:
 
 
 @router.get("/ready", summary="Application database readiness")
-def readiness() -> dict[str, str | int]:
+def readiness() -> dict[str, str | int | None]:
     """Check that the existing database is readable and at the expected schema version.
 
     This endpoint is read-only: it never creates a database or runs migrations.
     It intentionally does not claim that a separate pull-driven worker is alive.
     """
-    database_path = get_settings().database_path
+    settings = get_settings()
+    database_path = settings.database_path
     expected_version = max(migration.version for migration in MIGRATIONS)
     try:
         database_uri = f"{database_path.resolve().as_uri()}?mode=ro"
@@ -39,6 +40,9 @@ def readiness() -> dict[str, str | int]:
                     detail="Database schema is not ready",
                 )
             connection.execute("SELECT 1 FROM tasks LIMIT 1").fetchone()
+            heartbeat = connection.execute(
+                "SELECT heartbeat_at FROM worker_instances WHERE status = 'running' AND stopped_at IS NULL ORDER BY heartbeat_at DESC LIMIT 1"
+            ).fetchone()
     except HTTPException:
         raise
     except (OSError, sqlite3.Error, ValueError):
@@ -46,4 +50,20 @@ def readiness() -> dict[str, str | int]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database is not ready",
         ) from None
-    return {"status": "ready", "database": "ready", "schema_version": expected_version}
+
+    worker_age: int | None = None
+    worker_status = "not_detected"
+    if heartbeat is not None:
+        from datetime import UTC, datetime
+        try:
+            heartbeat_time = datetime.fromisoformat(heartbeat[0])
+            if heartbeat_time.tzinfo is not None:
+                worker_age = max(0, int((datetime.now(UTC) - heartbeat_time.astimezone(UTC)).total_seconds()))
+                if worker_age <= settings.worker_heartbeat_timeout_seconds:
+                    worker_status = "running"
+        except (TypeError, ValueError):
+            worker_age = None
+    if settings.require_worker_for_readiness and worker_status != "running":
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Worker process is not ready")
+    return {"status": "ready", "database": "ready", "schema_version": expected_version,
+            "worker": worker_status, "worker_heartbeat_age_seconds": worker_age}
