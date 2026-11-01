@@ -175,6 +175,10 @@ class WorkerEngine:
                         """,
                         (str(task.task_id),),
                     )
+                elif workflow["status"] in {"recovery_required", "waiting_approval"}:
+                    recovered_status = TaskStatus.WAITING_APPROVAL
+                    audit_outcome = "recovery_required"
+                    reason_code = "workflow_recovery_already_required"
                 else:
                     active_steps = connection.execute(
                         """
