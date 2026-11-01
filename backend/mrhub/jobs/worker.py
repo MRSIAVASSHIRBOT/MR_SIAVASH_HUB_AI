@@ -431,6 +431,44 @@ class WorkerEngine:
         if lease_lost.is_set():
             return self.repository.get(task.task_id)
 
+        # WorkflowRunner owns the workflow/job state transition. Persist its
+        # sanitized result under the worker's lease even when the task is already
+        # terminal, and do not overwrite paused/recovery-required states.
+        after_handler = self.repository.get(task.task_id)
+        if after_handler is not None and after_handler.status is not TaskStatus.RUNNING:
+            now = self._now().isoformat()
+            if after_handler.status is TaskStatus.SUCCEEDED:
+                with self._connection() as connection:
+                    cursor = connection.execute(
+                        """
+                        UPDATE worker_executions
+                        SET result_json = ?, error_code = NULL, finished_at = ?,
+                            next_attempt_at = NULL
+                        WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                          AND lease_expires_at > ?
+                        """,
+                        (
+                            json.dumps(result, ensure_ascii=False, sort_keys=True),
+                            now,
+                            str(task.task_id),
+                            lease.owner,
+                            lease.fencing_token,
+                            now,
+                        ),
+                    )
+                    if cursor.rowcount != 1:
+                        raise WorkerError("Workflow result could not be persisted under its lease")
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'completed'
+                        WHERE task_id = ? AND status = 'running'
+                        """,
+                        (str(task.task_id),),
+                    )
+                self._audit(task, "succeeded", "worker_completed")
+                return self.repository.get(task.task_id)
+            return after_handler
+
         now = self._now().isoformat()
         with self._connection() as connection:
             cursor = connection.execute(
