@@ -1,5 +1,5 @@
-from datetime import UTC, datetime, timedelta
 import sqlite3
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from cryptography.fernet import Fernet
@@ -57,7 +57,7 @@ def test_missing_key_fails_closed_without_creating_plaintext(tmp_path):
 
     with pytest.raises(ExecutionInputUnavailable, match="refusing plaintext"):
         repo.store(workflow_id, "owner-1", {"goal": "private"})
-    with pytest.raises(Exception):
+    with pytest.raises(ExecutionInputUnavailable, match="not configured"):
         repo.load(workflow_id, "owner-1")
 
 
