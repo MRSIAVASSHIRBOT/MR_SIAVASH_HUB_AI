@@ -295,6 +295,47 @@ class WorkflowRecoveryRepository:
                     (now, run["task_id"]),
                 )
 
+    def cancel_paused_run(self, workflow_id: UUID) -> None:
+        """Atomically cancel a paused workflow only when no external outcome is ambiguous."""
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT task_id, status FROM workflow_runs WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchone()
+            if run is None:
+                raise LookupError("Workflow not found")
+            if run["status"] != "paused" or run["task_id"] is None:
+                raise WorkflowRecoveryError("Workflow is not safely cancellable while paused")
+            unknown = connection.execute(
+                "SELECT 1 FROM workflow_steps WHERE workflow_id = ? AND status = 'unknown_outcome' LIMIT 1",
+                (str(workflow_id),),
+            ).fetchone()
+            if unknown is not None:
+                raise WorkflowRecoveryError("Ambiguous external outcomes require reconciliation")
+            task = connection.execute(
+                "SELECT status FROM tasks WHERE task_id = ?", (run["task_id"],)
+            ).fetchone()
+            if task is None or task["status"] != "waiting_approval":
+                raise WorkflowRecoveryError("Linked task is not awaiting recovery")
+            connection.execute(
+                "UPDATE workflow_runs SET status = 'cancelled', last_error_code = 'cancelled_by_request', updated_at = ? WHERE workflow_id = ? AND status = 'paused'",
+                (now, str(workflow_id)),
+            )
+            connection.execute(
+                "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'waiting_approval'",
+                (now, run["task_id"]),
+            )
+            connection.execute(
+                "UPDATE worker_executions SET error_code = 'cancelled_by_request', finished_at = ?, next_attempt_at = NULL WHERE task_id = ?",
+                (now, run["task_id"]),
+            )
+            connection.execute(
+                "UPDATE idempotency_records SET status = 'failed' WHERE task_id = ? AND status IN ('accepted', 'running', 'unknown_outcome')",
+                (run["task_id"],),
+            )
+
     def cancel_run(
         self, workflow_id: UUID, *, lease: WorkerLease | None = None, defer_terminal: bool = False
     ) -> str:
