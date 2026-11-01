@@ -373,6 +373,9 @@ def test_workflow_records_are_scoped_to_the_authenticated_owner(tmp_path):
 
 def test_running_cancellation_persists_intent_until_worker_finalizes(tmp_path):
     repository = make_repository(tmp_path)
+    TaskRepository(repository.database_path).create_auth_user(
+        "owner-a", "owner-a", "salt", "hash"
+    )
     task = TaskRecord(task_type="agent.workflow", description="cancel intent")
     workflow_id = repository.create_run(
         "a" * 64,
