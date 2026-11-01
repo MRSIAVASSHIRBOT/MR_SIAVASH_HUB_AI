@@ -21,7 +21,7 @@ This checklist tracks the 19-step workflow hardening sequence. Status distinguis
 - [x] **12. API security tests:** authentication, request bounds, idempotency conflicts, owner-scoped history, and safe tool allow-list behavior have test coverage.
 - [x] **13. Structured audit events:** audit metadata is explicitly allow-listed and bounded.
 - [x] **14. Operational metrics:** worker summary reports queue counts, retry count, workflow-state counts, expired running leases, and oldest queued age.
-- [ ] **15. Readiness diagnostics:** `/health` reports liveness and `/ready` checks the existing database schema read-only; a production-grade worker heartbeat/readiness contract still needs a deployment decision.
+- [x] **15. Readiness diagnostics:** `/health` reports liveness; `/ready` checks the existing schema read-only and reports a process-specific Worker heartbeat. `MRH_REQUIRE_WORKER_FOR_READINESS=true` makes a fresh heartbeat mandatory; stale heartbeats age out using `MRH_WORKER_HEARTBEAT_TIMEOUT_SECONDS`.
 
 ## Integration and release
 
@@ -32,7 +32,7 @@ This checklist tracks the 19-step workflow hardening sequence. Status distinguis
 
 ## Acceptance criteria
 
-1. CI passed on commit `ea1d5d89648d19b716b8c8cae09fbd34a625a42c`, including dependency audit, lint, and tests. Rerun before merge if any further code changes are pushed.
+1. CI passed on commit `e1e5a7ad173601fbb50a2619c81b030d63be4ac7`, including dependency audit, lint, and tests. Rerun before merge if any further code changes are pushed.
 2. A cancellation request survives worker interruption and cannot be overwritten by late success.
 3. Lease-losing workers cannot commit checkpoints, results, or terminal transitions.
 4. Unknown external outcomes remain blocked from automatic replay until reconciled.
