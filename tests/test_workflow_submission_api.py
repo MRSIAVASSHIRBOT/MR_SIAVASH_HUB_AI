@@ -77,3 +77,22 @@ def test_workflow_submission_returns_before_worker_execution():
     final = client.get(f"/agent/workflows/{body['workflow']['workflow_id']}")
     assert final.status_code == 200
     assert final.json()["status"] == "succeeded"
+
+
+
+def test_queued_workflow_state_is_updated_with_job_state():
+    client = authenticated_client()
+    response = client.post("/agent/workflows", json=_payload("stop before dispatch"))
+    assert response.status_code == 200
+    body = response.json()
+    task_id = body["workflow"]["task_id"]
+    workflow_id = body["workflow"]["workflow_id"]
+
+    stopped = client.post(f"/jobs/{task_id}/cancel")
+    assert stopped.status_code == 200
+    assert stopped.json()["status"] == "cancelled"
+
+    workflow = client.get(f"/agent/workflows/{workflow_id}")
+    assert workflow.status_code == 200
+    assert workflow.json()["status"] == "cancelled"
+    assert _run_one_queued_workflow() is None
