@@ -48,3 +48,5 @@ jobs:
           tests/test_workflow_submission_api.py
           tests/test_workflow_recovery.py
           tests/test_worker.py
+          backend/mrhub/agents/execution_inputs.py
+          tests/test_workflow_execution_inputs.py
