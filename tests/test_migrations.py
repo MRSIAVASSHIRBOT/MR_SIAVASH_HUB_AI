@@ -16,15 +16,28 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2]
+    assert migrator.migrate() == [1, 2, 3]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2]
-    assert {
+    assert [row["version"] for row in versions] == [1, 2, 3]
+    worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
-    } >= {"attempt_count", "recovered_at", "next_attempt_at"}
+    }
+    assert {
+        "attempt_count", "recovered_at", "next_attempt_at",
+        "lease_owner", "lease_expires_at", "heartbeat_at", "execution_token",
+    } <= worker_columns
+    assert {
+        "workflow_runs", "workflow_steps", "workflow_step_attempts",
+        "workflow_checkpoints", "idempotency_records",
+    } <= {
+        row["name"]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
     connection.close()
 
 
@@ -49,12 +62,44 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
     assert row["event_id"] == "event-1"
     assert row["actor_id"] is None
+    connection.close()
+
+
+def test_v3_preserves_legacy_agent_workflow_rows(tmp_path):
+    connection = connect(tmp_path / "legacy-workflow.sqlite3")
+    connection.execute(
+        """CREATE TABLE agent_workflows (
+            workflow_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            plan_json TEXT NOT NULL,
+            steps_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"""
+    )
+    connection.execute(
+        """INSERT INTO agent_workflows VALUES
+        ('legacy-1', 'succeeded', 'digest', '{}', '[]',
+         '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"""
+    )
+    connection.commit()
+
+    SchemaMigrator(connection).migrate()
+
+    row = connection.execute(
+        "SELECT workflow_id, status FROM agent_workflows WHERE workflow_id = 'legacy-1'"
+    ).fetchone()
+    assert tuple(row) == ("legacy-1", "succeeded")
+    assert connection.execute(
+        "SELECT 1 FROM workflow_runs WHERE workflow_id = 'legacy-1'"
+    ).fetchone() is None
     connection.close()
 
 
