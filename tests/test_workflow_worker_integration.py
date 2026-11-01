@@ -186,3 +186,58 @@ def test_cancellation_after_worker_claim_is_not_overwritten_or_left_active(monke
     assert execution["error_code"] == "cancelled_during_execution"
     assert execution["finished_at"] is not None
     assert execution["result_json"]
+
+def test_running_workflow_cancellation_is_observed_and_finalized(monkeypatch) -> None:
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Cancel while a safe tool is running",
+            "tools": [{"name": "text.echo", "payload": {"text": "finish-current-step"}}],
+        },
+    )
+    assert response.status_code == 200
+    workflow = response.json()["workflow"]
+    workflow_id = UUID(workflow["workflow_id"])
+    task_id = UUID(workflow["task_id"])
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+
+    from mrhub.agents.core import AgentCore
+
+    def finish_current_step_then_observe_cancel(
+        self, request, *, on_step, on_step_result, should_cancel, **kwargs
+    ):
+        assert should_cancel() is False
+        on_step(2, "running", None)
+        cancelled = recovery.request_cancellation(
+            workflow_id, owner_user_id="local-owner"
+        )
+        assert cancelled["status"] == "cancellation_requested"
+        # Model the currently running tool returning safely before the runner
+        # checks the persisted cancellation request and refuses the next step.
+        on_step_result(2, "a" * 64)
+        assert should_cancel() is True
+        return {
+            "execution_completed": False,
+            "cancelled": True,
+            "model_inference_started": False,
+            "tools_executed": True,
+            "results": [{"tool": "text.echo", "result": {"character_count": 20}}],
+            "error_code": "cancelled",
+        }
+
+    monkeypatch.setattr(AgentCore, "execute", finish_current_step_then_observe_cancel)
+    completed = run_worker_once()
+
+    assert completed is not None and completed.task_id == task_id
+    assert completed.status.value == "cancelled"
+    stored_task = repository.get(task_id)
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert stored_task is not None and stored_task.status.value == "cancelled"
+    assert stored_workflow is not None and stored_workflow["status"] == "cancelled"
+    assert stored_workflow["steps"][1]["status"] == "succeeded"
+    assert recovery.get_encrypted_payload(
+        workflow_id, owner_user_id="local-owner"
+    ) is None
