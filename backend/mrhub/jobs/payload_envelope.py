@@ -4,6 +4,7 @@ This module deliberately has no plaintext fallback. Callers must supply a
 32-byte key from deployment secret management and bind ciphertext to its owner
 and workflow identifiers using associated data.
 """
+# ruff: noqa: I001
 from __future__ import annotations
 
 import base64
