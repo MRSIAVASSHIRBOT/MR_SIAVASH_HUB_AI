@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable
 
 
 class LeaseError(RuntimeError):
