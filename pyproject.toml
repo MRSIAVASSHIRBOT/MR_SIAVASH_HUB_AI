@@ -16,6 +16,9 @@ dependencies = [
   "cryptography>=43,<47",
 ]
 
+[project.scripts]
+mrhub-worker = "mrhub.jobs.worker_cli:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=9.0.3,<10.0",
