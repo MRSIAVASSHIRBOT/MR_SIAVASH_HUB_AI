@@ -195,3 +195,15 @@ def test_task_idempotency_status_tracks_worker_completion(tmp_path, monkeypatch)
     record = IdempotencyRepository(database_path).get("user:local-owner", key)
     assert record is not None and record.status == "completed"
     get_settings.cache_clear()
+
+def test_lifespan_initializes_database_before_serving_requests(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "lifespan.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/health")
+            assert response.status_code == 200
+            assert database_path.exists()
+    finally:
+        get_settings.cache_clear()
