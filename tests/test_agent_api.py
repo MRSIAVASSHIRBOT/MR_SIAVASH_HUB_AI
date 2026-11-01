@@ -222,3 +222,51 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
     assert checked.json()["decision"] == "terminal"
     assert checked.json()["execution_started"] is False
 
+
+
+
+def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step():
+    from mrhub.infrastructure.database import TaskRepository
+
+    client = authenticated_client()
+    original = {
+        "goal": "Resume a safe interrupted workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "resume-me"}}],
+    }
+    created = client.post("/agent/workflows", json=original)
+    assert created.status_code == 200
+    workflow = created.json()["workflow"]
+    workflow_id = workflow["workflow_id"]
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE workflow_runs SET status = 'paused' WHERE workflow_id = ?",
+            (workflow_id,),
+        )
+        connection.execute(
+            """UPDATE workflow_steps
+               SET status = 'retry_wait', output_digest = NULL,
+                   error_code = 'worker_interrupted', finished_at = NULL
+               WHERE workflow_id = ? AND step_number = 2""",
+            (workflow_id,),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'waiting_approval' WHERE task_id = ?",
+            (workflow["task_id"],),
+        )
+
+    resumed = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": original},
+    )
+    assert resumed.status_code == 200
+    body = resumed.json()
+    assert body["workflow"]["status"] == "succeeded"
+    assert body["execution"]["execution_completed"] is True
+    assert body["execution"]["executed_tool_count"] == 1
+
+    task = client.get(f"/tasks/{workflow['task_id']}")
+    assert task.status_code == 200
+    assert task.json()["status"] == "succeeded"
