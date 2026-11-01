@@ -191,6 +191,15 @@ class WorkflowRecoveryRepository:
                 raise RecoveryRequired("Step outcome must be reconciled before resuming")
             if step["status"] not in {"pending", "retry_wait"}:
                 raise WorkflowRecoveryError("Step is not eligible to start")
+            earlier = connection.execute(
+                """
+                SELECT COUNT(*) AS total FROM workflow_steps
+                WHERE workflow_id = ? AND step_number < ? AND status != 'succeeded'
+                """,
+                (str(workflow_id), step_number),
+            ).fetchone()
+            if earlier["total"]:
+                raise WorkflowRecoveryError("Earlier workflow steps must succeed first")
 
             attempt_number = int(step["attempt_count"]) + 1
             attempt_id = str(uuid4())
@@ -241,6 +250,14 @@ class WorkflowRecoveryRepository:
             if run["status"] != "running":
                 raise WorkflowRecoveryError("Workflow is not running")
 
+            run = connection.execute(
+                "SELECT status FROM workflow_runs WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchone()
+            if run is None:
+                raise LookupError("Workflow not found")
+            if run["status"] != "running":
+                raise WorkflowRecoveryError("Workflow is not running")
             step = connection.execute(
                 """
                 SELECT step_id, status FROM workflow_steps
@@ -503,6 +520,18 @@ class WorkflowRecoveryRepository:
             raise WorkflowRecoveryError("Unsupported terminal workflow status")
         now = self._now()
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if status == "succeeded":
+                counts = connection.execute(
+                    """
+                    SELECT COUNT(*) AS total,
+                           SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded
+                    FROM workflow_steps WHERE workflow_id = ?
+                    """,
+                    (str(workflow_id),),
+                ).fetchone()
+                if counts is None or counts["total"] == 0 or counts["total"] != counts["succeeded"]:
+                    raise WorkflowRecoveryError("Every workflow step must succeed before completion")
             cursor = connection.execute(
                 """
                 UPDATE workflow_runs SET status = ?, updated_at = ?
@@ -583,14 +612,18 @@ class WorkflowRecoveryRepository:
 
             failed = connection.execute(
                 """
-                SELECT step_number FROM workflow_steps
+                SELECT step_number, status FROM workflow_steps
                 WHERE workflow_id = ? AND status IN ('failed', 'unknown_outcome', 'cancelled')
                 ORDER BY step_number LIMIT 1
                 """,
                 (str(workflow_id),),
             ).fetchone()
             if failed is not None:
-                reason = "step_outcome_unknown" if failed["step_number"] else "step_failed"
+                reason = {
+                    "failed": "step_failed",
+                    "unknown_outcome": "step_outcome_unknown",
+                    "cancelled": "step_cancelled",
+                }[failed["status"]]
                 return ResumeDecision("reconcile", failed["step_number"], checkpoint_version, reason)
 
             next_step = connection.execute(
