@@ -223,6 +223,15 @@ class AgentWorkflowRunner:
                 on_step_result=on_step_result,
                 should_cancel=should_cancel,
             )
+            # Close the race between the final in-loop cancellation check and
+            # workflow finalization, including workflows with zero tool steps.
+            if not execution.get("cancelled") and should_cancel():
+                execution = {
+                    **execution,
+                    "cancelled": True,
+                    "execution_completed": False,
+                    "error_code": "cancelled",
+                }
             current = self.recovery.get_run(workflow_id)
             if execution.get("cancelled"):
                 if current is not None and current["status"] == "running":
