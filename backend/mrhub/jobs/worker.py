@@ -126,7 +126,8 @@ class WorkerEngine:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
                 """
-                SELECT t.* FROM tasks AS t
+                SELECT t.*, e.error_code AS execution_error_code
+                FROM tasks AS t
                 JOIN worker_executions AS e ON e.task_id = t.task_id
                 WHERE t.status = ? AND e.started_at < ?
                   AND (e.lease_expires_at IS NULL OR e.lease_expires_at <= ?)
@@ -159,6 +160,80 @@ class WorkerEngine:
                         WHERE task_id = ? AND status IN ('accepted', 'running')
                         """,
                         (str(task.task_id),),
+                    )
+                elif (
+                    workflow["status"] == "running"
+                    and row["execution_error_code"] == "cancellation_requested"
+                ):
+                    active_steps = connection.execute(
+                        """
+                        SELECT step_id, step_kind FROM workflow_steps
+                        WHERE workflow_id = ? AND status = 'running'
+                        """,
+                        (workflow["workflow_id"],),
+                    ).fetchall()
+                    has_unknown_outcome = False
+                    for step in active_steps:
+                        safe_to_retry = step["step_kind"] in {
+                            "provider_selection", "safe_tool"
+                        }
+                        attempt_status = "failed" if safe_to_retry else "unknown_outcome"
+                        step_status = "retry_wait" if safe_to_retry else "unknown_outcome"
+                        if not safe_to_retry:
+                            has_unknown_outcome = True
+                        connection.execute(
+                            """
+                            UPDATE workflow_step_attempts
+                            SET status = ?, error_code = 'cancelled_worker_interrupted',
+                                finished_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (attempt_status, now, step["step_id"]),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE workflow_steps
+                            SET status = ?, error_code = 'cancelled_worker_interrupted',
+                                finished_at = ?, updated_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (step_status, now, now, step["step_id"]),
+                        )
+                    if has_unknown_outcome:
+                        workflow_status = "recovery_required"
+                        recovered_status = TaskStatus.WAITING_APPROVAL
+                        audit_outcome = "recovery_required"
+                        reason_code = "cancelled_worker_interrupted_unknown_outcome"
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
+                    else:
+                        workflow_status = "cancelled"
+                        recovered_status = TaskStatus.CANCELLED
+                        audit_outcome = "cancelled"
+                        reason_code = "cancellation_completed_after_worker_interruption"
+                        connection.execute(
+                            "DELETE FROM workflow_payloads WHERE workflow_id = ?",
+                            (workflow["workflow_id"],),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'failed'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
+                    connection.execute(
+                        """
+                        UPDATE workflow_runs
+                        SET status = ?, last_error_code = ?, updated_at = ?
+                        WHERE workflow_id = ? AND status = 'running'
+                        """,
+                        (workflow_status, reason_code, now, workflow["workflow_id"]),
                     )
                 elif workflow["status"] == "succeeded":
                     recovered_status = TaskStatus.SUCCEEDED
