@@ -182,3 +182,83 @@ def test_agent_execute_stops_after_tool_failure_without_leaking_exception():
     assert response["error_code"] == "tool_execution_failed"
     assert "private diagnostic detail" not in str(response)
     assert len(response["results"]) == 1
+
+
+def test_agent_execute_runs_registered_safe_tool():
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Echo safely",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+        )
+    )
+    assert response["execution_completed"] is True
+    assert response["tools_executed"] is True
+    assert response["model_inference_started"] is False
+    assert response["results"][0]["result"]["character_count"] == 5
+
+
+def test_agent_execute_does_not_start_when_plan_is_blocked():
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Block an unregistered action",
+            tools=[{"name": "missing.registered.tool", "payload": {}}],
+        )
+    )
+    assert response["execution_started"] is False
+    assert response["tools_executed"] is False
+    assert response["blocked"] is True
+    assert response["results"] == []
+
+
+def test_agent_execute_requires_approval_for_external_tool():
+    core = make_core()
+    core.tool_registry.register(
+        ToolDefinition(
+            name="custom.external",
+            description="External action",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: {"accepted": True},
+            risk_class=RiskClass.LOW,
+            external_side_effect=True,
+        )
+    )
+    response = core.execute(
+        AgentPlanRequest(
+            goal="External action needs approval",
+            tools=[{"name": "custom.external", "payload": {}}],
+        )
+    )
+    assert response["execution_started"] is False
+    assert response["tools_executed"] is False
+    assert response["blocked"] is True
+
+
+def test_agent_execute_stops_after_runtime_failure():
+    core = make_core()
+    core.tool_registry.register(
+        ToolDefinition(
+            name="custom.failure",
+            description="Test failure handling",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: (_ for _ in ()).throw(
+                RuntimeError("private diagnostic detail")
+            ),
+        )
+    )
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Stop on first tool error",
+            tools=[
+                {"name": "text.echo", "payload": {"text": "first"}},
+                {"name": "custom.failure", "payload": {}},
+                {"name": "text.echo", "payload": {"text": "must not run"}},
+            ],
+        )
+    )
+    assert response["execution_completed"] is False
+    assert response["failed_tool"] == "custom.failure"
+    assert response["error_code"] == "tool_execution_failed"
+    assert "private diagnostic detail" not in str(response)
+    assert len(response["results"]) == 1
