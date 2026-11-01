@@ -18,10 +18,10 @@ A missing or invalid key is a hard configuration error. Do not replace it with a
 2. Start the API: `uvicorn mrhub.main:app --host 127.0.0.1 --port 8000`.
 3. Check `GET /health` for process liveness.
 4. Check `GET /ready` for read-only database/schema readiness. A 503 indicates the existing database is missing, unreadable, or not at the expected migration version. This endpoint never runs migrations.
-5. Start the worker separately: `python -m mrhub.worker_service`.
+5. Start the worker separately: `python -m mrhub.worker_service`. It records a process-specific heartbeat every three seconds and marks itself stopped on graceful shutdown.
 6. Use the authenticated `GET /jobs/summary` endpoint to inspect queue counts, workflow-state counts, retry scheduling, expired running leases, and oldest queued age.
 
-**Important limitation:** `/ready` checks the database only. It does not prove that the separate worker process is alive. Worker-process heartbeat/readiness remains a follow-up before production orchestration.
+**Worker readiness:** `/ready` reports `worker: running` only when a fresh heartbeat exists. By default, API readiness remains database-only so deployments that intentionally run API without a worker still work. Set `MRH_REQUIRE_WORKER_FOR_READINESS=true` when queued jobs require a worker; in that mode `/ready` returns 503 if the heartbeat is absent or older than `MRH_WORKER_HEARTBEAT_TIMEOUT_SECONDS` (default 15). A forced kill may leave a stale `running` row, but its heartbeat ages out and is not considered healthy.
 
 ## Cancellation and recovery
 
