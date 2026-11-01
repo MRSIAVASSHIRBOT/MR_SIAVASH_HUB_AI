@@ -39,6 +39,53 @@ class AgentCore:
         self.tool_registry = tool_registry
         self.policy = policy or PolicyEngine()
 
+    def execute(self, request: AgentPlanRequest) -> dict[str, object]:
+        """Execute only prevalidated, policy-allowed tools without model inference."""
+        plan = self.plan(request)
+        if not plan["execution_ready"]:
+            return {
+                "decision_mode": "controlled_tool_execution",
+                "execution_started": False,
+                "execution_completed": False,
+                "model_inference_started": False,
+                "tools_executed": False,
+                "plan": plan,
+                "results": [],
+                "blocked": True,
+            }
+
+        results: list[dict[str, object]] = []
+        for requested_tool in request.tools:
+            try:
+                result = self.tool_registry.invoke(
+                    requested_tool.name, requested_tool.payload
+                )
+            except Exception:
+                return {
+                    "decision_mode": "controlled_tool_execution",
+                    "execution_started": True,
+                    "execution_completed": False,
+                    "model_inference_started": False,
+                    "tools_executed": bool(results),
+                    "plan": plan,
+                    "results": results,
+                    "failed_tool": requested_tool.name,
+                    "error_code": "tool_execution_failed",
+                    "blocked": True,
+                }
+            results.append({"tool": requested_tool.name, "result": result})
+
+        return {
+            "decision_mode": "controlled_tool_execution",
+            "execution_started": bool(request.tools),
+            "execution_completed": True,
+            "model_inference_started": False,
+            "tools_executed": bool(results),
+            "plan": plan,
+            "results": results,
+            "blocked": False,
+        }
+
     def plan(self, request: AgentPlanRequest) -> dict[str, object]:
         selection = self.model_router.select(
             ModelRequest(
