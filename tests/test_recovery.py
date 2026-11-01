@@ -122,19 +122,21 @@ def test_interrupted_step_is_marked_unknown_and_never_replayed(tmp_path):
     repository = make_repository(tmp_path)
     workflow_id = make_run(repository)
     repository.start_run(workflow_id)
-    repository.start_step(workflow_id, 1)
+    safe_attempt = repository.start_step(workflow_id, 1)
+    repository.complete_step(workflow_id, safe_attempt, "b" * 64)
+    repository.start_step(workflow_id, 2)
 
     assert repository.mark_interrupted(workflow_id) == 1
     run = repository.get_run(workflow_id)
     assert run is not None
     assert run["status"] == "recovery_required"
-    assert run["steps"][0]["status"] == "unknown_outcome"
+    assert run["steps"][1]["status"] == "unknown_outcome"
 
     decision = repository.resume_decision(workflow_id, "a" * 64)
     assert decision.decision == "reconcile"
     assert decision.reason_code == "worker_interrupted"
     with pytest.raises(RecoveryRequired):
-        repository.start_step(workflow_id, 1)
+        repository.start_step(workflow_id, 2)
 
 
 def test_unknown_outcome_requires_explicit_reconciliation_before_resume(tmp_path):
