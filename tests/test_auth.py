@@ -96,3 +96,32 @@ def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, mo
     )
     assert limited.status_code == 429
     assert 1 <= int(limited.headers["Retry-After"]) <= 300
+
+
+
+def test_owner_setup_rejects_non_loopback_client(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "remote-setup.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app(), client=("203.0.113.10", 43120))
+    response = client.post(
+        "/auth/setup",
+        json={"password": "test-only-strong-password-2026"},
+        headers={"X-Forwarded-For": "127.0.0.1"},
+    )
+    assert response.status_code == 403
+
+
+def test_login_response_is_not_cacheable(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "no-cache.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    password = "test-only-strong-password-2026"
+    assert client.post("/auth/setup", json={"password": password}).status_code == 201
+
+    response = client.post(
+        "/auth/login",
+        json={"username": "owner", "password": password},
+    )
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
