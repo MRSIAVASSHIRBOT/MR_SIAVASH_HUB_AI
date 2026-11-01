@@ -1,5 +1,8 @@
 """FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI
 
 from mrhub.api.routes.agent import router as agent_router
@@ -17,15 +20,19 @@ from mrhub.infrastructure.database import TaskRepository
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        """Initialize persistent storage before serving requests."""
+        TaskRepository(settings.database_path).initialize()
+        yield
+
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
         description="Local-first modular AI workspace API",
+        lifespan=lifespan,
     )
-
-    @app.on_event("startup")
-    def initialize_storage() -> None:
-        TaskRepository(settings.database_path).initialize()
 
     app.include_router(health_router)
     app.include_router(auth_router)
