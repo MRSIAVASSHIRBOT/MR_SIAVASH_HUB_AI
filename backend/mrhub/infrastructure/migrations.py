@@ -182,7 +182,6 @@ MIGRATIONS = (
         4,
         "workflow_owner_scope",
         (
-            "CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)",
             """CREATE TABLE IF NOT EXISTS agent_workflows (
                 workflow_id TEXT PRIMARY KEY, status TEXT NOT NULL,
                 request_digest TEXT NOT NULL, plan_json TEXT NOT NULL,
@@ -261,6 +260,7 @@ class SchemaMigrator:
                 elif migration.version == 4:
                     self._ensure_column("workflow_runs", "owner_user_id", "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL")
                     self._ensure_column("agent_workflows", "owner_user_id", "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL")
+                    connection.execute("CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)")
 
                 from datetime import UTC, datetime
 
