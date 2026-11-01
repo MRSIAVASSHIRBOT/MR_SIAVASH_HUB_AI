@@ -209,18 +209,17 @@ class WorkflowRecoveryRepository:
                 key = idempotency_binding.get("key")
                 if not isinstance(scope, str) or not scope or not isinstance(key, str) or not key:
                     raise WorkflowRecoveryError("Idempotency binding is invalid")
-                cursor = connection.execute(
+                if task_id is None:
+                    raise WorkflowRecoveryError("Idempotency binding requires a task")
+                connection.execute(
                     """
-                    UPDATE idempotency_records
-                    SET task_id = ?, workflow_id = ?
-                    WHERE scope = ? AND idempotency_key = ?
-                      AND request_digest = ? AND task_id IS NULL AND workflow_id IS NULL
-                      AND status = 'accepted'
+                    INSERT INTO idempotency_records (
+                        scope, idempotency_key, request_digest, task_id,
+                        workflow_id, status, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, 'accepted', ?, NULL)
                     """,
-                    (task_id, str(workflow_id), scope, key, request_digest),
+                    (scope, key, request_digest, task_id, str(workflow_id), now),
                 )
-                if cursor.rowcount != 1:
-                    raise WorkflowRecoveryError("Idempotency reservation cannot be bound")
 
             if payload_envelope is not None:
                 if task_id is None or task is None or not owner_user_id:
