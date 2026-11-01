@@ -1,0 +1,62 @@
+"""Typed provider contracts. Provider implementations must not log request content or secrets."""
+
+from dataclasses import dataclass
+from typing import Protocol
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from mrhub.providers.types import ModelDescriptor
+
+
+class ProviderError(Exception):
+    """Base provider error carrying only a stable, non-sensitive code."""
+
+    code = "provider_error"
+
+
+class ProviderUnavailableError(ProviderError):
+    code = "provider_unavailable"
+
+
+class ProviderConfigurationError(ProviderError):
+    code = "provider_configuration"
+
+
+class ProviderTimeoutError(ProviderError):
+    code = "provider_timeout"
+
+
+class ProviderRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    input_text: str = Field(min_length=1, max_length=32_000)
+    max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+
+
+class ProviderResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    provider: str
+    model: str
+    output_text: str
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    finish_reason: str = "stop"
+
+
+@dataclass(frozen=True)
+class ProviderHealth:
+    available: bool
+    reason_code: str
+
+
+class ModelProvider(Protocol):
+    """Synchronous provider contract; implementations must enforce their own timeout."""
+
+    descriptor: ModelDescriptor
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        ...
+
+    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
+        ...
