@@ -28,3 +28,15 @@ For every upstream, record the canonical URL and revision, license obligations, 
 5. Select GLM and a sandbox after upstream review.
 
 These are candidates, not completed runtime integrations.
+
+
+## Local candidate catalog
+
+The first capability-catalog slice is available through the authenticated API:
+
+- `POST /capabilities/candidates` registers a canonical HTTPS source URL and declared capabilities.
+- `GET /capabilities/candidates` lists candidates; filter with `?status=discovered`, `reviewing`, `approved`, `rejected`, or `disabled`.
+- `GET /capabilities/candidates/{candidate_id}` retrieves one candidate.
+- `POST /capabilities/candidates/{candidate_id}/transition` advances review status.
+
+Registration is metadata-only: it does not fetch, install, import, or execute upstream code. Duplicate canonical URLs are rejected. Approval is blocked unless a known license identifier, public HTTPS license URL, security review, compatibility notes, and a test plan are recorded. This catalog is a first building block, not yet an automated GitHub scanner, package installer, plugin runtime, or self-modifying code system.
