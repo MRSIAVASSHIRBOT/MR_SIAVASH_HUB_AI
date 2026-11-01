@@ -441,18 +441,23 @@ class WorkerEngine:
             and after_handler.status is not TaskStatus.RUNNING
         ):
             now = self._now().isoformat()
-            if after_handler.status is TaskStatus.SUCCEEDED:
+            if after_handler.status in {TaskStatus.SUCCEEDED, TaskStatus.CANCELLED}:
+                # Persist the terminal outcome without changing the task state.
+                # A cancellation must not leave worker_executions looking active,
+                # nor may this post-handler path turn a cancelled task into success.
+                terminal_success = after_handler.status is TaskStatus.SUCCEEDED
                 with self._connection() as connection:
                     cursor = connection.execute(
                         """
                         UPDATE worker_executions
-                        SET result_json = ?, error_code = NULL, finished_at = ?,
+                        SET result_json = ?, error_code = ?, finished_at = ?,
                             next_attempt_at = NULL
                         WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
                           AND lease_expires_at > ?
                         """,
                         (
                             json.dumps(result, ensure_ascii=False, sort_keys=True),
+                            None if terminal_success else "cancelled_during_execution",
                             now,
                             str(task.task_id),
                             lease.owner,
@@ -464,12 +469,16 @@ class WorkerEngine:
                         raise WorkerError("Workflow result could not be persisted under its lease")
                     connection.execute(
                         """
-                        UPDATE idempotency_records SET status = 'completed'
+                        UPDATE idempotency_records SET status = ?
                         WHERE task_id = ? AND status = 'running'
                         """,
-                        (str(task.task_id),),
+                        ("completed" if terminal_success else "failed", str(task.task_id)),
                     )
-                self._audit(task, "succeeded", "worker_completed")
+                self._audit(
+                    task,
+                    "succeeded" if terminal_success else "cancelled",
+                    "worker_completed" if terminal_success else "cancelled_during_execution",
+                )
                 return self.repository.get(task.task_id)
             return after_handler
 
