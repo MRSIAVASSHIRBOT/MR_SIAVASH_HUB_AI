@@ -16,12 +16,12 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2, 3, 4, 5]
+    assert migrator.migrate() == [1, 2, 3, 4, 5, 6]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6]
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
@@ -66,7 +66,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5, 6]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
@@ -182,12 +182,39 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6]
     tables = {
         row["name"]
         for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         )
     }
-    assert {"agent_runs", "agent_workflows"} <= tables
+    assert {"agent_runs", "agent_workflows", "workflow_submission_keys"} <= tables
+    connection.close()
+
+def test_workflow_idempotency_schema_scopes_keys_to_owner_and_endpoint(tmp_path):
+    connection = connect(tmp_path / "workflow-idempotency.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(workflow_submission_keys)")
+    }
+    assert {
+        "owner_user_id",
+        "endpoint",
+        "idempotency_key",
+        "request_digest",
+        "state",
+        "workflow_id",
+        "task_id",
+        "created_at",
+        "updated_at",
+    } <= columns
+
+    indexes = {
+        row["name"]
+        for row in connection.execute("PRAGMA index_list(workflow_submission_keys)")
+    }
+    assert any("sqlite_autoindex_workflow_submission_keys" == name for name in indexes)
     connection.close()
