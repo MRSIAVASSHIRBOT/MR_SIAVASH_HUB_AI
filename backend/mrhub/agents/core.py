@@ -1,5 +1,7 @@
 """Deterministic planning core connecting model routing, tools, and policy."""
 
+import hashlib
+import json
 from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -46,6 +48,7 @@ class AgentCore:
         request: AgentPlanRequest,
         *,
         on_step: Callable[[int, str, str | None], None] | None = None,
+        on_step_result: Callable[[int, str], None] | None = None,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
         plan = self.plan(request)
@@ -85,6 +88,11 @@ class AgentCore:
                     "blocked": True,
                 }
             results.append({"tool": requested_tool.name, "result": result})
+            if on_step_result is not None:
+                output_bytes = json.dumps(
+                    result, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                ).encode()
+                on_step_result(step_number, hashlib.sha256(output_bytes).hexdigest())
             if on_step is not None:
                 on_step(step_number, "succeeded", None)
 
