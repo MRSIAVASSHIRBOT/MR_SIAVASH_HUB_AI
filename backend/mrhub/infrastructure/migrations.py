@@ -177,7 +177,16 @@ MIGRATIONS = (
             ("CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
              "ON idempotency_records(expires_at)"),
         ),
-    ),
+    ),,
+    Migration.build(
+        4,
+        "workflow_owner_scope",
+        (
+            "ALTER TABLE workflow_runs ADD COLUMN owner_user_id TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)",
+            "ALTER TABLE agent_workflows ADD COLUMN owner_user_id TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+        ),
+    )
 )
 
 
