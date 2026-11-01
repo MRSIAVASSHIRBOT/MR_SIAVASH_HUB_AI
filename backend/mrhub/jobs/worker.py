@@ -391,7 +391,7 @@ class WorkerEngine:
         if saved.status is TaskStatus.QUEUED:
             self._audit(task, "queued", "retry_scheduled")
         elif saved.status is TaskStatus.CANCELLED:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
         return saved
 
     def _finish_failure(
