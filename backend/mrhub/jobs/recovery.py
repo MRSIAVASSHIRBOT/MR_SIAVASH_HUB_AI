@@ -214,9 +214,15 @@ class WorkflowRecoveryRepository:
                     (str(uuid4()), str(workflow_id), number, kind, name, now, now),
                 )
             if submission is not None:
-                owner_user_id, endpoint, idempotency_key, submission_digest = submission
-                if task_id is None or submission_digest != request_digest:
-                    raise WorkflowRecoveryError("Idempotent submission requires matching digest and linked task")
+                submission_owner_id, endpoint, idempotency_key, submission_digest = submission
+                if (
+                    task_id is None
+                    or submission_digest != request_digest
+                    or submission_owner_id != owner_user_id
+                ):
+                    raise WorkflowRecoveryError(
+                        "Idempotent submission requires matching owner, digest, and linked task"
+                    )
                 cursor = connection.execute(
                     """
                     UPDATE workflow_submission_keys
@@ -225,7 +231,7 @@ class WorkflowRecoveryRepository:
                       AND request_digest = ? AND state = 'reserved'
                     """,
                     (
-                        str(workflow_id), task_id, now, owner_user_id, endpoint,
+                        str(workflow_id), task_id, now, submission_owner_id, endpoint,
                         idempotency_key, submission_digest,
                     ),
                 )
