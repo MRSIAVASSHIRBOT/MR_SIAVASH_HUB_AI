@@ -18,7 +18,7 @@ from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.idempotency import IdempotencyConflict, IdempotencyError, IdempotencyRepository
+from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
