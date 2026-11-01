@@ -3,6 +3,9 @@
 import hashlib
 import hmac
 import secrets
+import threading
+import time
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -89,3 +92,44 @@ class AuthService:
     def logout(self, raw_token: str) -> None:
         token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
         self.repository.delete_auth_session(token_hash)
+
+
+
+class LoginAttemptLimiter:
+    """Bound repeated failed logins per client address in this single-process app."""
+
+    def __init__(self, max_attempts: int = 5, window_seconds: int = 300) -> None:
+        if max_attempts < 1 or window_seconds < 1:
+            raise ValueError("Login limiter bounds must be positive")
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._failures: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def _active_failures(self, client_key: str, now: float) -> deque[float]:
+        failures = self._failures.setdefault(client_key, deque())
+        cutoff = now - self.window_seconds
+        while failures and failures[0] <= cutoff:
+            failures.popleft()
+        if not failures:
+            self._failures.pop(client_key, None)
+            return deque()
+        return failures
+
+    def retry_after(self, client_key: str) -> int:
+        now = time.monotonic()
+        with self._lock:
+            failures = self._active_failures(client_key, now)
+            if len(failures) < self.max_attempts:
+                return 0
+            return max(1, int(self.window_seconds - (now - failures[0]) + 0.999))
+
+    def record_failure(self, client_key: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            failures = self._active_failures(client_key, now)
+            failures.append(now)
+
+    def reset(self, client_key: str) -> None:
+        with self._lock:
+            self._failures.pop(client_key, None)
