@@ -66,18 +66,20 @@ class OllamaProvider:
         host = f"[{hostname}]" if ":" in hostname else hostname
         return f"http://{host}:{port}"
 
-    def _client(self) -> httpx.Client:
+    def _client(self, timeout_seconds: float | None = None) -> httpx.Client:
         return httpx.Client(
             base_url=self.base_url,
-            timeout=httpx.Timeout(self.timeout_seconds),
+            timeout=httpx.Timeout(timeout_seconds or self.timeout_seconds),
             transport=self._transport,
             follow_redirects=False,
             trust_env=False,
         )
 
-    def health(self) -> ProviderHealth:
+    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
+        if not 0.1 <= timeout_seconds <= 10:
+            raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
         try:
-            with self._client() as client:
+            with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
                 response = client.get("/api/tags")
                 response.raise_for_status()
             return ProviderHealth(available=True, reason_code="ollama_ready")
