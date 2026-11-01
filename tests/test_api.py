@@ -107,3 +107,63 @@ def test_task_result_endpoint_returns_not_found_for_unknown_task(tmp_path, monke
     response = client.get(f"/tasks/{uuid4()}/result")
     assert response.status_code == 404
     get_settings.cache_clear()
+
+
+
+def test_task_idempotency_key_returns_the_original_task(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotent-api.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    headers = {"Idempotency-Key": "create-task-once"}
+    payload = {
+        "task_type": "demo.echo",
+        "description": "same logical request",
+    }
+
+    first = client.post("/tasks", json=payload, headers=headers)
+    second = client.post("/tasks", json=payload, headers=headers)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.json()["task_id"] == first.json()["task_id"]
+    assert len(client.get("/tasks").json()) == 1
+    get_settings.cache_clear()
+
+
+def test_task_idempotency_key_rejects_different_request_body(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-conflict.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    headers = {"Idempotency-Key": "same-key-different-body"}
+
+    first = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "first request"},
+        headers=headers,
+    )
+    conflicting = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "different request"},
+        headers=headers,
+    )
+
+    assert first.status_code == 201
+    assert conflicting.status_code == 409
+    assert len(client.get("/tasks").json()) == 1
+    get_settings.cache_clear()
+
+
+def test_task_idempotency_key_rejects_blank_header(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-blank.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+
+    response = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "blank key"},
+        headers={"Idempotency-Key": "   "},
+    )
+
+    assert response.status_code == 422
+    assert client.get("/tasks").json() == []
+    get_settings.cache_clear()
