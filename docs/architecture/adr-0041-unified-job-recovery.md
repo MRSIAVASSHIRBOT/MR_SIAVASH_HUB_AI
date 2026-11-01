@@ -92,7 +92,7 @@ The recovery foundation is now exposed through authenticated, owner-scoped API o
 
 ### Explicit limitation
 
-This phase does not implement automatic workflow continuation after reconciliation. The database intentionally does not retain raw prompts, tool arguments, or tool outputs, so a future resume executor must re-plan and validate the re-supplied request against the stored workflow definition, current tool policy, checkpoint, and current authorization before it can claim a worker lease. External side-effecting tools must additionally provide downstream idempotency or a reliable status-query contract. Until those requirements are met, the API remains decision-only and fail-closed.
+The explicit `POST /agent/workflows/{workflow_id}/resume` operation now supports continuation from a validated safe boundary. It requires the owner to re-supply the original request, re-plans it, checks the request digest, stored step sequence and provider identity, requires the linked Job to be awaiting recovery, then claims a fresh fenced lease before continuing from the first incomplete step. It does not reconstruct inputs from persisted data. A workflow that is ambiguous, terminal, mismatched, owned by another user, or not awaiting recovery is rejected. External side effects interrupted during execution still require reconciliation before continuation; arbitrary external exactly-once behavior is not claimed.
 
 ### Verification
 
@@ -100,3 +100,13 @@ The latest Backend CI run for the implementation commit completed successfully:
 - Ruff: passed.
 - Pytest: 186 passed, 1 warning.
 - Failed tests: 0.
+
+
+## Phase 4.4 implementation update
+
+- `POST /agent/workflows/{workflow_id}/resume` now performs explicit owner-authorized continuation after re-planning and validating the supplied original request.
+- The runner verifies the workflow owner, request digest, step identity/kind sequence, selected provider fingerprint, and linked Job recovery state.
+- The linked Job transitions through the existing lifecycle back into `running`, and the resumed execution must acquire a new durable lease/fencing token.
+- Previously succeeded steps are skipped. Only the first incomplete eligible step and later validated steps are executed.
+- The resume regression test simulates a worker interruption at a safe tool boundary and verifies that the workflow completes without replaying its previously succeeded provider-selection step.
+- Latest Backend CI run #480: Ruff passed; Pytest 187 passed, 1 warning; 0 failures.
