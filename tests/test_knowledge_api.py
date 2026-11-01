@@ -127,6 +127,16 @@ def test_knowledge_ingestion_enforces_size_limits_and_does_not_fetch_source_refs
         json={"title": "Oversized", "content": "x" * 100_001},
     )
     assert oversized.status_code == 422
+    secret = client.post(
+        "/knowledge/documents",
+        json={"title": "Secret", "content": "api_key=sk-abcdefghijklmnop0123456789"},
+    )
+    assert secret.status_code == 422
+    blank_title = client.post(
+        "/knowledge/documents",
+        json={"title": "   ", "content": "A valid body"},
+    )
+    assert blank_title.status_code == 422
 
     # A URL-like provenance label is stored as a reference only. Ingestion never
     # makes outbound requests or crawls the supplied origin.
