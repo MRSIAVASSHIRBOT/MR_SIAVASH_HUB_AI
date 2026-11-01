@@ -94,7 +94,7 @@ def execute_agent_workflow(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=128)] = None,
 ) -> dict[str, object]:
-    """Execute an allowed workflow; optional idempotency keys prevent duplicate submissions."""
+    """Queue an allowed workflow; WorkerEngine executes it under a fenced lease."""
     core = AgentCore(build_model_router(), build_tool_registry())
     settings = get_settings()
     submission_repository = WorkflowSubmissionRepository(settings.database_path)
