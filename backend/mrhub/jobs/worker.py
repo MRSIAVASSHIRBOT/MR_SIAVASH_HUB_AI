@@ -435,7 +435,11 @@ class WorkerEngine:
         # sanitized result under the worker's lease even when the task is already
         # terminal, and do not overwrite paused/recovery-required states.
         after_handler = self.repository.get(task.task_id)
-        if after_handler is not None and after_handler.status is not TaskStatus.RUNNING:
+        if (
+            task.task_type == "agent.workflow"
+            and after_handler is not None
+            and after_handler.status is not TaskStatus.RUNNING
+        ):
             now = self._now().isoformat()
             if after_handler.status is TaskStatus.SUCCEEDED:
                 with self._connection() as connection:
