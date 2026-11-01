@@ -27,14 +27,14 @@ jobs:
           persist-credentials: false
 
       - name: Run OpenCode
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@77fc88c8ade8e5a620ebbe1197f3a572d29ae91a
         env:
           OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
         with:
           model: openrouter/openrouter/free
           prompt: |
-            Treat the triggering GitHub comment as the actual task request.
-            Read repository guidance before changing code. Make focused, minimal changes that satisfy the request.
+            Treat the triggering GitHub comment as the sole task request; do not substitute an earlier comment, pull-request summary, or inferred task.
+            First read AGENTS.md and the relevant project documentation. Make focused, minimal changes only when the triggering request asks for changes.
             Do not expose, print, or copy secrets. Do not weaken security controls, change unrelated files, or push directly to the default branch.
             Run the most relevant available tests and checks. If blocked, report the exact blocker and what was verified.
-            Summarize changes, tests, and remaining risks in your final GitHub response.
+            Answer the triggering request directly. Report only actions actually performed, observed test results, and concrete blockers. Never claim a read/check/change occurred unless logs or tool results verify it.
