@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from mrhub.capabilities.github_discovery import GitHubDiscoveryError
 
 
 def test_capability_candidate_registration_and_list_are_authenticated(tmp_path, monkeypatch):
@@ -84,3 +85,53 @@ def test_capability_catalog_requires_authentication(tmp_path, monkeypatch):
         assert response.status_code in (401, 403)
     finally:
         get_settings.cache_clear()
+
+
+def test_github_discovery_endpoint_returns_metadata_and_registers_review_candidate(monkeypatch):
+    from mrhub.api.routes import capabilities as capabilities_route
+
+    fake_result = {
+        "full_name": "Example/VideoTool",
+        "html_url": "https://github.com/Example/VideoTool",
+        "license_spdx_id": "MIT",
+        "candidate": {"candidate_id": "candidate-1", "status": "discovered"},
+        "source_code_fetched": False,
+        "source_code_executed": False,
+        "installation_started": False,
+        "approval_granted": False,
+    }
+
+    def fake_discovery(source_url, registry):
+        assert source_url == "https://github.com/Example/VideoTool"
+        return object(), fake_result
+
+    monkeypatch.setattr(capabilities_route, "discover_github_candidate", fake_discovery)
+    client = authenticated_client()
+    response = client.post(
+        "/capabilities/discover",
+        json={"source_url": "https://github.com/Example/VideoTool"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["candidate"]["status"] == "discovered"
+    assert response.json()["source_code_executed"] is False
+    assert response.json()["approval_granted"] is False
+
+
+def test_github_discovery_endpoint_surfaces_safe_not_found_error(monkeypatch):
+    from mrhub.api.routes import capabilities as capabilities_route
+
+    def missing_repository(_source_url, _registry):
+        raise GitHubDiscoveryError(
+            "repository_not_found", "Public repository not found", status_code=404
+        )
+
+    monkeypatch.setattr(capabilities_route, "discover_github_candidate", missing_repository)
+    client = authenticated_client()
+    response = client.post(
+        "/capabilities/discover",
+        json={"source_url": "https://github.com/Example/Missing"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "repository_not_found"
