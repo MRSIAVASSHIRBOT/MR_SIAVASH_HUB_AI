@@ -208,6 +208,29 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at)",
         ),
+    ),
+    Migration.build(
+        6,
+        "workflow_submission_idempotency",
+        (
+            """CREATE TABLE IF NOT EXISTS workflow_submission_keys (
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                endpoint TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                state TEXT NOT NULL CHECK (state IN ('reserved', 'bound', 'failed')),
+                workflow_id TEXT,
+                task_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (owner_user_id, endpoint, idempotency_key),
+                CHECK (
+                    (state = 'bound' AND workflow_id IS NOT NULL AND task_id IS NOT NULL)
+                    OR (state != 'bound')
+                )
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_submission_updated ON workflow_submission_keys(updated_at)",
+        ),
     )
 )
 
