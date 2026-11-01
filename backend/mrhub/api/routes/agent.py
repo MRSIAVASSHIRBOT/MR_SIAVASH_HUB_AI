@@ -200,7 +200,7 @@ def check_agent_workflow_resume(
 def resume_agent_workflow(
     workflow_id: UUID,
     request: WorkflowResumeCheckRequest,
-    current_user: AuthenticatedUser = Depends(require_user),
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Resume an owned workflow only after re-planning and validating original inputs."""
     settings = get_settings()
