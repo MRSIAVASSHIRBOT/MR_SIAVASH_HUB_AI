@@ -13,6 +13,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.jobs.leases import WorkerLease
 
 
 class WorkflowRecoveryError(RuntimeError):
@@ -94,6 +95,32 @@ class WorkflowRecoveryRepository:
         if not cls._DIGEST_PATTERN.fullmatch(value):
             raise WorkflowRecoveryError(f"{label} must be a lowercase SHA-256 hex digest")
 
+    def _assert_lease(
+        self,
+        connection: sqlite3.Connection,
+        workflow_id: UUID,
+        lease: WorkerLease | None,
+        now: str,
+    ) -> None:
+        if lease is None:
+            return
+        run = connection.execute(
+            "SELECT task_id FROM workflow_runs WHERE workflow_id = ?",
+            (str(workflow_id),),
+        ).fetchone()
+        if run is None or run["task_id"] != lease.task_id:
+            raise RecoveryRequired("Worker lease does not own this workflow")
+        current = connection.execute(
+            """
+            SELECT 1 FROM worker_executions
+            WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+              AND lease_expires_at > ?
+            """,
+            (lease.task_id, lease.owner, lease.fencing_token, now),
+        ).fetchone()
+        if current is None:
+            raise RecoveryRequired("Workflow worker lease was lost")
+
     def create_run(
         self,
         request_digest: str,
@@ -153,6 +180,13 @@ class WorkflowRecoveryRepository:
                         task.description,
                     ),
                 )
+                connection.execute(
+                    """
+                    INSERT INTO worker_executions (task_id, attempt_count)
+                    VALUES (?, 0)
+                    """,
+                    (str(task.task_id),),
+                )
             connection.execute(
                 """
                 INSERT INTO workflow_runs (
@@ -179,9 +213,11 @@ class WorkflowRecoveryRepository:
                 )
         return workflow_id
 
-    def start_run(self, workflow_id: UUID) -> None:
+    def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
         now = self._now()
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._assert_lease(connection, workflow_id, lease, now)
             cursor = connection.execute(
                 """
                 UPDATE workflow_runs SET status = 'running', updated_at = ?
@@ -192,10 +228,21 @@ class WorkflowRecoveryRepository:
             if cursor.rowcount != 1:
                 raise WorkflowRecoveryError("Workflow is not eligible to start or resume")
 
-    def start_step(self, workflow_id: UUID, step_number: int) -> StepAttempt:
+    def start_step(
+        self, workflow_id: UUID, step_number: int, *, lease: WorkerLease | None = None
+    ) -> StepAttempt:
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT status FROM workflow_runs WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchone()
+            if run is None:
+                raise LookupError("Workflow not found")
+            if run["status"] != "running":
+                raise WorkflowRecoveryError("Workflow is not running")
+            self._assert_lease(connection, workflow_id, lease, now)
 
             step = connection.execute(
                 """
@@ -254,6 +301,8 @@ class WorkflowRecoveryRepository:
         workflow_id: UUID,
         attempt: StepAttempt,
         output_digest: str,
+        *,
+        lease: WorkerLease | None = None,
     ) -> WorkflowCheckpoint:
         """Commit a validated step result and its digest-only checkpoint atomically."""
         self._validate_digest(output_digest, "Output digest")
@@ -268,6 +317,7 @@ class WorkflowRecoveryRepository:
                 raise LookupError("Workflow not found")
             if run["status"] != "running":
                 raise WorkflowRecoveryError("Workflow is not running")
+            self._assert_lease(connection, workflow_id, lease, now)
 
             step = connection.execute(
                 """
@@ -339,6 +389,7 @@ class WorkflowRecoveryRepository:
         error_code: str,
         *,
         unknown_outcome: bool = False,
+        lease: WorkerLease | None = None,
     ) -> None:
         if not self._ERROR_PATTERN.fullmatch(error_code):
             raise WorkflowRecoveryError("Error code must be a bounded safe identifier")
@@ -355,6 +406,7 @@ class WorkflowRecoveryRepository:
                 raise LookupError("Workflow not found")
             if run["status"] != "running":
                 raise WorkflowRecoveryError("Workflow is not running")
+            self._assert_lease(connection, workflow_id, lease, now)
             step = connection.execute(
                 """
                 SELECT step_id, status FROM workflow_steps
@@ -390,11 +442,14 @@ class WorkflowRecoveryRepository:
                 (run_status, error_code, now, str(workflow_id)),
             )
 
-    def mark_interrupted(self, workflow_id: UUID) -> int:
+    def mark_interrupted(
+        self, workflow_id: UUID, *, lease: WorkerLease | None = None
+    ) -> int:
         """Classify all active attempts as ambiguous; never replay them automatically."""
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            self._assert_lease(connection, workflow_id, lease, now)
             rows = connection.execute(
                 """
                 SELECT step_id, step_number FROM workflow_steps
@@ -534,12 +589,15 @@ class WorkflowRecoveryRepository:
                 )
             return checkpoint
 
-    def finish_run(self, workflow_id: UUID, status: str) -> None:
+    def finish_run(
+        self, workflow_id: UUID, status: str, *, lease: WorkerLease | None = None
+    ) -> None:
         if status not in {"succeeded", "failed", "cancelled"}:
             raise WorkflowRecoveryError("Unsupported terminal workflow status")
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            self._assert_lease(connection, workflow_id, lease, now)
             if status == "succeeded":
                 counts = connection.execute(
                     """
