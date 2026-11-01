@@ -268,6 +268,44 @@ class WorkflowRecoveryRepository:
                     (error_code, now, run["task_id"]),
                 )
 
+    def cancel_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
+        """Persist cancellation under the current worker fencing token."""
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._assert_lease(connection, workflow_id, lease, now)
+            run = connection.execute(
+                "SELECT status FROM workflow_runs WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchone()
+            if run is None:
+                raise LookupError("Workflow not found")
+            if run["status"] not in {"running", "queued", "paused"}:
+                raise WorkflowRecoveryError("Workflow is not cancellable")
+            active = connection.execute(
+                "SELECT step_id, step_kind FROM workflow_steps WHERE workflow_id = ? AND status = 'running'",
+                (str(workflow_id),),
+            ).fetchall()
+            uncertain = False
+            for step in active:
+                external = step["step_kind"] == "external_tool"
+                uncertain = uncertain or external
+                state = "unknown_outcome" if external else "cancelled"
+                connection.execute(
+                    "UPDATE workflow_step_attempts SET status = ?, error_code = 'cancel_requested', finished_at = ? WHERE step_id = ? AND status = 'running'",
+                    (state, now, step["step_id"]),
+                )
+                connection.execute(
+                    "UPDATE workflow_steps SET status = ?, error_code = 'cancel_requested', finished_at = ?, updated_at = ? WHERE step_id = ? AND status = 'running'",
+                    (state, now, now, step["step_id"]),
+                )
+            status = "recovery_required" if uncertain else "cancelled"
+            code = "cancel_external_outcome_unknown" if uncertain else "cancelled_by_request"
+            connection.execute(
+                "UPDATE workflow_runs SET status = ?, last_error_code = ?, updated_at = ? WHERE workflow_id = ?",
+                (status, code, now, str(workflow_id)),
+            )
+
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
         now = self._now()
         with self._connection() as connection:
