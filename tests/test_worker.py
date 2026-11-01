@@ -552,6 +552,7 @@ def test_worker_fails_closed_for_workflow_without_encrypted_payload(tmp_path):
 
 def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(tmp_path):
     repository, _worker = make_worker(tmp_path)
+    repository.create_auth_user("owner-a", "owner-a", "salt", "hash")
     recovery = WorkflowRecoveryRepository(repository.database_path)
     task = TaskRecord(task_type="agent.workflow", description="cancel then crash")
     workflow_id = recovery.create_run(
@@ -584,6 +585,7 @@ def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(t
 
 def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_path):
     repository, _worker = make_worker(tmp_path)
+    repository.create_auth_user("owner-a", "owner-a", "salt", "hash")
     recovery = WorkflowRecoveryRepository(repository.database_path)
     task = TaskRecord(task_type="agent.workflow", description="external cancel then crash")
     workflow_id = recovery.create_run(
