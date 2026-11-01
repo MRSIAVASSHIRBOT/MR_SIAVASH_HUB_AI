@@ -270,3 +270,82 @@ def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step():
     task = client.get(f"/tasks/{workflow['task_id']}")
     assert task.status_code == 200
     assert task.json()["status"] == "succeeded"
+
+
+
+def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
+    from mrhub.domain.tasks import TaskRecord, TaskStatus
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.engine import JobEngine
+    from mrhub.jobs.leases import LeaseManager
+    from mrhub.jobs.recovery import WorkflowRecoveryRepository
+
+    client = authenticated_client()
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    with tasks._connection() as connection:
+        owner = connection.execute(
+            "SELECT user_id FROM auth_users WHERE username = 'owner'"
+        ).fetchone()["user_id"]
+
+    request = {
+        "goal": "Resume a safely interrupted workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "resume-safe"}}],
+    }
+    from mrhub.agents.core import AgentPlanRequest
+
+    parsed = AgentPlanRequest.model_validate(request)
+    core_plan = __import__("mrhub.agents.core", fromlist=["AgentCore"]).AgentCore
+    from mrhub.api.routes.agent import _workflow_digest
+    from mrhub.agents.core import AgentCore
+    from mrhub.api.routes.models import build_model_router
+    from mrhub.tools.builtins import build_tool_registry
+
+    core = AgentCore(build_model_router(), build_tool_registry())
+    plan = core.plan(parsed)
+    task = TaskRecord(task_type="agent.workflow", description="recovery test")
+    recovery = WorkflowRecoveryRepository(tasks.database_path)
+    workflow_id = recovery.create_run(
+        _workflow_digest(parsed),
+        [
+            {"step_number": 1, "kind": "provider_selection", "name": "provider_selection"},
+            {"step_number": 2, "kind": "safe_tool", "name": "text.echo"},
+        ],
+        task=task,
+        owner_user_id=owner,
+    )
+
+    jobs = JobEngine(tasks)
+    jobs.transition(task.task_id, TaskStatus.RUNNING)
+    leases = LeaseManager(tasks.database_path)
+    lease = leases.acquire(str(task.task_id), "test-resume-worker")
+    assert lease is not None
+    recovery.start_run(workflow_id, lease=lease)
+    provider_attempt = recovery.start_step(workflow_id, 1, lease=lease)
+    recovery.complete_step(
+        workflow_id,
+        provider_attempt,
+        AgentCore.__module__ and __import__("hashlib").sha256(
+            __import__("json").dumps(
+                plan["selected_provider"], sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest(),
+        lease=lease,
+    )
+    recovery.start_step(workflow_id, 2, lease=lease)
+    recovery.mark_interrupted(workflow_id, lease=lease)
+    jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
+    assert leases.release(lease)
+
+    response = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["workflow"]["status"] == "succeeded"
+    assert response.json()["workflow"]["steps"][1]["status"] == "succeeded"
+    linked_task = client.get(f"/tasks/{task.task_id}")
+    assert linked_task.status_code == 200
+    assert linked_task.json()["status"] == "succeeded"
