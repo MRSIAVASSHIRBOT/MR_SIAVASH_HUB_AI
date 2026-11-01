@@ -129,6 +129,7 @@ class WorkflowRecoveryRepository:
         task_id: str | None = None,
         task: TaskRecord | None = None,
         definition_version: int = 1,
+        owner_user_id: str | None = None,
     ) -> UUID:
         """Create a queued workflow and optional linked job in one transaction."""
         self._validate_digest(request_digest, "Request digest")
@@ -192,12 +193,12 @@ class WorkflowRecoveryRepository:
                 INSERT INTO workflow_runs (
                     workflow_id, task_id, status, request_digest,
                     definition_version, current_step, last_error_code,
-                    created_at, updated_at
-                ) VALUES (?, ?, 'queued', ?, ?, 0, NULL, ?, ?)
+                    created_at, updated_at, owner_user_id
+                ) VALUES (?, ?, 'queued', ?, ?, 0, NULL, ?, ?, ?)
                 """,
                 (
                     str(workflow_id), task_id, request_digest,
-                    definition_version, now, now,
+                    definition_version, now, now, owner_user_id,
                 ),
             )
             for number, kind, name in normalized:
@@ -514,6 +515,7 @@ class WorkflowRecoveryRepository:
         outcome: str,
         *,
         output_digest: str | None = None,
+        owner_user_id: str | None = None,
     ) -> WorkflowCheckpoint | None:
         """Record a reconciled external outcome; this method never invokes the step."""
         if outcome not in {"succeeded", "failed"}:
@@ -526,8 +528,8 @@ class WorkflowRecoveryRepository:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             run = connection.execute(
-                "SELECT request_digest, status FROM workflow_runs WHERE workflow_id = ?",
-                (str(workflow_id),),
+                "SELECT request_digest, status FROM workflow_runs WHERE workflow_id = ? AND (? IS NULL OR owner_user_id = ?)",
+                (str(workflow_id), owner_user_id, owner_user_id),
             ).fetchone()
             if run is None:
                 raise LookupError("Workflow not found")
@@ -663,13 +665,14 @@ class WorkflowRecoveryRepository:
         supplied_request_digest: str,
         *,
         definition_version: int = 1,
+        owner_user_id: str | None = None,
     ) -> ResumeDecision:
         """Return a safe next action without executing or replaying any step."""
         self._validate_digest(supplied_request_digest, "Supplied request digest")
         with self._connection() as connection:
             run = connection.execute(
-                "SELECT * FROM workflow_runs WHERE workflow_id = ?",
-                (str(workflow_id),),
+                "SELECT * FROM workflow_runs WHERE workflow_id = ? AND (? IS NULL OR owner_user_id = ?)",
+                (str(workflow_id), owner_user_id, owner_user_id),
             ).fetchone()
             if run is None:
                 raise LookupError("Workflow not found")
@@ -733,11 +736,11 @@ class WorkflowRecoveryRepository:
                 return ResumeDecision("resume", next_step["step_number"], checkpoint_version, None)
             return ResumeDecision("finish", None, checkpoint_version, "all_steps_succeeded")
 
-    def get_run(self, workflow_id: UUID) -> dict[str, object] | None:
+    def get_run(self, workflow_id: UUID, *, owner_user_id: str | None = None) -> dict[str, object] | None:
         with self._connection() as connection:
             run = connection.execute(
-                "SELECT * FROM workflow_runs WHERE workflow_id = ?",
-                (str(workflow_id),),
+                "SELECT * FROM workflow_runs WHERE workflow_id = ? AND (? IS NULL OR owner_user_id = ?)",
+                (str(workflow_id), owner_user_id, owner_user_id),
             ).fetchone()
             if run is None:
                 return None
