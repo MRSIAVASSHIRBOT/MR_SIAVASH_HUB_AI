@@ -54,7 +54,7 @@ On first launch, initialize the local owner account from the same machine using 
 
 The authenticated `/capabilities/candidates` API provides the first local registry for sources discovered on GitHub or elsewhere. Register a source with `POST /capabilities/candidates`, list or filter candidates with `GET /capabilities/candidates?status=discovered`, and advance review state through `POST /capabilities/candidates/{candidate_id}/transition`. Approval requires a known license, a public HTTPS license URL, security-review notes, compatibility notes, and a test plan. Registration is metadata-only: no source is downloaded, installed, imported, or executed. Automated upstream scanning, isolated integration tests, and plugin activation are later milestones, not yet implemented.
 
-See [the open-source integration catalog](docs/architecture/open-source-integration-catalog.md) for current candidates and the adoption gate.
+See [the open-source integration catalog](docs/architecture/open-source-integration-catalog.md) for current candidates and the adoption gate. See [GitHub discovery](docs/architecture/github-discovery.md) for the endpoint contract and next stages.
 
 ## Model provider interface
 
