@@ -216,6 +216,22 @@ MIGRATIONS = (
             "ALTER TABLE agent_runs ADD COLUMN owner_user_id TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
             "CREATE INDEX IF NOT EXISTS idx_agent_runs_owner_created ON agent_runs(owner_user_id, created_at)",
         ),
+    ),
+    Migration.build(
+        7,
+        "encrypted_workflow_execution_payloads",
+        (
+            """CREATE TABLE IF NOT EXISTS workflow_payloads (
+                workflow_id TEXT PRIMARY KEY REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                envelope_version INTEGER NOT NULL CHECK (envelope_version > 0),
+                nonce_b64 TEXT NOT NULL,
+                ciphertext_b64 TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_payloads_task ON workflow_payloads(task_id)",
+        ),
     )
 )
 
