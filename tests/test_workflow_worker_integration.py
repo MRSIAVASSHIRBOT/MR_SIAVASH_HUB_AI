@@ -83,3 +83,53 @@ def test_workflow_payload_is_not_readable_by_another_owner() -> None:
     assert recovery.get_encrypted_payload(
         workflow_id, owner_user_id="some-other-user"
     ) is None
+
+
+def test_queued_workflow_can_be_cancelled_by_its_owner() -> None:
+    client = authenticated_client()
+    request = {
+        "goal": "Queue a workflow and cancel it before execution",
+        "tools": [{"name": "text.echo", "payload": {"text": "must-not-run"}}],
+    }
+    response = client.post("/agent/workflows", json=request)
+    assert response.status_code == 200
+    workflow = response.json()["workflow"]
+    workflow_id = UUID(workflow["workflow_id"])
+    task_id = UUID(workflow["task_id"])
+
+    cancelled = client.post(f"/agent/workflows/{workflow_id}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    stored_task = repository.get(task_id)
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert stored_task is not None and stored_task.status.value == "cancelled"
+    assert stored_workflow is not None and stored_workflow["status"] == "cancelled"
+    with repository._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM workflow_payloads WHERE workflow_id = ?",
+            (str(workflow_id),),
+        ).fetchone()
+    assert payload is None
+    assert run_worker_once() is None
+
+
+def test_workflow_idempotency_replays_the_atomically_created_resource() -> None:
+    client = authenticated_client()
+    request = {
+        "goal": "Create an idempotent workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "once"}}],
+    }
+    headers = {"Idempotency-Key": "workflow-atomic-replay"}
+    first = client.post("/agent/workflows", json=request, headers=headers)
+    second = client.post("/agent/workflows", json=request, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["idempotent_replay"] is True
+    assert (
+        second.json()["workflow"]["workflow_id"]
+        == first.json()["workflow"]["workflow_id"]
+    )
