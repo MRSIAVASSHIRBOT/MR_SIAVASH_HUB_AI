@@ -203,10 +203,19 @@ class AgentWorkflowRunner:
                 del attempts[number]
 
             def should_cancel() -> bool:
+                # Lease loss is not user cancellation: a stale worker must stop
+                # without finalizing state owned by the successor.
                 if lease_lost.is_set():
-                    return True
+                    raise RuntimeError("Workflow worker lease was lost")
                 current_task = self.jobs.get(task.task_id)
-                return current_task is None or current_task.status is TaskStatus.CANCELLED
+                if current_task is None or current_task.status is TaskStatus.CANCELLED:
+                    return True
+                with self.repository._connection() as connection:
+                    row = connection.execute(
+                        "SELECT error_code FROM worker_executions WHERE task_id = ?",
+                        (str(task.task_id),),
+                    ).fetchone()
+                return row is not None and row["error_code"] == "cancellation_requested"
 
             execution = self.core.execute(
                 request,
