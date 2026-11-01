@@ -124,3 +124,21 @@ def test_worker_fails_closed_when_encrypted_workflow_input_is_tampered():
     workflow = client.get(f"/agent/workflows/{workflow_id}")
     assert workflow.status_code == 200
     assert workflow.json()["status"] == "failed"
+
+
+
+def test_workflow_submission_fails_closed_without_encryption_key(monkeypatch):
+    client = authenticated_client()
+    settings = get_settings()
+    database_path = settings.database_path
+    monkeypatch.delenv("MRH_WORKFLOW_INPUT_ENCRYPTION_KEY", raising=False)
+    get_settings.cache_clear()
+
+    try:
+        response = client.post("/agent/workflows", json=_payload("must not queue"))
+        assert response.status_code == 503
+        assert "encryption key" in response.json()["detail"].lower()
+        tasks = TaskRepository(database_path).list_recent()
+        assert not any(task.task_type == "agent.workflow" for task in tasks)
+    finally:
+        get_settings.cache_clear()
