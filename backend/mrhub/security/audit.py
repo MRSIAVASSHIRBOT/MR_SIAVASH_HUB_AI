@@ -48,6 +48,7 @@ class AuditLogger:
         metadata: dict[str, Any] | None = None,
         actor_type: str = "system",
         actor_id: str | None = None,
+        subject_type: str = "task",
     ) -> AuditEvent:
         safe_metadata: dict[str, str | int | bool | None] = {}
         for key, value in (metadata or {}).items():
@@ -59,6 +60,7 @@ class AuditLogger:
         event = AuditEvent(
             event_type=event_type,
             outcome=outcome,
+            subject_type=subject_type,
             subject_id=subject_id,
             actor_type=actor_type,
             actor_id=actor_id,
