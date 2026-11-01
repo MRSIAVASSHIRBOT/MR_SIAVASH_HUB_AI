@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
-from mrhub.infrastructure.database import TaskRepository
 from mrhub.memory.repository import MemoryRepository
 
 
