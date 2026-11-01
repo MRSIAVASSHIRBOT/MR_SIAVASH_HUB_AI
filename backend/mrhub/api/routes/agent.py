@@ -3,6 +3,7 @@
 import hashlib
 import json
 from typing import Annotated
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,8 +26,8 @@ router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(requir
 
 class WorkflowReconciliationRequest(BaseModel):
     step_number: int = Field(ge=1)
-    outcome: str
-    output_digest: str | None = None
+    outcome: Literal["succeeded", "failed"]
+    output_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
 
 class WorkflowResumeCheckRequest(BaseModel):
