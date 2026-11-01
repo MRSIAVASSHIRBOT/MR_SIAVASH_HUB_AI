@@ -42,6 +42,7 @@ jobs:
           backend/mrhub/api/routes/agent.py
           backend/mrhub/infrastructure/migrations.py
           backend/mrhub/jobs/worker.py
+          backend/mrhub/jobs/worker_cli.py
           backend/mrhub/jobs/engine.py
           backend/mrhub/jobs/recovery.py
           backend/mrhub/jobs/leases.py
