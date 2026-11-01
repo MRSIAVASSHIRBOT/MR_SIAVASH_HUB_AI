@@ -84,7 +84,8 @@ class WorkflowExecutionInputRepository:
                     raise ExecutionInputValidationError("Payload object keys must be strings")
                 if cls._SENSITIVE_KEY.search(key):
                     raise ExecutionInputValidationError(
-                        f"Sensitive-looking field is not allowed in durable workflow input: {path}.{key}"
+                        "Sensitive-looking field is not allowed in durable workflow input: "
+                        f"{path}.{key}"
                     )
                 cls._validate_no_sensitive_keys(child, f"{path}.{key}")
         elif isinstance(value, list):
@@ -161,12 +162,16 @@ class WorkflowExecutionInputRepository:
         if row is None:
             raise LookupError("Workflow execution input not found")
         if row["schema_version"] != self.CURRENT_SCHEMA_VERSION or row["key_id"] != self._key_id:
-            raise ExecutionInputUnavailable("Workflow input schema or encryption key does not match")
+            raise ExecutionInputUnavailable(
+                "Workflow input schema or encryption key does not match"
+            )
         if row["expires_at"] is not None:
             try:
                 expiry = datetime.fromisoformat(row["expires_at"])
             except ValueError as exc:
-                raise ExecutionInputUnavailable("Workflow input expiry metadata is invalid") from exc
+                raise ExecutionInputUnavailable(
+                    "Workflow input expiry metadata is invalid"
+                ) from exc
             if expiry.tzinfo is None or expiry <= datetime.now(UTC):
                 raise ExecutionInputUnavailable("Workflow input has expired")
         try:
