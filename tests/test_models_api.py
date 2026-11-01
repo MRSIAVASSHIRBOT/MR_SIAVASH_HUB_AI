@@ -106,3 +106,58 @@ def test_model_profile_catalog_requires_authentication(tmp_path, monkeypatch):
     response = client.get("/models/profiles")
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+def test_compare_registered_models_is_read_only_and_preserves_unknown_gpu_data(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    response = client.post(
+        "/models/compare",
+        json={
+            "hardware_report": {"memory": {"available_gib": 12}},
+            "profile_ids": ["small-text-cpu-example", "gpu-model-example"],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert body["starts_inference"] is False
+    assert body["downloads_model"] is False
+    assert body["results"][0]["assessment"]["status"] == "likely_fit"
+    assert body["results"][1]["assessment"]["status"] == "insufficient_data"
+    assert all(item["profile_verified"] is False for item in body["results"])
+    get_settings.cache_clear()
+
+
+def test_compare_registered_models_rejects_unknown_profile_ids(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    response = client.post(
+        "/models/compare",
+        json={
+            "hardware_report": {"memory": {"available_gib": 12}},
+            "profile_ids": ["small-text-cpu-example", "unknown-profile"],
+        },
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["profile_ids"] == ["unknown-profile"]
+    get_settings.cache_clear()
+
+
+def test_compare_registered_models_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.post(
+        "/models/compare",
+        json={
+            "hardware_report": {"memory": {"available_gib": 12}},
+            "profile_ids": ["small-text-cpu-example"],
+        },
+    )
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
