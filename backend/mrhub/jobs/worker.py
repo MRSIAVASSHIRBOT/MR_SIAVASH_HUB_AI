@@ -177,8 +177,8 @@ class WorkerEngine:
                         safe_to_retry = step["step_kind"] in {
                             "provider_selection", "safe_tool"
                         }
-                        attempt_status = "failed" if safe_to_retry else "unknown_outcome"
-                        step_status = "retry_wait" if safe_to_retry else "unknown_outcome"
+                        attempt_status = "cancelled" if safe_to_retry else "unknown_outcome"
+                        step_status = "cancelled" if safe_to_retry else "unknown_outcome"
                         if not safe_to_retry:
                             has_unknown_outcome = True
                         connection.execute(
