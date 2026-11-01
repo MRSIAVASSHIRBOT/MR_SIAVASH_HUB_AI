@@ -33,6 +33,7 @@ def test_safe_interruption_keeps_job_resumable_and_resume_completes(monkeypatch)
         callbacks["on_step"](2, "running", None)
         raise RuntimeError("simulated interruption")
 
+    original_execute = AgentCore.execute
     monkeypatch.setattr(AgentCore, "execute", interrupt_during_safe_tool)
     submitted = client.post("/agent/workflows", json=request)
     assert submitted.status_code == 200
@@ -49,7 +50,7 @@ def test_safe_interruption_keeps_job_resumable_and_resume_completes(monkeypatch)
     task = repository.get(UUID(task_id))
     assert task is not None and task.status.value == "waiting_approval"
 
-    monkeypatch.setattr(AgentCore, "execute", AgentCore.execute)
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
     resumed = client.post(
         f"/agent/workflows/{workflow_id}/resume",
         json={"request": request},
