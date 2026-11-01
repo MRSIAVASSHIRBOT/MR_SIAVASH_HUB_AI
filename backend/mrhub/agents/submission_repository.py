@@ -121,7 +121,7 @@ class WorkflowSubmissionRepository:
         ):
             self._validate(value, name)
         now = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 """SELECT request_digest, state, workflow_id, task_id, created_at, updated_at
@@ -166,7 +166,7 @@ class WorkflowSubmissionRepository:
     ) -> None:
         """Mark an unbound reservation failed; never rewrite a bound execution."""
         now = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
                 """UPDATE workflow_submission_keys SET state = 'failed', updated_at = ?
