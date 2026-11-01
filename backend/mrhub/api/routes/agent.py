@@ -113,7 +113,7 @@ def execute_agent_workflow(
 @router.get("/workflows/{workflow_id}")
 def get_agent_workflow(
     workflow_id: UUID,
-    current_user: AuthenticatedUser = Depends(require_user),
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     settings = get_settings()
     task_repository = TaskRepository(settings.database_path)
@@ -137,7 +137,7 @@ def get_agent_workflow(
 def reconcile_agent_workflow(
     workflow_id: UUID,
     request: WorkflowReconciliationRequest,
-    current_user: AuthenticatedUser = Depends(require_user),
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Record an externally verified outcome; this endpoint never executes a tool."""
     settings = get_settings()
@@ -169,7 +169,7 @@ def reconcile_agent_workflow(
 def check_agent_workflow_resume(
     workflow_id: UUID,
     request: WorkflowResumeCheckRequest,
-    current_user: AuthenticatedUser = Depends(require_user),
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Validate supplied original inputs and return a decision without replaying work."""
     settings = get_settings()
