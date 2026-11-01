@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,11 +13,11 @@ from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
-from mrhub.security.auth import AuthenticatedUser
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.security.auth import AuthenticatedUser
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
@@ -83,7 +84,7 @@ def _workflow_digest(request: AgentPlanRequest) -> str:
 @router.post("/workflows")
 def execute_agent_workflow(
     request: AgentPlanRequest,
-    current_user: AuthenticatedUser = Depends(require_user),
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Execute an allowed workflow under the canonical Job lifecycle."""
     core = AgentCore(build_model_router(), build_tool_registry())
