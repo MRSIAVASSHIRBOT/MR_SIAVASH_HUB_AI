@@ -216,5 +216,5 @@ def test_workflow_idempotency_schema_scopes_keys_to_owner_and_endpoint(tmp_path)
         row["name"]
         for row in connection.execute("PRAGMA index_list(workflow_submission_keys)")
     }
-    assert any("sqlite_autoindex_workflow_submission_keys" == name for name in indexes)
+    assert any(name.startswith("sqlite_autoindex_workflow_submission_keys") for name in indexes)
     connection.close()
