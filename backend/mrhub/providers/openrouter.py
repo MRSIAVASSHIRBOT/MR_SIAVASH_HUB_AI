@@ -118,6 +118,8 @@ class OpenRouterProvider:
                 # Never include provider response bodies, headers, or key material in errors.
                 raise ProviderUnavailableError("Remote model service returned an unavailable status")
             payload = response.json()
+            if not isinstance(payload, dict):
+                raise ProviderUnavailableError("Remote model returned an invalid response")
         except ProviderTimeoutError:
             raise
         except httpx.TimeoutException as exc:
