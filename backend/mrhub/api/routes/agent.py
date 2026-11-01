@@ -129,19 +129,18 @@ def execute_agent_workflow(
         idempotency_binding = None
         if idempotency_key is not None:
             try:
-                reservation = idempotency.reserve(scope, idempotency_key, request_digest)
-            except IdempotencyConflict as exc:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Idempotency key conflicts with an earlier request",
-                ) from exc
+                existing_record = idempotency.get(scope, idempotency_key)
             except IdempotencyError as exc:
                 raise HTTPException(status_code=422, detail="Invalid idempotency key") from exc
-            if not reservation.created:
-                record = reservation.record
-                if record.workflow_id:
+            if existing_record is not None:
+                if existing_record.request_digest != request_digest:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Idempotency key conflicts with an earlier request",
+                    )
+                if existing_record.workflow_id:
                     existing = recovery.get_run(
-                        UUID(record.workflow_id), owner_user_id=current_user.user_id
+                        UUID(existing_record.workflow_id), owner_user_id=current_user.user_id
                     )
                     if existing is not None:
                         return {
@@ -151,7 +150,7 @@ def execute_agent_workflow(
                         }
                 raise HTTPException(
                     status_code=409,
-                    detail="Request is already reserved; inspect recovery state",
+                    detail="Request is already being created or requires recovery",
                 )
             idempotency_binding = {"scope": scope, "key": idempotency_key}
 
