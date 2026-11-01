@@ -1,12 +1,13 @@
 """Authenticated agent planning API."""
 
-from fastapi import APIRouter, Depends, HTTPException
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException
+
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.repository import AgentRunRepository
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
-from mrhub.agents.repository import AgentRunRepository
 from mrhub.config import get_settings
 from mrhub.tools.builtins import build_tool_registry
 
