@@ -182,34 +182,48 @@ class WorkerEngine:
                 else:
                     active_steps = connection.execute(
                         """
-                        SELECT step_id FROM workflow_steps
+                        SELECT step_id, step_kind FROM workflow_steps
                         WHERE workflow_id = ? AND status = 'running'
                         """,
                         (workflow["workflow_id"],),
                     ).fetchall()
-                    if active_steps:
-                        for step in active_steps:
-                            connection.execute(
-                                """
-                                UPDATE workflow_step_attempts
-                                SET status = 'unknown_outcome',
-                                    error_code = 'worker_interrupted', finished_at = ?
-                                WHERE step_id = ? AND status = 'running'
-                                """,
-                                (now, step["step_id"]),
-                            )
-                            connection.execute(
-                                """
-                                UPDATE workflow_steps
-                                SET status = 'unknown_outcome',
-                                    error_code = 'worker_interrupted',
-                                    finished_at = ?, updated_at = ?
-                                WHERE step_id = ? AND status = 'running'
-                                """,
-                                (now, now, step["step_id"]),
-                            )
-                        workflow_status = "recovery_required"
-                        reason_code = "worker_interrupted"
+                    has_unknown_outcome = False
+                    for step in active_steps:
+                        safe_to_retry = step["step_kind"] in {
+                            "provider_selection", "safe_tool"
+                        }
+                        attempt_status = "failed" if safe_to_retry else "unknown_outcome"
+                        step_status = "retry_wait" if safe_to_retry else "unknown_outcome"
+                        if not safe_to_retry:
+                            has_unknown_outcome = True
+                        connection.execute(
+                            """
+                            UPDATE workflow_step_attempts
+                            SET status = ?, error_code = 'worker_interrupted', finished_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (attempt_status, now, step["step_id"]),
+                        )
+                        connection.execute(
+                            """
+                            UPDATE workflow_steps
+                            SET status = ?, error_code = 'worker_interrupted',
+                                finished_at = ?, updated_at = ?
+                            WHERE step_id = ? AND status = 'running'
+                            """,
+                            (step_status, now, now, step["step_id"]),
+                        )
+                    workflow_status = (
+                        "recovery_required" if has_unknown_outcome else "paused"
+                    )
+                    reason_code = (
+                        "worker_interrupted"
+                        if has_unknown_outcome
+                        else "safe_step_interrupted"
+                        if active_steps
+                        else "worker_interrupted_before_step"
+                    )
+                    if has_unknown_outcome:
                         connection.execute(
                             """
                             UPDATE idempotency_records SET status = 'unknown_outcome'
@@ -217,9 +231,6 @@ class WorkerEngine:
                             """,
                             (str(task.task_id),),
                         )
-                    else:
-                        workflow_status = "paused"
-                        reason_code = "worker_interrupted_before_step"
                     connection.execute(
                         """
                         UPDATE workflow_runs
