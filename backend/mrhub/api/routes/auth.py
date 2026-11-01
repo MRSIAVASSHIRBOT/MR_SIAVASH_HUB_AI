@@ -4,12 +4,12 @@ import ipaddress
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import bearer_scheme, get_auth_service, require_user
-from mrhub.security.auth import AuthenticatedUser, AuthService
+from mrhub.security.auth import AuthenticatedUser, AuthService, LoginAttemptLimiter
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -57,11 +57,35 @@ def setup_owner(
 @router.post("/login", response_model=SessionResponse)
 def login(
     payload: LoginRequest,
+    request: Request,
+    response: Response,
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> SessionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    limiter: LoginAttemptLimiter = request.app.state.login_attempt_limiter
+    client_key = request.client.host if request.client else "unknown"
+    retry_after = limiter.retry_after(client_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts",
+            headers={
+                "Retry-After": str(retry_after),
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+            },
+        )
+
     result = service.login(payload.username, payload.password)
     if result is None:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        limiter.record_failure(client_key)
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+            headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        )
+    limiter.reset(client_key)
     token, user = result
     return SessionResponse(
         access_token=token,

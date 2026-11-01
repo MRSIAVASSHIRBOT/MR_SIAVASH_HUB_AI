@@ -12,6 +12,12 @@ from mrhub.main import create_app
 def authenticated_client() -> TestClient:
     database_path = Path(tempfile.gettempdir()) / f"mrhub-test-{uuid4().hex}.sqlite3"
     os.environ["MRH_DATABASE_PATH"] = str(database_path)
+    # Ephemeral test-only key; never use this value in a deployed environment.
+    import base64
+
+    os.environ["MRH_WORKFLOW_PAYLOAD_KEY"] = base64.urlsafe_b64encode(
+        b"test-only-payload-key-32-bytes!!"
+    ).decode("ascii")
     get_settings.cache_clear()
     client = TestClient(create_app())
     setup = client.post(
@@ -28,3 +34,13 @@ def authenticated_client() -> TestClient:
         {"Authorization": f"Bearer {login.json()['access_token']}"}
     )
     return client
+
+
+def run_worker_once():
+    """Explicitly advance one queued job in tests that exercise pull-driven execution."""
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.worker import WorkerEngine
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    return WorkerEngine(repository).run_once()

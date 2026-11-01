@@ -98,6 +98,156 @@ MIGRATIONS = (
             )""",
         ),
     ),
+    Migration.build(
+        3,
+        "durable_workflow_recovery_primitives",
+        (
+            """CREATE TABLE IF NOT EXISTS workflow_runs (
+                workflow_id TEXT PRIMARY KEY,
+                task_id TEXT UNIQUE REFERENCES tasks(task_id) ON DELETE SET NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'queued', 'running', 'paused', 'waiting_approval',
+                    'recovery_required', 'succeeded', 'failed', 'cancelled'
+                )),
+                request_digest TEXT NOT NULL,
+                definition_version INTEGER NOT NULL DEFAULT 1,
+                current_step INTEGER NOT NULL DEFAULT 0 CHECK (current_step >= 0),
+                last_error_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            ("CREATE INDEX IF NOT EXISTS idx_workflow_runs_status_updated "
+             "ON workflow_runs(status, updated_at)"),
+            """CREATE TABLE IF NOT EXISTS workflow_steps (
+                step_id TEXT PRIMARY KEY,
+                workflow_id TEXT NOT NULL REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                step_number INTEGER NOT NULL CHECK (step_number > 0),
+                step_kind TEXT NOT NULL,
+                step_name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'pending', 'running', 'succeeded', 'failed',
+                    'retry_wait', 'unknown_outcome', 'cancelled'
+                )),
+                input_digest TEXT,
+                output_digest TEXT,
+                error_code TEXT,
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                started_at TEXT,
+                finished_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(workflow_id, step_number)
+            )""",
+            ("CREATE INDEX IF NOT EXISTS idx_workflow_steps_status "
+             "ON workflow_steps(workflow_id, status, step_number)"),
+            """CREATE TABLE IF NOT EXISTS workflow_step_attempts (
+                attempt_id TEXT PRIMARY KEY,
+                step_id TEXT NOT NULL REFERENCES workflow_steps(step_id) ON DELETE CASCADE,
+                attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+                status TEXT NOT NULL CHECK (status IN (
+                    'running', 'succeeded', 'failed', 'unknown_outcome', 'cancelled'
+                )),
+                error_code TEXT,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                UNIQUE(step_id, attempt_number)
+            )""",
+            """CREATE TABLE IF NOT EXISTS workflow_checkpoints (
+                checkpoint_id TEXT PRIMARY KEY,
+                workflow_id TEXT NOT NULL REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                checkpoint_version INTEGER NOT NULL CHECK (checkpoint_version > 0),
+                step_number INTEGER NOT NULL CHECK (step_number >= 0),
+                state_digest TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(workflow_id, checkpoint_version)
+            )""",
+            """CREATE TABLE IF NOT EXISTS idempotency_records (
+                scope TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                task_id TEXT REFERENCES tasks(task_id) ON DELETE SET NULL,
+                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE SET NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'accepted', 'running', 'completed', 'failed', 'unknown_outcome'
+                )),
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                PRIMARY KEY(scope, idempotency_key)
+            )""",
+            ("CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
+             "ON idempotency_records(expires_at)"),
+        ),
+    ),
+    Migration.build(
+        4,
+        "workflow_owner_scope",
+        (
+            """CREATE TABLE IF NOT EXISTS agent_workflows (
+                workflow_id TEXT PRIMARY KEY, status TEXT NOT NULL,
+                request_digest TEXT NOT NULL, plan_json TEXT NOT NULL,
+                steps_json TEXT NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+        ),
+    ),
+    Migration.build(
+        5,
+        "agent_run_history",
+        (
+            """CREATE TABLE IF NOT EXISTS agent_runs (
+                run_id TEXT PRIMARY KEY,
+                request_digest TEXT NOT NULL,
+                status TEXT NOT NULL,
+                provider_name TEXT,
+                model_name TEXT,
+                plan_json TEXT NOT NULL,
+                tool_names_json TEXT NOT NULL,
+                executed_tool_count INTEGER NOT NULL,
+                error_code TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at)",
+        ),
+    ),
+    Migration.build(
+        6,
+        "agent_run_owner_scope",
+        (
+            "ALTER TABLE agent_runs ADD COLUMN owner_user_id TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_owner_created ON agent_runs(owner_user_id, created_at)",
+        ),
+    ),
+    Migration.build(
+        7,
+        "encrypted_workflow_execution_payloads",
+        (
+            """CREATE TABLE IF NOT EXISTS workflow_payloads (
+                workflow_id TEXT PRIMARY KEY REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                envelope_version INTEGER NOT NULL CHECK (envelope_version > 0),
+                nonce_b64 TEXT NOT NULL,
+                ciphertext_b64 TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_payloads_task ON workflow_payloads(task_id)",
+        ),
+    ),
+    Migration.build(
+        8,
+        "worker_process_heartbeats",
+        (
+            """CREATE TABLE IF NOT EXISTS worker_instances (
+                instance_id TEXT PRIMARY KEY,
+                process_id INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                heartbeat_at TEXT NOT NULL,
+                stopped_at TEXT,
+                status TEXT NOT NULL CHECK (status IN ('running', 'stopped'))
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_worker_instances_heartbeat ON worker_instances(status, heartbeat_at)",
+        ),
+    ),
 )
 
 
@@ -160,6 +310,15 @@ class SchemaMigrator:
                 elif migration.version == 2:
                     self._ensure_column("worker_executions", "recovered_at", "TEXT")
                     self._ensure_column("worker_executions", "next_attempt_at", "TEXT")
+                elif migration.version == 3:
+                    self._ensure_column("worker_executions", "lease_owner", "TEXT")
+                    self._ensure_column("worker_executions", "lease_expires_at", "TEXT")
+                    self._ensure_column("worker_executions", "heartbeat_at", "TEXT")
+                    self._ensure_column("worker_executions", "execution_token", "INTEGER NOT NULL DEFAULT 0")
+                elif migration.version == 4:
+                    self._ensure_column("workflow_runs", "owner_user_id", "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL")
+                    self._ensure_column("agent_workflows", "owner_user_id", "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL")
+                    connection.execute("CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)")
 
                 from datetime import UTC, datetime
 

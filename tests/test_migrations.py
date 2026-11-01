@@ -16,15 +16,32 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2]
+    assert migrator.migrate() == [1, 2, 3, 4, 5, 6, 7, 8]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2]
-    assert {
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+    worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
-    } >= {"attempt_count", "recovered_at", "next_attempt_at"}
+    }
+    assert {
+        "attempt_count", "recovered_at", "next_attempt_at",
+        "lease_owner", "lease_expires_at", "heartbeat_at", "execution_token",
+    } <= worker_columns
+    assert {
+        "workflow_runs", "workflow_steps", "workflow_step_attempts",
+        "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads",
+    } <= {
+        row["name"]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    workflow_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(workflow_runs)")
+    }
+    assert "owner_user_id" in workflow_columns
     connection.close()
 
 
@@ -49,12 +66,53 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5, 6, 7, 8]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
     assert row["event_id"] == "event-1"
     assert row["actor_id"] is None
+    connection.close()
+
+
+def test_v3_preserves_legacy_agent_workflow_rows(tmp_path):
+    connection = connect(tmp_path / "legacy-workflow.sqlite3")
+    connection.execute(
+        """CREATE TABLE agent_workflows (
+            workflow_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            request_digest TEXT NOT NULL,
+            plan_json TEXT NOT NULL,
+            steps_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"""
+    )
+    connection.execute(
+        """INSERT INTO agent_workflows VALUES
+        ('legacy-1', 'succeeded', 'digest', '{}', '[]',
+         '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"""
+    )
+    connection.commit()
+
+    SchemaMigrator(connection).migrate()
+
+    row = connection.execute(
+        "SELECT workflow_id, status FROM agent_workflows WHERE workflow_id = 'legacy-1'"
+    ).fetchone()
+    assert tuple(row) == ("legacy-1", "succeeded")
+    assert connection.execute(
+        "SELECT 1 FROM workflow_runs WHERE workflow_id = 'legacy-1'"
+    ).fetchone() is None
+    # Historical rows have no trustworthy owner identity. Migration must preserve
+    # them without guessing an owner or making them visible to arbitrary users.
+    columns = {
+        item["name"] for item in connection.execute("PRAGMA table_info(agent_workflows)")
+    }
+    assert "owner_user_id" in columns
+    assert connection.execute(
+        "SELECT owner_user_id FROM agent_workflows WHERE workflow_id = 'legacy-1'"
+    ).fetchone()["owner_user_id"] is None
     connection.close()
 
 
@@ -110,4 +168,59 @@ def test_unknown_future_migration_version_fails_closed(tmp_path):
 
     with pytest.raises(MigrationError, match="unsupported migration versions"):
         SchemaMigrator(connection).migrate()
+    connection.close()
+
+def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
+    from mrhub.agents.repository import AgentRunRepository
+    from mrhub.agents.workflow_repository import AgentWorkflowRepository
+
+    database_path = tmp_path / "agent-repositories.sqlite3"
+    AgentRunRepository(database_path).initialize()
+    AgentWorkflowRepository(database_path).initialize()
+
+    connection = connect(database_path)
+    versions = connection.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall()
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+    tables = {
+        row["name"]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert {"agent_runs", "agent_workflows"} <= tables
+    agent_run_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")
+    }
+    assert "owner_user_id" in agent_run_columns
+    connection.close()
+
+
+def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations
+
+    connection = connect(tmp_path / "historical-agent-runs.sqlite3")
+    original = migrations.MIGRATIONS
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:5])
+    SchemaMigrator(connection).migrate()
+    connection.execute(
+        """INSERT INTO agent_runs (
+            run_id, request_digest, status, provider_name, model_name,
+            plan_json, tool_names_json, executed_tool_count, error_code, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "historical-run", "a" * 64, "succeeded", None, None,
+            "{}", "[]", 0, None, "2026-01-01T00:00:00+00:00",
+        ),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations, "MIGRATIONS", original)
+    SchemaMigrator(connection).migrate()
+
+    row = connection.execute(
+        "SELECT owner_user_id FROM agent_runs WHERE run_id = 'historical-run'"
+    ).fetchone()
+    assert row["owner_user_id"] is None
     connection.close()

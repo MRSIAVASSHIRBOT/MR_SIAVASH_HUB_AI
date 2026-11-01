@@ -1,0 +1,130 @@
+# ADR-004.1: Unified Job Engine, Workflow Recovery, and Resume
+
+- Status: Accepted
+- Phase: 4.1 architecture / 4.2 recovery foundation / 4.3 owner-scoped recovery API
+- Date: 2026-11-01
+- Scope: local-first runtime, SQLite persistence, pull-driven workers
+
+## Context
+
+The repository already has a task lifecycle, a pull-driven worker, and a persistent agent workflow ledger. These components currently have overlapping lifecycle responsibilities. Workflow execution is not yet owned by the Job Engine, worker recovery treats stale running tasks as failed, and the worker has no durable lease/heartbeat ownership. The workflow ledger is also initialized independently of the versioned schema migrator.
+
+Recent commits added atomic workflow step transitions and replay protection. This ADR preserves those guarantees and extends them rather than replacing them.
+
+## Decisions
+
+### 1. One lifecycle owner
+
+The Job Engine is the sole owner of task lifecycle and queue eligibility. Workflows are durable aggregates attached to jobs; they do not introduce a second queue or worker pool. Agent/API entry points submit work and read state. A Workflow Runner, invoked by a claimed worker, performs bounded step execution and persists each transition.
+
+### 2. Payload minimization
+
+Persist only the minimum metadata required to identify, audit, and recover a workflow:
+- request/input digests, not raw prompts or tool payloads;
+- step identity, status, timestamps, bounded error codes, and attempt counts;
+- checkpoint version and digest, not executable serialized user input;
+- references only when a separately approved storage mechanism exists.
+
+If restart recovery requires an input that was intentionally not persisted, the workflow pauses and requests that input again. Any approval bound to the previous input fingerprint must be revalidated after input changes. Secrets, raw prompts, tool arguments, and tool outputs must not be written to audit metadata.
+
+### 3. Fail closed for ambiguous external outcomes
+
+A step whose external side effect may have occurred but whose outcome cannot be verified is marked `unknown_outcome`. It is not eligible for automatic retry or resume. The system must require reconciliation or explicit operator/user resolution. A retry is permitted only when the handler contract establishes that the operation is safe to retry or the downstream service provides a stable idempotency guarantee.
+
+Exactly-once execution across arbitrary external systems is not claimed. The design provides durable deduplication and effectively-once behavior only where downstream idempotency is supported.
+
+### 4. Durable ownership
+
+Worker ownership is represented by a database-backed lease with owner, expiry, heartbeat, and an execution fencing token. Claims and state changes use short SQLite write transactions and compare-and-set predicates. A process-local lock is not considered cross-process ownership.
+
+### 5. Checkpoints and resume
+
+A checkpoint is committed only after a step has a validated durable result. Resume starts from the first incomplete safe step; succeeded steps are not replayed. Corrupt, missing, stale, or input-mismatched checkpoints fail closed. Recovery must distinguish a worker that died before dispatch from one that may have completed an external side effect.
+
+### 6. Versioned migrations
+
+All persistent schema changes are introduced through immutable, checksummed SQLite migrations. Existing rows and existing workflow ledger data must remain intact. Runtime components must not independently create or alter production tables.
+
+## Workflow lifecycle
+
+`queued -> running -> paused | waiting_approval | recovery_required | succeeded | failed | cancelled`
+
+Only explicit, validated transitions are allowed. `recovery_required` may return to `queued` only after reconciliation establishes that resumption is safe. Terminal states are immutable.
+
+## Step lifecycle
+
+`pending -> running -> succeeded | failed | retry_wait | unknown_outcome | cancelled`
+
+A completed step cannot transition back to running. `unknown_outcome` is not equivalent to `failed`.
+
+## Implementation sequence
+
+1. Add a versioned schema migration and migration regression tests.
+2. Introduce durable lease/heartbeat and fencing semantics.
+3. Add idempotency records and request deduplication.
+4. Add checkpoint and recovery contracts.
+5. Add safe resume orchestration and workflow runner.
+6. Route agent workflows through the Job Engine.
+7. Add fault-injection, concurrency, migration, and security regression tests.
+8. Update operational and architecture documentation.
+
+## Acceptance criteria
+
+- A restart after a committed step resumes at the next safe step.
+- An ambiguous external result is never replayed automatically.
+- Duplicate submissions with the same idempotency scope/key do not create duplicate jobs.
+- Two workers cannot hold valid ownership for the same execution concurrently.
+- Expired leases are recovered only with fencing and outcome classification.
+- Missing required input causes a request for re-entry rather than payload reconstruction from logs.
+- Existing databases migrate without loss of task, approval, audit, or workflow data.
+- All schema changes are applied through the versioned migrator.
+
+
+## Phase 4.3 implementation update
+
+The recovery foundation is now exposed through authenticated, owner-scoped API operations:
+
+- Migration V4 adds nullable `owner_user_id` references for new unified and legacy workflow rows. Existing historical rows remain unowned and are not exposed through owner-scoped API lookups; ownership is never guessed or backfilled from a shared local account.
+- New unified and legacy workflows persist the authenticated user's ID at creation.
+- Workflow reads, resume-decision checks, and reconciliation mutations filter by the authenticated owner. A foreign workflow is deliberately indistinguishable from a missing workflow at the API boundary.
+- `POST /agent/workflows/{workflow_id}/reconciliation` records a user-confirmed external outcome and optional output digest. It does not call the tool or provider. Repeated or stale reconciliation requests fail closed.
+- `POST /agent/workflows/{workflow_id}/resume-check` requires the original request to be supplied again, compares its digest, and returns a recovery decision only. It does not execute or replay steps.
+
+### Explicit limitation
+
+The explicit `POST /agent/workflows/{workflow_id}/resume` operation now supports continuation from a validated safe boundary. It requires the owner to re-supply the original request, re-plans it, checks the request digest, stored step sequence and provider identity, requires the linked Job to be awaiting recovery, then claims a fresh fenced lease before continuing from the first incomplete step. It does not reconstruct inputs from persisted data. A workflow that is ambiguous, terminal, mismatched, owned by another user, or not awaiting recovery is rejected. External side effects interrupted during execution still require reconciliation before continuation; arbitrary external exactly-once behavior is not claimed.
+
+### Verification
+
+The latest Backend CI run for the implementation commit completed successfully:
+- Ruff: passed.
+- Pytest: 186 passed, 1 warning.
+- Failed tests: 0.
+
+
+## Phase 4.4 implementation update
+
+- `POST /agent/workflows/{workflow_id}/resume` now performs explicit owner-authorized continuation after re-planning and validating the supplied original request.
+- The runner verifies the workflow owner, request digest, step identity/kind sequence, selected provider fingerprint, and linked Job recovery state.
+- The linked Job transitions through the existing lifecycle back into `running`, and the resumed execution must acquire a new durable lease/fencing token.
+- Previously succeeded steps are skipped. Only the first incomplete eligible step and later validated steps are executed.
+- The resume regression test simulates a worker interruption at a safe tool boundary and verifies that the workflow completes without replaying its previously succeeded provider-selection step.
+- Latest Backend CI run #485: Ruff passed; Pytest 188 passed, 1 warning; 0 failures.
+
+## Phase 4.5 schema consistency update
+
+- Migration V5 now creates the legacy agent-run history table and its creation-time index.
+- The legacy Agent Run and Agent Workflow repositories delegate initialization to the canonical TaskRepository/SchemaMigrator instead of issuing independent runtime CREATE TABLE or ALTER TABLE statements.
+- Migration tests now verify versions 1–5, preservation of legacy workflow rows, and repository initialization through the versioned migration path.
+
+
+## Phase 4.7: Workflow submission idempotency boundary
+
+- `POST /agent/workflows` accepts an optional `Idempotency-Key` scoped to the authenticated user.
+- Matching completed submissions return the existing owner-scoped workflow; a key reused with a different request digest returns `409 Conflict`.
+- If a process fails after reserving the key but before a workflow can be read back, the request fails closed rather than replaying potentially executed work.
+- Regression tests cover successful duplicate submission and changed-request conflict.
+
+### Remaining integration requirement
+
+This phase does **not** yet satisfy the stronger atomic-enqueue acceptance criterion: reservation, Job/Workflow creation, and resource binding still span separate repository transactions. A crash in that window can leave a reservation requiring operator-level recovery. Workflow execution also remains request-scoped rather than dispatched by `WorkerEngine`, and cancellation is not yet coordinated across Job and Workflow state. Do not treat this as completion of issue #5 or enable long-running/external-side-effect workflows until the worker handoff, atomic submission transaction, cancellation checks, and associated fault-injection tests are implemented.

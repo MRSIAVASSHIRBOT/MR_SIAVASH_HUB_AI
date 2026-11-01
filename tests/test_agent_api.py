@@ -121,6 +121,12 @@ def test_agent_execute_persists_metadata_without_prompt_or_tool_payload():
     assert history.json()["request_digest"] == run["request_digest"]
     assert history.json()["tool_names"] == ["text.echo"]
 
+    # A different owner must not be able to read this run through the repository API.
+    from mrhub.agents.repository import AgentRunRepository
+
+    history_repository = AgentRunRepository(get_settings().database_path)
+    assert history_repository.get(run["run_id"], owner_user_id="not-the-owner") is None
+
 
 def test_agent_run_history_returns_not_found_for_unknown_id():
     client = authenticated_client()
@@ -129,6 +135,8 @@ def test_agent_run_history_returns_not_found_for_unknown_id():
 
 
 def test_agent_workflow_executes_and_persists_each_step():
+    from client_helpers import run_worker_once
+
     client = authenticated_client()
     response = client.post(
         "/agent/workflows",
@@ -138,18 +146,29 @@ def test_agent_workflow_executes_and_persists_each_step():
         },
     )
     assert response.status_code == 200
-    body = response.json()
-    workflow = body["workflow"]
-    assert workflow["status"] == "succeeded"
-    assert workflow["steps"][1]["status"] == "succeeded"
+    submitted = response.json()
+    workflow = submitted["workflow"]
+    assert submitted["queued"] is True
+    assert workflow["status"] == "queued"
     assert workflow["stored_request"] is False
-    assert workflow["stored_tool_payloads"] is False
-    assert body["execution"]["execution_completed"] is True
+    assert workflow["stored_step_payloads"] is False
+    assert workflow["stored_step_outputs"] is False
+    assert workflow["task_id"] is not None
 
+    processed = run_worker_once()
+    assert processed is not None
     history = client.get("/agent/workflows/" + workflow["workflow_id"])
     assert history.status_code == 200
-    assert history.json()["steps"][1]["status"] == "succeeded"
+    completed = history.json()
+    assert completed["status"] == "succeeded"
+    assert completed["steps"][1]["status"] == "succeeded"
 
+    linked_task = client.get(f"/tasks/{workflow['task_id']}")
+    assert linked_task.status_code == 200
+    assert linked_task.json()["status"] == "succeeded"
+    task_result = client.get(f"/tasks/{workflow['task_id']}/result")
+    assert task_result.status_code == 200
+    assert task_result.json()["result"]["execution_completed"] is True
 
 def test_agent_workflow_persists_blocked_plan_without_execution():
     client = authenticated_client()
@@ -165,6 +184,10 @@ def test_agent_workflow_persists_blocked_plan_without_execution():
     assert body["workflow"]["status"] == "blocked"
     assert body["execution"] is None
 
+    history = client.get("/agent/workflows/" + body["workflow"]["workflow_id"])
+    assert history.status_code == 200
+    assert history.json()["status"] == "blocked"
+
 
 def test_agent_workflow_not_found():
     client = authenticated_client()
@@ -172,3 +195,305 @@ def test_agent_workflow_not_found():
         "/agent/workflows/00000000-0000-0000-0000-000000000002"
     )
     assert response.status_code == 404
+
+
+
+def test_workflow_request_digest_distinguishes_same_length_goals():
+    from mrhub.agents.core import AgentPlanRequest
+    from mrhub.api.routes.agent import _workflow_digest
+
+    first = AgentPlanRequest(goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "one"}}])
+    second = AgentPlanRequest(goal="bravo", tools=[{"name": "text.echo", "payload": {"text": "one"}}])
+    third = AgentPlanRequest(goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "two"}}])
+
+    assert _workflow_digest(first) != _workflow_digest(second)
+    assert _workflow_digest(first) != _workflow_digest(third)
+
+
+
+def test_workflow_resume_check_is_owner_scoped_and_never_executes():
+    client = authenticated_client()
+    created = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Create resumability metadata",
+            "tools": [{"name": "text.echo", "payload": {"text": "safe"}}],
+        },
+    )
+    assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
+    workflow_id = created.json()["workflow"]["workflow_id"]
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={
+            "request": {
+                "goal": "Create resumability metadata",
+                "tools": [{"name": "text.echo", "payload": {"text": "safe"}}],
+            }
+        },
+    )
+    assert checked.status_code == 200
+    assert checked.json()["decision"] == "terminal"
+    assert checked.json()["execution_started"] is False
+
+
+
+
+def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step():
+    from mrhub.infrastructure.database import TaskRepository
+
+    client = authenticated_client()
+    original = {
+        "goal": "Resume a safe interrupted workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "resume-me"}}],
+    }
+    created = client.post("/agent/workflows", json=original)
+    assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
+    workflow = created.json()["workflow"]
+    workflow_id = workflow["workflow_id"]
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE workflow_runs SET status = 'paused' WHERE workflow_id = ?",
+            (workflow_id,),
+        )
+        connection.execute(
+            """UPDATE workflow_steps
+               SET status = 'retry_wait', output_digest = NULL,
+                   error_code = 'worker_interrupted', finished_at = NULL
+               WHERE workflow_id = ? AND step_number = 2""",
+            (workflow_id,),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'waiting_approval' WHERE task_id = ?",
+            (workflow["task_id"],),
+        )
+
+    resumed = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": original},
+    )
+    assert resumed.status_code == 200
+    body = resumed.json()
+    assert body["workflow"]["status"] == "succeeded"
+    assert body["execution"]["execution_completed"] is True
+    assert body["execution"]["executed_tool_count"] == 1
+
+    task = client.get(f"/tasks/{workflow['task_id']}")
+    assert task.status_code == 200
+    assert task.json()["status"] == "succeeded"
+
+
+
+def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
+    from mrhub.domain.tasks import TaskRecord, TaskStatus
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.engine import JobEngine
+    from mrhub.jobs.leases import LeaseManager
+    from mrhub.jobs.recovery import WorkflowRecoveryRepository
+
+    client = authenticated_client()
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    with tasks._connection() as connection:
+        owner = connection.execute(
+            "SELECT user_id FROM auth_users WHERE username = 'owner'"
+        ).fetchone()["user_id"]
+
+    request = {
+        "goal": "Resume a safely interrupted workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "resume-safe"}}],
+    }
+    from mrhub.agents.core import AgentPlanRequest
+
+    parsed = AgentPlanRequest.model_validate(request)
+    from mrhub.agents.core import AgentCore
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
+    from mrhub.api.routes.agent import _workflow_digest
+    from mrhub.api.routes.models import build_model_router
+    from mrhub.tools.builtins import build_tool_registry
+
+    core = AgentCore(build_model_router(), build_tool_registry())
+    plan = core.plan(parsed)
+    task = TaskRecord(task_type="agent.workflow", description="recovery test")
+    recovery = WorkflowRecoveryRepository(tasks.database_path)
+    workflow_id = recovery.create_run(
+        _workflow_digest(parsed),
+        [
+            {"step_number": 1, "kind": "provider_selection", "name": "provider_selection"},
+            {"step_number": 2, "kind": "safe_tool", "name": "text.echo"},
+        ],
+        task=task,
+        owner_user_id=owner,
+    )
+
+    jobs = JobEngine(tasks)
+    jobs.transition(task.task_id, TaskStatus.RUNNING)
+    leases = LeaseManager(tasks.database_path)
+    lease = leases.acquire(str(task.task_id), "test-resume-worker")
+    assert lease is not None
+    recovery.start_run(workflow_id, lease=lease)
+    provider_attempt = recovery.start_step(workflow_id, 1, lease=lease)
+    recovery.complete_step(
+        workflow_id,
+        provider_attempt,
+        AgentWorkflowRunner._digest(plan["selected_provider"]),
+        lease=lease,
+    )
+    recovery.start_step(workflow_id, 2, lease=lease)
+    recovery.mark_interrupted(workflow_id, lease=lease)
+    jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
+    assert leases.release(lease)
+
+    response = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["workflow"]["status"] == "succeeded"
+    assert response.json()["workflow"]["steps"][1]["status"] == "succeeded"
+    linked_task = client.get(f"/tasks/{task.task_id}")
+    assert linked_task.status_code == 200
+    assert linked_task.json()["status"] == "succeeded"
+
+
+def test_agent_workflow_resume_rejects_changed_original_request_without_execution():
+    from mrhub.infrastructure.database import TaskRepository
+
+    client = authenticated_client()
+    original = {
+        "goal": "Original request must be preserved",
+        "tools": [{"name": "text.echo", "payload": {"text": "original-safe-input"}}],
+    }
+    created = client.post("/agent/workflows", json=original)
+    assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
+    workflow = created.json()["workflow"]
+    workflow_id = workflow["workflow_id"]
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE workflow_runs SET status = 'paused' WHERE workflow_id = ?",
+            (workflow_id,),
+        )
+        connection.execute(
+            """UPDATE workflow_steps
+               SET status = 'retry_wait', output_digest = NULL,
+                   error_code = 'worker_interrupted', finished_at = NULL
+               WHERE workflow_id = ? AND step_number = 2""",
+            (workflow_id,),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'waiting_approval' WHERE task_id = ?",
+            (workflow["task_id"],),
+        )
+
+    changed_request = {
+        "goal": "Changed request must not be executed",
+        "tools": [{"name": "text.echo", "payload": {"text": "changed-input"}}],
+    }
+    resumed = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": changed_request},
+    )
+    assert resumed.status_code == 409
+
+    history = client.get(f"/agent/workflows/{workflow_id}")
+    assert history.status_code == 200
+    assert history.json()["status"] == "paused"
+    task = client.get(f"/tasks/{workflow['task_id']}")
+    assert task.status_code == 200
+    assert task.json()["status"] == "waiting_approval"
+
+
+def test_agent_workflow_duplicate_resume_does_not_replay_completed_work():
+    client = authenticated_client()
+    original = {
+        "goal": "Duplicate resume must be harmless",
+        "tools": [{"name": "text.echo", "payload": {"text": "execute-once"}}],
+    }
+    created = client.post("/agent/workflows", json=original)
+    assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
+    workflow = created.json()["workflow"]
+    workflow_id = workflow["workflow_id"]
+
+    # Simulate a paused workflow whose only tool step has already been checkpointed.
+    from mrhub.infrastructure.database import TaskRepository
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE workflow_runs SET status = 'paused' WHERE workflow_id = ?",
+            (workflow_id,),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'waiting_approval' WHERE task_id = ?",
+            (workflow["task_id"],),
+        )
+
+    first = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": original},
+    )
+    assert first.status_code == 200
+    assert first.json()["workflow"]["status"] == "succeeded"
+    assert first.json()["execution"]["executed_tool_count"] == 0
+
+    second = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": original},
+    )
+    assert second.status_code == 409
+    history = client.get(f"/agent/workflows/{workflow_id}")
+    assert history.status_code == 200
+    assert history.json()["status"] == "succeeded"
+
+
+
+def test_agent_workflow_idempotency_key_returns_existing_workflow_without_reexecution():
+    client = authenticated_client()
+    request = {
+        "goal": "Idempotent workflow submission",
+        "tools": [{"name": "text.echo", "payload": {"text": "submit-once"}}],
+    }
+    headers = {"Idempotency-Key": "workflow-submit-001"}
+    first = client.post("/agent/workflows", json=request, headers=headers)
+    assert first.status_code == 200
+    first_workflow = first.json()["workflow"]
+
+    replay = client.post("/agent/workflows", json=request, headers=headers)
+    assert replay.status_code == 200
+    assert replay.json()["idempotent_replay"] is True
+    assert replay.json()["workflow"]["workflow_id"] == first_workflow["workflow_id"]
+    assert replay.json()["workflow"]["task_id"] == first_workflow["task_id"]
+
+
+def test_agent_workflow_idempotency_key_rejects_changed_request():
+    client = authenticated_client()
+    headers = {"Idempotency-Key": "workflow-submit-002"}
+    first = client.post(
+        "/agent/workflows",
+        json={"goal": "First request", "tools": [{"name": "text.echo", "payload": {"text": "one"}}]},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    conflict = client.post(
+        "/agent/workflows",
+        json={"goal": "Different request", "tools": [{"name": "text.echo", "payload": {"text": "two"}}]},
+        headers=headers,
+    )
+    assert conflict.status_code == 409

@@ -80,3 +80,17 @@ def test_workflow_rejects_terminal_step_mutation(tmp_path):
 
     with pytest.raises(RuntimeError, match="transition is not allowed"):
         repository.record_step(workflow_id, 2, "succeeded")
+
+
+
+def test_legacy_workflow_lookup_is_scoped_to_owner(tmp_path):
+    repository = AgentWorkflowRepository(tmp_path / "workflow-owner.sqlite3")
+    workflow = repository.create(
+        "f" * 64,
+        {"execution_ready": False, "steps": []},
+        owner_user_id="owner-a",
+    )
+    workflow_id = UUID(workflow["workflow_id"])
+
+    assert repository.get(workflow_id, owner_user_id="owner-a") is not None
+    assert repository.get(workflow_id, owner_user_id="owner-b") is None
