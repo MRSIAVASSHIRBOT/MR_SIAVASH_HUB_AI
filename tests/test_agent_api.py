@@ -195,3 +195,54 @@ def test_workflow_request_digest_distinguishes_same_length_goals():
 
     assert _workflow_digest(first) != _workflow_digest(second)
     assert _workflow_digest(first) != _workflow_digest(third)
+
+
+
+def test_workflow_resume_check_is_owner_scoped_and_never_executes():
+    client = authenticated_client()
+    created = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Create resumability metadata",
+            "tools": [{"name": "text.echo", "payload": {"text": "safe"}}],
+        },
+    )
+    assert created.status_code == 200
+    workflow_id = created.json()["workflow"]["workflow_id"]
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={
+            "request": {
+                "goal": "Create resumability metadata",
+                "tools": [{"name": "text.echo", "payload": {"text": "safe"}}],
+            }
+        },
+    )
+    assert checked.status_code == 200
+    assert checked.json()["decision"] == "terminal"
+    assert checked.json()["execution_started"] is False
+
+
+def test_workflow_resume_check_requires_original_request_digest():
+    client = authenticated_client()
+    created = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Original workflow request",
+            "tools": [{"name": "text.echo", "payload": {"text": "one"}}],
+        },
+    )
+    workflow_id = created.json()["workflow"]["workflow_id"]
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={
+            "request": {
+                "goal": "Different request",
+                "tools": [{"name": "text.echo", "payload": {"text": "two"}}],
+            }
+        },
+    )
+    assert checked.status_code == 200
+    assert checked.json()["decision"] == "request_input"
+    assert checked.json()["reason_code"] == "request_digest_mismatch"
+    assert checked.json()["execution_started"] is False
