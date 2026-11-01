@@ -26,6 +26,8 @@ def test_parse_github_repository_url_normalizes_git_suffix():
         "https://github.com/owner",
         "https://github.com/owner/repo/issues",
         "https://github.com/owner/repo?token=secret",
+        "https://github.com/../repo",
+        "https://github.com/owner/..",
         "http://github.com/owner/repo",
     ],
 )
@@ -127,3 +129,19 @@ def test_github_404_becomes_safe_not_found_error(monkeypatch):
         _metadata_response("https://github.com/Example/Missing")
     assert error.value.code == "repository_not_found"
     assert error.value.status_code == 404
+
+
+def test_malformed_public_counters_are_bounded_instead_of_crashing(monkeypatch, tmp_path):
+    metadata = {
+        "full_name": "Example/BadCounters",
+        "stargazers_count": "not-an-integer",
+        "open_issues_count": -9,
+        "license": {"spdx_id": "MIT"},
+    }
+    monkeypatch.setattr("mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata)
+    registry = CapabilityRegistry(tmp_path / "bad-counters.sqlite3")
+
+    _candidate, result = discover_github_candidate("https://github.com/Example/BadCounters", registry)
+
+    assert result["stargazers_count"] == 0
+    assert result["open_issues_count"] == 0
