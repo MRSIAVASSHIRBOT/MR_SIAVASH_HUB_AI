@@ -1,3 +1,4 @@
+from threading import Event, Thread
 from uuid import UUID
 
 from client_helpers import authenticated_client
@@ -106,3 +107,50 @@ def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch
 
     task = repository.get(UUID(workflow["task_id"]))
     assert task is not None and task.status.value == "succeeded"
+
+
+
+def test_cancel_during_safe_step_commits_job_and_workflow_together(monkeypatch):
+    client = authenticated_client()
+    request = {
+        "goal": "Cancel a running safe workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "wait-for-cancel"}}],
+    }
+    submitted = client.post("/agent/workflows", json=request)
+    assert submitted.status_code == 200
+    workflow = submitted.json()["workflow"]
+    entered = Event()
+    release = Event()
+    worker_result = []
+
+    def block_safe_step(self, agent_request, **callbacks):
+        callbacks["on_step"](2, "running", None)
+        entered.set()
+        assert release.wait(5)
+        callbacks["on_step_result"](2, "0" * 64)
+        return {"execution_completed": True, "results": [{"ok": True}]}
+
+    monkeypatch.setattr(AgentCore, "execute", block_safe_step)
+
+    def run_worker():
+        worker_result.append(_run_worker_once())
+
+    thread = Thread(target=run_worker)
+    thread.start()
+    assert entered.wait(5)
+
+    requested = client.post(f"/jobs/{workflow['task_id']}/cancel")
+    assert requested.status_code == 200
+    assert requested.json()["status"] == "waiting_approval"
+    release.set()
+    thread.join(10)
+    assert not thread.is_alive()
+
+    final_task = client.get(f"/tasks/{workflow['task_id']}")
+    final_workflow = client.get(f"/agent/workflows/{workflow['workflow_id']}")
+    assert final_task.status_code == 200
+    assert final_workflow.status_code == 200
+    assert final_task.json()["status"] == "cancelled"
+    assert final_workflow.json()["status"] == "cancelled"
+    assert worker_result[0] is not None
+    assert worker_result[0].status.value == "cancelled"
