@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from mrhub.capabilities.metadata_evaluation import evaluate_repository_metadata
 from mrhub.capabilities.registry import (
     CapabilityCandidate,
     CapabilityRegistry,
@@ -145,6 +146,7 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         "open_issues_count": max(0, int(metadata.get("open_issues_count", 0) or 0)),
         "updated_at": str(metadata.get("updated_at") or "")[:40],
         "candidate": candidate.as_dict(),
+        "evaluation": evaluate_repository_metadata(metadata),
         "source_code_fetched": False,
         "source_code_executed": False,
         "installation_started": False,
