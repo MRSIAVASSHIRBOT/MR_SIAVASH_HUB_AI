@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
 
 from mrhub.capabilities.github_discovery import (
