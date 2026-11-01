@@ -1,0 +1,231 @@
+"""Worker-owned dispatch for durable, encrypted agent workflows."""
+from __future__ import annotations
+
+import hashlib
+import json
+from threading import Event
+from uuid import UUID
+
+from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.execution_inputs import (
+    ExecutionInputUnavailable,
+    WorkflowExecutionInputRepository,
+)
+from mrhub.config import get_settings
+from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import WorkerLease
+from mrhub.jobs.recovery import StepAttempt, WorkflowRecoveryRepository
+
+
+def workflow_digest(request: AgentPlanRequest) -> str:
+    encoded = json.dumps(
+        request.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def enqueue_workflow(
+    repository: TaskRepository,
+    core: AgentCore,
+    request: AgentPlanRequest,
+    plan: dict[str, object],
+    request_digest: str,
+    owner_user_id: str,
+    submission_key: str | None = None,
+) -> dict[str, object]:
+    """Atomically create queued Job/Workflow; persist only encrypted bounded inputs."""
+    settings = get_settings()
+    inputs = WorkflowExecutionInputRepository(
+        repository.database_path, settings.workflow_input_encryption_key
+    )
+    # Fail before creating durable work if encryption is unavailable or payload is invalid.
+    inputs._cipher()
+    payload = request.model_dump(mode="json")
+    inputs._encode_payload(payload)
+
+    raw_steps = plan.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raise ValueError("Workflow plan contains no executable steps")
+    step_specs: list[dict[str, object]] = []
+    for step in raw_steps:
+        if not isinstance(step, dict):
+            continue
+        number = int(step["step"])
+        if number == 1:
+            kind, name = "provider_selection", "provider_selection"
+        else:
+            tool = request.tools[number - 2]
+            definition = core.tool_registry.get(tool.name)
+            kind = "external_tool" if definition.external_side_effect else "safe_tool"
+            name = tool.name
+        step_specs.append({"step_number": number, "kind": kind, "name": name})
+    task = TaskRecord(task_type="agent.workflow", description="Queued agent workflow")
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    workflow_id = recovery.create_run(
+        request_digest,
+        step_specs,
+        task=task,
+        owner_user_id=owner_user_id,
+        submission=(owner_user_id, "/agent/workflows", submission_key, request_digest)
+        if submission_key is not None else None,
+    )
+    try:
+        input_metadata = inputs.store(str(workflow_id), owner_user_id, payload)
+    except Exception:
+        # Never leave an executable queued task if encrypted input persistence fails.
+        recovery.fail_queued_run(workflow_id, error_code="workflow_input_persistence_failed")
+        raise
+    return {
+        "workflow": recovery.get_run(workflow_id, owner_user_id=owner_user_id),
+        "execution": None,
+        "queue": {"status": "queued", "worker_dispatch": "pending"},
+        "input_metadata": {
+            "schema_version": input_metadata["schema_version"],
+            "payload_digest": input_metadata["payload_digest"],
+        },
+    }
+
+
+def dispatch_queued_workflow(
+    repository: TaskRepository,
+    task: TaskRecord,
+    lease: WorkerLease,
+    lease_lost: Event,
+) -> dict[str, object]:
+    """Execute one queued workflow under the generic worker's existing lease."""
+    settings = get_settings()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    with repository._connection() as connection:
+        row = connection.execute(
+            "SELECT workflow_id, owner_user_id, request_digest FROM workflow_runs WHERE task_id = ?",
+            (str(task.task_id),),
+        ).fetchone()
+    if row is None or not row["owner_user_id"]:
+        return {"_worker_task_status": "failed", "error_code": "workflow_record_missing"}
+    workflow_id = UUID(row["workflow_id"])
+    owner_user_id = row["owner_user_id"]
+    try:
+        payload = WorkflowExecutionInputRepository(
+            repository.database_path, settings.workflow_input_encryption_key
+        ).load(str(workflow_id), owner_user_id)
+        request = AgentPlanRequest.model_validate(payload)
+        if workflow_digest(request) != row["request_digest"]:
+            raise ValueError("workflow_input_digest_mismatch")
+        from mrhub.api.routes.models import build_model_router
+        from mrhub.tools.builtins import build_tool_registry
+
+        core = AgentCore(build_model_router(), build_tool_registry())
+        plan = core.plan(request)
+        if not plan.get("execution_ready"):
+            raise ValueError("workflow_no_longer_execution_ready")
+        expected: list[tuple[int, str, str]] = []
+        for item in plan.get("steps", []):
+            if not isinstance(item, dict):
+                continue
+            number = int(item["step"])
+            if number == 1:
+                expected.append((1, "provider_selection", "provider_selection"))
+            else:
+                tool = request.tools[number - 2]
+                definition = core.tool_registry.get(tool.name)
+                expected.append((
+                    number,
+                    "external_tool" if definition.external_side_effect else "safe_tool",
+                    tool.name,
+                ))
+        stored = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+        if stored is None:
+            raise LookupError("workflow_not_found")
+        actual = [
+            (int(step["step_number"]), str(step["step_kind"]), str(step["step_name"]))
+            for step in stored["steps"]
+        ]
+        if expected != actual:
+            raise ValueError("workflow_definition_changed")
+    except (ExecutionInputUnavailable, LookupError, ValueError, TypeError):
+        recovery.fail_queued_run(workflow_id, error_code="workflow_input_unavailable")
+        return {"_worker_task_status": "failed", "error_code": "workflow_input_unavailable"}
+
+    attempts: dict[int, StepAttempt] = {}
+    try:
+        if lease_lost.is_set():
+            raise RuntimeError("worker_lease_lost")
+        recovery.start_run(workflow_id, lease=lease)
+        provider_attempt = recovery.start_step(workflow_id, 1, lease=lease)
+        provider_bytes = json.dumps(
+            plan.get("selected_provider", {}), sort_keys=True, separators=(",", ":")
+        ).encode()
+        recovery.complete_step(
+            workflow_id, provider_attempt, hashlib.sha256(provider_bytes).hexdigest(),
+            lease=lease,
+        )
+
+        def ensure_active() -> None:
+            if lease_lost.is_set():
+                raise RuntimeError("worker_lease_lost")
+            current = repository.get(task.task_id)
+            if current is None or current.status is TaskStatus.CANCELLED:
+                raise RuntimeError("workflow_cancelled")
+
+        def on_step(number: int, status: str, error_code: str | None) -> None:
+            ensure_active()
+            if status == "running":
+                attempts[number] = recovery.start_step(workflow_id, number, lease=lease)
+            elif status == "failed" and number in attempts:
+                tool = request.tools[number - 2]
+                definition = core.tool_registry.get(tool.name)
+                recovery.fail_step(
+                    workflow_id, attempts.pop(number),
+                    error_code or "tool_execution_failed",
+                    unknown_outcome=definition.external_side_effect, lease=lease,
+                )
+
+        def on_step_result(number: int, output_digest: str) -> None:
+            ensure_active()
+            attempt = attempts.pop(number, None)
+            if attempt is None:
+                raise RuntimeError("workflow_step_attempt_missing")
+            recovery.complete_step(workflow_id, attempt, output_digest, lease=lease)
+
+        execution = core.execute(request, on_step=on_step, on_step_result=on_step_result)
+        current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+        if execution.get("execution_completed"):
+            recovery.finish_run(workflow_id, "succeeded", lease=lease)
+            return {
+                "_worker_task_status": "succeeded",
+                "workflow_id": str(workflow_id),
+                "execution_completed": True,
+                "executed_tool_count": len(execution.get("results", [])),
+            }
+        status = current["status"] if current else "failed"
+        if status == "running":
+            recovery.finish_run(workflow_id, "failed", lease=lease)
+            status = "failed"
+        return {
+            "_worker_task_status": "waiting_approval" if status in {"paused", "recovery_required"} else "failed",
+            "workflow_id": str(workflow_id),
+            "workflow_status": status,
+            "error_code": "workflow_step_failed",
+        }
+    except Exception:
+        current_task = repository.get(task.task_id)
+        if current_task is not None and current_task.status is TaskStatus.CANCELLED:
+            recovery.cancel_run(workflow_id, lease=lease)
+            return {"_worker_task_status": "cancelled", "workflow_id": str(workflow_id)}
+        if not lease_lost.is_set():
+            try:
+                recovery.mark_interrupted(workflow_id, lease=lease)
+            except Exception:
+                pass
+        current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+        status = current["status"] if current else "failed"
+        return {
+            "_worker_task_status": "waiting_approval" if status in {"paused", "recovery_required"} else "failed",
+            "workflow_id": str(workflow_id),
+            "workflow_status": status,
+            "error_code": "workflow_interrupted",
+        }
