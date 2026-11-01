@@ -416,7 +416,7 @@ class WorkerEngine:
         except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
             return self._finish_failure(task, "handler_failed", lease=lease)
-        except Exception:
+        except Exception:  # noqa: BLE001 - dispatch boundary must fail the claimed task closed
             return self._finish_failure(task, "workflow_dispatch_failed", lease=lease)
 
         if lease_lost.is_set():
