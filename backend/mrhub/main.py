@@ -16,6 +16,7 @@ from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.tools import router as tools_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.security.auth import LoginAttemptLimiter
 
 
 def create_app() -> FastAPI:
@@ -33,6 +34,8 @@ def create_app() -> FastAPI:
         description="Local-first modular AI workspace API",
         lifespan=lifespan,
     )
+
+    app.state.login_attempt_limiter = LoginAttemptLimiter()
 
     app.include_router(health_router)
     app.include_router(auth_router)
