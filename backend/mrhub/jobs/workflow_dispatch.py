@@ -93,6 +93,11 @@ class WorkflowWorkerHandler:
             lease=lease,
             lease_lost=lease_lost,
         )
+        current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+        if current is not None and current["status"] in {"succeeded", "failed", "cancelled"}:
+            self.recovery.delete_encrypted_payload(
+                workflow_id, owner_user_id=owner_user_id
+            )
         execution = result.get("execution")
         if isinstance(execution, dict):
             return {
