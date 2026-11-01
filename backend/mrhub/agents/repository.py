@@ -33,6 +33,8 @@ class AgentRunRepository:
         self,
         request_payload: dict[str, object],
         execution: dict[str, object],
+        *,
+        owner_user_id: str | None = None,
     ) -> dict[str, object]:
         self.initialize()
         requested_tools = request_payload.get("tools", [])
@@ -80,8 +82,9 @@ class AgentRunRepository:
                 """
                 INSERT INTO agent_runs (
                     run_id, request_digest, status, provider_name, model_name,
-                    plan_json, tool_names_json, executed_tool_count, error_code, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    plan_json, tool_names_json, executed_tool_count, error_code, created_at,
+                    owner_user_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(run_id),
@@ -94,14 +97,18 @@ class AgentRunRepository:
                     len(results) if isinstance(results, list) else 0,
                     error_code,
                     created_at,
+                    owner_user_id,
                 ),
             )
-        return self.get(run_id)  # type: ignore[return-value]
+        return self.get(run_id, owner_user_id=owner_user_id)  # type: ignore[return-value]
 
-    def get(self, run_id: UUID) -> dict[str, object] | None:
+    def get(
+        self, run_id: UUID, *, owner_user_id: str | None = None
+    ) -> dict[str, object] | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM agent_runs WHERE run_id = ?", (str(run_id),)
+                "SELECT * FROM agent_runs WHERE run_id = ? AND owner_user_id = ?",
+                (str(run_id), owner_user_id),
             ).fetchone()
         if row is None:
             return None
