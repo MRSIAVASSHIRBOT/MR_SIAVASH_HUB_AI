@@ -12,6 +12,8 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.agents.worker_dispatch import enqueue_workflow
+from mrhub.agents.execution_inputs import ExecutionInputError, ExecutionInputUnavailable
 from mrhub.agents.submission_repository import (
     IdempotencyConflict,
     WorkflowSubmissionRepository,
@@ -139,13 +141,24 @@ def execute_agent_workflow(
         task_repository = TaskRepository(settings.database_path)
         task_repository.initialize()
         try:
-            return AgentWorkflowRunner(task_repository, core).execute(
+            return enqueue_workflow(
+                task_repository,
+                core,
                 request,
                 plan,
                 request_digest,
                 current_user.user_id,
                 submission_key=idempotency_key,
             )
+        except ExecutionInputUnavailable as exc:
+            if idempotency_key is not None:
+                submission_repository.mark_failed(
+                    current_user.user_id, "/agent/workflows", idempotency_key, request_digest
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="Workflow queue requires a valid configured encryption key",
+            ) from exc
         except Exception:
             if idempotency_key is not None:
                 try:
@@ -153,7 +166,7 @@ def execute_agent_workflow(
                         current_user.user_id, "/agent/workflows", idempotency_key, request_digest
                     )
                 except Exception:
-                    # Keep the original execution error; a failed reservation blocks replay.
+                    # Preserve the original failure; the reservation must not be replayed blindly.
                     pass
             raise
     except LookupError as exc:
