@@ -99,7 +99,7 @@ MIGRATIONS = (
         ),
     ),
     Migration.build(
-        6,
+        3,
         "capability_discovery_catalog",
         (
             """CREATE TABLE IF NOT EXISTS capability_candidates (
