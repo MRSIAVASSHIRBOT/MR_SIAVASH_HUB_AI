@@ -6,10 +6,10 @@ not silently start background execution; operators opt into this process.
 """
 from __future__ import annotations
 
+import os
 import signal
 import sqlite3
 import time
-import os
 from datetime import UTC, datetime
 from threading import Event, Thread
 from uuid import uuid4
