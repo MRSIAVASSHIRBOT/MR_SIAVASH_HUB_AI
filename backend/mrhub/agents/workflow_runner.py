@@ -73,6 +73,7 @@ class AgentWorkflowRunner:
         plan: dict[str, object],
         request_digest: str,
         owner_user_id: str,
+        submission_key: str | None = None,
     ) -> dict[str, object]:
         """Create a linked Job/Workflow and execute each validated step in order."""
         raw_steps = plan.get("steps", [])
@@ -103,6 +104,8 @@ class AgentWorkflowRunner:
             step_specs,
             task=task,
             owner_user_id=owner_user_id,
+            submission=(owner_user_id, "/agent/workflows", submission_key, request_digest)
+            if submission_key is not None else None,
         )
         AuditLogger(self.repository).record(
             event_type="task.submitted",
