@@ -232,7 +232,22 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_workflow_payloads_task ON workflow_payloads(task_id)",
         ),
-    )
+    ),
+    Migration.build(
+        8,
+        "worker_process_heartbeats",
+        (
+            """CREATE TABLE IF NOT EXISTS worker_instances (
+                instance_id TEXT PRIMARY KEY,
+                process_id INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                heartbeat_at TEXT NOT NULL,
+                stopped_at TEXT,
+                status TEXT NOT NULL CHECK (status IN ('running', 'stopped'))
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_worker_instances_heartbeat ON worker_instances(status, heartbeat_at)",
+        ),
+    ),
 )
 
 
