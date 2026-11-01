@@ -351,6 +351,8 @@ def test_interrupted_safe_step_becomes_retry_wait_not_unknown_outcome(tmp_path):
 def test_workflow_records_are_scoped_to_the_authenticated_owner(tmp_path):
     repository = make_repository(tmp_path)
     task = TaskRecord(task_type="agent.workflow", description="owned workflow")
+    repository_database = TaskRepository(repository.database_path)
+    repository_database.create_auth_user("user-a", "owner-a", "salt", "hash")
     workflow_id = repository.create_run(
         "a" * 64,
         [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
