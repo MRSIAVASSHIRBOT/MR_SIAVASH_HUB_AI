@@ -204,7 +204,6 @@ def test_running_workflow_cancellation_is_observed_and_finalized(monkeypatch) ->
     repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
 
-    from mrhub.agents.core import AgentCore
 
     def finish_current_step_then_observe_cancel(
         self, request, *, on_step, on_step_result, should_cancel, **kwargs
