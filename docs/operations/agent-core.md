@@ -23,3 +23,22 @@ models, or create external side effects. `decision_mode` is always
 `plan_only`; `model_inference_started` and `tools_executed` are always
 false. The endpoint is designed to establish orchestration contracts before
 adding separately approved execution and persistent multi-step workflows.
+
+
+## Controlled tool execution
+
+The authenticated `POST /agent/execute` endpoint is the first execution
+capability. It accepts the same bounded request as `/agent/plan`, rebuilds
+the plan on the server, and starts no tool unless every requested step is
+registered, schema-valid, and allowed by the policy engine.
+
+Execution is sequential and stops at the first handler failure. Results from
+completed earlier steps are returned with a stable error code; exception text
+and internal diagnostics are not exposed. High-risk tools, tools requiring
+ungranted permissions, and tools with external side effects remain blocked
+until a separate approval workflow is designed and connected.
+
+This endpoint does not invoke the selected model, persist an agent run, or
+provide rollback for a tool that has already completed. Only trusted,
+server-registered handlers should be added to the registry. The initial
+built-in tool remains the deterministic `text.echo` example.
