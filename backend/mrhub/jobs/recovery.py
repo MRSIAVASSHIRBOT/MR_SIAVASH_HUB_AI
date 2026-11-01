@@ -759,6 +759,56 @@ class WorkflowRecoveryRepository:
             if cursor.rowcount != 1:
                 raise WorkflowRecoveryError("Workflow is not running")
 
+    def queue_resume(
+        self, workflow_id: UUID, request_digest: str, *, owner_user_id: str
+    ) -> dict[str, object]:
+        """Requeue a validated resumable workflow; never executes a step in the API request."""
+        self._validate_digest(request_digest, "Request digest")
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT task_id, status, request_digest FROM workflow_runs WHERE workflow_id = ? AND owner_user_id = ?",
+                (str(workflow_id), owner_user_id),
+            ).fetchone()
+            if run is None or run["task_id"] is None:
+                raise LookupError("Workflow not found")
+            if run["request_digest"] != request_digest:
+                raise WorkflowRecoveryError("Supplied request does not match stored workflow")
+            if run["status"] != "paused":
+                raise WorkflowRecoveryError("Workflow is not at a resumable checkpoint")
+            unknown = connection.execute(
+                "SELECT 1 FROM workflow_steps WHERE workflow_id = ? AND status = 'unknown_outcome' LIMIT 1",
+                (str(workflow_id),),
+            ).fetchone()
+            if unknown is not None:
+                raise WorkflowRecoveryError("Unknown external outcome must be reconciled first")
+            task = connection.execute(
+                "SELECT status FROM tasks WHERE task_id = ?", (run["task_id"],)
+            ).fetchone()
+            if task is None or task["status"] != "waiting_approval":
+                raise WorkflowRecoveryError("Linked task is not awaiting recovery")
+            connection.execute(
+                "UPDATE workflow_runs SET status = 'queued', updated_at = ? WHERE workflow_id = ? AND status = 'paused'",
+                (now, str(workflow_id)),
+            )
+            connection.execute(
+                "UPDATE tasks SET status = 'queued', updated_at = ? WHERE task_id = ? AND status = 'waiting_approval'",
+                (now, run["task_id"]),
+            )
+            connection.execute(
+                "UPDATE worker_executions SET error_code = NULL, finished_at = NULL, next_attempt_at = NULL WHERE task_id = ?",
+                (run["task_id"],),
+            )
+            connection.execute(
+                "UPDATE idempotency_records SET status = 'accepted' WHERE task_id = ? AND status = 'unknown_outcome'",
+                (run["task_id"],),
+            )
+        result = self.get_run(workflow_id, owner_user_id=owner_user_id)
+        if result is None:
+            raise LookupError("Workflow not found")
+        return result
+
     def latest_checkpoint(self, workflow_id: UUID) -> WorkflowCheckpoint | None:
         with self._connection() as connection:
             row = connection.execute(
