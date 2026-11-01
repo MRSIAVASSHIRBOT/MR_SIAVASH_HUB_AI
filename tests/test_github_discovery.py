@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 
 import pytest
 
@@ -107,7 +108,7 @@ def test_discovery_registers_metadata_only_candidate_and_never_approves(monkeypa
 def test_github_404_becomes_safe_not_found_error(monkeypatch):
     class FakeResponse:
         status_code = 404
-        headers = {}
+        headers: ClassVar[dict[str, str]] = {}
 
         def __enter__(self):
             return self
