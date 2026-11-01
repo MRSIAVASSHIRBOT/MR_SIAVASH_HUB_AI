@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
@@ -47,7 +48,7 @@ def create_task(
     payload: CreateTaskRequest,
     response: Response,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    user: AuthenticatedUser = Depends(require_user),
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> TaskRecord:
     risk_class = policy.classify_task_type(payload.task_type)
     decision = policy.evaluate(ActionRequest(
