@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,7 +32,9 @@ class WorkflowInputCipher:
 
     def __init__(self, encoded_key: str) -> None:
         try:
-            key = base64.urlsafe_b64decode(encoded_key.encode("ascii") + b"=" * (-len(encoded_key) % 4))
+            key = base64.urlsafe_b64decode(
+                encoded_key.encode("ascii") + b"=" * (-len(encoded_key) % 4)
+            )
         except (ValueError, UnicodeEncodeError) as exc:
             raise WorkflowInputError("Workflow input encryption key must be URL-safe base64") from exc
         if len(key) != 32:
@@ -59,7 +62,7 @@ class WorkflowInputCipher:
             ).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise WorkflowInputError("Workflow inputs must be JSON-serializable") from exc
-        nonce = __import__("os").urandom(self.NONCE_BYTES)
+        nonce = os.urandom(self.NONCE_BYTES)
         aad = self._aad(workflow, owner_user_id, self.SCHEMA_VERSION, self.key_id)
         ciphertext = nonce + self._aes.encrypt(nonce, plaintext, aad)
         return ciphertext, hashlib.sha256(plaintext).hexdigest()
