@@ -110,3 +110,9 @@ The latest Backend CI run for the implementation commit completed successfully:
 - Previously succeeded steps are skipped. Only the first incomplete eligible step and later validated steps are executed.
 - The resume regression test simulates a worker interruption at a safe tool boundary and verifies that the workflow completes without replaying its previously succeeded provider-selection step.
 - Latest Backend CI run #485: Ruff passed; Pytest 188 passed, 1 warning; 0 failures.
+
+## Phase 4.5 schema consistency update
+
+- Migration V5 now creates the legacy agent-run history table and its creation-time index.
+- The legacy Agent Run and Agent Workflow repositories delegate initialization to the canonical TaskRepository/SchemaMigrator instead of issuing independent runtime CREATE TABLE or ALTER TABLE statements.
+- Migration tests now verify versions 1–5, preservation of legacy workflow rows, and repository initialization through the versioned migration path.
