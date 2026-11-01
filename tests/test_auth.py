@@ -76,6 +76,7 @@ def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, mo
             json={"username": "owner", "password": "incorrect-password"},
         )
         assert failed.status_code == 401
+        assert failed.headers["Cache-Control"] == "no-store"
 
     successful = client.post(
         "/auth/login",
@@ -95,6 +96,8 @@ def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, mo
         json={"username": "owner", "password": password},
     )
     assert limited.status_code == 429
+    assert limited.headers["Cache-Control"] == "no-store"
+    assert limited.headers["Pragma"] == "no-cache"
     assert 1 <= int(limited.headers["Retry-After"]) <= 300
 
 
