@@ -614,3 +614,23 @@ def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_
     assert stored_workflow is not None
     assert stored_workflow["status"] == "recovery_required"
     assert stored_workflow["steps"][0]["status"] == "unknown_outcome"
+
+def test_worker_summary_includes_recovery_metrics_without_private_task_data(tmp_path):
+    repository, worker = make_worker(tmp_path)
+    task = TaskRecord(
+        task_type="demo.echo",
+        description="PRIVATE TASK DESCRIPTION MUST NOT APPEAR",
+    )
+    repository.create(task)
+
+    summary = worker.summary()
+
+    assert summary["total_tasks"] == 1
+    assert summary["status_counts"]["queued"] == 1
+    assert summary["workflow_status_counts"] == {}
+    assert summary["recovery_required_workflows"] == 0
+    assert summary["expired_running_leases"] == 0
+    assert summary["oldest_queued_age_seconds"] is not None
+    assert summary["execution_mode"] == "pull_driven"
+    assert summary["automatic_execution"] is False
+    assert "PRIVATE TASK DESCRIPTION MUST NOT APPEAR" not in str(summary)
