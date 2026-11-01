@@ -21,4 +21,8 @@ class ProviderRegistry:
             raise LookupError("No provider adapter is registered for this model") from exc
 
     def catalog(self):
-        return [provider.descriptor for provider in self._providers.values()]
+        """Return registered descriptors in a deterministic, read-only order."""
+        return sorted(
+            (provider.descriptor for provider in self._providers.values()),
+            key=lambda item: (item.provider, item.model),
+        )
