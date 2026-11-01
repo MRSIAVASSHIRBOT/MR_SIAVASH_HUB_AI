@@ -50,6 +50,12 @@ On first launch, initialize the local owner account from the same machine using 
 
 `GET /health`, `POST /auth/setup`, and `POST /auth/login` are public (setup is restricted to loopback). Task, job, policy, and model endpoints require a valid session. `POST /tasks/{task_id}/approval` records a one-time owner-authenticated approval or rejection bound to a SHA-256 fingerprint of task identity, type, risk class, and description; the decision and task transition are persisted together. `GET /tasks/{task_id}/approval` retrieves the decision. Rejected tasks enter a terminal state. Initial protected endpoints also include `POST /tasks`, `GET /tasks`, `GET /tasks/{task_id}`, `POST /jobs/{task_id}/cancel`, `POST /policy/evaluate`, `GET /models`, and `POST /models/select`.
 
+## Capability discovery catalog
+
+The authenticated `/capabilities/candidates` API provides the first local registry for sources discovered on GitHub or elsewhere. Register a source with `POST /capabilities/candidates`, list or filter candidates with `GET /capabilities/candidates?status=discovered`, and advance review state through `POST /capabilities/candidates/{candidate_id}/transition`. Approval requires a known license, a public HTTPS license URL, security-review notes, compatibility notes, and a test plan. Registration is metadata-only: no source is downloaded, installed, imported, or executed. Automated upstream scanning, isolated integration tests, and plugin activation are later milestones, not yet implemented.
+
+See [the open-source integration catalog](docs/architecture/open-source-integration-catalog.md) for current candidates and the adoption gate.
+
 ## Model provider interface
 
 Provider adapters implement a typed contract for model metadata, request/response validation, health status, and generation. A registry resolves the selected provider/model pair; the router performs capability matching and refuses silent local-to-cloud fallback. Provider errors expose stable reason codes rather than request contents or credentials.
