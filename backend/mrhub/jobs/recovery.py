@@ -295,7 +295,9 @@ class WorkflowRecoveryRepository:
                     (now, run["task_id"]),
                 )
 
-    def cancel_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> str:
+    def cancel_run(
+        self, workflow_id: UUID, *, lease: WorkerLease | None = None, defer_terminal: bool = False
+    ) -> str:
         """Persist cancellation under the current worker fencing token."""
         now = self._now()
         with self._connection() as connection:
@@ -328,10 +330,11 @@ class WorkflowRecoveryRepository:
                 )
             status = "recovery_required" if uncertain else "cancelled"
             code = "cancel_external_outcome_unknown" if uncertain else "cancelled_by_request"
-            connection.execute(
-                "UPDATE workflow_runs SET status = ?, last_error_code = ?, updated_at = ? WHERE workflow_id = ?",
-                (status, code, now, str(workflow_id)),
-            )
+            if not defer_terminal:
+                connection.execute(
+                    "UPDATE workflow_runs SET status = ?, last_error_code = ?, updated_at = ? WHERE workflow_id = ?",
+                    (status, code, now, str(workflow_id)),
+                )
             return status
 
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
@@ -513,12 +516,17 @@ class WorkflowRecoveryRepository:
         *,
         unknown_outcome: bool = False,
         lease: WorkerLease | None = None,
+        defer_terminal: bool = False,
     ) -> None:
         if not self._ERROR_PATTERN.fullmatch(error_code):
             raise WorkflowRecoveryError("Error code must be a bounded safe identifier")
         now = self._now()
         step_status = "unknown_outcome" if unknown_outcome else "failed"
-        run_status = "recovery_required" if unknown_outcome else "failed"
+        run_status = (
+            "running" if defer_terminal
+            else "recovery_required" if unknown_outcome
+            else "failed"
+        )
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             run = connection.execute(
@@ -566,7 +574,11 @@ class WorkflowRecoveryRepository:
             )
 
     def mark_interrupted(
-        self, workflow_id: UUID, *, lease: WorkerLease | None = None
+        self,
+        workflow_id: UUID,
+        *,
+        lease: WorkerLease | None = None,
+        defer_terminal: bool = False,
     ) -> int:
         """Classify active attempts; only known-safe steps become retryable."""
         now = self._now()
@@ -581,15 +593,21 @@ class WorkflowRecoveryRepository:
                 (str(workflow_id),),
             ).fetchall()
             if not rows:
-                connection.execute(
-                    """
-                    UPDATE workflow_runs
-                    SET status = 'paused', last_error_code = 'worker_interrupted_before_step',
-                        updated_at = ?
-                    WHERE workflow_id = ? AND status = 'running'
-                    """,
-                    (now, str(workflow_id)),
-                )
+                if defer_terminal:
+                    connection.execute(
+                        """UPDATE workflow_runs
+                           SET last_error_code = 'worker_interrupted_before_step', updated_at = ?
+                           WHERE workflow_id = ? AND status = 'running'""",
+                        (now, str(workflow_id)),
+                    )
+                else:
+                    connection.execute(
+                        """UPDATE workflow_runs
+                           SET status = 'paused', last_error_code = 'worker_interrupted_before_step',
+                               updated_at = ?
+                           WHERE workflow_id = ? AND status = 'running'""",
+                        (now, str(workflow_id)),
+                    )
                 return 0
 
             has_unknown_outcome = False
@@ -618,14 +636,18 @@ class WorkflowRecoveryRepository:
                 )
             run_status = "recovery_required" if has_unknown_outcome else "paused"
             error_code = "worker_interrupted" if has_unknown_outcome else "safe_step_interrupted"
-            connection.execute(
-                """
-                UPDATE workflow_runs
-                SET status = ?, last_error_code = ?, updated_at = ?
-                WHERE workflow_id = ? AND status = 'running'
-                """,
-                (run_status, error_code, now, str(workflow_id)),
-            )
+            if defer_terminal:
+                connection.execute(
+                    """UPDATE workflow_runs SET last_error_code = ?, updated_at = ?
+                       WHERE workflow_id = ? AND status = 'running'""",
+                    (error_code, now, str(workflow_id)),
+                )
+            else:
+                connection.execute(
+                    """UPDATE workflow_runs SET status = ?, last_error_code = ?, updated_at = ?
+                       WHERE workflow_id = ? AND status = 'running'""",
+                    (run_status, error_code, now, str(workflow_id)),
+                )
             return len(rows)
 
     def resolve_unknown_step(
