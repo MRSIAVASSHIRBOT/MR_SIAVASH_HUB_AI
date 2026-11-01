@@ -86,10 +86,10 @@ class IdempotencyRepository:
 
     @classmethod
     def _validate(cls, scope: str, key: str, request_digest: str) -> None:
-        if not scope or len(scope) > 120:
-            raise IdempotencyError("Scope must contain 1 to 120 characters")
-        if not key or len(key) > 255:
-            raise IdempotencyError("Idempotency key must contain 1 to 255 characters")
+        if not scope.strip() or len(scope) > 120:
+            raise IdempotencyError("Scope must contain 1 to 120 nonblank characters")
+        if not key.strip() or len(key) > 255:
+            raise IdempotencyError("Idempotency key must contain 1 to 255 nonblank characters")
         if not cls._DIGEST_PATTERN.fullmatch(request_digest):
             raise IdempotencyError("Request digest must be a lowercase SHA-256 hex digest")
 
@@ -275,4 +275,21 @@ class IdempotencyRepository:
         """Record a reconciled outcome; this does not execute or replay the request."""
         if outcome not in {"completed", "failed"}:
             raise IdempotencyError("Unknown outcomes can only be reconciled to completed or failed")
-        return self.transition(scope, key, "unknown_outcome", outcome)
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE idempotency_records SET status = ?
+                WHERE scope = ? AND idempotency_key = ? AND status = 'unknown_outcome'
+                """,
+                (outcome, scope, key),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("Unknown outcome changed; reconcile the current record")
+            row = connection.execute(
+                """
+                SELECT * FROM idempotency_records
+                WHERE scope = ? AND idempotency_key = ?
+                """,
+                (scope, key),
+            ).fetchone()
+            return self._record(row)
