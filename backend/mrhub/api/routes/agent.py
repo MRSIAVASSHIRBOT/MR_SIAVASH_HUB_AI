@@ -126,6 +126,7 @@ def execute_agent_workflow(
                 detail="Workflow execution is disabled until a valid payload key is configured",
             ) from exc
 
+        idempotency_binding = None
         if idempotency_key is not None:
             try:
                 reservation = idempotency.reserve(scope, idempotency_key, request_digest)
@@ -152,13 +153,7 @@ def execute_agent_workflow(
                     status_code=409,
                     detail="Request is already reserved; inspect recovery state",
                 )
-            # Bind the preselected identifiers before the task becomes claimable.
-            idempotency.bind(
-                scope,
-                idempotency_key,
-                task_id=str(task.task_id),
-                workflow_id=str(workflow_id),
-            )
+            idempotency_binding = {"scope": scope, "key": idempotency_key}
 
         step_specs = []
         raw_steps = plan.get("steps", [])
@@ -188,6 +183,7 @@ def execute_agent_workflow(
                 "nonce_b64": encrypted.nonce_b64,
                 "ciphertext_b64": encrypted.ciphertext_b64,
             },
+            idempotency_binding=idempotency_binding,
         )
         AuditLogger(tasks).record(
             event_type="task.submitted",
