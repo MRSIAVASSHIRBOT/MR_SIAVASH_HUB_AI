@@ -32,23 +32,10 @@ class AgentWorkflowRepository:
         return connection
 
     def initialize(self) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS agent_workflows (
-                    workflow_id TEXT PRIMARY KEY,
-                    status TEXT NOT NULL,
-                    request_digest TEXT NOT NULL,
-                    plan_json TEXT NOT NULL,
-                    steps_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_workflows)")}
-            if "owner_user_id" not in columns:
-                connection.execute("ALTER TABLE agent_workflows ADD COLUMN owner_user_id TEXT")
+        """Apply the canonical versioned schema; repositories never issue runtime DDL."""
+        from mrhub.infrastructure.database import TaskRepository
+
+        TaskRepository(self.database_path).initialize()
 
     def create(self, request_digest: str, plan: dict[str, object], *, owner_user_id: str | None = None) -> dict[str, object]:
         self.initialize()
