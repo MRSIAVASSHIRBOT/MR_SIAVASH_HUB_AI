@@ -4,6 +4,7 @@ from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.idempotency import IdempotencyRepository
+from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
 
 
@@ -412,3 +413,86 @@ def test_handler_failure_marks_linked_idempotency_unknown_outcome(tmp_path):
     assert completed is not None and completed.status is TaskStatus.FAILED
     record = idempotency.get("user:local", "worker-handler-failure")
     assert record is not None and record.status == "unknown_outcome"
+
+
+
+def test_worker_recovery_marks_interrupted_workflow_for_reconciliation(tmp_path):
+    repository = TaskRepository(tmp_path / "workflow-worker-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="interrupted workflow")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    recovery.start_step(workflow_id, 1)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id)
+
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert stored_workflow is not None
+    assert stored_workflow["status"] == "recovery_required"
+    assert stored_workflow["steps"][0]["status"] == "unknown_outcome"
+
+
+def test_worker_recovery_pauses_workflow_interrupted_before_first_step(tmp_path):
+    repository = TaskRepository(tmp_path / "workflow-paused-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="not yet dispatched")
+    workflow_id = recovery.create_run(
+        "b" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    decision = recovery.resume_decision(workflow_id, "b" * 64)
+
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert decision.decision == "resume"
+    assert decision.next_step == 1
+
+
+def test_worker_recovery_finishes_job_when_workflow_already_succeeded(tmp_path):
+    repository = TaskRepository(tmp_path / "workflow-finish-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="workflow already done")
+    workflow_id = recovery.create_run(
+        "c" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    attempt = recovery.start_step(workflow_id, 1)
+    recovery.complete_step(workflow_id, attempt, "d" * 64)
+    recovery.finish_run(workflow_id, "succeeded")
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    assert stored_task is not None and stored_task.status is TaskStatus.SUCCEEDED
