@@ -240,6 +240,8 @@ class WorkflowRecoveryRepository:
             ).fetchone()
             if run is None:
                 raise LookupError("Workflow not found")
+            if run["status"] == "recovery_required":
+                raise RecoveryRequired("Workflow requires reconciliation before resuming")
             if run["status"] != "running":
                 raise WorkflowRecoveryError("Workflow is not running")
             self._assert_lease(connection, workflow_id, lease, now)
