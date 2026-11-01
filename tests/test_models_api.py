@@ -217,3 +217,29 @@ def test_model_recommendation_requires_authentication(tmp_path, monkeypatch):
     )
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+
+def test_model_select_is_capability_aware_and_only_uses_registered_provider(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    monkeypatch.delenv("MRH_LOCAL_INFERENCE_ENABLED", raising=False)
+    monkeypatch.delenv("MRH_LOCAL_INFERENCE_MODEL", raising=False)
+    get_settings.cache_clear()
+    client = authenticated_client()
+    response = client.post("/models/select", json={"requires_text": True, "prefer_local": True})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "stub"
+    assert body["local"] is True
+    unavailable = client.post("/models/select", json={"requires_vision": True})
+    assert unavailable.status_code == 503
+    get_settings.cache_clear()
+
+
+def test_model_select_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.post("/models/select", json={"requires_text": True})
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
