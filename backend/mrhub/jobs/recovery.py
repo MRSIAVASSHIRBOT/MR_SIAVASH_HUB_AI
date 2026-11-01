@@ -130,8 +130,9 @@ class WorkflowRecoveryRepository:
         task: TaskRecord | None = None,
         definition_version: int = 1,
         owner_user_id: str | None = None,
+        submission: tuple[str, str, str, str] | None = None,
     ) -> UUID:
-        """Create a queued workflow and optional linked job in one transaction."""
+        """Create a queued workflow/job and bind an optional submission in one transaction."""
         self._validate_digest(request_digest, "Request digest")
         if task is not None and task_id is not None:
             raise WorkflowRecoveryError("Provide either task or task_id, not both")
@@ -212,6 +213,24 @@ class WorkflowRecoveryRepository:
                     """,
                     (str(uuid4()), str(workflow_id), number, kind, name, now, now),
                 )
+            if submission is not None:
+                owner_user_id, endpoint, idempotency_key, submission_digest = submission
+                if task_id is None or submission_digest != request_digest:
+                    raise WorkflowRecoveryError("Idempotent submission requires matching digest and linked task")
+                cursor = connection.execute(
+                    """
+                    UPDATE workflow_submission_keys
+                    SET state = 'bound', workflow_id = ?, task_id = ?, updated_at = ?
+                    WHERE owner_user_id = ? AND endpoint = ? AND idempotency_key = ?
+                      AND request_digest = ? AND state = 'reserved'
+                    """,
+                    (
+                        str(workflow_id), task_id, now, owner_user_id, endpoint,
+                        idempotency_key, submission_digest,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Submission reservation changed before atomic binding")
         return workflow_id
 
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
