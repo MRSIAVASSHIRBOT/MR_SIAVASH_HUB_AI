@@ -1,0 +1,120 @@
+"""Privacy-minimizing SQLite history for completed agent tool runs."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID, uuid4
+
+
+class AgentRunRepository:
+    """Persist run metadata without storing prompts, tool inputs, or tool outputs."""
+
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
+
+    def _connect(self) -> sqlite3.Connection:
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(self.database_path, timeout=5.0)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 5000")
+        return connection
+
+    def initialize(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS agent_runs (
+                    run_id TEXT PRIMARY KEY,
+                    request_digest TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    provider_name TEXT,
+                    model_name TEXT,
+                    plan_json TEXT NOT NULL,
+                    tool_names_json TEXT NOT NULL,
+                    executed_tool_count INTEGER NOT NULL,
+                    error_code TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+    def record(
+        self,
+        request_payload: dict[str, object],
+        execution: dict[str, object],
+    ) -> dict[str, object]:
+        self.initialize()
+        request_bytes = json.dumps(
+            request_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        digest = hashlib.sha256(request_bytes).hexdigest()
+        plan = execution["plan"]
+        if not isinstance(plan, dict):
+            raise ValueError("Execution response does not contain a valid plan")
+        steps = plan.get("steps", [])
+        tool_names = [
+            str(step["name"])
+            for step in steps
+            if isinstance(step, dict) and step.get("kind") == "tool" and "name" in step
+        ]
+        results = execution.get("results", [])
+        status = (
+            "blocked" if execution.get("blocked") else
+            "succeeded" if execution.get("execution_completed") else
+            "failed"
+        )
+        selection = plan.get("selected_provider", {})
+        provider_name = selection.get("provider") if isinstance(selection, dict) else None
+        model_name = selection.get("model") if isinstance(selection, dict) else None
+        error_code = execution.get("error_code")
+        created_at = datetime.now(UTC).isoformat()
+        run_id = uuid4()
+
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_runs (
+                    run_id, request_digest, status, provider_name, model_name,
+                    plan_json, tool_names_json, executed_tool_count, error_code, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(run_id),
+                    digest,
+                    status,
+                    provider_name,
+                    model_name,
+                    json.dumps(plan, ensure_ascii=False, sort_keys=True),
+                    json.dumps(tool_names, ensure_ascii=False),
+                    len(results) if isinstance(results, list) else 0,
+                    error_code,
+                    created_at,
+                ),
+            )
+        return self.get(run_id)  # type: ignore[return-value]
+
+    def get(self, run_id: UUID) -> dict[str, object] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM agent_runs WHERE run_id = ?", (str(run_id),)
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "run_id": row["run_id"],
+            "status": row["status"],
+            "request_digest": row["request_digest"],
+            "provider": row["provider_name"],
+            "model": row["model_name"],
+            "plan": json.loads(row["plan_json"]),
+            "tool_names": json.loads(row["tool_names_json"]),
+            "executed_tool_count": row["executed_tool_count"],
+            "error_code": row["error_code"],
+            "created_at": row["created_at"],
+            "stored_payloads": False,
+            "stored_tool_outputs": False,
+        }
