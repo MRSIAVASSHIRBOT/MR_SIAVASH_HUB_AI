@@ -403,19 +403,38 @@ class WorkerEngine:
             return self.repository.get(task.task_id)
 
         handler = self.handlers.get(task.task_type)
-        if handler is None:
-            return self._finish_failure(task, "handler_not_registered", lease=lease)
-
         try:
-            result = handler(task)
+            if task.task_type == "agent.workflow":
+                from mrhub.agents.worker_dispatch import dispatch_queued_workflow
+                result = dispatch_queued_workflow(self.repository, task, lease, lease_lost)
+            elif handler is None:
+                return self._finish_failure(task, "handler_not_registered", lease=lease)
+            else:
+                result = handler(task)
         except RetryableWorkerError:
             return self._schedule_retry_or_fail(task, lease=lease)
         except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
             return self._finish_failure(task, "handler_failed", lease=lease)
+        except Exception:
+            return self._finish_failure(task, "workflow_dispatch_failed", lease=lease)
 
         if lease_lost.is_set():
             return self.repository.get(task.task_id)
+
+        try:
+            result = dict(result)
+            requested_status = result.pop("_worker_task_status", "succeeded")
+            target_status = {
+                "succeeded": TaskStatus.SUCCEEDED,
+                "failed": TaskStatus.FAILED,
+                "waiting_approval": TaskStatus.WAITING_APPROVAL,
+                "cancelled": TaskStatus.CANCELLED,
+            }.get(requested_status)
+            if target_status is None:
+                return self._finish_failure(task, "invalid_dispatch_status", lease=lease)
+        except (TypeError, ValueError):
+            return self._finish_failure(task, "invalid_handler_result", lease=lease)
 
         now = self._now().isoformat()
         with self._connection() as connection:
@@ -429,36 +448,43 @@ class WorkerEngine:
                       AND e.execution_token = ? AND e.lease_expires_at > ?
                   )
                 """,
-                (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
+                (target_status.value, now, str(task.task_id), TaskStatus.RUNNING.value,
                  lease.owner, lease.fencing_token, now),
             )
             if cursor.rowcount == 1:
-                connection.execute(
-                    """
-                    UPDATE worker_executions
-                    SET result_json = ?, error_code = NULL, finished_at = ?,
-                        next_attempt_at = NULL
-                    WHERE task_id = ?
-                    """,
-                    (
-                        json.dumps(result, ensure_ascii=False, sort_keys=True),
-                        now,
-                        str(task.task_id),
-                    ),
+                idempotency_status = {
+                    TaskStatus.SUCCEEDED: "completed",
+                    TaskStatus.FAILED: "failed",
+                    TaskStatus.WAITING_APPROVAL: "unknown_outcome",
+                    TaskStatus.CANCELLED: "failed",
+                }[target_status]
+                error_code = None if target_status is TaskStatus.SUCCEEDED else str(
+                    result.get("error_code", "workflow_not_succeeded")
                 )
                 connection.execute(
                     """
-                    UPDATE idempotency_records SET status = 'completed'
-                    WHERE task_id = ? AND status = 'running'
+                    UPDATE worker_executions
+                    SET result_json = ?, error_code = ?, finished_at = ?,
+                        next_attempt_at = NULL
+                    WHERE task_id = ?
                     """,
-                    (str(task.task_id),),
+                    (json.dumps(result, ensure_ascii=False, sort_keys=True), error_code, now,
+                     str(task.task_id)),
+                )
+                connection.execute(
+                    "UPDATE idempotency_records SET status = ? WHERE task_id = ? AND status = 'running'",
+                    (idempotency_status, str(task.task_id)),
                 )
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared during execution")
         if saved.status is TaskStatus.SUCCEEDED:
             self._audit(task, "succeeded", "worker_completed")
-        else:
+        elif saved.status is TaskStatus.WAITING_APPROVAL:
+            self._audit(task, "recovery_required", str(result.get("error_code", "workflow_recovery_required")))
+        elif saved.status is TaskStatus.FAILED:
+            self._audit(task, "failed", str(result.get("error_code", "workflow_failed")))
+        elif saved.status is TaskStatus.CANCELLED:
             self._mark_cancelled(task, lease=lease)
         return saved
 
