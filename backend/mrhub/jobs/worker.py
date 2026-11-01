@@ -107,10 +107,10 @@ class WorkerEngine:
         return {"message": task.description, "task_type": task.task_type}
 
     def _recover_interrupted(self) -> None:
-        """Fail stale running tasks rather than silently replaying possibly completed work."""
+        """Recover stale jobs without replaying an ambiguous workflow step."""
         cutoff = (self._now() - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
         now = self._now().isoformat()
-        recovered: list[TaskRecord] = []
+        recovered: list[tuple[TaskRecord, str, str]] = []
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
@@ -132,13 +132,113 @@ class WorkerEngine:
                     updated_at=row["updated_at"],
                     description=row["description"],
                 )
+                workflow = connection.execute(
+                    """
+                    SELECT workflow_id, status FROM workflow_runs WHERE task_id = ?
+                    """,
+                    (str(task.task_id),),
+                ).fetchone()
+                if workflow is None:
+                    recovered_status = TaskStatus.FAILED
+                    audit_outcome = "failed"
+                    reason_code = "worker_interrupted"
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'unknown_outcome'
+                        WHERE task_id = ? AND status IN ('accepted', 'running')
+                        """,
+                        (str(task.task_id),),
+                    )
+                elif workflow["status"] == "succeeded":
+                    recovered_status = TaskStatus.SUCCEEDED
+                    audit_outcome = "succeeded"
+                    reason_code = "workflow_finished_before_job_commit"
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'completed'
+                        WHERE task_id = ? AND status = 'running'
+                        """,
+                        (str(task.task_id),),
+                    )
+                elif workflow["status"] in {"failed", "cancelled"}:
+                    recovered_status = (
+                        TaskStatus.CANCELLED
+                        if workflow["status"] == "cancelled"
+                        else TaskStatus.FAILED
+                    )
+                    audit_outcome = workflow["status"]
+                    reason_code = "workflow_terminal_before_job_commit"
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'failed'
+                        WHERE task_id = ? AND status IN ('accepted', 'running')
+                        """,
+                        (str(task.task_id),),
+                    )
+                else:
+                    active_steps = connection.execute(
+                        """
+                        SELECT step_id FROM workflow_steps
+                        WHERE workflow_id = ? AND status = 'running'
+                        """,
+                        (workflow["workflow_id"],),
+                    ).fetchall()
+                    if active_steps:
+                        for step in active_steps:
+                            connection.execute(
+                                """
+                                UPDATE workflow_step_attempts
+                                SET status = 'unknown_outcome',
+                                    error_code = 'worker_interrupted', finished_at = ?
+                                WHERE step_id = ? AND status = 'running'
+                                """,
+                                (now, step["step_id"]),
+                            )
+                            connection.execute(
+                                """
+                                UPDATE workflow_steps
+                                SET status = 'unknown_outcome',
+                                    error_code = 'worker_interrupted',
+                                    finished_at = ?, updated_at = ?
+                                WHERE step_id = ? AND status = 'running'
+                                """,
+                                (now, now, step["step_id"]),
+                            )
+                        workflow_status = "recovery_required"
+                        reason_code = "worker_interrupted"
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
+                    else:
+                        workflow_status = "paused"
+                        reason_code = "worker_interrupted_before_step"
+                    connection.execute(
+                        """
+                        UPDATE workflow_runs
+                        SET status = ?, last_error_code = ?, updated_at = ?
+                        WHERE workflow_id = ? AND status IN ('queued', 'running', 'paused')
+                        """,
+                        (
+                            workflow_status,
+                            reason_code,
+                            now,
+                            workflow["workflow_id"],
+                        ),
+                    )
+                    recovered_status = TaskStatus.WAITING_APPROVAL
+                    audit_outcome = "recovery_required"
+
                 cursor = connection.execute(
                     """
                     UPDATE tasks SET status = ?, updated_at = ?
                     WHERE task_id = ? AND status = ?
                     """,
                     (
-                        TaskStatus.FAILED.value,
+                        recovered_status.value,
                         now,
                         str(task.task_id),
                         TaskStatus.RUNNING.value,
@@ -148,22 +248,15 @@ class WorkerEngine:
                     connection.execute(
                         """
                         UPDATE worker_executions
-                        SET error_code = 'worker_interrupted',
-                            finished_at = ?, recovered_at = ?, next_attempt_at = NULL
+                        SET error_code = ?, finished_at = ?, recovered_at = ?,
+                            next_attempt_at = NULL
                         WHERE task_id = ?
                         """,
-                        (now, now, str(task.task_id)),
+                        (reason_code, now, now, str(task.task_id)),
                     )
-                    connection.execute(
-                        """
-                        UPDATE idempotency_records SET status = 'unknown_outcome'
-                        WHERE task_id = ? AND status IN ('accepted', 'running')
-                        """,
-                        (str(task.task_id),),
-                    )
-                    recovered.append(task)
-        for task in recovered:
-            self._audit(task, "failed", "worker_interrupted")
+                    recovered.append((task, audit_outcome, reason_code))
+        for task, outcome, reason_code in recovered:
+            self._audit(task, outcome, reason_code)
 
     def _claim(self) -> TaskRecord | None:
         """Atomically claim one eligible queued task."""
