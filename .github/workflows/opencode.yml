@@ -15,6 +15,7 @@ jobs:
       (contains(github.event.comment.body, '/opencode') ||
        contains(github.event.comment.body, '/oc'))
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       id-token: write
       contents: read
@@ -32,6 +33,8 @@ jobs:
         with:
           model: openrouter/openrouter/free
           prompt: |
-            Work carefully on this repository. First inspect the project instructions and current architecture.
-            Make only changes relevant to the request. Do not expose secrets or modify unrelated files.
-            Run the most relevant available checks. Summarize changes, tests, and remaining risks.
+            Treat the triggering GitHub comment as the actual task request.
+            Read repository guidance before changing code. Make focused, minimal changes that satisfy the request.
+            Do not expose, print, or copy secrets. Do not weaken security controls, change unrelated files, or push directly to the default branch.
+            Run the most relevant available tests and checks. If blocked, report the exact blocker and what was verified.
+            Summarize changes, tests, and remaining risks in your final GitHub response.
