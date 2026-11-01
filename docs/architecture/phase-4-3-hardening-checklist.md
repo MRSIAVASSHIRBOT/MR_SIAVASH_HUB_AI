@@ -8,7 +8,7 @@ This checklist tracks the 19-step workflow hardening sequence. Status distinguis
 - [x] **2. Cancellation boundaries:** test cancellation before the first tool, between tools, during the worker claim/dispatch window, and while a safe tool is active.
 - [x] **3. Crash recovery:** persist running cancellation intent and recover after worker interruption; do not replay an active external side effect with unknown outcome.
 - [x] **4. Idempotency and lease fencing:** preserve atomic idempotency creation and fenced state commits; distinguish lease loss from user cancellation.
-- [ ] **5. Fault-injection gate:** latest-head CI must pass; continue testing concurrent cancellation, lease expiry, and worker shutdown.
+- [x] **5. Fault-injection gate (current branch head):** latest-head CI passed after cancellation boundary, crash recovery, and read-only readiness tests; keep rerunning CI for every subsequent code change.
 - [x] **6. State-machine enforcement:** task transitions are allow-listed; workflow step completion checks run state, step ownership, attempt state, and lease.
 - [x] **7. Restart recovery:** stale worker records are reconciled on the next explicit worker poll.
 - [x] **8. Retry policy:** transient retry uses bounded exponential backoff and an explicit retry-safe task-type allow-list.
@@ -21,7 +21,7 @@ This checklist tracks the 19-step workflow hardening sequence. Status distinguis
 - [x] **12. API security tests:** authentication, request bounds, idempotency conflicts, owner-scoped history, and safe tool allow-list behavior have test coverage.
 - [x] **13. Structured audit events:** audit metadata is explicitly allow-listed and bounded.
 - [x] **14. Operational metrics:** worker summary reports queue counts, retry count, workflow-state counts, expired running leases, and oldest queued age.
-- [ ] **15. Readiness diagnostics:** liveness exists and job summary exposes recovery signals; a production-grade worker heartbeat/readiness contract still needs a deployment decision.
+- [ ] **15. Readiness diagnostics:** `/health` reports liveness and `/ready` checks the existing database schema read-only; a production-grade worker heartbeat/readiness contract still needs a deployment decision.
 
 ## Integration and release
 
@@ -32,7 +32,7 @@ This checklist tracks the 19-step workflow hardening sequence. Status distinguis
 
 ## Acceptance criteria
 
-1. CI passes on the exact PR head, including dependency audit, lint, and tests.
+1. CI passed on commit `ea1d5d89648d19b716b8c8cae09fbd34a625a42c`, including dependency audit, lint, and tests. Rerun before merge if any further code changes are pushed.
 2. A cancellation request survives worker interruption and cannot be overwritten by late success.
 3. Lease-losing workers cannot commit checkpoints, results, or terminal transitions.
 4. Unknown external outcomes remain blocked from automatic replay until reconciled.
