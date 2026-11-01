@@ -187,6 +187,9 @@ def test_stale_unbound_reservation_is_failed_instead_of_staying_stuck(tmp_path):
     connection.commit()
     connection.close()
 
+    with pytest.raises(IdempotencyConflict, match="different request"):
+        repository.reserve("user-1", "/agent/workflows", "stale-key", "different-digest")
+
     recovered = repository.reserve(
         "user-1", "/agent/workflows", "stale-key", "digest-stale"
     )
