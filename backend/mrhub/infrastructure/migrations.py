@@ -209,6 +209,15 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at)",
         ),
     )
+    ,
+    Migration.build(
+        6,
+        "agent_run_owner_scope",
+        (
+            "ALTER TABLE agent_runs ADD COLUMN owner_user_id TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS idx_agent_runs_owner_created ON agent_runs(owner_user_id, created_at)",
+        ),
+    )
 )
 
 
