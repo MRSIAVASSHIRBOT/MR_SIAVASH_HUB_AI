@@ -247,6 +247,33 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_worker_instances_heartbeat ON worker_instances(status, heartbeat_at)",
         ),
+    ),,
+    Migration.build(
+        9,
+        "capability_discovery_catalog",
+        (
+            """CREATE TABLE IF NOT EXISTS capability_candidates (
+                candidate_id TEXT PRIMARY KEY,
+                canonical_url TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 160),
+                summary TEXT NOT NULL CHECK (length(summary) <= 1000),
+                source_kind TEXT NOT NULL CHECK (source_kind IN (
+                    'github_repository', 'documentation', 'package', 'api', 'other'
+                )),
+                license_id TEXT NOT NULL DEFAULT 'unknown',
+                integration_type TEXT NOT NULL CHECK (integration_type IN (
+                    'connector', 'skill', 'python_package', 'http_api', 'adapter', 'manual'
+                )),
+                status TEXT NOT NULL CHECK (status IN (
+                    'discovered', 'reviewing', 'approved', 'rejected', 'disabled'
+                )),
+                capabilities_json TEXT NOT NULL,
+                evidence_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_capability_candidates_status_updated ON capability_candidates(status, updated_at)",
+        ),
     ),
 )
 
