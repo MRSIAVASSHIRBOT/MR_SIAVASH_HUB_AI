@@ -11,8 +11,8 @@ from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.capabilities import router as capabilities_router
 from mrhub.api.routes.health import router as health_router
 from mrhub.api.routes.jobs import router as jobs_router
-from mrhub.api.routes.models import router as models_router
 from mrhub.api.routes.memory import router as memory_router
+from mrhub.api.routes.models import router as models_router
 from mrhub.api.routes.policy import router as policy_router
 from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.tools import router as tools_router
