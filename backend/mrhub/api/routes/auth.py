@@ -61,6 +61,8 @@ def login(
     response: Response,
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> SessionResponse:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
     limiter: LoginAttemptLimiter = request.app.state.login_attempt_limiter
     client_key = request.client.host if request.client else "unknown"
     retry_after = limiter.retry_after(client_key)
