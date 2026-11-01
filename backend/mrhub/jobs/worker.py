@@ -596,6 +596,7 @@ class WorkerEngine:
             "cancelled": TaskStatus.CANCELLED.value,
             "failed": TaskStatus.FAILED.value,
             "queued": TaskStatus.QUEUED.value,
+            "recovery_required": TaskStatus.WAITING_APPROVAL.value,
         }[outcome]
         AuditLogger(self.repository).record(
             event_type="task.worker_finished",
