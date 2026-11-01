@@ -43,7 +43,7 @@ def test_safe_interruption_keeps_job_resumable_and_resume_completes(monkeypatch)
     repository, workflow_id, task_id = _workflow_and_task(client)
     from mrhub.jobs.recovery import WorkflowRecoveryRepository
 
-    stored = WorkflowRecoveryRepository(workflow).get_run(UUID(workflow_id))
+    stored = WorkflowRecoveryRepository(repository.database_path).get_run(UUID(workflow_id))
     assert stored is not None
     assert stored["status"] == "paused"
     assert stored["steps"][1]["status"] == "retry_wait"
