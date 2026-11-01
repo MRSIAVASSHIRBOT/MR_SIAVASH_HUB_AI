@@ -58,5 +58,5 @@ class ModelProvider(Protocol):
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         ...
 
-    def health(self) -> ProviderHealth:
+    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         ...
