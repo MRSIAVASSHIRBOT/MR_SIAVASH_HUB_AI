@@ -23,6 +23,8 @@ These are candidates, not claims of completed integration. Before adoption, the 
 
 The integration order is: discover and evaluate upstreams; define stable Hub interfaces; integrate one capability at a time; run contract, security, and regression tests; document provenance; and only then enable it in a workflow. Existing user-owned repositories remain untouched.
 
+See [the open-source integration catalog](docs/architecture/open-source-integration-catalog.md) for inspected candidates and compatibility notes.
+
 ## Engineering principles
 - **Local-first, hybrid-capable:** run feasible workloads locally and route heavier tasks to explicitly configured providers.
 - **Modular monolith first:** maintain clear module contracts without introducing distributed-system overhead prematurely.
