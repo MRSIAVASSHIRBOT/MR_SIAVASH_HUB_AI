@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.diagnostics.model_profiles import get_model_profile, list_model_profiles
 from mrhub.diagnostics.resource_advisor import assess_model_resources
 from mrhub.providers.base import ProviderError, ProviderRequest
 from mrhub.providers.ollama import OllamaProvider
@@ -62,6 +63,19 @@ def select_model(payload: RouteModelRequest) -> dict[str, str | bool]:
     except LookupError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return selection.model_dump()
+
+
+@router.get("/profiles")
+def list_profiles():
+    return list_model_profiles()
+
+
+@router.get("/profiles/{profile_id}")
+def get_profile(profile_id: str):
+    profile = get_model_profile(profile_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Model profile not found")
+    return profile
 
 
 @router.post("/assess")
