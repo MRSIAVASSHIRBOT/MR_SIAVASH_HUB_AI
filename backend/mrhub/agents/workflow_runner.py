@@ -202,12 +202,29 @@ class AgentWorkflowRunner:
                 )
                 del attempts[number]
 
+            def should_cancel() -> bool:
+                if lease_lost.is_set():
+                    return True
+                current_task = self.jobs.get(task.task_id)
+                return current_task is None or current_task.status is TaskStatus.CANCELLED
+
             execution = self.core.execute(
                 request,
                 on_step=on_step,
                 on_step_result=on_step_result,
+                should_cancel=should_cancel,
             )
             current = self.recovery.get_run(workflow_id)
+            if execution.get("cancelled"):
+                if current is not None and current["status"] == "running":
+                    self.recovery.finish_run(workflow_id, "cancelled", lease=lease)
+                current_task = self.jobs.get(task.task_id)
+                if current_task is not None and current_task.status is TaskStatus.RUNNING:
+                    self.jobs.transition(task.task_id, TaskStatus.CANCELLED, lease=lease)
+                return {
+                    "workflow_id": str(workflow_id),
+                    "execution": execution,
+                }
             if execution["execution_completed"]:
                 self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
                 self.jobs.transition(task.task_id, TaskStatus.SUCCEEDED, lease=lease)
