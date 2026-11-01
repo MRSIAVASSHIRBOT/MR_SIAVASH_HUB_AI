@@ -71,6 +71,22 @@ External publishing, spending, destructive operations, access to sensitive data,
 ## Current status
 The repository contains the architecture baseline and initial control-plane slice: versioned SQLite schema migrations, task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, local owner authentication, action-bound approvals, and a pull-driven worker with fail-closed dispatch and bounded retry for deterministic demo tasks. The provider layer has typed contracts, an explicit registry, capability-aware dispatch, a deterministic stub, and an opt-in Ollama adapter restricted to loopback HTTP. Local inference is disabled by default; remote provider calls, shell, arbitrary code execution, and external publishing are not enabled. Worker execution remains explicitly pull-driven and intended for a single local worker process; distributed leases and forced interruption of synchronous handlers are not implemented.
 
+
+## Durable agent workflow execution
+
+Workflow submission is asynchronous. POST /agent/workflows validates the request, stores only a digest plus a separately encrypted execution envelope, and returns the queued workflow/job identifiers. The worker decrypts the envelope only when the canonical worker lease is held; authentication failure, an absent key, or a mismatched owner/resource binding fails closed.
+
+1. Install the project and dependencies: `python -m pip install -e .`
+2. Configure `MRH_DATABASE_PATH` and `MRH_WORKFLOW_PAYLOAD_KEY`. Generate a fresh key for each deployment with:
+   `python -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"`
+3. Store the key in the deployment secret manager or protected environment configuration. Do not commit it, reuse the test key, or rotate it without a migration plan for queued payloads.
+4. Start the API process as usual, then start a worker in a separate process from the repository root:
+   `python -m mrhub.worker_service`
+5. Poll GET /agent/workflows/{workflow_id} for durable state. The API does not silently start a worker; the separate process is an explicit operational choice.
+
+The encrypted envelope is bound with authenticated associated data to the workflow ID, task ID, and owner ID. Raw request/tool inputs are not written to workflow history or logs. External-side-effect steps must not be blindly replayed after an ambiguous outcome.
+
+
 ## Documentation
 - `docs/architecture/overview.md` — system architecture
 - `docs/architecture/module-boundaries.md` — module ownership and contracts
