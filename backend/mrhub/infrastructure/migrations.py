@@ -317,6 +317,86 @@ MIGRATIONS = (
             END""",
         ),
     ),
+    Migration.build(
+        11,
+        "owner_scoped_source_backed_knowledge",
+        (
+            """CREATE TABLE IF NOT EXISTS knowledge_sources (
+                source_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                scope TEXT NOT NULL DEFAULT 'private' CHECK (scope = 'private'),
+                source_type TEXT NOT NULL CHECK (source_type = 'user_text'),
+                canonical_origin TEXT NOT NULL CHECK (length(canonical_origin) BETWEEN 1 AND 500),
+                trust_classification TEXT NOT NULL CHECK (
+                    trust_classification IN ('user_supplied', 'user_reviewed')
+                ),
+                sensitivity_classification TEXT NOT NULL DEFAULT 'private'
+                    CHECK (sensitivity_classification = 'private'),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_sources_owner_created ON knowledge_sources(owner_user_id, created_at)",
+            """CREATE TABLE IF NOT EXISTS knowledge_documents (
+                document_id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL UNIQUE REFERENCES knowledge_sources(source_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                language TEXT NOT NULL DEFAULT 'und',
+                content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 100000),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_documents_owner_updated ON knowledge_documents(owner_user_id, updated_at)",
+            """CREATE TABLE IF NOT EXISTS knowledge_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES knowledge_documents(document_id) ON DELETE CASCADE,
+                source_id TEXT NOT NULL REFERENCES knowledge_sources(source_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+                start_offset INTEGER NOT NULL CHECK (start_offset >= 0),
+                end_offset INTEGER NOT NULL CHECK (end_offset >= start_offset),
+                content TEXT NOT NULL CHECK (length(content) > 0),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                created_at TEXT NOT NULL,
+                UNIQUE(document_id, chunk_index)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_owner_document ON knowledge_chunks(owner_user_id, document_id, chunk_index)",
+            """CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
+                chunk_id UNINDEXED,
+                document_id UNINDEXED,
+                source_id UNINDEXED,
+                owner_user_id UNINDEXED,
+                title,
+                content,
+                tokenize='unicode61'
+            )""",
+            """CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ai AFTER INSERT ON knowledge_chunks BEGIN
+                INSERT INTO knowledge_chunks_fts(
+                    chunk_id, document_id, source_id, owner_user_id, title, content
+                ) VALUES (
+                    new.chunk_id, new.document_id, new.source_id, new.owner_user_id,
+                    (SELECT title FROM knowledge_documents WHERE document_id = new.document_id),
+                    new.content
+                );
+            END""",
+            """CREATE TRIGGER IF NOT EXISTS knowledge_chunks_au AFTER UPDATE ON knowledge_chunks BEGIN
+                DELETE FROM knowledge_chunks_fts WHERE chunk_id = old.chunk_id;
+                INSERT INTO knowledge_chunks_fts(
+                    chunk_id, document_id, source_id, owner_user_id, title, content
+                ) VALUES (
+                    new.chunk_id, new.document_id, new.source_id, new.owner_user_id,
+                    (SELECT title FROM knowledge_documents WHERE document_id = new.document_id),
+                    new.content
+                );
+            END""",
+            """CREATE TRIGGER IF NOT EXISTS knowledge_chunks_ad AFTER DELETE ON knowledge_chunks BEGIN
+                DELETE FROM knowledge_chunks_fts WHERE chunk_id = old.chunk_id;
+            END""",
+        ),
+    ),
 )
 
  
