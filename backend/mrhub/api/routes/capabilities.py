@@ -7,6 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import require_user
+from mrhub.capabilities.github_discovery import (
+    GitHubDiscoveryError,
+    discover_github_candidate,
+)
 from mrhub.capabilities.registry import (
     STATUSES,
     CapabilityNotFound,
@@ -37,6 +41,10 @@ class CapabilityCandidateRequest(BaseModel):
     license_id: str = Field(default="unknown", min_length=1, max_length=80)
 
 
+class GitHubDiscoveryRequest(BaseModel):
+    source_url: str = Field(min_length=1, max_length=2048)
+
+
 class CapabilityTransitionRequest(BaseModel):
     status: Literal["discovered", "reviewing", "approved", "rejected", "disabled"]
     license_id: str | None = Field(default=None, max_length=80)
@@ -59,6 +67,21 @@ def register_candidate(
         code = 409 if "already in the catalog" in str(exc) else 422
         raise HTTPException(status_code=code, detail=str(exc)) from exc
     return candidate.as_dict()
+
+
+@router.post("/discover", status_code=status.HTTP_201_CREATED)
+def discover_candidate(
+    payload: GitHubDiscoveryRequest,
+    _user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Fetch bounded public GitHub repository metadata and register it for review."""
+    try:
+        _candidate, result = discover_github_candidate(payload.source_url, get_registry())
+    except GitHubDiscoveryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)}) from exc
+    except CapabilityValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result
 
 
 @router.get("/candidates")
