@@ -41,7 +41,10 @@ def test_encrypted_payload_round_trips_for_owner_only(tmp_path):
     key = Fernet.generate_key().decode("ascii")
     database_path, workflow_id = setup_repo(tmp_path)
     repo = WorkflowExecutionInputRepository(database_path, key)
-    payload = {"goal": "test workflow", "tools": [{"name": "text.echo", "payload": {"text": "hello"}}]}
+    payload = {
+        "goal": "test workflow",
+        "tools": [{"name": "text.echo", "payload": {"text": "hello"}}],
+    }
 
     metadata = repo.store(workflow_id, "owner-1", payload)
 
