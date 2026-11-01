@@ -1,7 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
+from fastapi.testclient import TestClient
+
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
+from mrhub.main import create_app
 from mrhub.memory.repository import MemoryRepository
 
 
@@ -91,10 +94,7 @@ def test_memory_rejects_obvious_credentials_and_requires_authentication() -> Non
     )
     assert response.status_code == 422
 
-    from fastapi.testclient import TestClient
-    from mrhub.main import create_app
-
-    get_settings.cache_clear()
+        get_settings.cache_clear()
     unauthenticated = TestClient(create_app())
     assert unauthenticated.get("/memory").status_code in (401, 403)
 
