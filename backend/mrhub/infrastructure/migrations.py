@@ -231,7 +231,7 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_workflow_submission_updated ON workflow_submission_keys(updated_at)",
         ),
-    )
+    ),
     Migration.build(
         7,
         "encrypted_workflow_execution_inputs",
