@@ -262,9 +262,12 @@ class AgentWorkflowRunner:
             raise ValueError("Current workflow plan differs from the stored definition")
 
         provider_step = next((step for step in workflow["steps"] if step["step_number"] == 1), None)
-        if provider_step is not None and provider_step["status"] == "succeeded":
-            if provider_step["output_digest"] != self._digest(plan.get("selected_provider", {})):
-                raise ValueError("Selected provider changed; workflow must be replanned")
+        if (
+            provider_step is not None
+            and provider_step["status"] == "succeeded"
+            and provider_step["output_digest"] != self._digest(plan.get("selected_provider", {}))
+        ):
+            raise ValueError("Selected provider changed; workflow must be replanned")
 
         task_id = UUID(str(workflow["task_id"]))
         task_state = self.jobs.get(task_id)
