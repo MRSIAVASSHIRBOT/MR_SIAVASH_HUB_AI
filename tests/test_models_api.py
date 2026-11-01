@@ -243,3 +243,42 @@ def test_model_select_requires_authentication(tmp_path, monkeypatch):
     response = client.post("/models/select", json={"requires_text": True})
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+def test_provider_inventory_is_authenticated_and_does_not_probe_services(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    monkeypatch.setenv("MRH_LOCAL_INFERENCE_ENABLED", "true")
+    monkeypatch.setenv("MRH_LOCAL_INFERENCE_MODEL", "tiny-model")
+    get_settings.cache_clear()
+
+    from mrhub.providers.ollama import OllamaProvider
+
+    def unexpected_health_probe(self):
+        raise AssertionError("inventory must not perform provider health probes")
+
+    monkeypatch.setattr(OllamaProvider, "health", unexpected_health_probe)
+    client = authenticated_client()
+    response = client.get("/models/providers")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert body["health_probes_performed"] is False
+    assert body["inference_started"] is False
+    assert [item["provider"] for item in body["providers"]] == ["ollama", "stub"]
+    assert all(item["registered"] is True for item in body["providers"])
+    assert all(item["health_status"] == "not_checked" for item in body["providers"])
+    assert "base_url" not in response.text
+    assert "api_key" not in response.text
+    get_settings.cache_clear()
+
+
+def test_provider_inventory_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.get("/models/providers")
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
