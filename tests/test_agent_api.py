@@ -301,7 +301,6 @@ def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
     from mrhub.api.routes.agent import _workflow_digest
     from mrhub.api.routes.models import build_model_router
     from mrhub.tools.builtins import build_tool_registry
-    from mrhub.agents.workflow_runner import AgentWorkflowRunner
 
     core = AgentCore(build_model_router(), build_tool_registry())
     plan = core.plan(parsed)
