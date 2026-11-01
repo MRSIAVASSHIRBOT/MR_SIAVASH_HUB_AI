@@ -60,3 +60,39 @@ def test_invalid_password_does_not_create_session(tmp_path, monkeypatch) -> None
     )
     assert failed.status_code == 401
     assert client.get("/tasks").status_code == 401
+
+
+
+def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "login-limit.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    password = "test-only-strong-password-2026"
+    assert client.post("/auth/setup", json={"password": password}).status_code == 201
+
+    for _ in range(2):
+        failed = client.post(
+            "/auth/login",
+            json={"username": "owner", "password": "incorrect-password"},
+        )
+        assert failed.status_code == 401
+
+    successful = client.post(
+        "/auth/login",
+        json={"username": "owner", "password": password},
+    )
+    assert successful.status_code == 200
+
+    for _ in range(5):
+        failed = client.post(
+            "/auth/login",
+            json={"username": "owner", "password": "incorrect-password"},
+        )
+        assert failed.status_code == 401
+
+    limited = client.post(
+        "/auth/login",
+        json={"username": "owner", "password": password},
+    )
+    assert limited.status_code == 429
+    assert 1 <= int(limited.headers["Retry-After"]) <= 300
