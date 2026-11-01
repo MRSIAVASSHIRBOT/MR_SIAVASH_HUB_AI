@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import sqlite3
 
 import pytest
 from cryptography.fernet import Fernet
@@ -16,6 +17,16 @@ from mrhub.jobs.recovery import WorkflowRecoveryRepository
 def setup_repo(tmp_path, key=None):
     database_path = tmp_path / "inputs.sqlite3"
     recovery = WorkflowRecoveryRepository(database_path)
+    recovery.initialize()
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """INSERT INTO auth_users
+           (user_id, username, salt, password_hash, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        ("owner-1", "owner1", "salt", "hash", datetime.now(UTC).isoformat()),
+    )
+    connection.commit()
+    connection.close()
     workflow_id = recovery.create_run(
         "a" * 64,
         [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
