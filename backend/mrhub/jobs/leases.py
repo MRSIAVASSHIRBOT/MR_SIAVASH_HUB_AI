@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
