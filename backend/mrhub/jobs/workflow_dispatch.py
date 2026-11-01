@@ -78,30 +78,32 @@ class WorkflowWorkerHandler:
             return self._fail_closed(task, lease, workflow_id, "workflow_lease_lost")
 
         core = AgentCore(build_model_router(), build_tool_registry())
-        try:
-            plan = core.plan(request)
-            if not plan.get("execution_ready"):
-                return self._fail_closed(
-                    task, lease, workflow_id, "workflow_plan_not_executable"
-                )
-            result = AgentWorkflowRunner(self.repository, core).execute(
-                request,
-                plan,
-                AgentWorkflowRunner._digest(request.model_dump(mode="json")),
-                owner_user_id,
-                workflow_id=workflow_id,
-                task=task,
-                lease=lease,
-                lease_lost=lease_lost,
+        plan = core.plan(request)
+        if not plan.get("execution_ready"):
+            return self._fail_closed(
+                task, lease, workflow_id, "workflow_plan_not_executable"
             )
-            execution = result.get("execution")
-            if isinstance(execution, dict):
-                return {
-                    "workflow_id": str(workflow_id),
-                    "execution_completed": bool(execution.get("execution_completed")),
-                    "executed_tool_count": int(execution.get("executed_tool_count", 0)),
-                }
-            return {"workflow_id": str(workflow_id), "execution_completed": False}
+        result = AgentWorkflowRunner(self.repository, core).execute(
+            request,
+            plan,
+            AgentWorkflowRunner._digest(request.model_dump(mode="json")),
+            owner_user_id,
+            workflow_id=workflow_id,
+            task=task,
+            lease=lease,
+            lease_lost=lease_lost,
+        )
+        execution = result.get("execution")
+        if isinstance(execution, dict):
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": bool(execution.get("execution_completed")),
+                "executed_tool_count": int(execution.get("executed_tool_count", 0)),
+                "model_inference_started": bool(execution.get("model_inference_started")),
+                "tools_executed": bool(execution.get("tools_executed")),
+                "error_code": execution.get("error_code"),
+            }
+        return {"workflow_id": str(workflow_id), "execution_completed": False}
 
     def _fail_closed(
         self,
