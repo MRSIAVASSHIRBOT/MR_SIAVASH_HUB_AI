@@ -139,27 +139,13 @@ def execute_agent_workflow(
         task_repository = TaskRepository(settings.database_path)
         task_repository.initialize()
         try:
-            result = AgentWorkflowRunner(task_repository, core).execute(
-                request, plan, request_digest, current_user.user_id
+            return AgentWorkflowRunner(task_repository, core).execute(
+                request,
+                plan,
+                request_digest,
+                current_user.user_id,
+                submission_key=idempotency_key,
             )
-            if idempotency_key is not None:
-                workflow = result.get("workflow", {})
-                workflow_id = workflow.get("workflow_id") if isinstance(workflow, dict) else None
-                task_id = workflow.get("task_id") if isinstance(workflow, dict) else None
-                if not workflow_id or not task_id:
-                    submission_repository.mark_failed(
-                        current_user.user_id, "/agent/workflows", idempotency_key, request_digest
-                    )
-                    raise RuntimeError("Workflow execution returned no durable workflow/task identifiers")
-                submission_repository.bind(
-                    current_user.user_id,
-                    "/agent/workflows",
-                    idempotency_key,
-                    request_digest,
-                    str(workflow_id),
-                    str(task_id),
-                )
-            return result
         except Exception:
             if idempotency_key is not None:
                 try:
