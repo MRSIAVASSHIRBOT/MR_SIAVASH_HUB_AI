@@ -783,6 +783,25 @@ class WorkflowRecoveryRepository:
                 return ResumeDecision("resume", next_step["step_number"], checkpoint_version, None)
             return ResumeDecision("finish", None, checkpoint_version, "all_steps_succeeded")
 
+    def delete_encrypted_payload(
+        self, workflow_id: UUID, *, owner_user_id: str
+    ) -> bool:
+        """Delete retained ciphertext after a terminal outcome for its owner."""
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM workflow_payloads
+                WHERE workflow_id = ? AND owner_user_id = ?
+                  AND EXISTS (
+                    SELECT 1 FROM workflow_runs
+                    WHERE workflow_runs.workflow_id = workflow_payloads.workflow_id
+                      AND workflow_runs.status IN ('succeeded', 'failed', 'cancelled')
+                  )
+                """,
+                (str(workflow_id), owner_user_id),
+            )
+            return cursor.rowcount == 1
+
     def get_encrypted_payload(
         self, workflow_id: UUID, *, owner_user_id: str
     ) -> dict[str, object] | None:
