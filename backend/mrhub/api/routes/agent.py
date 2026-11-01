@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
