@@ -822,14 +822,26 @@ class WorkflowRecoveryRepository:
             if status in {"succeeded", "failed", "cancelled"}:
                 return {"workflow_id": str(workflow_id), "status": status}
             if status == "queued":
-                connection.execute(
-                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'queued'",
+                # The worker may have claimed the task but not started the workflow
+                # yet. Cancellation must fence both queued and claimed/running tasks.
+                task_cursor = connection.execute(
+                    """
+                    UPDATE tasks SET status = 'cancelled', updated_at = ?
+                    WHERE task_id = ? AND status IN ('queued', 'running')
+                    """,
                     (now, task_id),
                 )
-                connection.execute(
-                    "UPDATE workflow_runs SET status = 'cancelled', updated_at = ? WHERE workflow_id = ? AND status = 'queued'",
+                if task_cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Task state changed during cancellation")
+                run_cursor = connection.execute(
+                    """
+                    UPDATE workflow_runs SET status = 'cancelled', updated_at = ?
+                    WHERE workflow_id = ? AND status = 'queued'
+                    """,
                     (now, str(workflow_id)),
                 )
+                if run_cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Workflow state changed during cancellation")
                 connection.execute(
                     "DELETE FROM workflow_payloads WHERE workflow_id = ?",
                     (str(workflow_id),),
