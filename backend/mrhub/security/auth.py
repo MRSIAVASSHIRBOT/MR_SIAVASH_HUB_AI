@@ -98,6 +98,8 @@ class AuthService:
 class LoginAttemptLimiter:
     """Bound repeated failed logins per client address in this single-process app."""
 
+    MAX_TRACKED_CLIENTS = 1024
+
     def __init__(self, max_attempts: int = 5, window_seconds: int = 300) -> None:
         if max_attempts < 1 or window_seconds < 1:
             raise ValueError("Login limiter bounds must be positive")
@@ -106,20 +108,21 @@ class LoginAttemptLimiter:
         self._failures: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
 
-    def _active_failures(self, client_key: str, now: float) -> deque[float]:
-        failures = self._failures.setdefault(client_key, deque())
+    def _prune(self, failures: deque[float], now: float) -> None:
         cutoff = now - self.window_seconds
         while failures and failures[0] <= cutoff:
             failures.popleft()
-        if not failures:
-            self._failures.pop(client_key, None)
-            return deque()
-        return failures
 
     def retry_after(self, client_key: str) -> int:
         now = time.monotonic()
         with self._lock:
-            failures = self._active_failures(client_key, now)
+            failures = self._failures.get(client_key)
+            if failures is None:
+                return 0
+            self._prune(failures, now)
+            if not failures:
+                self._failures.pop(client_key, None)
+                return 0
             if len(failures) < self.max_attempts:
                 return 0
             return max(1, int(self.window_seconds - (now - failures[0]) + 0.999))
@@ -127,7 +130,14 @@ class LoginAttemptLimiter:
     def record_failure(self, client_key: str) -> None:
         now = time.monotonic()
         with self._lock:
-            failures = self._active_failures(client_key, now)
+            failures = self._failures.get(client_key)
+            if failures is None:
+                if len(self._failures) >= self.MAX_TRACKED_CLIENTS:
+                    oldest_key = next(iter(self._failures))
+                    self._failures.pop(oldest_key, None)
+                failures = deque()
+                self._failures[client_key] = failures
+            self._prune(failures, now)
             failures.append(now)
 
     def reset(self, client_key: str) -> None:
