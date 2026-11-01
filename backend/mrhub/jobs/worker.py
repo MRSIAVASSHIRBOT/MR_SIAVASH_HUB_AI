@@ -283,6 +283,7 @@ class WorkerEngine:
                 SELECT t.* FROM tasks AS t
                 LEFT JOIN worker_executions AS e ON e.task_id = t.task_id
                 WHERE t.status = ?
+                  AND t.task_type != 'agent.workflow'
                   AND (e.next_attempt_at IS NULL OR e.next_attempt_at <= ?)
                 ORDER BY t.created_at LIMIT 1
                 """,
