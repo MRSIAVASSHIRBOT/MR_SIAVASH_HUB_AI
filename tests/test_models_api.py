@@ -282,3 +282,57 @@ def test_provider_inventory_requires_authentication(tmp_path, monkeypatch):
     response = client.get("/models/providers")
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+def test_provider_health_check_is_explicit_bounded_and_sanitized(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    monkeypatch.setenv("MRH_LOCAL_INFERENCE_ENABLED", "true")
+    monkeypatch.setenv("MRH_LOCAL_INFERENCE_MODEL", "tiny-model")
+    get_settings.cache_clear()
+
+    from mrhub.providers.base import ProviderHealth
+    from mrhub.providers.ollama import OllamaProvider
+
+    observed_timeouts = []
+
+    def fake_health(self, timeout_seconds=2.0):
+        observed_timeouts.append(timeout_seconds)
+        return ProviderHealth(available=False, reason_code="provider_unavailable")
+
+    monkeypatch.setattr(OllamaProvider, "health", fake_health)
+    client = authenticated_client()
+    response = client.post(
+        "/models/providers/health-check", json={"timeout_seconds": 1.5}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 2
+    assert body["inference_started"] is False
+    assert body["downloads_started"] is False
+    assert observed_timeouts == [1.5]
+    ollama = next(item for item in body["results"] if item["provider"] == "ollama")
+    assert ollama["status"] == "unavailable"
+    assert ollama["reason_code"] == "provider_unavailable"
+    assert "private" not in response.text
+    get_settings.cache_clear()
+
+
+def test_provider_health_check_rejects_unbounded_timeout(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    response = client.post(
+        "/models/providers/health-check", json={"timeout_seconds": 30}
+    )
+    assert response.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_provider_health_check_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.post("/models/providers/health-check", json={})
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
