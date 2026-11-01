@@ -116,8 +116,8 @@ MIGRATIONS = (
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_workflow_runs_status_updated "
-            "ON workflow_runs(status, updated_at)",
+            ("CREATE INDEX IF NOT EXISTS idx_workflow_runs_status_updated "
+             "ON workflow_runs(status, updated_at)"),
             """CREATE TABLE IF NOT EXISTS workflow_steps (
                 step_id TEXT PRIMARY KEY,
                 workflow_id TEXT NOT NULL REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
@@ -138,8 +138,8 @@ MIGRATIONS = (
                 updated_at TEXT NOT NULL,
                 UNIQUE(workflow_id, step_number)
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_workflow_steps_status "
-            "ON workflow_steps(workflow_id, status, step_number)",
+            ("CREATE INDEX IF NOT EXISTS idx_workflow_steps_status "
+             "ON workflow_steps(workflow_id, status, step_number)"),
             """CREATE TABLE IF NOT EXISTS workflow_step_attempts (
                 attempt_id TEXT PRIMARY KEY,
                 step_id TEXT NOT NULL REFERENCES workflow_steps(step_id) ON DELETE CASCADE,
@@ -174,8 +174,8 @@ MIGRATIONS = (
                 expires_at TEXT,
                 PRIMARY KEY(scope, idempotency_key)
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
-            "ON idempotency_records(expires_at)",
+            ("CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
+             "ON idempotency_records(expires_at)"),
         ),
     ),
 )
