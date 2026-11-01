@@ -126,3 +126,49 @@ def test_agent_run_history_returns_not_found_for_unknown_id():
     client = authenticated_client()
     response = client.get("/agent/runs/00000000-0000-0000-0000-000000000001")
     assert response.status_code == 404
+
+
+def test_agent_workflow_executes_and_persists_each_step():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Run a durable safe workflow",
+            "tools": [{"name": "text.echo", "payload": {"text": "hello"}}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    workflow = body["workflow"]
+    assert workflow["status"] == "succeeded"
+    assert workflow["steps"][1]["status"] == "succeeded"
+    assert workflow["stored_request"] is False
+    assert workflow["stored_tool_payloads"] is False
+    assert body["execution"]["execution_completed"] is True
+
+    history = client.get("/agent/workflows/" + workflow["workflow_id"])
+    assert history.status_code == 200
+    assert history.json()["steps"][1]["status"] == "succeeded"
+
+
+def test_agent_workflow_persists_blocked_plan_without_execution():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Do not execute unknown tools",
+            "tools": [{"name": "shell.execute", "payload": {}}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["workflow"]["status"] == "blocked"
+    assert body["execution"] is None
+
+
+def test_agent_workflow_not_found():
+    client = authenticated_client()
+    response = client.get(
+        "/agent/workflows/00000000-0000-0000-0000-000000000002"
+    )
+    assert response.status_code == 404
