@@ -278,6 +278,9 @@ class WorkerEngine:
             self._mark_cancelled(task, lease=lease)
             return current
 
+        if lease_lost.is_set():
+            return self.repository.get(task.task_id)
+
         handler = self.handlers.get(task.task_type)
         if handler is None:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
@@ -436,8 +439,9 @@ class WorkerEngine:
                 SET error_code = 'cancelled_during_execution', finished_at = ?,
                     next_attempt_at = NULL
                 WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                  AND lease_expires_at > ?
                 """,
-                (now, str(task.task_id), lease.owner, lease.fencing_token),
+                (now, str(task.task_id), lease.owner, lease.fencing_token, now),
             )
         self._audit(task, "cancelled", "cancelled_during_execution")
 
