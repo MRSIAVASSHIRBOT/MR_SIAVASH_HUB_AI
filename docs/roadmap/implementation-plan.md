@@ -71,6 +71,12 @@ Exit criteria: produce a draft and media asset locally; external publishing rema
 Exit criteria: a multi-step workflow runs with bounded tools and traceable state transitions.
 
 ## Phase 5 — NEXUS and Discovery
+- [x] Add persistent metadata-only capability source catalog with canonical HTTPS URLs
+- [x] Add authenticated candidate listing and review-state endpoints
+- [x] Require license, security, compatibility, and test-plan evidence before marking a source approved
+- [ ] Add automated GitHub repository metadata/license/release inspection without executing source code
+- [ ] Add isolated compatibility and security evaluation jobs with bounded resources
+- [ ] Add reviewed connector/skill adapters and an explicit activation/rollback workflow
 - Repository-aware read-only analysis first
 - Patch proposal and diff review
 - Tests executed in an isolated, bounded environment
