@@ -24,23 +24,10 @@ class AgentRunRepository:
         return connection
 
     def initialize(self) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS agent_runs (
-                    run_id TEXT PRIMARY KEY,
-                    request_digest TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    provider_name TEXT,
-                    model_name TEXT,
-                    plan_json TEXT NOT NULL,
-                    tool_names_json TEXT NOT NULL,
-                    executed_tool_count INTEGER NOT NULL,
-                    error_code TEXT,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
+        """Apply the canonical versioned schema; repositories never issue runtime DDL."""
+        from mrhub.infrastructure.database import TaskRepository
+
+        TaskRepository(self.database_path).initialize()
 
     def record(
         self,
