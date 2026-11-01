@@ -84,3 +84,6 @@ License selection is pending. No license grant should be inferred until a licens
 ## Model resource planning
 
 A conservative RAM-fit estimator is available in `mrhub.diagnostics.resource_advisor`. It consumes the read-only hardware report and an explicit model profile, reserves system memory, reports uncertainty, and never starts inference. See `docs/operations/model-resource-advisor.md`.
+
+
+A static, local model-profile registry is available through the authenticated `GET /models/profiles` endpoint. Its sample entries are explicitly unverified estimates, not model compatibility guarantees. See `docs/operations/model-profiles.md`.
