@@ -6,6 +6,7 @@ from uuid import UUID
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import WorkerLease
 from mrhub.security.audit import AuditLogger
 
 
@@ -38,7 +39,9 @@ class JobEngine:
     def get(self, task_id: UUID) -> TaskRecord | None:
         return self.repository.get(task_id)
 
-    def transition(self, task_id: UUID, target: TaskStatus) -> TaskRecord:
+    def transition(
+        self, task_id: UUID, target: TaskStatus, *, lease: WorkerLease | None = None
+    ) -> TaskRecord:
         current = self.repository.get(task_id)
         if current is None:
             raise KeyError("Task not found")
@@ -48,7 +51,19 @@ class JobEngine:
             "status": target,
             "updated_at": datetime.now(UTC),
         })
-        saved = self.repository.update_status(task_id, current.status, updated)
+        if lease is None:
+            saved = self.repository.update_status(task_id, current.status, updated)
+        else:
+            if lease.task_id != str(task_id):
+                raise RuntimeError("Worker lease does not belong to this task")
+            saved = self.repository.update_status(
+                task_id,
+                current.status,
+                updated,
+                lease_owner=lease.owner,
+                fencing_token=lease.fencing_token,
+                lease_now=updated.updated_at.isoformat(),
+            )
         AuditLogger(self.repository).record(
             event_type="task.status_changed",
             outcome="success",
