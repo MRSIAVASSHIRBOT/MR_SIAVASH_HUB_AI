@@ -44,7 +44,7 @@ def test_api_and_worker_execute_queued_workflow_in_separate_processes(tmp_path: 
         {
             "MRH_DATABASE_PATH": str(database),
             "MRH_WORKFLOW_PAYLOAD_KEY": base64.urlsafe_b64encode(
-                b"runtime-smoke-key-material-32bytes"
+                b"runtime-smoke-key-material-32byt"
             ).decode("ascii"),
             "MRH_ENVIRONMENT": "test",
             "PYTHONPATH": str(root / "backend")
