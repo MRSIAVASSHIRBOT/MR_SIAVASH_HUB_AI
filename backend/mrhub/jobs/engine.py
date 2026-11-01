@@ -114,8 +114,17 @@ class JobEngine:
                     },
                 )
                 return saved
-            if active_external and current.status is TaskStatus.RUNNING:
-                # The worker will fence and reconcile the in-flight step. Do not report
-                # cancellation as complete while an external side effect may be in flight.
+            if run is not None and run["status"] == "running" and current.status is TaskStatus.RUNNING:
+                # WAITING_APPROVAL is a durable cancellation request. The worker decides
+                # cancelled vs recovery_required and commits both records together.
                 return self.transition(task_id, TaskStatus.WAITING_APPROVAL)
+            if run is not None and run["status"] == "paused" and current.status is TaskStatus.WAITING_APPROVAL:
+                recovery.cancel_paused_run(UUID(run["workflow_id"]))
+                saved = self.repository.get(task_id)
+                if saved is None:
+                    raise KeyError("Task not found")
+                return saved
+            if run is not None and run["status"] == "recovery_required":
+                # Do not hide an ambiguous external outcome behind a cancellation label.
+                return current
         return self.transition(task_id, TaskStatus.CANCELLED)
