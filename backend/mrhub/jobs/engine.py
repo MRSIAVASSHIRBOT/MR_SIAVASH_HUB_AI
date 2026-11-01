@@ -91,12 +91,6 @@ class JobEngine:
                     "SELECT workflow_id, status FROM workflow_runs WHERE task_id = ?",
                     (str(task_id),),
                 ).fetchone()
-                active_external = False
-                if run is not None and run["status"] == "running":
-                    active_external = connection.execute(
-                        "SELECT 1 FROM workflow_steps WHERE workflow_id = ? AND status = 'running' AND step_kind = 'external_tool' LIMIT 1",
-                        (run["workflow_id"],),
-                    ).fetchone() is not None
             if run is not None and run["status"] == "queued" and current.status is TaskStatus.QUEUED:
                 recovery.cancel_queued_run(UUID(run["workflow_id"]))
                 saved = self.repository.get(task_id)
