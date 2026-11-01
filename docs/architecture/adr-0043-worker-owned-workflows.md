@@ -6,7 +6,7 @@
 
 ## Context
 
-The durable workflow runner currently creates a Job and a Workflow, acquires a lease, and executes AgentCore steps within the HTTP request handler. The generic pull-driven WorkerEngine is separate and supports only registered TaskRecord handlers. Generic Job cancellation changes the Job state, but there is no single worker-owned state machine coordinating cancellation with the workflow run and its current step.
+The initial implementation executed workflow steps inside the HTTP request. The current feature branch separates submission from execution: the API stores owner-scoped encrypted inputs and returns a queued Job/Workflow, while WorkerEngine dispatches the workflow under its existing lease and fencing token. Cancellation is coordinated through a durable request and the worker commits the final Job/Workflow state together.
 
 Simply registering the existing request-scoped runner as a handler is unsafe: the original AgentPlanRequest contains tool arguments, and current workflow recovery deliberately avoids persisting raw prompts, arguments, and outputs. A worker cannot safely resume after process restart unless the execution input has an explicit storage and privacy design.
 
@@ -35,7 +35,7 @@ Workflow submission accepts a bounded Idempotency-Key. A unique key is scoped to
 
 ### 4. Cancellation is a durable request, not an optimistic state flip
 
-Cancellation is represented as a durable signal associated with the Job/Workflow. The worker checks task state and lease ownership at step boundaries. Queued cancellation updates the linked Job and Workflow; active external steps are moved to recovery review rather than reported as cleanly cancelled. Full atomic terminal-state coordination and process-level cancellation remain under verification. Cancellation cannot forcibly reverse an external side effect already in flight.
+Cancellation is represented as a durable signal associated with the Job/Workflow. The worker checks task state and lease ownership at step boundaries. Queued cancellation updates the linked Job and Workflow; active external steps are moved to recovery review rather than reported as cleanly cancelled. Worker-owned terminal transitions now update the Job and Workflow in one SQLite transaction under the active fencing token. A cancellation request does not forcibly interrupt a synchronous handler; the worker observes it at a step boundary and commits the final state. Cancellation cannot forcibly reverse an external side effect already in flight.
 
 For an interrupted external step whose outcome cannot be verified, the step becomes unknown_outcome and requires reconciliation. The system must not label it cleanly cancelled or automatically replay it. Safe deterministic steps may be resumed only according to their explicit retry policy.
 
