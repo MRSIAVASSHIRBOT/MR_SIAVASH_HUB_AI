@@ -3,6 +3,12 @@ from fastapi.testclient import TestClient
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.worker import WorkerEngine
+
+
+def _run_worker_once():
+    return WorkerEngine(TaskRepository(get_settings().database_path)).run_once()
 
 
 def test_agent_plan_selects_provider_and_only_plans_tools():
@@ -139,7 +145,11 @@ def test_agent_workflow_executes_and_persists_each_step():
     )
     assert response.status_code == 200
     body = response.json()
-    workflow = body["workflow"]
+    queued = body["workflow"]
+    assert queued["status"] == "queued"
+    completed = _run_worker_once()
+    assert completed is not None and completed.status.value == "succeeded"
+    workflow = client.get("/agent/workflows/" + queued["workflow_id"]).json()
     assert workflow["status"] == "succeeded"
     assert workflow["steps"][1]["status"] == "succeeded"
     assert workflow["stored_request"] is False
@@ -209,6 +219,7 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
     )
     assert created.status_code == 200
     workflow_id = created.json()["workflow"]["workflow_id"]
+    assert _run_worker_once() is not None
     checked = client.post(
         f"/agent/workflows/{workflow_id}/resume-check",
         json={
@@ -263,9 +274,11 @@ def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step():
     )
     assert resumed.status_code == 200
     body = resumed.json()
-    assert body["workflow"]["status"] == "succeeded"
-    assert body["execution"]["execution_completed"] is True
-    assert body["execution"]["executed_tool_count"] == 1
+    assert body["workflow"]["status"] == "queued"
+    completed = _run_worker_once()
+    assert completed is not None and completed.status.value == "succeeded"
+    final_workflow = client.get(f"/agent/workflows/{workflow_id}").json()
+    assert final_workflow["status"] == "succeeded"
 
     task = client.get(f"/tasks/{workflow['task_id']}")
     assert task.status_code == 200
@@ -334,14 +347,23 @@ def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
     jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
     assert leases.release(lease)
 
+    from mrhub.agents.execution_inputs import WorkflowExecutionInputRepository
+    WorkflowExecutionInputRepository(
+        tasks.database_path, settings.workflow_input_encryption_key
+    ).store(str(workflow_id), owner, request)
+
     response = client.post(
         f"/agent/workflows/{workflow_id}/resume",
         json={"request": request},
     )
 
     assert response.status_code == 200
-    assert response.json()["workflow"]["status"] == "succeeded"
-    assert response.json()["workflow"]["steps"][1]["status"] == "succeeded"
+    assert response.json()["workflow"]["status"] == "queued"
+    completed = _run_worker_once()
+    assert completed is not None and completed.status.value == "succeeded"
+    final_workflow = client.get(f"/agent/workflows/{workflow_id}").json()
+    assert final_workflow["status"] == "succeeded"
+    assert final_workflow["steps"][1]["status"] == "succeeded"
     linked_task = client.get(f"/tasks/{task.task_id}")
     assert linked_task.status_code == 200
     assert linked_task.json()["status"] == "succeeded"
@@ -407,6 +429,7 @@ def test_agent_workflow_duplicate_resume_does_not_replay_completed_work():
     assert created.status_code == 200
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
+    assert _run_worker_once() is not None
 
     # Simulate a paused workflow whose only tool step has already been checkpointed.
     from mrhub.infrastructure.database import TaskRepository
@@ -428,8 +451,10 @@ def test_agent_workflow_duplicate_resume_does_not_replay_completed_work():
         json={"request": original},
     )
     assert first.status_code == 200
-    assert first.json()["workflow"]["status"] == "succeeded"
-    assert first.json()["execution"]["executed_tool_count"] == 0
+    assert first.json()["workflow"]["status"] == "queued"
+    completed = _run_worker_once()
+    assert completed is not None and completed.status.value == "succeeded"
+    assert client.get(f"/agent/workflows/{workflow_id}").json()["status"] == "succeeded"
 
     second = client.post(
         f"/agent/workflows/{workflow_id}/resume",
