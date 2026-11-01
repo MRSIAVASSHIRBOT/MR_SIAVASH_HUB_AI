@@ -111,8 +111,7 @@ def canonicalize_source_url(value: str) -> str:
     if port not in (None, 443):
         raise CapabilityValidationError("Source URL must use the standard HTTPS port")
     path = parsed.path.rstrip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
+    path = path.removesuffix(".git")
     return urlunsplit(("https", normalized_host, path, "", ""))
 
 
