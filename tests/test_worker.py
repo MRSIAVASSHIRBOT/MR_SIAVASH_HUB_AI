@@ -528,3 +528,23 @@ def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
     assert stored_workflow["steps"][0]["status"] == "retry_wait"
     assert decision.decision == "resume"
     assert decision.next_step == 1
+
+
+
+def test_generic_worker_does_not_claim_agent_workflow_jobs(tmp_path):
+    """Workflow jobs require the workflow runner, not generic task handlers."""
+    repository, worker = make_worker(tmp_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="workflow must stay queued")
+    workflow_id = recovery.create_run(
+        "e" * 64,
+        [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
+        task=task,
+    )
+
+    assert worker.run_once() is None
+
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id)
+    assert stored_task is not None and stored_task.status is TaskStatus.QUEUED
+    assert stored_workflow is not None and stored_workflow["status"] == "queued"
