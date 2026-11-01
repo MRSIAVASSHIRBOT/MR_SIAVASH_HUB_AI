@@ -65,31 +65,30 @@ def _metadata_response(source_url: str) -> dict[str, Any]:
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": _USER_AGENT,
             },
-        ) as client:
-            with client.stream("GET", api_url) as response:
-                if response.status_code == 404:
-                    raise GitHubDiscoveryError("repository_not_found", "Public repository not found", status_code=404)
-                if response.status_code == 403 and response.headers.get("x-ratelimit-remaining") == "0":
-                    raise GitHubDiscoveryError("github_rate_limited", "GitHub API rate limit reached; try again later", status_code=429)
-                if response.status_code == 401:
-                    raise GitHubDiscoveryError("github_api_auth_required", "GitHub API refused this metadata request", status_code=502)
-                if response.status_code == 403:
-                    raise GitHubDiscoveryError("github_api_forbidden", "GitHub API denied this metadata request", status_code=502)
-                if response.status_code >= 500:
-                    raise GitHubDiscoveryError("github_unavailable", "GitHub API is temporarily unavailable", status_code=502)
-                if response.status_code != 200:
-                    raise GitHubDiscoveryError("github_api_error", f"GitHub API returned HTTP {response.status_code}", status_code=502)
-                chunks: list[bytes] = []
-                total = 0
-                for chunk in response.iter_bytes():
-                    total += len(chunk)
-                    if total > _MAX_RESPONSE_BYTES:
-                        raise GitHubDiscoveryError("metadata_response_too_large", "GitHub metadata response exceeded the size limit", status_code=502)
-                    chunks.append(chunk)
-                try:
-                    payload = httpx.Response(200, content=b"".join(chunks)).json()
-                except ValueError as exc:
-                    raise GitHubDiscoveryError("invalid_github_response", "GitHub returned invalid metadata JSON", status_code=502) from exc
+        ) as client, client.stream("GET", api_url) as response:
+            if response.status_code == 404:
+                raise GitHubDiscoveryError("repository_not_found", "Public repository not found", status_code=404)
+            if response.status_code == 403 and response.headers.get("x-ratelimit-remaining") == "0":
+                raise GitHubDiscoveryError("github_rate_limited", "GitHub API rate limit reached; try again later", status_code=429)
+            if response.status_code == 401:
+                raise GitHubDiscoveryError("github_api_auth_required", "GitHub API refused this metadata request", status_code=502)
+            if response.status_code == 403:
+                raise GitHubDiscoveryError("github_api_forbidden", "GitHub API denied this metadata request", status_code=502)
+            if response.status_code >= 500:
+                raise GitHubDiscoveryError("github_unavailable", "GitHub API is temporarily unavailable", status_code=502)
+            if response.status_code != 200:
+                raise GitHubDiscoveryError("github_api_error", f"GitHub API returned HTTP {response.status_code}", status_code=502)
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in response.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_RESPONSE_BYTES:
+                    raise GitHubDiscoveryError("metadata_response_too_large", "GitHub metadata response exceeded the size limit", status_code=502)
+                chunks.append(chunk)
+            try:
+                payload = httpx.Response(200, content=b"".join(chunks)).json()
+            except ValueError as exc:
+                raise GitHubDiscoveryError("invalid_github_response", "GitHub returned invalid metadata JSON", status_code=502) from exc
     except GitHubDiscoveryError:
         raise
     except httpx.TimeoutException as exc:
