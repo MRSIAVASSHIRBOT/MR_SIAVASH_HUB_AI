@@ -37,8 +37,12 @@ def test_safe_interruption_keeps_job_resumable_and_resume_completes(monkeypatch)
 
     original_execute = AgentCore.execute
     monkeypatch.setattr(AgentCore, "execute", interrupt_during_safe_tool)
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200
+    from client_helpers import run_worker_once
+
     with pytest.raises(RuntimeError, match="Workflow execution stopped"):
-        client.post("/agent/workflows", json=request)
+        run_worker_once()
 
     repository, workflow_id, task_id = _workflow_and_task(client)
     from mrhub.jobs.recovery import WorkflowRecoveryRepository
@@ -71,6 +75,10 @@ def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch
     assert created.status_code == 200
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
+    from client_helpers import run_worker_once
+
+    assert run_worker_once() is not None
+    workflow = client.get(f"/agent/workflows/{workflow_id}").json()
 
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
