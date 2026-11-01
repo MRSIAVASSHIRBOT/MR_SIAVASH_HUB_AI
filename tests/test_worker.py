@@ -226,3 +226,121 @@ def test_retry_schedule_survives_worker_recreation(tmp_path):
     recreated.handlers["demo.echo"] = lambda _task: {"message": "done"}
     completed = recreated.run_once()
     assert completed is not None and completed.status is TaskStatus.SUCCEEDED
+
+
+def test_two_worker_instances_do_not_execute_the_same_task_concurrently(tmp_path):
+    from threading import Event, Thread
+
+    repository = TaskRepository(tmp_path / "shared.sqlite3")
+    repository.initialize()
+    first = WorkerEngine(repository, lease_seconds=3)
+    second = WorkerEngine(repository, lease_seconds=3)
+    task = TaskRecord(task_type="demo.echo", description="one execution")
+    repository.create(task)
+    entered = Event()
+    release = Event()
+    calls = []
+
+    def blocked_handler(current_task):
+        calls.append(current_task.task_id)
+        entered.set()
+        assert release.wait(timeout=3)
+        return {"message": current_task.description}
+
+    first.handlers["demo.echo"] = blocked_handler
+    thread_result = []
+    thread = Thread(target=lambda: thread_result.append(first.run_once()))
+    thread.start()
+    assert entered.wait(timeout=2)
+
+    assert second.run_once() is None
+    release.set()
+    thread.join(timeout=3)
+
+    assert not thread.is_alive()
+    assert len(calls) == 1
+    assert thread_result[0] is not None
+    assert thread_result[0].status is TaskStatus.SUCCEEDED
+
+
+def test_worker_heartbeat_keeps_long_running_handler_lease_alive(tmp_path):
+    from threading import Event, Thread
+    from time import sleep
+
+    repository = TaskRepository(tmp_path / "heartbeat.sqlite3")
+    repository.initialize()
+    worker = WorkerEngine(repository, lease_seconds=1)
+    task = TaskRecord(task_type="demo.echo", description="heartbeat")
+    repository.create(task)
+    entered = Event()
+    release = Event()
+
+    def slow_handler(current_task):
+        entered.set()
+        assert release.wait(timeout=4)
+        return {"message": current_task.description}
+
+    worker.handlers["demo.echo"] = slow_handler
+    result = []
+    thread = Thread(target=lambda: result.append(worker.run_once()))
+    thread.start()
+    assert entered.wait(timeout=2)
+    sleep(1.3)
+
+    with repository._connection() as connection:
+        row = connection.execute(
+            "SELECT heartbeat_at, lease_expires_at FROM worker_executions WHERE task_id = ?",
+            (str(task.task_id),),
+        ).fetchone()
+    assert row is not None and row["heartbeat_at"] is not None
+    assert row["lease_expires_at"] is not None
+
+    release.set()
+    thread.join(timeout=3)
+    assert not thread.is_alive()
+    assert result[0] is not None and result[0].status is TaskStatus.SUCCEEDED
+
+
+def test_worker_with_lost_fencing_token_cannot_commit_result(tmp_path):
+    from threading import Event, Thread
+
+    from mrhub.jobs.leases import LeaseManager
+
+    repository = TaskRepository(tmp_path / "fencing.sqlite3")
+    repository.initialize()
+    worker = WorkerEngine(repository, lease_seconds=2)
+    task = TaskRecord(task_type="demo.echo", description="stale worker")
+    repository.create(task)
+    entered = Event()
+    release = Event()
+
+    def delayed_handler(current_task):
+        entered.set()
+        assert release.wait(timeout=3)
+        return {"message": "must not be committed"}
+
+    worker.handlers["demo.echo"] = delayed_handler
+    result = []
+    thread = Thread(target=lambda: result.append(worker.run_once()))
+    thread.start()
+    assert entered.wait(timeout=2)
+
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET lease_expires_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    successor = LeaseManager(repository.database_path).acquire(
+        str(task.task_id), "successor-worker"
+    )
+    assert successor is not None
+    release.set()
+    thread.join(timeout=3)
+
+    assert not thread.is_alive()
+    stored = repository.get(task.task_id)
+    assert stored is not None and stored.status is TaskStatus.RUNNING
+    persisted = worker.get_result(task.task_id)
+    assert persisted is not None and persisted["result"] is None
+    assert LeaseManager(repository.database_path).is_current(successor)
