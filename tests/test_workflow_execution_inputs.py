@@ -106,8 +106,6 @@ def test_expired_payload_is_not_returned(tmp_path):
     database_path, workflow_id = setup_repo(tmp_path)
     repo = WorkflowExecutionInputRepository(database_path, key)
     expiry = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
-    repo.store(workflow_id, "owner-1", {"goal": "expired"}, expires_at=expiry)
-
     with pytest.raises(ExecutionInputValidationError, match="future"):
         repo.store(workflow_id, "owner-1", {"goal": "expired"}, expires_at=expiry)
 
