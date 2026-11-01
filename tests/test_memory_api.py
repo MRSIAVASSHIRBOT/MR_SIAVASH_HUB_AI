@@ -22,6 +22,15 @@ def test_memory_crud_search_update_and_delete_keep_fts_index_consistent() -> Non
     entry = created.json()
     assert entry["scope"] == "private"
     assert entry["verification_status"] == "user_authored"
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        audit = connection.execute(
+            "SELECT subject_type, metadata_json FROM audit_events "
+            "WHERE event_type = 'memory.created' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    assert audit is not None
+    assert audit["subject_type"] == "memory"
+    assert "SQLite FTS5" not in audit["metadata_json"]
 
     found = client.post("/memory/search", json={"query": "SQLite memory"})
     assert found.status_code == 200
