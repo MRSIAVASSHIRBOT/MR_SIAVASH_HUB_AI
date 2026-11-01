@@ -98,6 +98,8 @@ def test_discovery_registers_metadata_only_candidate_and_never_approves(monkeypa
     assert result["source_code_executed"] is False
     assert result["approval_granted"] is False
     assert result["stargazers_count"] == 123
+    assert result["evaluation"]["scope"] == "metadata_only"
+    assert result["evaluation"]["approval_granted"] is False
 
 
 def test_github_404_becomes_safe_not_found_error(monkeypatch):
