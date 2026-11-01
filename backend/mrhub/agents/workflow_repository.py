@@ -47,7 +47,7 @@ class AgentWorkflowRepository:
                 """
             )
 
-    def create(self, request_digest: str, plan: dict[str, object]) -> dict[str, object]:
+    def create(self, request_digest: str, plan: dict[str, object], *, owner_user_id: str | None = None) -> dict[str, object]:
         self.initialize()
         now = datetime.now(UTC).isoformat()
         workflow_id = uuid4()
@@ -67,13 +67,13 @@ class AgentWorkflowRepository:
             connection.execute(
                 """
                 INSERT INTO agent_workflows
-                (workflow_id, status, request_digest, plan_json, steps_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (workflow_id, status, request_digest, plan_json, steps_json, created_at, updated_at, owner_user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(workflow_id), status, request_digest,
                     json.dumps(plan, ensure_ascii=False, sort_keys=True),
-                    json.dumps(steps, ensure_ascii=False, sort_keys=True), now, now,
+                    json.dumps(steps, ensure_ascii=False, sort_keys=True), now, now, owner_user_id,
                 ),
             )
         return self.get(workflow_id)  # type: ignore[return-value]
@@ -129,10 +129,10 @@ class AgentWorkflowRepository:
             if cursor.rowcount != 1:
                 raise RuntimeError("Workflow state changed or transition is not allowed")
 
-    def get(self, workflow_id: UUID) -> dict[str, object] | None:
+    def get(self, workflow_id: UUID, *, owner_user_id: str | None = None) -> dict[str, object] | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM agent_workflows WHERE workflow_id = ?", (str(workflow_id),)
+                "SELECT * FROM agent_workflows WHERE workflow_id = ? AND (? IS NULL OR owner_user_id = ?)", (str(workflow_id), owner_user_id, owner_user_id)
             ).fetchone()
         if row is None:
             return None
