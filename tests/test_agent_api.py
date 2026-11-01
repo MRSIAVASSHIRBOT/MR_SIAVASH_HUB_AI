@@ -63,3 +63,30 @@ def test_agent_plan_requires_authentication(tmp_path, monkeypatch):
     response = TestClient(create_app()).post("/agent/plan", json={"goal": "plan"})
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+def test_agent_execute_runs_registered_safe_tool():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/execute",
+        json={
+            "goal": "Echo safely",
+            "tools": [{"name": "text.echo", "payload": {"text": "hello"}}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision_mode"] == "controlled_tool_execution"
+    assert body["execution_completed"] is True
+    assert body["model_inference_started"] is False
+    assert body["results"][0]["result"]["character_count"] == 5
+
+
+def test_agent_execute_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    response = TestClient(create_app()).post(
+        "/agent/execute", json={"goal": "must authenticate"}
+    )
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
