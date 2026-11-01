@@ -292,3 +292,68 @@ def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     # Repeating a cancellation request is safe and returns the terminal state.
     assert second.status_code == 200
     assert second.json()["status"] == "cancelled"
+
+def test_worker_crash_after_external_side_effect_requires_reconciliation() -> None:
+    """A crash after an external action must not replay the uncertain step."""
+    from mrhub.domain.tasks import TaskStatus
+    from mrhub.jobs.engine import JobEngine
+    from mrhub.jobs.worker import WorkerEngine
+
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Simulate a publish action whose response is lost",
+            "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
+        },
+    )
+    assert response.status_code == 200
+    workflow = response.json()["workflow"]
+    workflow_id = UUID(workflow["workflow_id"])
+    task_id = UUID(workflow["task_id"])
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    # Model a registered external-side-effect step for this fault-injection test.
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE workflow_steps SET step_kind = 'external_tool' "
+            "WHERE workflow_id = ? AND step_number = 2",
+            (str(workflow_id),),
+        )
+
+    recovery.start_run(workflow_id)
+    first_attempt = recovery.start_step(workflow_id, 1)
+    recovery.complete_step(workflow_id, first_attempt, "a" * 64)
+    recovery.start_step(workflow_id, 2)
+
+    # The external system accepted the operation, but the worker dies before
+    # persisting a result/checkpoint. Recovery must treat this as ambiguous.
+    external_effects = ["publish accepted by remote system"]
+    JobEngine(repository).transition(task_id, TaskStatus.RUNNING)
+    with repository._connection() as connection:
+        connection.execute(
+            """
+            UPDATE worker_executions
+            SET started_at = ?, lease_owner = ?, lease_expires_at = ?
+            WHERE task_id = ?
+            """,
+            (
+                "2000-01-01T00:00:00+00:00",
+                "terminated-worker",
+                "2000-01-01T00:00:01+00:00",
+                str(task_id),
+            ),
+        )
+
+    worker = WorkerEngine(repository)
+    assert worker.run_once() is None
+
+    stored = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    task = repository.get(task_id)
+    assert task is not None and task.status is TaskStatus.WAITING_APPROVAL
+    assert stored is not None and stored["status"] == "recovery_required"
+    assert stored["steps"][1]["status"] == "unknown_outcome"
+    assert len(external_effects) == 1
+    assert worker.run_once() is None
+    assert len(external_effects) == 1
