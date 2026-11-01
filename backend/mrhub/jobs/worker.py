@@ -15,10 +15,9 @@ from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 from uuid import UUID, uuid4
 
-from mrhub.jobs.leases import LeaseManager, WorkerLease
-
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import LeaseManager, WorkerLease
 from mrhub.security.audit import AuditLogger
 
 
