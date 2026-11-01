@@ -24,6 +24,8 @@ class SubmissionStateError(RuntimeError):
 class WorkflowSubmissionRepository:
     """Persist workflow submission keys with SQLite transaction-level serialization."""
 
+    STALE_RESERVATION_SECONDS = 900
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = Path(database_path)
 
@@ -72,6 +74,21 @@ class WorkflowSubmissionRepository:
         now = datetime.now(UTC).isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            # A process may die after reserving a key but before creating its Job/Workflow.
+            # Expire only old, still-unbound reservations; the write lock serializes this
+            # with create_run's atomic bind, so a bound execution is never invalidated.
+            stale_before = (
+                datetime.now(UTC).timestamp() - self.STALE_RESERVATION_SECONDS
+            )
+            connection.execute(
+                """
+                UPDATE workflow_submission_keys
+                SET state = 'failed', updated_at = ?
+                WHERE state = 'reserved'
+                  AND julianday(updated_at) < julianday(?)
+                """,
+                (now, datetime.fromtimestamp(stale_before, UTC).isoformat()),
+            )
             row = connection.execute(
                 """SELECT request_digest, state, workflow_id, task_id, created_at, updated_at
                    FROM workflow_submission_keys
