@@ -41,7 +41,7 @@ def test_metadata_request_uses_fixed_github_api_host_and_bounded_timeout(monkeyp
 
     class FakeResponse:
         status_code = 200
-        headers = {}
+        headers: ClassVar[dict[str, str]] = {}
 
         def __enter__(self):
             return self
