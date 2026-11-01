@@ -1,6 +1,7 @@
 """Bounded user-submitted document ingestion and citation-bearing retrieval."""
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -15,6 +16,21 @@ from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(require_user)])
 
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)\\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\\s*[:=]\\s*\\S+"),
+    re.compile(r"\\bsk-[A-Za-z0-9_-]{16,}\\b"),
+    re.compile(r"\\bgh[pousr]_[A-Za-z0-9]{20,}\\b"),
+    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{16,}\\b"),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(r"(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]{20,}"),
+)
+
+
+def _reject_obvious_secrets(value: str | None) -> str | None:
+    if value is not None and any(pattern.search(value) for pattern in _SECRET_PATTERNS):
+        raise ValueError("Knowledge documents must not contain credentials or authentication secrets")
+    return value
+
 
 class KnowledgeDocumentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -22,6 +38,23 @@ class KnowledgeDocumentCreate(BaseModel):
     source_ref: str | None = Field(default=None, max_length=500)
     language: str = Field(default="und", min_length=2, max_length=20, pattern=r"^[A-Za-z0-9-]+$")
     trust_classification: Literal["user_supplied", "user_reviewed"] = "user_supplied"
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Document title must not be blank")
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def content_must_not_contain_obvious_secrets(cls, value: str) -> str:
+        return _reject_obvious_secrets(value) or value
+
+    @field_validator("source_ref")
+    @classmethod
+    def source_reference_must_not_contain_obvious_secrets(cls, value: str | None):
+        return _reject_obvious_secrets(value)
 
     @field_validator("content")
     @classmethod
