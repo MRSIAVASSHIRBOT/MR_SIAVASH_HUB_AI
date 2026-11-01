@@ -232,6 +232,24 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_workflow_submission_updated ON workflow_submission_keys(updated_at)",
         ),
     )
+    Migration.build(
+        7,
+        "encrypted_workflow_execution_inputs",
+        (
+            """CREATE TABLE IF NOT EXISTS workflow_execution_inputs (
+                workflow_id TEXT PRIMARY KEY REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+                key_id TEXT NOT NULL,
+                payload_ciphertext BLOB NOT NULL,
+                payload_digest TEXT NOT NULL CHECK (length(payload_digest) = 64),
+                created_at TEXT NOT NULL,
+                expires_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_inputs_owner_created ON workflow_execution_inputs(owner_user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_inputs_expiry ON workflow_execution_inputs(expires_at)",
+        ),
+    ),
 )
 
 
