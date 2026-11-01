@@ -370,3 +370,30 @@ def test_workflow_records_are_scoped_to_the_authenticated_owner(tmp_path):
         repository.resolve_unknown_step(
             workflow_id, 1, "failed", owner_user_id="user-b"
         )
+
+def test_running_cancellation_persists_intent_until_worker_finalizes(tmp_path):
+    repository = make_repository(tmp_path)
+    task = TaskRecord(task_type="agent.workflow", description="cancel intent")
+    workflow_id = repository.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+        task=task,
+        owner_user_id="owner-a",
+    )
+    tasks = TaskRepository(repository.database_path)
+    JobEngine(tasks).transition(task.task_id, TaskStatus.RUNNING)
+    repository.start_run(workflow_id)
+
+    result = repository.request_cancellation(
+        workflow_id, owner_user_id="owner-a"
+    )
+
+    assert result["status"] == "cancellation_requested"
+    stored_task = tasks.get(task.task_id)
+    assert stored_task is not None and stored_task.status is TaskStatus.RUNNING
+    with tasks._connection() as connection:
+        row = connection.execute(
+            "SELECT error_code FROM worker_executions WHERE task_id = ?",
+            (str(task.task_id),),
+        ).fetchone()
+    assert row is not None and row["error_code"] == "cancellation_requested"
