@@ -157,9 +157,10 @@ class CapabilityRegistry:
         if not isinstance(value, str):
             raise CapabilityValidationError(f"{field} must be text")
         normalized = value.strip()
-        if (not normalized and not allow_empty) or len(normalized) > limit:
-            qualifier = "at most " if normalized else ""
-            raise CapabilityValidationError(f"{field} must contain {qualifier}{limit} characters")
+        if not normalized and not allow_empty:
+            raise CapabilityValidationError(f"{field} must not be empty")
+        if len(normalized) > limit:
+            raise CapabilityValidationError(f"{field} must contain at most {limit} characters")
         return normalized
 
     @classmethod
@@ -295,6 +296,12 @@ class CapabilityRegistry:
                     "Approval requires a known license and license URL, security review, "
                     "compatibility notes, and a test plan"
                 )
+            try:
+                canonicalize_source_url(next_evidence["license_url"])
+            except CapabilityValidationError as exc:
+                raise CapabilityValidationError(
+                    "Approval requires a public HTTPS license URL without credentials or query parameters"
+                ) from exc
         now = self._now()
         with self._connection() as connection:
             cursor = connection.execute(
