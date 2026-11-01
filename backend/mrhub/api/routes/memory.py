@@ -46,6 +46,11 @@ class MemoryCreate(BaseModel):
     def content_must_not_look_like_a_secret(cls, value: str) -> str:
         return _reject_obvious_secrets(value) or value
 
+    @field_validator("provenance")
+    @classmethod
+    def provenance_must_not_look_like_a_secret(cls, value: str) -> str:
+        return _reject_obvious_secrets(value) or value
+
     @field_validator("expires_at")
     @classmethod
     def expiry_must_be_future_and_timezone_aware(cls, value: datetime | None):
@@ -68,6 +73,11 @@ class MemoryUpdate(BaseModel):
     @field_validator("content")
     @classmethod
     def content_must_not_look_like_a_secret(cls, value: str | None):
+        return _reject_obvious_secrets(value)
+
+    @field_validator("provenance")
+    @classmethod
+    def provenance_must_not_look_like_a_secret(cls, value: str | None):
         return _reject_obvious_secrets(value)
 
     @field_validator("expires_at")
