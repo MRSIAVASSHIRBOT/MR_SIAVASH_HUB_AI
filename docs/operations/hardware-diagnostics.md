@@ -11,6 +11,12 @@ From the repository root, after the project environment is already available:
 python -m mrhub.diagnostics.hardware
 ```
 
+After installing the project in its existing environment, the same read-only tool can be run as a console command:
+
+```powershell
+mrhub-hardware-diagnostics
+```
+
 The JSON report contains OS, CPU logical-core count, processor label, total and
 currently available physical memory, current working-drive capacity, and
 Windows display-adapter names where the registry exposes them.
