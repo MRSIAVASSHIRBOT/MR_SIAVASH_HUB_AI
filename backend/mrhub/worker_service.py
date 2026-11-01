@@ -7,12 +7,13 @@ not silently start background execution; operators opt into this process.
 from __future__ import annotations
 
 import signal
+import sqlite3
 import time
 from threading import Event
 
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.worker import WorkerEngine
+from mrhub.jobs.worker import WorkerEngine, WorkerError
 
 
 def main() -> None:
@@ -31,7 +32,7 @@ def main() -> None:
     while not stop.is_set():
         try:
             result = worker.run_once()
-        except Exception:
+        except (WorkerError, sqlite3.Error, RuntimeError, ValueError):
             # Persisted failure state is sanitized; never log payload-bearing
             # exception text from model providers or external tools.
             time.sleep(1.0)
