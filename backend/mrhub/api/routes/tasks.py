@@ -47,8 +47,8 @@ def get_engine() -> JobEngine:
 def create_task(
     payload: CreateTaskRequest,
     response: Response,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> TaskRecord:
     risk_class = policy.classify_task_type(payload.task_type)
     decision = policy.evaluate(ActionRequest(
