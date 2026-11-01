@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -9,15 +10,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
-from mrhub.agents.repository import AgentRunRepository
-from mrhub.agents.workflow_repository import AgentWorkflowRepository
-from mrhub.agents.workflow_runner import AgentWorkflowRunner
-from mrhub.agents.worker_dispatch import enqueue_workflow, queue_workflow_resume
 from mrhub.agents.execution_inputs import ExecutionInputUnavailable
+from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.submission_repository import (
     IdempotencyConflict,
     WorkflowSubmissionRepository,
 )
+from mrhub.agents.worker_dispatch import enqueue_workflow, queue_workflow_resume
+from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
@@ -26,6 +26,7 @@ from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.tools.builtins import build_tool_registry
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
 
 
@@ -165,9 +166,12 @@ def execute_agent_workflow(
                     submission_repository.mark_failed(
                         current_user.user_id, "/agent/workflows", idempotency_key, request_digest
                     )
-                except Exception:
-                    # Preserve the original failure; the reservation must not be replayed blindly.
-                    pass
+                except Exception as cleanup_error:  # noqa: BLE001
+                    # Keep the original error; the failed reservation remains fail-closed.
+                    logger.warning(
+                        "Could not mark workflow submission failed (%s)",
+                        type(cleanup_error).__name__,
+                    )
             raise
     except LookupError as exc:
         raise HTTPException(
