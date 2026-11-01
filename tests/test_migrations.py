@@ -66,7 +66,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2, 3]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
