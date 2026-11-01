@@ -424,7 +424,7 @@ class WorkerEngine:
         if saved.status is TaskStatus.FAILED:
             self._audit(task, "failed", error_code)
         elif saved.status is TaskStatus.CANCELLED:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
         return saved
 
     def _mark_cancelled(self, task: TaskRecord, *, lease: WorkerLease) -> None:
