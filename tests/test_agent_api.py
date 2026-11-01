@@ -90,3 +90,39 @@ def test_agent_execute_requires_authentication(tmp_path, monkeypatch):
     )
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+def test_agent_execute_persists_metadata_without_prompt_or_tool_payload():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/execute",
+        json={
+            "goal": "PRIVATE GOAL MUST NOT BE STORED",
+            "tools": [
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "PRIVATE TOOL INPUT MUST NOT BE STORED"},
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    run = body["run"]
+    assert run["status"] == "succeeded"
+    assert run["executed_tool_count"] == 1
+    assert run["stored_payloads"] is False
+    assert run["stored_tool_outputs"] is False
+    assert "PRIVATE GOAL MUST NOT BE STORED" not in str(run)
+    assert "PRIVATE TOOL INPUT MUST NOT BE STORED" not in str(run)
+
+    history = client.get(f"/agent/runs/{run['run_id']}")
+    assert history.status_code == 200
+    assert history.json()["request_digest"] == run["request_digest"]
+    assert history.json()["tool_names"] == ["text.echo"]
+
+
+def test_agent_run_history_returns_not_found_for_unknown_id():
+    client = authenticated_client()
+    response = client.get("/agent/runs/00000000-0000-0000-0000-000000000001")
+    assert response.status_code == 404
