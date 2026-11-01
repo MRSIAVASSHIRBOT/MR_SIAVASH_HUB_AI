@@ -92,32 +92,8 @@ class WorkerEngine:
             connection.close()
 
     def _initialize(self) -> None:
-        with self._connection() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS worker_executions (
-                    task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
-                    attempt_count INTEGER NOT NULL DEFAULT 0,
-                    result_json TEXT,
-                    error_code TEXT,
-                    started_at TEXT,
-                    finished_at TEXT
-                )
-                """
-            )
-            columns = {
-                row["name"] for row in connection.execute(
-                    "PRAGMA table_info(worker_executions)"
-                )
-            }
-            if "recovered_at" not in columns:
-                connection.execute(
-                    "ALTER TABLE worker_executions ADD COLUMN recovered_at TEXT"
-                )
-            if "next_attempt_at" not in columns:
-                connection.execute(
-                    "ALTER TABLE worker_executions ADD COLUMN next_attempt_at TEXT"
-                )
+        """Delegate all persistent schema creation and upgrades to versioned migrations."""
+        self.repository.initialize()
 
     @staticmethod
     def _echo(task: TaskRecord) -> dict[str, str]:
