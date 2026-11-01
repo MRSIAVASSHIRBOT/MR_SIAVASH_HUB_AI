@@ -241,3 +241,36 @@ def test_running_workflow_cancellation_is_observed_and_finalized(monkeypatch) ->
     assert recovery.get_encrypted_payload(
         workflow_id, owner_user_id="local-owner"
     ) is None
+
+def test_cancellation_between_last_step_and_finalization_wins_over_success(monkeypatch) -> None:
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={"goal": "Cancel at the finalization boundary", "tools": []},
+    )
+    assert response.status_code == 200
+    workflow = response.json()["workflow"]
+    workflow_id = UUID(workflow["workflow_id"])
+    task_id = UUID(workflow["task_id"])
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    from mrhub.agents.core import AgentCore
+
+    def report_success_after_cancellation(self, request, **kwargs):
+        recovery.request_cancellation(workflow_id, owner_user_id="local-owner")
+        return {
+            "execution_completed": True,
+            "model_inference_started": False,
+            "tools_executed": False,
+            "results": [],
+        }
+
+    monkeypatch.setattr(AgentCore, "execute", report_success_after_cancellation)
+    completed = run_worker_once()
+
+    assert completed is not None and completed.task_id == task_id
+    assert completed.status.value == "cancelled"
+    stored = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert stored is not None and stored["status"] == "cancelled"
+    assert repository.get(task_id).status.value == "cancelled"
