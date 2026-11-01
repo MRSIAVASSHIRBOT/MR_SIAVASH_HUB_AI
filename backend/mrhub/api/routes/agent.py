@@ -45,13 +45,13 @@ def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
         ) from exc
 
 @router.post("/execute")
-def execute_agent_tools(request: AgentPlanRequest) -> dict[str, object]:
+def execute_agent_tools(request: AgentPlanRequest, current_user: Annotated[AuthenticatedUser, Depends(require_user)]) -> dict[str, object]:
     """Run only explicitly requested tools that pass the server policy checks."""
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
         execution = core.execute(request)
         repository = AgentRunRepository(get_settings().database_path)
-        run = repository.record(request.model_dump(mode="json"), execution)
+        run = repository.record(request.model_dump(mode="json"), execution, owner_user_id=current_user.user_id)
         return {**execution, "run": run}
     except LookupError as exc:
         raise HTTPException(
@@ -60,10 +60,10 @@ def execute_agent_tools(request: AgentPlanRequest) -> dict[str, object]:
         ) from exc
 
 @router.get("/runs/{run_id}")
-def get_agent_run(run_id: UUID) -> dict[str, object]:
+def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depends(require_user)]) -> dict[str, object]:
     repository = AgentRunRepository(get_settings().database_path)
     repository.initialize()
-    run = repository.get(run_id)
+    run = repository.get(run_id, owner_user_id=current_user.user_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     return run
