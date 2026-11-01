@@ -294,3 +294,30 @@ def test_readiness_recognizes_fresh_worker_heartbeat(tmp_path, monkeypatch) -> N
         assert response.json()["worker_heartbeat_age_seconds"] is not None
     finally:
         get_settings.cache_clear()
+
+
+
+def test_readiness_rejects_stale_worker_heartbeat(tmp_path, monkeypatch) -> None:
+    import sqlite3
+    from datetime import UTC, datetime, timedelta
+
+    database_path = tmp_path / "stale-worker-heartbeat.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("MRH_REQUIRE_WORKER_FOR_READINESS", "true")
+    monkeypatch.setenv("MRH_WORKER_HEARTBEAT_TIMEOUT_SECONDS", "5")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            stale_stamp = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    """INSERT INTO worker_instances
+                       (instance_id, process_id, started_at, heartbeat_at, status)
+                       VALUES ('stale-test-worker', 456, ?, ?, 'running')""",
+                    (stale_stamp, stale_stamp),
+                )
+            response = client.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Worker process is not ready"
+    finally:
+        get_settings.cache_clear()
