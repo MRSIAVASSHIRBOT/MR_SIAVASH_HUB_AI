@@ -133,3 +133,56 @@ def test_workflow_idempotency_replays_the_atomically_created_resource() -> None:
         second.json()["workflow"]["workflow_id"]
         == first.json()["workflow"]["workflow_id"]
     )
+
+def test_cancellation_after_worker_claim_is_not_overwritten_or_left_active(monkeypatch) -> None:
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Cancel in the claim-to-start window",
+            "tools": [{"name": "text.echo", "payload": {"text": "must-not-run"}}],
+        },
+    )
+    assert response.status_code == 200
+    workflow = response.json()["workflow"]
+    workflow_id = UUID(workflow["workflow_id"])
+    task_id = UUID(workflow["task_id"])
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+
+    # Simulate cancellation after WorkerEngine claims the task but before the
+    # workflow dispatcher transitions the workflow from queued to running.
+    from mrhub.jobs.workflow_dispatch import WorkflowWorkerHandler
+
+    def cancel_before_dispatch(self, task, *, lease, lease_lost):
+        result = recovery.request_cancellation(
+            workflow_id, owner_user_id="local-owner"
+        )
+        assert result["status"] == "cancelled"
+        return {
+            "workflow_id": str(workflow_id),
+            "execution_completed": False,
+            "executed_tool_count": 0,
+            "model_inference_started": False,
+            "tools_executed": False,
+            "error_code": "cancelled",
+        }
+
+    monkeypatch.setattr(WorkflowWorkerHandler, "__call__", cancel_before_dispatch)
+    completed = run_worker_once()
+
+    assert completed is not None
+    assert completed.task_id == task_id
+    assert completed.status.value == "cancelled"
+    stored = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert stored is not None and stored["status"] == "cancelled"
+    with repository._connection() as connection:
+        execution = connection.execute(
+            "SELECT error_code, finished_at, result_json FROM worker_executions WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()
+    assert execution is not None
+    assert execution["error_code"] == "cancelled_during_execution"
+    assert execution["finished_at"] is not None
+    assert execution["result_json"]
