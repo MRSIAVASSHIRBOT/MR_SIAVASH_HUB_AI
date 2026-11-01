@@ -3,7 +3,7 @@
 import hashlib
 import json
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -12,6 +12,9 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.domain.tasks import TaskRecord
+from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
+from mrhub.security.audit import AuditLogger
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
@@ -88,61 +91,119 @@ def execute_agent_workflow(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
 ) -> dict[str, object]:
-    """Execute an allowed workflow under the canonical Job lifecycle."""
+    """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
         plan = core.plan(request)
         request_digest = _workflow_digest(request)
-        if not plan["execution_ready"]:
-            # Preserve legacy blocked-workflow history without creating an executable job.
-            legacy = AgentWorkflowRepository(get_settings().database_path)
+        settings = get_settings()
+        if not plan.get("execution_ready"):
+            legacy = AgentWorkflowRepository(settings.database_path)
             workflow = legacy.create(request_digest, plan, owner_user_id=current_user.user_id)
             return {"workflow": workflow, "execution": None}
 
-        settings = get_settings()
-        task_repository = TaskRepository(settings.database_path)
-        task_repository.initialize()
+        tasks = TaskRepository(settings.database_path)
+        tasks.initialize()
+        recovery = WorkflowRecoveryRepository(settings.database_path)
         idempotency = IdempotencyRepository(settings.database_path)
         scope = f"agent-workflow:{current_user.user_id}"
+        task = TaskRecord(
+            task_type="agent.workflow",
+            description="Agent workflow execution",
+        )
+        workflow_id = uuid4()
         if idempotency_key is not None:
             try:
                 reservation = idempotency.reserve(scope, idempotency_key, request_digest)
             except IdempotencyConflict as exc:
-                raise HTTPException(status_code=409, detail="Idempotency key conflicts with an earlier request") from exc
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency key conflicts with an earlier request",
+                ) from exc
             except IdempotencyError as exc:
                 raise HTTPException(status_code=422, detail="Invalid idempotency key") from exc
             if not reservation.created:
                 record = reservation.record
                 if record.workflow_id:
-                    existing = WorkflowRecoveryRepository(settings.database_path).get_run(
+                    existing = recovery.get_run(
                         UUID(record.workflow_id), owner_user_id=current_user.user_id
                     )
                     if existing is not None:
-                        return {"workflow": existing, "execution": None, "idempotent_replay": True}
-                # A reservation without a recoverable workflow may represent a crash
-                # between reservation and durable workflow creation. Never replay it.
-                raise HTTPException(status_code=409, detail="Request is already reserved; inspect recovery state")
-            idempotency.transition(scope, idempotency_key, "accepted", "running")
-        try:
-            result = AgentWorkflowRunner(task_repository, core).execute(
-                request, plan, request_digest, current_user.user_id
+                        return {
+                            "workflow": existing,
+                            "execution": None,
+                            "idempotent_replay": True,
+                        }
+                raise HTTPException(
+                    status_code=409,
+                    detail="Request is already reserved; inspect recovery state",
+                )
+            # Bind the preselected identifiers before the task becomes claimable.
+            idempotency.bind(
+                scope,
+                idempotency_key,
+                task_id=str(task.task_id),
+                workflow_id=str(workflow_id),
             )
-        except Exception:
-            if idempotency_key is not None:
-                try:
-                    idempotency.transition(scope, idempotency_key, "running", "unknown_outcome")
-                except (RuntimeError, IdempotencyError):
-                    pass
-            raise
-        if idempotency_key is not None:
-            workflow = result.get("workflow", {})
-            workflow_id = workflow.get("workflow_id") if isinstance(workflow, dict) else None
-            task_id = workflow.get("task_id") if isinstance(workflow, dict) else None
-            if workflow_id:
-                idempotency.bind(scope, idempotency_key, task_id=task_id, workflow_id=workflow_id)
-            target = "completed" if result.get("execution", {}).get("execution_completed") else "failed"
-            idempotency.transition(scope, idempotency_key, "running", target)
-        return result
+
+        try:
+            encrypted = encrypt_payload(
+                request.model_dump(mode="json"),
+                workflow_id=str(workflow_id),
+                task_id=str(task.task_id),
+                owner_user_id=current_user.user_id,
+                key=load_payload_key(),
+            )
+        except PayloadEnvelopeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Workflow execution is disabled until a valid payload key is configured",
+            ) from exc
+
+        step_specs = []
+        raw_steps = plan.get("steps", [])
+        if not isinstance(raw_steps, list) or not raw_steps:
+            raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
+        for step in raw_steps:
+            if not isinstance(step, dict):
+                continue
+            number = int(step["step"])
+            if number == 1:
+                kind, name = "provider_selection", "provider_selection"
+            else:
+                tool = request.tools[number - 2]
+                definition = core.tool_registry.get(tool.name)
+                kind = "external_tool" if definition.external_side_effect else "safe_tool"
+                name = tool.name
+            step_specs.append({"step_number": number, "kind": kind, "name": name})
+
+        recovery.create_run(
+            request_digest,
+            step_specs,
+            task=task,
+            owner_user_id=current_user.user_id,
+            workflow_id=workflow_id,
+            payload_envelope={
+                "version": encrypted.version,
+                "nonce_b64": encrypted.nonce_b64,
+                "ciphertext_b64": encrypted.ciphertext_b64,
+            },
+        )
+        AuditLogger(tasks).record(
+            event_type="task.submitted",
+            outcome="queued",
+            subject_id=str(task.task_id),
+            metadata={
+                "task_type": task.task_type,
+                "risk_class": task.risk_class.value,
+                "decision": "allow",
+            },
+        )
+        return {
+            "workflow": recovery.get_run(workflow_id, owner_user_id=current_user.user_id),
+            "execution": None,
+            "queued": True,
+        }
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
