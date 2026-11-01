@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
+from mrhub.api.routes.capabilities import router as capabilities_router
 from mrhub.api.routes.health import router as health_router
 from mrhub.api.routes.jobs import router as jobs_router
 from mrhub.api.routes.models import router as models_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(approvals_router)
+    app.include_router(capabilities_router)
     app.include_router(tasks_router)
     app.include_router(jobs_router)
     app.include_router(policy_router)
