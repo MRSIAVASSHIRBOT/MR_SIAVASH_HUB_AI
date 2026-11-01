@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from threading import Event
 from uuid import UUID
 
@@ -16,6 +17,8 @@ from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.recovery import StepAttempt, WorkflowRecoveryRepository
+
+logger = logging.getLogger(__name__)
 
 
 def workflow_digest(request: AgentPlanRequest) -> str:
@@ -224,19 +227,30 @@ def dispatch_queued_workflow(
             recovery.finish_run(workflow_id, "failed", lease=lease)
             status = "failed"
         return {
-            "_worker_task_status": "waiting_approval" if status in {"paused", "recovery_required"} else "failed",
+            "_worker_task_status": (
+                "waiting_approval"
+                if status in {"paused", "recovery_required"}
+                else "failed"
+            ),
             "workflow_id": str(workflow_id),
             "workflow_status": status,
             "error_code": "workflow_step_failed",
         }
-    except Exception:
+    except Exception as dispatch_error:  # noqa: BLE001
+        logger.warning(
+            "Workflow dispatch stopped (%s)", type(dispatch_error).__name__
+        )
         current_task = repository.get(task.task_id)
         if current_task is not None and current_task.status in {
             TaskStatus.CANCELLED, TaskStatus.WAITING_APPROVAL
         }:
             try:
                 workflow_status = recovery.cancel_run(workflow_id, lease=lease)
-            except Exception:
+            except Exception as cancel_error:  # noqa: BLE001
+                logger.warning(
+                    "Workflow cancellation state could not be persisted (%s)",
+                    type(cancel_error).__name__,
+                )
                 current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
                 workflow_status = current["status"] if current else "failed"
             if workflow_status == "recovery_required":
@@ -250,8 +264,10 @@ def dispatch_queued_workflow(
         if not lease_lost.is_set():
             try:
                 recovery.mark_interrupted(workflow_id, lease=lease)
-            except Exception:
-                pass
+            except Exception as recovery_error:  # noqa: BLE001
+                logger.warning(
+                    "Workflow recovery update failed (%s)", type(recovery_error).__name__
+                )
         current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         status = current["status"] if current else "failed"
         return {
