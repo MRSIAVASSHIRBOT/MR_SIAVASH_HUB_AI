@@ -549,3 +549,66 @@ def test_worker_fails_closed_for_workflow_without_encrypted_payload(tmp_path):
     assert result is not None and result.status is TaskStatus.FAILED
     assert stored_task is not None and stored_task.status is TaskStatus.FAILED
     assert stored_workflow is not None and stored_workflow["status"] == "failed"
+
+def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(tmp_path):
+    repository, _worker = make_worker(tmp_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="cancel then crash")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+        task=task,
+        owner_user_id="owner-a",
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    with repository._connection() as connection:
+        connection.execute(
+            """
+            UPDATE worker_executions
+            SET started_at = ?, error_code = 'cancellation_requested'
+            WHERE task_id = ?
+            """,
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="owner-a")
+    assert stored_task is not None and stored_task.status is TaskStatus.CANCELLED
+    assert stored_workflow is not None and stored_workflow["status"] == "cancelled"
+    assert recovery.get_encrypted_payload(
+        workflow_id, owner_user_id="owner-a"
+    ) is None
+
+
+def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_path):
+    repository, _worker = make_worker(tmp_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="external cancel then crash")
+    workflow_id = recovery.create_run(
+        "b" * 64,
+        [{"step_number": 1, "kind": "external_tool", "name": "custom.publish"}],
+        task=task,
+        owner_user_id="owner-a",
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    recovery.start_step(workflow_id, 1)
+    with repository._connection() as connection:
+        connection.execute(
+            """
+            UPDATE worker_executions
+            SET started_at = ?, error_code = 'cancellation_requested'
+            WHERE task_id = ?
+            """,
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="owner-a")
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert stored_workflow is not None
+    assert stored_workflow["status"] == "recovery_required"
+    assert stored_workflow["steps"][0]["status"] == "unknown_outcome"
