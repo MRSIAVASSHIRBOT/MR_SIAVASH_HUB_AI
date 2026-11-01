@@ -119,9 +119,12 @@ def select_model(payload: RouteModelRequest) -> dict[str, str | bool]:
 @router.post("/providers/health-check")
 def check_provider_health(payload: ProviderHealthCheckRequest) -> dict[str, object]:
     """Explicitly probe registered providers with a bounded per-provider timeout."""
-    providers = build_model_router().registry._providers
+    providers = build_model_router().registry.providers()
     results = []
-    for (provider_name, model_name), provider in sorted(providers.items()):
+    for provider in providers:
+        descriptor = provider.descriptor
+        provider_name = descriptor.provider
+        model_name = descriptor.model
         started = perf_counter()
         try:
             health = provider.health(timeout_seconds=payload.timeout_seconds)
