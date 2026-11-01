@@ -193,3 +193,32 @@ def check_agent_workflow_resume(
         "execution_started": False,
         "note": "This endpoint evaluates resumability only; it does not execute or replay steps.",
     }
+
+
+
+@router.post("/workflows/{workflow_id}/resume")
+def resume_agent_workflow(
+    workflow_id: UUID,
+    request: WorkflowResumeCheckRequest,
+    current_user: AuthenticatedUser = Depends(require_user),
+) -> dict[str, object]:
+    """Resume an owned workflow only after re-planning and validating original inputs."""
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    core = AgentCore(build_model_router(), build_tool_registry())
+    try:
+        plan = core.plan(request.request)
+        return AgentWorkflowRunner(tasks, core).resume(
+            workflow_id,
+            request.request,
+            plan,
+            _workflow_digest(request.request),
+            current_user.user_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="Workflow is not safely resumable") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail="Workflow resume could not be completed") from exc
