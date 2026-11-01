@@ -1,7 +1,7 @@
 # ADR-004.1: Unified Job Engine, Workflow Recovery, and Resume
 
 - Status: Accepted
-- Phase: 4.1 architecture / 4.2 implementation
+- Phase: 4.1 architecture / 4.2 recovery foundation / 4.3 owner-scoped recovery API
 - Date: 2026-11-01
 - Scope: local-first runtime, SQLite persistence, pull-driven workers
 
@@ -78,3 +78,25 @@ A completed step cannot transition back to running. `unknown_outcome` is not equ
 - Missing required input causes a request for re-entry rather than payload reconstruction from logs.
 - Existing databases migrate without loss of task, approval, audit, or workflow data.
 - All schema changes are applied through the versioned migrator.
+
+
+## Phase 4.3 implementation update
+
+The recovery foundation is now exposed through authenticated, owner-scoped API operations:
+
+- Migration V4 adds nullable `owner_user_id` references for new unified and legacy workflow rows. Existing historical rows remain unowned and are not exposed through owner-scoped API lookups; ownership is never guessed or backfilled from a shared local account.
+- New unified and legacy workflows persist the authenticated user's ID at creation.
+- Workflow reads, resume-decision checks, and reconciliation mutations filter by the authenticated owner. A foreign workflow is deliberately indistinguishable from a missing workflow at the API boundary.
+- `POST /agent/workflows/{workflow_id}/reconciliation` records a user-confirmed external outcome and optional output digest. It does not call the tool or provider. Repeated or stale reconciliation requests fail closed.
+- `POST /agent/workflows/{workflow_id}/resume-check` requires the original request to be supplied again, compares its digest, and returns a recovery decision only. It does not execute or replay steps.
+
+### Explicit limitation
+
+This phase does not implement automatic workflow continuation after reconciliation. The database intentionally does not retain raw prompts, tool arguments, or tool outputs, so a future resume executor must re-plan and validate the re-supplied request against the stored workflow definition, current tool policy, checkpoint, and current authorization before it can claim a worker lease. External side-effecting tools must additionally provide downstream idempotency or a reliable status-query contract. Until those requirements are met, the API remains decision-only and fail-closed.
+
+### Verification
+
+The latest Backend CI run for the implementation commit completed successfully:
+- Ruff: passed.
+- Pytest: 186 passed, 1 warning.
+- Failed tests: 0.
