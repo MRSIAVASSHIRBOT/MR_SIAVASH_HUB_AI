@@ -17,12 +17,12 @@ from mrhub.security.auth import AuthenticatedUser
 router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(require_user)])
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)\\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\\s*[:=]\\s*\\S+"),
-    re.compile(r"\\bsk-[A-Za-z0-9_-]{16,}\\b"),
-    re.compile(r"\\bgh[pousr]_[A-Za-z0-9]{20,}\\b"),
-    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{16,}\\b"),
+    re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-    re.compile(r"(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]{20,}"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}"),
 )
 
 
