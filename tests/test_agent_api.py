@@ -135,6 +135,8 @@ def test_agent_run_history_returns_not_found_for_unknown_id():
 
 
 def test_agent_workflow_executes_and_persists_each_step():
+    from client_helpers import run_worker_once
+
     client = authenticated_client()
     response = client.post(
         "/agent/workflows",
@@ -144,24 +146,29 @@ def test_agent_workflow_executes_and_persists_each_step():
         },
     )
     assert response.status_code == 200
-    body = response.json()
-    workflow = body["workflow"]
-    assert workflow["status"] == "succeeded"
-    assert workflow["steps"][1]["status"] == "succeeded"
+    submitted = response.json()
+    workflow = submitted["workflow"]
+    assert submitted["queued"] is True
+    assert workflow["status"] == "queued"
     assert workflow["stored_request"] is False
     assert workflow["stored_step_payloads"] is False
     assert workflow["stored_step_outputs"] is False
-    assert body["execution"]["execution_completed"] is True
     assert workflow["task_id"] is not None
+
+    processed = run_worker_once()
+    assert processed is not None
+    history = client.get("/agent/workflows/" + workflow["workflow_id"])
+    assert history.status_code == 200
+    completed = history.json()
+    assert completed["status"] == "succeeded"
+    assert completed["steps"][1]["status"] == "succeeded"
 
     linked_task = client.get(f"/tasks/{workflow['task_id']}")
     assert linked_task.status_code == 200
     assert linked_task.json()["status"] == "succeeded"
-
-    history = client.get("/agent/workflows/" + workflow["workflow_id"])
-    assert history.status_code == 200
-    assert history.json()["steps"][1]["status"] == "succeeded"
-
+    task_result = client.get(f"/tasks/{workflow['task_id']}/result")
+    assert task_result.status_code == 200
+    assert task_result.json()["result"]["execution_completed"] is True
 
 def test_agent_workflow_persists_blocked_plan_without_execution():
     client = authenticated_client()
