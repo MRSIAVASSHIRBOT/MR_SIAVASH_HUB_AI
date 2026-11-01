@@ -4,10 +4,14 @@ from __future__ import annotations
 from threading import Event
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.api.routes.models import build_model_router
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
@@ -16,8 +20,6 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
-from mrhub.jobs.engine import JobEngine
-from mrhub.api.routes.models import build_model_router
 from mrhub.tools.builtins import build_tool_registry
 
 
@@ -67,7 +69,7 @@ class WorkflowWorkerHandler:
                 key=load_payload_key(),
             )
             request = AgentPlanRequest.model_validate(payload)
-        except Exception:
+        except (PayloadEnvelopeError, ValidationError, TypeError, ValueError):
             return self._fail_closed(
                 task, lease, workflow_id, "workflow_payload_unavailable"
             )
@@ -100,9 +102,6 @@ class WorkflowWorkerHandler:
                     "executed_tool_count": int(execution.get("executed_tool_count", 0)),
                 }
             return {"workflow_id": str(workflow_id), "execution_completed": False}
-        except Exception:
-            # The runner owns workflow recovery transitions once execution begins.
-            raise
 
     def _fail_closed(
         self,
