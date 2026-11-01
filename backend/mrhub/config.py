@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     local_inference_base_url: str = "http://127.0.0.1:11434"
     local_inference_model: str | None = None
     local_inference_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
+    workflow_input_encryption_key: str | None = Field(default=None, repr=False)
 
 
 @lru_cache
