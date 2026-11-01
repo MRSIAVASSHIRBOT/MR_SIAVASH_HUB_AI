@@ -26,11 +26,11 @@ def recommend_model_profiles(
     system_reserve_gib: float = 2.0,
 ) -> dict[str, Any]:
     """Rank known profiles by resource fit, keeping uncertainty explicit."""
-    unique_ids = list(dict.fromkeys(profile_ids))
-    if not unique_ids:
+    if not profile_ids:
         raise ValueError("At least one profile ID is required")
-    if len(unique_ids) > 20:
+    if len(profile_ids) > 20:
         raise ValueError("At most 20 profile IDs may be compared")
+    unique_ids = list(dict.fromkeys(profile_ids))
 
     unknown_ids = [
         profile_id for profile_id in unique_ids
