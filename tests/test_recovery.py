@@ -322,3 +322,24 @@ def test_job_engine_rejects_terminal_transition_from_stale_workflow_lease(tmp_pa
         jobs.transition(task.task_id, TaskStatus.SUCCEEDED, lease=old_lease)
     stored = tasks.get(task.task_id)
     assert stored is not None and stored.status is TaskStatus.RUNNING
+
+
+
+def test_interrupted_safe_step_becomes_retry_wait_not_unknown_outcome(tmp_path):
+    repository = make_repository(tmp_path)
+    workflow_id = repository.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+    )
+    repository.start_run(workflow_id)
+    repository.start_step(workflow_id, 1)
+
+    assert repository.mark_interrupted(workflow_id) == 1
+    run = repository.get_run(workflow_id)
+    assert run is not None
+    assert run["status"] == "paused"
+    assert run["steps"][0]["status"] == "retry_wait"
+
+    decision = repository.resume_decision(workflow_id, "a" * 64)
+    assert decision.decision == "resume"
+    assert decision.next_step == 1
