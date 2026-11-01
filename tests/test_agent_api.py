@@ -143,8 +143,14 @@ def test_agent_workflow_executes_and_persists_each_step():
     assert workflow["status"] == "succeeded"
     assert workflow["steps"][1]["status"] == "succeeded"
     assert workflow["stored_request"] is False
-    assert workflow["stored_tool_payloads"] is False
+    assert workflow["stored_step_payloads"] is False
+    assert workflow["stored_step_outputs"] is False
     assert body["execution"]["execution_completed"] is True
+    assert workflow["task_id"] is not None
+
+    linked_task = client.get(f"/tasks/{workflow['task_id']}")
+    assert linked_task.status_code == 200
+    assert linked_task.json()["status"] == "succeeded"
 
     history = client.get("/agent/workflows/" + workflow["workflow_id"])
     assert history.status_code == 200
@@ -165,6 +171,10 @@ def test_agent_workflow_persists_blocked_plan_without_execution():
     assert body["workflow"]["status"] == "blocked"
     assert body["execution"] is None
 
+    history = client.get("/agent/workflows/" + body["workflow"]["workflow_id"])
+    assert history.status_code == 200
+    assert history.json()["status"] == "blocked"
+
 
 def test_agent_workflow_not_found():
     client = authenticated_client()
@@ -172,3 +182,16 @@ def test_agent_workflow_not_found():
         "/agent/workflows/00000000-0000-0000-0000-000000000002"
     )
     assert response.status_code == 404
+
+
+
+def test_workflow_request_digest_distinguishes_same_length_goals():
+    from mrhub.agents.core import AgentPlanRequest
+    from mrhub.api.routes.agent import _workflow_digest
+
+    first = AgentPlanRequest(goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "one"}}])
+    second = AgentPlanRequest(goal="bravo", tools=[{"name": "text.echo", "payload": {"text": "one"}}])
+    third = AgentPlanRequest(goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "two"}}])
+
+    assert _workflow_digest(first) != _workflow_digest(second)
+    assert _workflow_digest(first) != _workflow_digest(third)
