@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
+from mrhub.domain.tasks import TaskRecord
+
 
 class IdempotencyError(ValueError):
     """Raised when an idempotency operation violates its contract."""
@@ -187,6 +189,81 @@ class IdempotencyRepository:
                 (scope, key),
             ).fetchone()
             return IdempotencyReservation(self._record(row), created=True)
+
+    def reserve_task(
+        self,
+        scope: str,
+        key: str,
+        request_digest: str,
+        task: TaskRecord,
+    ) -> IdempotencyReservation:
+        """Atomically create a task and bind it to a new idempotency reservation."""
+        self._validate(scope, key, request_digest)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT * FROM idempotency_records
+                WHERE scope = ? AND idempotency_key = ?
+                """,
+                (scope, key),
+            ).fetchone()
+            if row is not None:
+                existing = self._record(row)
+                if existing.request_digest != request_digest:
+                    raise IdempotencyConflict(
+                        "Idempotency key was already used for a different request"
+                    )
+                if existing.workflow_id is not None:
+                    raise IdempotencyConflict(
+                        "Idempotency key is already bound to a workflow"
+                    )
+                if existing.task_id is not None:
+                    return IdempotencyReservation(existing, created=False)
+
+            connection.execute(
+                """
+                INSERT INTO tasks (
+                    task_id, task_type, status, risk_class,
+                    created_at, updated_at, description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(task.task_id),
+                    task.task_type,
+                    task.status.value,
+                    task.risk_class.value,
+                    task.created_at.isoformat(),
+                    task.updated_at.isoformat(),
+                    task.description,
+                ),
+            )
+            if row is None:
+                connection.execute(
+                    """
+                    INSERT INTO idempotency_records (
+                        scope, idempotency_key, request_digest, task_id,
+                        workflow_id, status, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, NULL, 'accepted', ?, NULL)
+                    """,
+                    (scope, key, request_digest, str(task.task_id), self._now()),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE idempotency_records SET task_id = ?
+                    WHERE scope = ? AND idempotency_key = ? AND task_id IS NULL
+                    """,
+                    (str(task.task_id), scope, key),
+                )
+            saved = connection.execute(
+                """
+                SELECT * FROM idempotency_records
+                WHERE scope = ? AND idempotency_key = ?
+                """,
+                (scope, key),
+            ).fetchone()
+            return IdempotencyReservation(self._record(saved), created=True)
 
     def get(self, scope: str, key: str) -> IdempotencyRecord | None:
         if not scope or not key:
