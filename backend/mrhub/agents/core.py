@@ -1,5 +1,7 @@
 """Deterministic planning core connecting model routing, tools, and policy."""
 
+from collections.abc import Callable
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mrhub.providers.router import ModelRequest, ModelRouter
@@ -39,7 +41,12 @@ class AgentCore:
         self.tool_registry = tool_registry
         self.policy = policy or PolicyEngine()
 
-    def execute(self, request: AgentPlanRequest) -> dict[str, object]:
+    def execute(
+        self,
+        request: AgentPlanRequest,
+        *,
+        on_step: Callable[[int, str, str | None], None] | None = None,
+    ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
         plan = self.plan(request)
         if not plan["execution_ready"]:
@@ -55,12 +62,16 @@ class AgentCore:
             }
 
         results: list[dict[str, object]] = []
-        for requested_tool in request.tools:
+        for step_number, requested_tool in enumerate(request.tools, start=2):
+            if on_step is not None:
+                on_step(step_number, "running", None)
             try:
                 result = self.tool_registry.invoke(
                     requested_tool.name, requested_tool.payload
                 )
             except (ToolExecutionError, ValueError, TypeError, KeyError, RuntimeError):
+                if on_step is not None:
+                    on_step(step_number, "failed", "tool_execution_failed")
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
@@ -74,6 +85,8 @@ class AgentCore:
                     "blocked": True,
                 }
             results.append({"tool": requested_tool.name, "result": result})
+            if on_step is not None:
+                on_step(step_number, "succeeded", None)
 
         return {
             "decision_mode": "controlled_tool_execution",
