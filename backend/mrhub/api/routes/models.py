@@ -73,6 +73,35 @@ def list_models():
     return build_model_router().catalog()
 
 
+@router.get("/providers")
+def list_providers() -> dict[str, object]:
+    """List configured adapters without probing or invoking external services."""
+    providers = build_model_router().registry.catalog()
+    return {
+        "providers": [
+            {
+                "provider": item.provider,
+                "model": item.model,
+                "capabilities": {
+                    "text": item.capability.text,
+                    "vision": item.capability.vision,
+                    "audio": item.capability.audio,
+                    "tool_calling": item.capability.tool_calling,
+                },
+                "local": item.local,
+                "priority": item.priority,
+                "registered": True,
+                "declared_available": item.available,
+                "health_status": "not_checked",
+            }
+            for item in providers
+        ],
+        "count": len(providers),
+        "health_probes_performed": False,
+        "inference_started": False,
+    }
+
+
 @router.post("/select")
 def select_model(payload: RouteModelRequest) -> dict[str, str | bool]:
     try:
