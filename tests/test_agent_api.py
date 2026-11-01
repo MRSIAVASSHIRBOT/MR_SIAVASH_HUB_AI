@@ -446,3 +446,39 @@ def test_agent_workflow_duplicate_resume_does_not_replay_completed_work():
     assert history.status_code == 200
     assert history.json()["status"] == "succeeded"
 
+
+
+def test_agent_workflow_idempotency_key_returns_existing_workflow_without_reexecution():
+    client = authenticated_client()
+    request = {
+        "goal": "Idempotent workflow submission",
+        "tools": [{"name": "text.echo", "payload": {"text": "submit-once"}}],
+    }
+    headers = {"Idempotency-Key": "workflow-submit-001"}
+    first = client.post("/agent/workflows", json=request, headers=headers)
+    assert first.status_code == 200
+    first_workflow = first.json()["workflow"]
+
+    replay = client.post("/agent/workflows", json=request, headers=headers)
+    assert replay.status_code == 200
+    assert replay.json()["idempotent_replay"] is True
+    assert replay.json()["workflow"]["workflow_id"] == first_workflow["workflow_id"]
+    assert replay.json()["workflow"]["task_id"] == first_workflow["task_id"]
+
+
+def test_agent_workflow_idempotency_key_rejects_changed_request():
+    client = authenticated_client()
+    headers = {"Idempotency-Key": "workflow-submit-002"}
+    first = client.post(
+        "/agent/workflows",
+        json={"goal": "First request", "tools": [{"name": "text.echo", "payload": {"text": "one"}}]},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    conflict = client.post(
+        "/agent/workflows",
+        json={"goal": "Different request", "tools": [{"name": "text.echo", "payload": {"text": "two"}}]},
+        headers=headers,
+    )
+    assert conflict.status_code == 409
