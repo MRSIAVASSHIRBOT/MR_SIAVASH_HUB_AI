@@ -1,4 +1,5 @@
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -96,3 +97,20 @@ def test_failed_reservation_cannot_be_reused_or_bound(tmp_path):
         repository.bind(
             "user-1", "/agent/workflows", "key-1", "digest-1", "workflow-1", "task-1"
         )
+
+
+
+def test_concurrent_duplicate_submissions_create_one_reservation(tmp_path):
+    repository = make_repository(tmp_path)
+
+    def submit(_):
+        return repository.reserve(
+            "user-1", "/agent/workflows", "concurrent-key", "same-digest"
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(submit, range(24)))
+
+    assert sum(result["created"] for result in results) == 1
+    assert {result["state"] for result in results} == {"reserved"}
+    assert len({result["created_at"] for result in results}) == 1
