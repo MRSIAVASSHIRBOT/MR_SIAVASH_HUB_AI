@@ -83,7 +83,7 @@ def test_task_result_endpoint_distinguishes_pending_and_completed(tmp_path, monk
     from mrhub.infrastructure.database import TaskRepository
     from mrhub.jobs.worker import WorkerEngine
 
-    repository = TaskRepository(tmp_path / "test.sqlite3")
+    repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     completed = WorkerEngine(repository).run_once()
     assert completed is not None
