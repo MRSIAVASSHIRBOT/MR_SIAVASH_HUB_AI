@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from threading import Event, Thread
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import TaskRecord, TaskStatus
@@ -223,15 +223,13 @@ class AgentWorkflowRunner:
 
     def resume(
         self,
-        workflow_id,
+        workflow_id: UUID,
         request: AgentPlanRequest,
         plan: dict[str, object],
         request_digest: str,
         owner_user_id: str,
     ) -> dict[str, object]:
         """Resume only a matching, owner-scoped workflow from a validated safe boundary."""
-        from uuid import UUID
-
         workflow = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if workflow is None or workflow["task_id"] is None:
             raise LookupError("Workflow not found")
