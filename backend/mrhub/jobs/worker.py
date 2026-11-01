@@ -154,6 +154,13 @@ class WorkerEngine:
                         """,
                         (now, now, str(task.task_id)),
                     )
+                    connection.execute(
+                        """
+                        UPDATE idempotency_records SET status = 'unknown_outcome'
+                        WHERE task_id = ? AND status IN ('accepted', 'running')
+                        """,
+                        (str(task.task_id),),
+                    )
                     recovered.append(task)
         for task in recovered:
             self._audit(task, "failed", "worker_interrupted")
@@ -210,6 +217,13 @@ class WorkerEngine:
                     next_attempt_at = NULL
                 """,
                 (str(task.task_id), now),
+            )
+            connection.execute(
+                """
+                UPDATE idempotency_records SET status = 'running'
+                WHERE task_id = ? AND status = 'accepted'
+                """,
+                (str(task.task_id),),
             )
             connection.commit()
             return task.model_copy(update={"status": TaskStatus.RUNNING, "updated_at": now})
@@ -324,6 +338,13 @@ class WorkerEngine:
                         str(task.task_id),
                     ),
                 )
+                connection.execute(
+                    """
+                    UPDATE idempotency_records SET status = 'completed'
+                    WHERE task_id = ? AND status = 'running'
+                    """,
+                    (str(task.task_id),),
+                )
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared during execution")
@@ -420,6 +441,16 @@ class WorkerEngine:
                     """,
                     (error_code, now, str(task.task_id)),
                 )
+                idempotency_status = (
+                    "unknown_outcome" if error_code == "handler_failed" else "failed"
+                )
+                connection.execute(
+                    """
+                    UPDATE idempotency_records SET status = ?
+                    WHERE task_id = ? AND status IN ('accepted', 'running')
+                    """,
+                    (idempotency_status, str(task.task_id)),
+                )
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared while recording failure")
@@ -441,6 +472,13 @@ class WorkerEngine:
                   AND lease_expires_at > ?
                 """,
                 (now, str(task.task_id), lease.owner, lease.fencing_token, now),
+            )
+            connection.execute(
+                """
+                UPDATE idempotency_records SET status = 'failed'
+                WHERE task_id = ? AND status IN ('accepted', 'running')
+                """,
+                (str(task.task_id),),
             )
         self._audit(task, "cancelled", "cancelled_during_execution")
 
