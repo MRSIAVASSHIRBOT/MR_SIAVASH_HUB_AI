@@ -16,12 +16,12 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2, 3]
+    assert migrator.migrate() == [1, 2, 3, 4]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4]
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
@@ -38,6 +38,10 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         )
     }
+    workflow_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(workflow_runs)")
+    }
+    assert "owner_user_id" in workflow_columns
     connection.close()
 
 
