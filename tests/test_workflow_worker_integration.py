@@ -274,3 +274,20 @@ def test_cancellation_between_last_step_and_finalization_wins_over_success(monke
     stored = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert stored is not None and stored["status"] == "cancelled"
     assert repository.get(task_id).status.value == "cancelled"
+
+def test_cancelling_terminal_workflow_returns_conflict_not_internal_error() -> None:
+    client = authenticated_client()
+    response = client.post(
+        "/agent/workflows",
+        json={"goal": "Reject duplicate cancellation", "tools": []},
+    )
+    assert response.status_code == 200
+    workflow_id = response.json()["workflow"]["workflow_id"]
+
+    first = client.post(f"/agent/workflows/{workflow_id}/cancel")
+    second = client.post(f"/agent/workflows/{workflow_id}/cancel")
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "cancelled"
+    assert second.status_code == 409
+    assert second.json()["detail"] == "Workflow cannot be cancelled"
