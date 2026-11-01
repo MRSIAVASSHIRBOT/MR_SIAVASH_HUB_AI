@@ -847,18 +847,27 @@ class WorkflowRecoveryRepository:
                     (str(workflow_id),),
                 )
             elif status == "running":
+                # Persist cancellation intent without prematurely terminalizing the
+                # task. The current worker can observe the request and finalize it;
+                # if it crashes, stale-worker recovery can still reconcile the run.
                 cursor = connection.execute(
-                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'running'",
-                    (now, task_id),
+                    """
+                    UPDATE worker_executions SET error_code = 'cancellation_requested'
+                    WHERE task_id = ? AND EXISTS (
+                        SELECT 1 FROM tasks WHERE task_id = ? AND status = 'running'
+                    )
+                    """,
+                    (task_id, task_id),
                 )
                 if cursor.rowcount != 1:
                     raise WorkflowRecoveryError("Running task state changed during cancellation")
             else:
                 raise WorkflowRecoveryError("Workflow cannot be cancelled in its current state")
-            connection.execute(
-                "UPDATE idempotency_records SET status = 'failed' WHERE task_id = ? AND status IN ('accepted', 'running')",
-                (task_id,),
-            )
+            if status == "queued":
+                connection.execute(
+                    "UPDATE idempotency_records SET status = 'failed' WHERE task_id = ? AND status IN ('accepted', 'running')",
+                    (task_id,),
+                )
             return {
                 "workflow_id": str(workflow_id),
                 "task_id": task_id,
