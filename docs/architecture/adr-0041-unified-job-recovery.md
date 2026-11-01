@@ -116,3 +116,15 @@ The latest Backend CI run for the implementation commit completed successfully:
 - Migration V5 now creates the legacy agent-run history table and its creation-time index.
 - The legacy Agent Run and Agent Workflow repositories delegate initialization to the canonical TaskRepository/SchemaMigrator instead of issuing independent runtime CREATE TABLE or ALTER TABLE statements.
 - Migration tests now verify versions 1–5, preservation of legacy workflow rows, and repository initialization through the versioned migration path.
+
+
+## Phase 4.7: Workflow submission idempotency boundary
+
+- `POST /agent/workflows` accepts an optional `Idempotency-Key` scoped to the authenticated user.
+- Matching completed submissions return the existing owner-scoped workflow; a key reused with a different request digest returns `409 Conflict`.
+- If a process fails after reserving the key but before a workflow can be read back, the request fails closed rather than replaying potentially executed work.
+- Regression tests cover successful duplicate submission and changed-request conflict.
+
+### Remaining integration requirement
+
+This phase does **not** yet satisfy the stronger atomic-enqueue acceptance criterion: reservation, Job/Workflow creation, and resource binding still span separate repository transactions. A crash in that window can leave a reservation requiring operator-level recovery. Workflow execution also remains request-scoped rather than dispatched by `WorkerEngine`, and cancellation is not yet coordinated across Job and Workflow state. Do not treat this as completion of issue #5 or enable long-running/external-side-effect workflows until the worker handoff, atomic submission transaction, cancellation checks, and associated fault-injection tests are implemented.
