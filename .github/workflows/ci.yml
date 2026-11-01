@@ -38,14 +38,17 @@ jobs:
           python -m ruff check
           backend/mrhub/agents/submission_repository.py
           backend/mrhub/agents/workflow_runner.py
+          backend/mrhub/agents/worker_dispatch.py
           backend/mrhub/api/routes/agent.py
           backend/mrhub/infrastructure/migrations.py
           backend/mrhub/jobs/worker.py
+          backend/mrhub/jobs/engine.py
           backend/mrhub/jobs/recovery.py
           backend/mrhub/jobs/leases.py
           tests/test_migrations.py
           tests/test_workflow_submission_repository.py
           tests/test_workflow_submission_api.py
+          tests/client_helpers.py
           tests/test_workflow_recovery.py
           tests/test_worker.py
           backend/mrhub/agents/execution_inputs.py
