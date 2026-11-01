@@ -40,10 +40,13 @@ class WorkflowWorkerHandler:
                 """,
                 (str(task.task_id),),
             ).fetchone()
-        if row is None or not row["owner_user_id"]:
+        if row is None:
             return self._fail_closed(task, lease, None, "workflow_payload_unavailable")
-
         workflow_id = UUID(row["workflow_id"])
+        if not row["owner_user_id"]:
+            return self._fail_closed(
+                task, lease, workflow_id, "workflow_payload_unavailable"
+            )
         owner_user_id = row["owner_user_id"]
         try:
             stored = self.recovery.get_encrypted_payload(
