@@ -42,3 +42,17 @@ This endpoint does not invoke the selected model, persist an agent run, or
 provide rollback for a tool that has already completed. Only trusted,
 server-registered handlers should be added to the registry. The initial
 built-in tool remains the deterministic `text.echo` example.
+
+
+## Persistent run history
+
+Every `POST /agent/execute` response now includes a durable run record.
+`GET /agent/runs/{run_id}` retrieves its status, provider/model identifiers,
+sanitized plan, tool names, execution count, stable error code, timestamp, and
+a SHA-256 digest of the original request.
+
+For data minimization, the history table does not store the raw goal, tool
+payloads, or tool outputs. The immediate execution response still returns
+outputs to the authenticated caller; the history endpoint deliberately does
+not. The current implementation records completed, blocked, or failed
+synchronous executions. It is not yet a resumable background workflow.
