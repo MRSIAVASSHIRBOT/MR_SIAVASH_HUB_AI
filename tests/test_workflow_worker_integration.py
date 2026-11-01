@@ -1,6 +1,8 @@
 """End-to-end tests for queued, encrypted workflow execution."""
 from uuid import UUID
 
+from mrhub.agents.core import AgentCore
+
 from client_helpers import authenticated_client, run_worker_once
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
