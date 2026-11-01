@@ -130,7 +130,7 @@ def check_provider_health(payload: ProviderHealthCheckRequest) -> dict[str, obje
             health = provider.health(timeout_seconds=payload.timeout_seconds)
             available = health.available
             reason_code = health.reason_code
-        except Exception:
+        except ProviderError:
             available = False
             reason_code = "provider_probe_error"
         results.append(
