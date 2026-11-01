@@ -496,3 +496,35 @@ def test_worker_recovery_finishes_job_when_workflow_already_succeeded(tmp_path):
     assert WorkerEngine(repository).run_once() is None
     stored_task = repository.get(task.task_id)
     assert stored_task is not None and stored_task.status is TaskStatus.SUCCEEDED
+
+
+
+def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
+    repository = TaskRepository(tmp_path / "safe-workflow-worker-recovery.sqlite3")
+    repository.initialize()
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    task = TaskRecord(task_type="agent.workflow", description="safe interrupted workflow")
+    workflow_id = recovery.create_run(
+        "d" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+        task=task,
+    )
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    recovery.start_run(workflow_id)
+    recovery.start_step(workflow_id, 1)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+
+    assert WorkerEngine(repository).run_once() is None
+    stored_task = repository.get(task.task_id)
+    stored_workflow = recovery.get_run(workflow_id)
+    decision = recovery.resume_decision(workflow_id, "d" * 64)
+
+    assert stored_task is not None and stored_task.status is TaskStatus.WAITING_APPROVAL
+    assert stored_workflow is not None and stored_workflow["status"] == "paused"
+    assert stored_workflow["steps"][0]["status"] == "retry_wait"
+    assert decision.decision == "resume"
+    assert decision.next_step == 1
