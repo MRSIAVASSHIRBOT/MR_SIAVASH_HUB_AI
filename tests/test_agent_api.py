@@ -296,11 +296,11 @@ def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
     from mrhub.agents.core import AgentPlanRequest
 
     parsed = AgentPlanRequest.model_validate(request)
-    core_plan = __import__("mrhub.agents.core", fromlist=["AgentCore"]).AgentCore
     from mrhub.api.routes.agent import _workflow_digest
     from mrhub.agents.core import AgentCore
     from mrhub.api.routes.models import build_model_router
     from mrhub.tools.builtins import build_tool_registry
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
 
     core = AgentCore(build_model_router(), build_tool_registry())
     plan = core.plan(parsed)
@@ -326,11 +326,7 @@ def test_agent_workflow_resume_continues_only_from_interrupted_safe_step():
     recovery.complete_step(
         workflow_id,
         provider_attempt,
-        AgentCore.__module__ and __import__("hashlib").sha256(
-            __import__("json").dumps(
-                plan["selected_provider"], sort_keys=True, separators=(",", ":")
-            ).encode()
-        ).hexdigest(),
+        AgentWorkflowRunner._digest(plan["selected_provider"]),
         lease=lease,
     )
     recovery.start_step(workflow_id, 2, lease=lease)
