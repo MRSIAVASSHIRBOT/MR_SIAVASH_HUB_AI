@@ -48,8 +48,22 @@ class AgentRunRepository:
         execution: dict[str, object],
     ) -> dict[str, object]:
         self.initialize()
+        requested_tools = request_payload.get("tools", [])
+        safe_request_metadata = {
+            "goal_length": len(str(request_payload.get("goal", ""))),
+            "tool_names": [
+                str(item.get("name"))
+                for item in requested_tools
+                if isinstance(item, dict) and "name" in item
+            ] if isinstance(requested_tools, list) else [],
+            "requires_text": bool(request_payload.get("requires_text", True)),
+            "requires_vision": bool(request_payload.get("requires_vision", False)),
+            "requires_audio": bool(request_payload.get("requires_audio", False)),
+            "requires_tool_calling": bool(request_payload.get("requires_tool_calling", False)),
+            "prefer_local": bool(request_payload.get("prefer_local", False)),
+        }
         request_bytes = json.dumps(
-            request_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            safe_request_metadata, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
         digest = hashlib.sha256(request_bytes).hexdigest()
         plan = execution["plan"]
