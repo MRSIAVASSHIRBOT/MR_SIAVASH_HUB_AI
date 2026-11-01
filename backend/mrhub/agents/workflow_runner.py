@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from uuid import UUID
-
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
-from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.jobs.recovery import StepAttempt, WorkflowRecoveryRepository
+from mrhub.security.audit import AuditLogger
 
 
 class AgentWorkflowRunner:
@@ -57,9 +56,19 @@ class AgentWorkflowRunner:
             step_specs,
             task=task,
         )
+        AuditLogger(self.repository).record(
+            event_type="task.submitted",
+            outcome="queued",
+            subject_id=str(task.task_id),
+            metadata={
+                "task_type": task.task_type,
+                "risk_class": task.risk_class.value,
+                "decision": "allow",
+            },
+        )
         self.jobs.transition(task.task_id, TaskStatus.RUNNING)
         self.recovery.start_run(workflow_id)
-        attempts: dict[int, object] = {}
+        attempts: dict[int, StepAttempt] = {}
 
         try:
             provider_attempt = self.recovery.start_step(workflow_id, 1)
