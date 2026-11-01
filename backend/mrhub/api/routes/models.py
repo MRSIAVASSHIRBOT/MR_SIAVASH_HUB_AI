@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.diagnostics.model_profiles import get_model_profile, list_model_profiles
+from mrhub.diagnostics.model_recommender import recommend_model_profiles
 from mrhub.diagnostics.resource_advisor import assess_model_resources
 from mrhub.providers.base import ProviderError, ProviderRequest
 from mrhub.providers.ollama import OllamaProvider
@@ -57,6 +58,16 @@ class CompareModelsRequest(BaseModel):
     system_reserve_gib: float = Field(default=2.0, ge=0, le=64)
 
 
+class RecommendModelsRequest(BaseModel):
+    hardware_report: dict[str, Any]
+    profile_ids: list[str] = Field(
+        default_factory=lambda: ["small-text-cpu-example", "gpu-model-example"],
+        min_length=1,
+        max_length=20,
+    )
+    system_reserve_gib: float = Field(default=2.0, ge=0, le=64)
+
+
 @router.get("")
 def list_models():
     return build_model_router().catalog()
@@ -91,6 +102,25 @@ def assess_model(payload: AssessModelRequest):
         payload.model_profile,
         system_reserve_gib=payload.system_reserve_gib,
     )
+
+
+@router.post("/recommend")
+def recommend_models(payload: RecommendModelsRequest):
+    """Return a ranked, advisory-only resource recommendation."""
+    try:
+        return recommend_model_profiles(
+            payload.hardware_report,
+            payload.profile_ids,
+            system_reserve_gib=payload.system_reserve_gib,
+        )
+    except KeyError as exc:
+        unknown_ids = list(exc.args[0])
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Unknown model profile ID(s)", "profile_ids": unknown_ids},
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/compare")
