@@ -52,3 +52,16 @@ configuration such as base URLs and credentials. `health_status` is reported
 as `not_checked`; it must not be interpreted as live availability. Live
 provider health monitoring is a separate operation with explicit timeouts and
 failure handling.
+
+
+## Provider health monitoring
+
+The authenticated `POST /models/providers/health-check` endpoint performs an
+explicit health probe against each registered adapter. Its request accepts a
+per-provider timeout from 0.1 to 5 seconds (default 2 seconds). Results include
+a stable status/reason code and measured duration; provider exception details
+are not returned. A health probe does not run model inference or download
+artifacts. This endpoint can contact the explicitly configured loopback Ollama
+service, so it should be called only when an operator intends to check that
+local service. The passive `GET /models/providers` inventory never performs
+these probes.
