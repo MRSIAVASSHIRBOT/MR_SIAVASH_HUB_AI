@@ -130,8 +130,9 @@ class WorkflowRecoveryRepository:
         task: TaskRecord | None = None,
         definition_version: int = 1,
         owner_user_id: str | None = None,
+        payload_envelope: dict[str, object] | None = None,
     ) -> UUID:
-        """Create a queued workflow and optional linked job in one transaction."""
+        """Create workflow/job metadata and an optional encrypted payload atomically."""
         self._validate_digest(request_digest, "Request digest")
         if task is not None and task_id is not None:
             raise WorkflowRecoveryError("Provide either task or task_id, not both")
@@ -201,6 +202,32 @@ class WorkflowRecoveryRepository:
                     definition_version, now, now, owner_user_id,
                 ),
             )
+            if payload_envelope is not None:
+                if task_id is None or task is None or not owner_user_id:
+                    raise WorkflowRecoveryError(
+                        "Encrypted workflow payload requires a linked task and owner"
+                    )
+                version = payload_envelope.get("version")
+                nonce_b64 = payload_envelope.get("nonce_b64")
+                ciphertext_b64 = payload_envelope.get("ciphertext_b64")
+                if (
+                    not isinstance(version, int) or version < 1
+                    or not isinstance(nonce_b64, str) or not nonce_b64
+                    or not isinstance(ciphertext_b64, str) or not ciphertext_b64
+                ):
+                    raise WorkflowRecoveryError("Encrypted workflow payload envelope is invalid")
+                connection.execute(
+                    """
+                    INSERT INTO workflow_payloads (
+                        workflow_id, task_id, owner_user_id, envelope_version,
+                        nonce_b64, ciphertext_b64, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(workflow_id), task_id, owner_user_id, version,
+                        nonce_b64, ciphertext_b64, now,
+                    ),
+                )
             for number, kind, name in normalized:
                 connection.execute(
                     """
