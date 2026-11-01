@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.approvals import router as approvals_router
@@ -36,6 +36,19 @@ def create_app() -> FastAPI:
     )
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=()",
+        )
+        response.headers.setdefault("Cache-Control", "no-store")
+        return response
 
     app.include_router(health_router)
     app.include_router(auth_router)
