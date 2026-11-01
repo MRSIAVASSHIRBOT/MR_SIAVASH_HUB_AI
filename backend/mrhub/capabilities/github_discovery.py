@@ -43,6 +43,8 @@ def parse_github_repository_url(source_url: str) -> tuple[str, str, str]:
     if match is None:
         raise CapabilityValidationError("Use a repository URL in the form https://github.com/OWNER/REPO")
     owner, repository = match.groups()
+    if owner in {".", ".."} or repository in {".", ".."}:
+        raise CapabilityValidationError("Owner and repository names must be valid path segments")
     if repository.lower().endswith(".git"):
         repository = repository[:-4]
     if not repository:
@@ -99,6 +101,17 @@ def _metadata_response(source_url: str) -> dict[str, Any]:
     return payload
 
 
+def _safe_public_count(value: object) -> int:
+    """Normalize public counters without letting malformed upstream values crash discovery."""
+    if isinstance(value, bool):
+        return 0
+    try:
+        count = int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(count, 2_147_483_647))
+
+
 def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> tuple[CapabilityCandidate, dict[str, Any]]:
     """Inspect public repo metadata and persist a review candidate; never execute code."""
     owner, repository, canonical_url = parse_github_repository_url(source_url)
@@ -142,8 +155,8 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         "archived": bool(metadata.get("archived", False)),
         "disabled": bool(metadata.get("disabled", False)),
         "fork": bool(metadata.get("fork", False)),
-        "stargazers_count": max(0, int(metadata.get("stargazers_count", 0) or 0)),
-        "open_issues_count": max(0, int(metadata.get("open_issues_count", 0) or 0)),
+        "stargazers_count": _safe_public_count(metadata.get("stargazers_count", 0)),
+        "open_issues_count": _safe_public_count(metadata.get("open_issues_count", 0)),
         "updated_at": str(metadata.get("updated_at") or "")[:40],
         "candidate": candidate.as_dict(),
         "evaluation": evaluate_repository_metadata(metadata),
