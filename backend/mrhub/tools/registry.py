@@ -28,6 +28,10 @@ class ToolDefinition:
     external_side_effect: bool = False
 
 
+class ToolExecutionError(RuntimeError):
+    """A registered handler failed; original exception details are not exposed."""
+
+
 class ToolPolicyError(PermissionError):
     def __init__(self, decision: PolicyDecision, reason: str) -> None:
         super().__init__(reason)
@@ -95,6 +99,9 @@ class ToolRegistry:
         if decision.decision is not PolicyDecision.ALLOW:
             raise ToolPolicyError(decision.decision, decision.reason)
 
-        raw_result = tool.handler(validated_input)
+        try:
+            raw_result = tool.handler(validated_input)
+        except Exception as exc:  # noqa: BLE001
+            raise ToolExecutionError("Tool handler failed") from exc
         validated_output = tool.output_model.model_validate(raw_result)
         return validated_output.model_dump(mode="json")
