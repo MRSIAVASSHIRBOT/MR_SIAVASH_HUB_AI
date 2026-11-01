@@ -50,6 +50,7 @@ class AgentCore:
         on_step: Callable[[int, str, str | None], None] | None = None,
         on_step_result: Callable[[int, str], None] | None = None,
         start_step: int = 2,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
         plan = self.plan(request)
@@ -72,6 +73,19 @@ class AgentCore:
         for step_number, requested_tool in enumerate(request.tools, start=2):
             if step_number < start_step:
                 continue
+            if should_cancel is not None and should_cancel():
+                return {
+                    "decision_mode": "controlled_tool_execution",
+                    "execution_started": bool(results),
+                    "execution_completed": False,
+                    "cancelled": True,
+                    "model_inference_started": False,
+                    "tools_executed": bool(results),
+                    "plan": plan,
+                    "results": results,
+                    "error_code": "cancelled",
+                    "blocked": False,
+                }
             if on_step is not None:
                 on_step(step_number, "running", None)
             try:
@@ -101,6 +115,19 @@ class AgentCore:
                 on_step_result(step_number, hashlib.sha256(output_bytes).hexdigest())
             if on_step is not None:
                 on_step(step_number, "succeeded", None)
+            if should_cancel is not None and should_cancel():
+                return {
+                    "decision_mode": "controlled_tool_execution",
+                    "execution_started": True,
+                    "execution_completed": False,
+                    "cancelled": True,
+                    "model_inference_started": False,
+                    "tools_executed": bool(results),
+                    "plan": plan,
+                    "results": results,
+                    "error_code": "cancelled",
+                    "blocked": False,
+                }
 
         return {
             "decision_mode": "controlled_tool_execution",
