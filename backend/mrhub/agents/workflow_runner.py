@@ -72,6 +72,7 @@ class AgentWorkflowRunner:
         request: AgentPlanRequest,
         plan: dict[str, object],
         request_digest: str,
+        owner_user_id: str,
     ) -> dict[str, object]:
         """Create a linked Job/Workflow and execute each validated step in order."""
         raw_steps = plan.get("steps", [])
@@ -101,6 +102,7 @@ class AgentWorkflowRunner:
             request_digest,
             step_specs,
             task=task,
+            owner_user_id=owner_user_id,
         )
         AuditLogger(self.repository).record(
             event_type="task.submitted",
