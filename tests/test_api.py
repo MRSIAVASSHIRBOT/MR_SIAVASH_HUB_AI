@@ -207,3 +207,20 @@ def test_lifespan_initializes_database_before_serving_requests(tmp_path, monkeyp
             assert database_path.exists()
     finally:
         get_settings.cache_clear()
+
+
+
+def test_api_responses_include_security_headers():
+    from fastapi.testclient import TestClient
+
+    from mrhub.main import create_app
+
+    response = TestClient(create_app()).get("/health")
+    assert response.status_code == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Permissions-Policy"] == (
+        "camera=(), microphone=(), geolocation=()"
+    )
