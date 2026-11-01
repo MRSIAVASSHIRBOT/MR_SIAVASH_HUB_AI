@@ -21,7 +21,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6]
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
@@ -66,7 +66,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5, 6]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
@@ -182,7 +182,7 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6]
     tables = {
         row["name"]
         for row in connection.execute(
