@@ -12,6 +12,14 @@ from uuid import UUID, uuid4
 class AgentWorkflowRepository:
     """Persist workflow and per-step state, never prompts, payloads, or outputs."""
 
+    _STEP_TRANSITIONS = {
+        "pending": {"running", "blocked"},
+        "running": {"succeeded", "failed", "blocked"},
+        "succeeded": set(),
+        "failed": set(),
+        "blocked": set(),
+    }
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
 
@@ -75,9 +83,9 @@ class AgentWorkflowRepository:
     def record_step(
         self, workflow_id: UUID, step_number: int, status: str, error_code: str | None = None
     ) -> None:
-        if status not in {"running", "succeeded", "failed", "blocked"}:
-            raise ValueError("Unsupported workflow step status")
+        """Apply one legal step transition under a SQLite write lock."""
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT steps_json, status FROM agent_workflows WHERE workflow_id = ?",
                 (str(workflow_id),),
@@ -90,6 +98,9 @@ class AgentWorkflowRepository:
             target = next((item for item in steps if item["step"] == step_number), None)
             if target is None:
                 raise LookupError("Workflow step not found")
+            current = target["status"]
+            if status not in self._STEP_TRANSITIONS.get(current, set()):
+                raise RuntimeError("Workflow step transition is not allowed")
             target["status"] = status
             target["error_code"] = error_code
             connection.execute(
