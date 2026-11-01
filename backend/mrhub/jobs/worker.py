@@ -415,6 +415,29 @@ class WorkerEngine:
             },
         )
 
+    def summary(self) -> dict[str, object]:
+        """Return bounded queue metadata without exposing task descriptions or results."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT status, COUNT(*) AS total FROM tasks GROUP BY status"
+            ).fetchall()
+            retry_row = connection.execute(
+                "SELECT COUNT(*) AS total FROM worker_executions "
+                "WHERE next_attempt_at IS NOT NULL"
+            ).fetchone()
+
+        status_counts = {status.value: 0 for status in TaskStatus}
+        for row in rows:
+            status_counts[row["status"]] = row["total"]
+        return {
+            "total_tasks": sum(status_counts.values()),
+            "status_counts": status_counts,
+            "retry_scheduled": retry_row["total"] if retry_row else 0,
+            "registered_handlers": sorted(self.handlers),
+            "execution_mode": "pull_driven",
+            "automatic_execution": False,
+        }
+
     def get_result(self, task_id: UUID) -> dict[str, object] | None:
         with self._connection() as connection:
             row = connection.execute(
