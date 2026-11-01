@@ -6,6 +6,8 @@ arguments must never be stored by this repository.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -33,6 +35,18 @@ class WorkflowSubmissionRepository:
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def initialize(self) -> None:
         """Apply the canonical versioned schema; do not create tables ad hoc."""
         from mrhub.infrastructure.database import TaskRepository
@@ -56,7 +70,7 @@ class WorkflowSubmissionRepository:
         self._validate(idempotency_key, "idempotency_key")
         self._validate(request_digest, "request_digest")
         now = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 """SELECT request_digest, state, workflow_id, task_id, created_at, updated_at
