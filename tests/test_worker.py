@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
+from mrhub.jobs.idempotency import IdempotencyRepository
 from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
 
 
@@ -344,3 +345,70 @@ def test_worker_with_lost_fencing_token_cannot_commit_result(tmp_path):
     persisted = worker.get_result(task.task_id)
     assert persisted is not None and persisted["result"] is None
     assert LeaseManager(repository.database_path).is_current(successor)
+
+
+
+def test_worker_completes_linked_idempotency_record(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-idempotency.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="linked request")
+    idempotency = IdempotencyRepository(repository.database_path)
+    idempotency.reserve_task("user:local", "worker-complete", "a" * 64, task)
+    worker = WorkerEngine(repository)
+
+    completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.SUCCEEDED
+    record = idempotency.get("user:local", "worker-complete")
+    assert record is not None and record.status == "completed"
+
+
+def test_interrupted_worker_marks_linked_idempotency_unknown_outcome(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-interrupted-idempotency.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="uncertain request")
+    idempotency = IdempotencyRepository(repository.database_path)
+    idempotency.reserve_task("user:local", "worker-interrupted", "b" * 64, task)
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.RUNNING.value, str(task.task_id)),
+        )
+        connection.execute(
+            """
+            INSERT INTO worker_executions (task_id, attempt_count, started_at)
+            VALUES (?, 1, ?)
+            """,
+            (str(task.task_id), "2000-01-01T00:00:00+00:00"),
+        )
+        connection.execute(
+            """
+            UPDATE idempotency_records SET status = 'running'
+            WHERE scope = ? AND idempotency_key = ?
+            """,
+            ("user:local", "worker-interrupted"),
+        )
+
+    worker = WorkerEngine(repository)
+    assert worker.run_once() is None
+
+    record = idempotency.get("user:local", "worker-interrupted")
+    assert record is not None and record.status == "unknown_outcome"
+
+
+def test_handler_failure_marks_linked_idempotency_unknown_outcome(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-handler-failure.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="uncertain handler")
+    idempotency = IdempotencyRepository(repository.database_path)
+    idempotency.reserve_task("user:local", "worker-handler-failure", "c" * 64, task)
+    worker = WorkerEngine(repository)
+    worker.handlers["demo.echo"] = lambda _task: (_ for _ in ()).throw(
+        ValueError("private handler detail")
+    )
+
+    completed = worker.run_once()
+
+    assert completed is not None and completed.status is TaskStatus.FAILED
+    record = idempotency.get("user:local", "worker-handler-failure")
+    assert record is not None and record.status == "unknown_outcome"
