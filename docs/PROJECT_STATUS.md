@@ -15,43 +15,39 @@ Unrelated repositories (Gshop, the game, Telegram bot, and others) must remain o
 - Main contains the FastAPI/SQLite control-plane baseline, task/job state, cancellation, policy checks, structured audit events, local owner authentication, action-bound approvals, capability-aware model routing, deterministic stub, and opt-in loopback-only Ollama adapter.
 - PR #11 is merged: the OpenCode action is pinned to a specific commit SHA and its prompt requires verified reporting.
 - PR #12 is merged: OpenCode uses the explicit `openrouter/cohere/north-mini-code:free` model identifier. Availability and actual zero-cost operation remain provider-dependent; do not assume this endpoint is permanently available or free.
-- Local inference remains disabled by default. Do not claim the draft worker/workflow branches are already part of main.
-- The operator UI, real remote provider adapters, memory implementation, and content/media vertical remain roadmap work unless separately verified on main.
+- PR #15 is merged via integration commit `0caa50637800c470b1d52f4ebd2ada78f9196ab8`: it brings worker-owned workflow execution, durable recovery, lease fencing, cancellation handling, worker heartbeat readiness, and the metadata-only capability discovery catalog into `main`. Backend CI and CI passed on integrated head `87438c66f102be5faf62c35391c4dc9cab8a0f3e`, including Python 3.11 and 3.12.
+- PR #16 is merged via squash commit `e91c9d51c258292cf995e2b4fbb6b24469d91718`: adds fault-injection coverage for a worker crash after an external side effect. Backend CI and CI passed on head `81bf8868e3869468c00a95988db81cdeb6428e39`.
+- Local inference remains disabled by default. The operator UI, real remote provider adapters, memory implementation, and content/media vertical remain roadmap work unless separately verified on main.
 
 ## Live pull-request snapshot
 
-Checked 2026-11-02 (UTC). Draft status is intentional; green CI alone does not mean a PR is merge-ready.
+Checked 2026-11-02 (UTC). Re-check live GitHub metadata before making a new merge decision.
 
-- **PR #3 — Phase 4.2 worker-owned workflow execution**: open, Draft, based on main. Head `ca1b40f27201f7d353d8ee82ee760019126eb231`. Backend CI and CI workflow runs were completed successfully for this head. Still requires explicit fault-injection coverage for worker termination during an external side effect and lease-expiry races before merge.
-- **PR #4 — ADR-0042 knowledge/memory architecture**: open, Draft, documentation-only. Head `2dea4730191d3d396e2f89a9e90649950f3c5386`. Backend CI completed successfully. This is an architecture proposal, not an implementation of memory.
-- **PR #6 — workflow dispatch and GitHub capability discovery**: open, Draft, based on `feat/phase-4-2-unified-job-recovery`. Head `3b2c5a2e68bd6741f0a2a419e83cc7a9405c0e36`. Its recorded base SHA is `68ea8fa5af009d7a9cfded116fe279dd3db0ed82`; live comparison of the base/head refs reports `diverged`, 140 commits ahead and 69 behind, with that SHA as merge base. PR #3 currently has a newer head (`ca1b40f27201f7d353d8ee82ee760019126eb231`). No PR-triggered workflow runs were returned for PR #6's current head. PR #6 is not mergeable and must not be retargeted or merged until the branch history is reconciled and CI passes on the resulting head.
-- **PR #7 — Phase 4.3 cancellation/recovery hardening**: open, Draft, based on main. Latest reviewed head `6ed6bcc5d439189107ac66f3a5b35af24085c3a2` adds a regression test rejecting stale worker heartbeats and updates the hardening checklist. Backend CI and CI both completed successfully on this exact head, including Python 3.11 and 3.12. The release gate remains open because branch-overlap and broader cancellation/recovery review are still required. Keep Draft until latest-head CI, readiness behavior, cancellation/recovery crash windows, and the acceptance checklist/runbook are reconciled and reviewed.
-- **PR #10 — this project status ledger**: merged into `main` via squash commit `1ae9afe09ed231c0a2b3327f5b0fd7d810e0d982` after the latest-head Backend CI passed. Keep this ledger updated through reviewed documentation PRs; do not treat it as a substitute for live metadata.
-- **PR #11**: merged. **PR #12**: merged. Do not list either as open.
+- **PR #3 — Phase 4.2 worker-owned workflow execution**: closed without merging; its reviewed implementation is included in PR #15's integrated main commit. A supersession comment explains the disposition.
+- **PR #4 — ADR-0042 knowledge/memory architecture**: merged as documentation-only via `ca5bc51871a85bf4c1ad22baed60a1ce84569907`. This is an architecture proposal, not an implementation of memory.
+- **PR #6 — workflow dispatch and GitHub capability discovery**: closed without merging. Its original branch diverged from its recorded base (140 ahead / 69 behind) and proposed an alternate submission/dispatch implementation duplicating the architecture now on main. The capability-catalog part is included in PR #15. A comment records why the original branch was closed and requires any genuinely unique future improvements to use a fresh main-based PR.
+- **PR #7 — Phase 4.3 cancellation/recovery hardening**: closed without merging; its reviewed implementation is included in PR #15's integrated main commit.
+- **PR #10 and PR #13 — project status ledger**: merged. Keep this ledger current through reviewed documentation changes; live metadata remains authoritative.
+- **PR #11 and PR #12**: merged. Do not list either as open.
+- **PR #14 — standalone capability discovery**: closed without merging because the same reviewed catalog is included in PR #15.
+- **PR #15 — Phase 4.2/4.3 worker hardening + capability discovery integration**: merged via `0caa50637800c470b1d52f4ebd2ada78f9196ab8`. Latest-head Backend CI and CI passed on `87438c66f102be5faf62c35391c4dc9cab8a0f3e`.
+- **PR #16 — worker crash after external side effect regression test**: merged via `e91c9d51c258292cf995e2b4fbb6b24469d91718`. Backend CI and CI passed on `81bf8868e3869468c00a95988db81cdeb6428e39`.
 
-## Confirmed file-overlap and dependency risks
+## Integration outcomes and remaining risks
 
-Changed-file lists were compared live:
+- The overlapping worker/recovery/cancellation code from PR #3 and PR #7 is now represented in one main-based integration commit, rather than merging their long feature-branch histories.
+- Lease fencing and interrupted external-step recovery are covered by existing regression tests; PR #16 adds a fault-injection case asserting that an already-accepted external effect becomes `unknown_outcome` after worker interruption and is not replayed.
+- Capability discovery is metadata-only: it queries public GitHub repository metadata, does not download or execute source code, and never auto-approves candidates. Approval requires explicit license, security, compatibility, and test-plan evidence.
+- The original PR #6 worker-dispatch changes were not merged wholesale because they duplicate the current `jobs/workflow_dispatch.py`, `jobs/payload_envelope.py`, and `jobs/idempotency.py` architecture and also conflict on ADR numbering. Any unique improvement needs a fresh, focused PR based on current `main`.
+- Phase 2 knowledge/memory remains a proposal. The operator UI, real remote provider adapters, and content/media vertical remain roadmap work.
 
-- PR #3 and PR #7 share **40 paths**, including workflow execution, persistence/migrations, worker, API routes, security, README, and tests. They must be reconciled deliberately; do not merge both based only on independent green CI.
-- PR #3 and PR #6 share **15 paths**.
-- PR #6 and PR #7 share **16 paths**.
-- PR #6 targets the PR #3 feature branch as its base, but the recorded base SHA is older than PR #3's current head and the refs have diverged. This is a history-reconciliation blocker, not merely a merge-order choice.
-- PR #4 and PR #6 both touch `docs/roadmap/implementation-plan.md`; resolve the documentation overlap if both changes are retained.
-- PR #10 is documentation-only and does not resolve implementation branch conflicts.
+## Recommended next steps
 
-A clean GitHub mergeability flag does not prove logical compatibility. Run integration tests after every dependency-aware merge.
-
-## Recommended execution order
-
-1. Keep implementation PRs in Draft while completing review. Do not merge PR #6 or change its base yet: reconcile the divergent branch history against PR #3 first, then rerun CI on the resulting head.
-2. Review PR #7's latest-head implementation and tests against the readiness/cancellation acceptance checklist. Verify read-only readiness with absent/unmigrated schema, missing/stale heartbeat, and worker-required mode. Verify stale workers cannot overwrite successor-owned state and uncertain external outcomes are not blindly replayed.
-3. Review PR #3's encrypted payload, worker lifecycle, idempotency, lease handling, and crash-window tests. Add fault-injection tests for worker termination during external side effects and lease expiry before considering merge.
-4. Reconcile PR #3 and PR #7 overlapping paths on a controlled integration branch or by updating one feature branch at a time; rerun all CI on the final rebased head. Preserve explicit user approval and audit boundaries.
-5. Rebase/reconcile PR #6 only after its required base is settled. Resolve the 15/16 overlapping paths and run CI on its new head; add crash-window and ambiguous-external-outcome tests.
-6. Keep PR #4 as a documentation decision until a separate, scoped implementation PR adds memory: scoped records, provenance/trust metadata, SQLite FTS5 retrieval, citations, and export/expiry/deletion controls. No broad repository ingestion or automatic durable-memory writes without explicit scope and policy.
-7. Implement the smallest operator UI only after API contracts stabilize.
-8. Then implement the content/media vertical with drafts, approval, deduplication, auditability, and local FFmpeg processing before optional external generators. Continue with NEXUS read-only analysis and reviewable patches, defensive security, and packaging afterward.
+1. Continue reviewing production-readiness of worker heartbeat thresholds and the operational runbook against the intended deployment.
+2. Add real external-tool adapters only behind explicit policy/approval gates, with reconciliation semantics for uncertain remote outcomes.
+3. Implement memory as a separate, scoped project: owner-scoped records, provenance/trust metadata, SQLite FTS5 retrieval, citations, and export/expiry/deletion controls. No broad ingestion or automatic durable-memory writes without explicit scope and policy.
+4. Implement the operator UI only after API contracts stabilize.
+5. Build the content/media vertical with drafts, approval, deduplication, auditability, and local FFmpeg processing before optional external generators. Continue with NEXUS read-only analysis and reviewable patches, defensive security, and packaging afterward.
 
 ## Definition of done for each code change
 
