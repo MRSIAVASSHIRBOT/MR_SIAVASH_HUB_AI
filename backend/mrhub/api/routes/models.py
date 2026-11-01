@@ -13,6 +13,7 @@ from mrhub.diagnostics.model_recommender import recommend_model_profiles
 from mrhub.diagnostics.resource_advisor import assess_model_resources
 from mrhub.providers.base import ProviderError, ProviderRequest
 from mrhub.providers.ollama import OllamaProvider
+from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.providers.stub import StubProvider
 
@@ -29,6 +30,19 @@ def build_model_router() -> ModelRouter:
                 model=settings.local_inference_model,
                 base_url=settings.local_inference_base_url,
                 timeout_seconds=settings.local_inference_timeout_seconds,
+            )
+        )
+    if (
+        settings.remote_inference_enabled
+        and settings.remote_inference_api_key is not None
+        and settings.remote_inference_model
+    ):
+        model_router.register_provider(
+            OpenRouterProvider(
+                model=settings.remote_inference_model,
+                api_key=settings.remote_inference_api_key.get_secret_value(),
+                base_url=settings.remote_inference_base_url,
+                timeout_seconds=settings.remote_inference_timeout_seconds,
             )
         )
     return model_router
@@ -237,6 +251,34 @@ def compare_models(payload: CompareModelsRequest):
             "GPU VRAM and compute capability are not currently measured.",
         ],
     }
+
+
+@router.post("/generate-remote")
+def generate_remote_model(payload: GenerateModelRequest):
+    """Send one request to the explicitly configured remote provider; never fall back."""
+    settings = get_settings()
+    if (
+        not settings.remote_inference_enabled
+        or settings.remote_inference_api_key is None
+        or not settings.remote_inference_model
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Remote inference is disabled or incompletely configured; no cloud request was made",
+        )
+    try:
+        model_router = build_model_router()
+        provider = model_router.registry.get("openrouter", settings.remote_inference_model)
+        return provider.generate(
+            ProviderRequest(
+                input_text=payload.input_text,
+                max_output_tokens=payload.max_output_tokens,
+            )
+        )
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=503, detail="Configured remote model is unavailable") from exc
 
 
 @router.post("/generate")
