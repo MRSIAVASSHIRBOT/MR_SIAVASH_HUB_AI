@@ -5,7 +5,7 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
@@ -16,6 +16,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.idempotency import IdempotencyConflict, IdempotencyError, IdempotencyRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.tools.builtins import build_tool_registry
@@ -85,6 +86,7 @@ def _workflow_digest(request: AgentPlanRequest) -> str:
 def execute_agent_workflow(
     request: AgentPlanRequest,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
 ) -> dict[str, object]:
     """Execute an allowed workflow under the canonical Job lifecycle."""
     core = AgentCore(build_model_router(), build_tool_registry())
@@ -100,9 +102,47 @@ def execute_agent_workflow(
         settings = get_settings()
         task_repository = TaskRepository(settings.database_path)
         task_repository.initialize()
-        return AgentWorkflowRunner(task_repository, core).execute(
-            request, plan, request_digest, current_user.user_id
-        )
+        idempotency = IdempotencyRepository(settings.database_path)
+        scope = f"agent-workflow:{current_user.user_id}"
+        if idempotency_key is not None:
+            try:
+                reservation = idempotency.reserve(scope, idempotency_key, request_digest)
+            except IdempotencyConflict as exc:
+                raise HTTPException(status_code=409, detail="Idempotency key conflicts with an earlier request") from exc
+            except IdempotencyError as exc:
+                raise HTTPException(status_code=422, detail="Invalid idempotency key") from exc
+            if not reservation.created:
+                record = reservation.record
+                if record.workflow_id:
+                    existing = WorkflowRecoveryRepository(settings.database_path).get_run(
+                        UUID(record.workflow_id), owner_user_id=current_user.user_id
+                    )
+                    if existing is not None:
+                        return {"workflow": existing, "execution": None, "idempotent_replay": True}
+                # A reservation without a recoverable workflow may represent a crash
+                # between reservation and durable workflow creation. Never replay it.
+                raise HTTPException(status_code=409, detail="Request is already reserved; inspect recovery state")
+            idempotency.transition(scope, idempotency_key, "accepted", "running")
+        try:
+            result = AgentWorkflowRunner(task_repository, core).execute(
+                request, plan, request_digest, current_user.user_id
+            )
+        except Exception:
+            if idempotency_key is not None:
+                try:
+                    idempotency.transition(scope, idempotency_key, "running", "unknown_outcome")
+                except (RuntimeError, IdempotencyError):
+                    pass
+            raise
+        if idempotency_key is not None:
+            workflow = result.get("workflow", {})
+            workflow_id = workflow.get("workflow_id") if isinstance(workflow, dict) else None
+            task_id = workflow.get("task_id") if isinstance(workflow, dict) else None
+            if workflow_id:
+                idempotency.bind(scope, idempotency_key, task_id=task_id, workflow_id=workflow_id)
+            target = "completed" if result.get("execution", {}).get("execution_completed") else "failed"
+            idempotency.transition(scope, idempotency_key, "running", target)
+        return result
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
