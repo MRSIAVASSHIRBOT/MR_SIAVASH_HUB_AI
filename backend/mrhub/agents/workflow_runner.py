@@ -73,8 +73,17 @@ class AgentWorkflowRunner:
         plan: dict[str, object],
         request_digest: str,
         owner_user_id: str,
+        *,
+        workflow_id: UUID | None = None,
+        task: TaskRecord | None = None,
+        lease: WorkerLease | None = None,
+        lease_lost: Event | None = None,
     ) -> dict[str, object]:
-        """Create a linked Job/Workflow and execute each validated step in order."""
+        """Execute under either a local lease or a WorkerEngine-owned lease.
+
+        Worker dispatch must reuse its existing task, workflow, and lease instead
+        of creating duplicate durable state or competing lease heartbeats.
+        """
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise ValueError("Workflow plan contains no executable steps")
@@ -94,39 +103,52 @@ class AgentWorkflowRunner:
             step_specs.append(
                 {"step_number": number, "kind": kind, "name": name}
             )
-        task = TaskRecord(
-            task_type="agent.workflow",
-            description="Agent workflow execution",
-        )
-        workflow_id = self.recovery.create_run(
-            request_digest,
-            step_specs,
-            task=task,
-            owner_user_id=owner_user_id,
-        )
-        AuditLogger(self.repository).record(
-            event_type="task.submitted",
-            outcome="queued",
-            subject_id=str(task.task_id),
-            metadata={
-                "task_type": task.task_type,
-                "risk_class": task.risk_class.value,
-                "decision": "allow",
-            },
-        )
-        self.jobs.transition(task.task_id, TaskStatus.RUNNING)
-        lease = self.lease_manager.acquire(str(task.task_id), self.worker_id)
-        if lease is None:
-            raise RuntimeError("Workflow task could not acquire its execution lease")
-        stop_heartbeat = Event()
-        lease_lost = Event()
-        heartbeat = Thread(
-            target=self._heartbeat_loop,
-            args=(lease, stop_heartbeat, lease_lost),
-            name=f"agent-workflow-lease-{workflow_id}",
-            daemon=True,
-        )
-        heartbeat.start()
+        worker_owned_lease = lease is not None
+        if worker_owned_lease:
+            if workflow_id is None or task is None or lease_lost is None:
+                raise ValueError(
+                    "Worker execution requires workflow_id, task, lease, and lease_lost"
+                )
+            if str(task.task_id) != lease.task_id:
+                raise ValueError("Worker lease does not match the workflow task")
+            stored = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+            if stored is None or stored.get("task_id") != str(task.task_id):
+                raise LookupError("Queued workflow not found for this task owner")
+            stop_heartbeat = Event()
+        else:
+            task = TaskRecord(
+                task_type="agent.workflow",
+                description="Agent workflow execution",
+            )
+            workflow_id = self.recovery.create_run(
+                request_digest,
+                step_specs,
+                task=task,
+                owner_user_id=owner_user_id,
+            )
+            AuditLogger(self.repository).record(
+                event_type="task.submitted",
+                outcome="queued",
+                subject_id=str(task.task_id),
+                metadata={
+                    "task_type": task.task_type,
+                    "risk_class": task.risk_class.value,
+                    "decision": "allow",
+                },
+            )
+            self.jobs.transition(task.task_id, TaskStatus.RUNNING)
+            lease = self.lease_manager.acquire(str(task.task_id), self.worker_id)
+            if lease is None:
+                raise RuntimeError("Workflow task could not acquire its execution lease")
+            stop_heartbeat = Event()
+            lease_lost = Event()
+            heartbeat = Thread(
+                target=self._heartbeat_loop,
+                args=(lease, stop_heartbeat, lease_lost),
+                name=f"agent-workflow-lease-{workflow_id}",
+                daemon=True,
+            )
+            heartbeat.start()
         attempts: dict[int, StepAttempt] = {}
 
         try:
@@ -205,12 +227,13 @@ class AgentWorkflowRunner:
                     self.jobs.transition(task.task_id, target, lease=lease)
             raise RuntimeError("Workflow execution stopped; inspect its recovery state") from exc
         finally:
-            stop_heartbeat.set()
-            heartbeat.join(timeout=max(1.0, self.lease_seconds))
-            self.lease_manager.release(lease)
+            if not worker_owned_lease:
+                stop_heartbeat.set()
+                heartbeat.join(timeout=max(1.0, self.lease_seconds))
+                self.lease_manager.release(lease)
 
         return {
-            "workflow": self.recovery.get_run(workflow_id),
+            "workflow": self.recovery.get_run(workflow_id, owner_user_id=owner_user_id),
             "execution": {
                 "execution_completed": execution["execution_completed"],
                 "model_inference_started": execution["model_inference_started"],
