@@ -103,3 +103,5 @@ A conservative RAM-fit estimator is available in `mrhub.diagnostics.resource_adv
 
 
 A static, local model-profile registry is available through the authenticated `GET /models/profiles` endpoint. Its sample entries are explicitly unverified estimates, not model compatibility guarantees. See `docs/operations/model-profiles.md`.
+
+The initial owner-scoped memory API supports explicit private notes, SQLite FTS5 lexical search, update/delete, expiry, and owner-only JSON export. It is not automatically injected into agent context. See `docs/operations/memory.md`.
