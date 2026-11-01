@@ -20,6 +20,13 @@ class ProviderRegistry:
         except KeyError as exc:
             raise LookupError("No provider adapter is registered for this model") from exc
 
+    def providers(self) -> list[ModelProvider]:
+        """Return registered adapters in deterministic provider/model order."""
+        return [
+            self._providers[key]
+            for key in sorted(self._providers)
+        ]
+
     def catalog(self):
         """Return registered descriptors in a deterministic, read-only order."""
         return sorted(
