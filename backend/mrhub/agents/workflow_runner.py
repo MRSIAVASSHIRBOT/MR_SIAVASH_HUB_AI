@@ -51,18 +51,27 @@ class AgentWorkflowRunner:
                 lost.set()
                 return
 
-    def _record_execution_start(self, lease: WorkerLease) -> None:
+    def _record_execution_start(
+        self, lease: WorkerLease, *, increment_attempt: bool = True
+    ) -> None:
         now = datetime.now(UTC).isoformat()
         with self.repository._connection() as connection:
             cursor = connection.execute(
                 """
                 UPDATE worker_executions
-                SET attempt_count = attempt_count + 1, started_at = ?,
+                SET attempt_count = attempt_count + ?, started_at = ?,
                     finished_at = NULL, result_json = NULL, error_code = NULL
                 WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
                   AND lease_expires_at > ?
                 """,
-                (now, lease.task_id, lease.owner, lease.fencing_token, now),
+                (
+                    1 if increment_attempt else 0,
+                    now,
+                    lease.task_id,
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                ),
             )
             if cursor.rowcount != 1:
                 raise RuntimeError("Workflow lease was lost before execution began")
@@ -152,7 +161,9 @@ class AgentWorkflowRunner:
         attempts: dict[int, StepAttempt] = {}
 
         try:
-            self._record_execution_start(lease)
+            self._record_execution_start(
+                lease, increment_attempt=not worker_owned_lease
+            )
             self.recovery.start_run(workflow_id, lease=lease)
             provider_attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
             provider_digest = self._digest(plan.get("selected_provider", {}))
