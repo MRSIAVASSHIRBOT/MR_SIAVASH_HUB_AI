@@ -752,7 +752,10 @@ class WorkerEngine:
         )
 
     def summary(self) -> dict[str, object]:
-        """Return bounded queue metadata without exposing task descriptions or results."""
+        """Return bounded queue/workflow diagnostics without task content or results."""
+        now = self._now()
+        now_text = now.isoformat()
+        stale_cutoff = (now - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT status, COUNT(*) AS total FROM tasks GROUP BY status"
@@ -761,13 +764,50 @@ class WorkerEngine:
                 "SELECT COUNT(*) AS total FROM worker_executions "
                 "WHERE next_attempt_at IS NOT NULL"
             ).fetchone()
+            workflow_rows = connection.execute(
+                "SELECT status, COUNT(*) AS total FROM workflow_runs GROUP BY status"
+            ).fetchall()
+            expired_lease_row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM tasks AS t
+                JOIN worker_executions AS e ON e.task_id = t.task_id
+                WHERE t.status = ? AND e.started_at < ?
+                  AND (e.lease_expires_at IS NULL OR e.lease_expires_at <= ?)
+                """,
+                (TaskStatus.RUNNING.value, stale_cutoff, now_text),
+            ).fetchone()
+            oldest_queued = connection.execute(
+                "SELECT MIN(created_at) AS created_at FROM tasks WHERE status = ?",
+                (TaskStatus.QUEUED.value,),
+            ).fetchone()
 
         status_counts = {status.value: 0 for status in TaskStatus}
         for row in rows:
             status_counts[row["status"]] = row["total"]
+        workflow_status_counts = {
+            row["status"]: row["total"] for row in workflow_rows
+        }
+        oldest_queued_age_seconds = None
+        if oldest_queued and oldest_queued["created_at"]:
+            try:
+                created_at = datetime.fromisoformat(oldest_queued["created_at"])
+                if created_at.tzinfo is not None:
+                    oldest_queued_age_seconds = max(
+                        0, int((now - created_at.astimezone(UTC)).total_seconds())
+                    )
+            except (TypeError, ValueError):
+                oldest_queued_age_seconds = None
         return {
+            "observed_at": now_text,
             "total_tasks": sum(status_counts.values()),
             "status_counts": status_counts,
+            "workflow_status_counts": workflow_status_counts,
+            "recovery_required_workflows": workflow_status_counts.get(
+                "recovery_required", 0
+            ),
+            "expired_running_leases": expired_lease_row["total"] if expired_lease_row else 0,
+            "oldest_queued_age_seconds": oldest_queued_age_seconds,
             "retry_scheduled": retry_row["total"] if retry_row else 0,
             "registered_handlers": sorted(self.handlers),
             "execution_mode": "pull_driven",
