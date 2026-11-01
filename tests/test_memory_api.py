@@ -102,6 +102,15 @@ def test_memory_rejects_obvious_credentials_and_requires_authentication() -> Non
         },
     )
     assert response.status_code == 422
+    provenance_secret = client.post(
+        "/memory",
+        json={
+            "category": "unsafe",
+            "content": "ordinary note",
+            "provenance": "api_key=sk-abcdefghijklmnop0123456789",
+        },
+    )
+    assert provenance_secret.status_code == 422
 
     get_settings.cache_clear()
     unauthenticated = TestClient(create_app())
