@@ -260,3 +260,67 @@ def dispatch_queued_workflow(
             "workflow_status": status,
             "error_code": "workflow_interrupted",
         }
+
+
+
+def queue_workflow_resume(
+    repository: TaskRepository,
+    core: AgentCore,
+    workflow_id: UUID,
+    request: AgentPlanRequest,
+    owner_user_id: str,
+) -> dict[str, object]:
+    """Validate a resume request and requeue it; execution remains worker-owned."""
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    digest = workflow_digest(request)
+    workflow = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+    if workflow is None or workflow["task_id"] is None:
+        raise LookupError("Workflow not found")
+    stored_payload = WorkflowExecutionInputRepository(
+        repository.database_path, get_settings().workflow_input_encryption_key
+    ).load(str(workflow_id), owner_user_id)
+    if workflow_digest(AgentPlanRequest.model_validate(stored_payload)) != digest:
+        raise ValueError("Supplied inputs do not match the encrypted workflow input")
+    plan = core.plan(request)
+    if not plan.get("execution_ready") or not isinstance(plan.get("steps"), list):
+        raise ValueError("Current request is not executable")
+    expected: list[tuple[int, str, str]] = []
+    for item in plan["steps"]:
+        if not isinstance(item, dict):
+            continue
+        number = int(item["step"])
+        if number == 1:
+            expected.append((1, "provider_selection", "provider_selection"))
+        else:
+            tool = request.tools[number - 2]
+            definition = core.tool_registry.get(tool.name)
+            expected.append((
+                number,
+                "external_tool" if definition.external_side_effect else "safe_tool",
+                tool.name,
+            ))
+    actual = [
+        (int(step["step_number"]), str(step["step_kind"]), str(step["step_name"]))
+        for step in workflow["steps"]
+    ]
+    if expected != actual:
+        raise ValueError("Current workflow definition differs from stored steps")
+    provider_step = next((step for step in workflow["steps"] if step["step_number"] == 1), None)
+    if provider_step is not None and provider_step["status"] == "succeeded":
+        provider_bytes = json.dumps(
+            plan.get("selected_provider", {}), sort_keys=True, separators=(",", ":")
+        ).encode()
+        if provider_step["output_digest"] != hashlib.sha256(provider_bytes).hexdigest():
+            raise ValueError("Selected provider changed; workflow must be replanned")
+    decision = recovery.resume_decision(
+        workflow_id, digest, owner_user_id=owner_user_id
+    )
+    if decision.decision not in {"resume", "finish"}:
+        raise ValueError(f"Workflow cannot be resumed: {decision.decision}")
+    queued = recovery.queue_resume(workflow_id, digest, owner_user_id=owner_user_id)
+    return {
+        "workflow": queued,
+        "execution": None,
+        "queue": {"status": "queued", "worker_dispatch": "pending"},
+        "resume_decision": decision.decision,
+    }
