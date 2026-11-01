@@ -1,5 +1,8 @@
+from fastapi.testclient import TestClient
+
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
+from mrhub.main import create_app
 
 
 def test_local_generation_is_disabled_by_default(tmp_path, monkeypatch):
@@ -25,7 +28,6 @@ def test_local_model_appears_only_when_explicitly_configured(tmp_path, monkeypat
     assert response.status_code == 200
     assert {item["provider"] for item in response.json()} == {"stub", "ollama"}
     get_settings.cache_clear()
-
 
 
 def test_model_resource_assessment_endpoint_is_authenticated_and_read_only(tmp_path, monkeypatch):
@@ -75,7 +77,6 @@ def test_model_resource_assessment_returns_insufficient_data_when_gpu_is_require
     assert response.json()["status"] == "insufficient_data"
     assert response.json()["starts_inference"] is False
     get_settings.cache_clear()
-
 
 
 def test_model_profile_catalog_endpoint_is_authenticated_and_explicit(tmp_path, monkeypatch):
