@@ -437,21 +437,108 @@ class WorkerEngine:
             return self._finish_failure(task, "invalid_handler_result", lease=lease)
 
         now = self._now().isoformat()
+        commit_ok = True
         with self._connection() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE tasks SET status = ?, updated_at = ?
-                WHERE task_id = ? AND status = ?
-                  AND EXISTS (
-                    SELECT 1 FROM worker_executions AS e
-                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
-                      AND e.execution_token = ? AND e.lease_expires_at > ?
-                  )
-                """,
-                (target_status.value, now, str(task.task_id), TaskStatus.RUNNING.value,
-                 lease.owner, lease.fencing_token, now),
-            )
-            if cursor.rowcount == 1:
+            connection.execute("BEGIN IMMEDIATE")
+            if task.task_type == "agent.workflow":
+                workflow = connection.execute(
+                    "SELECT workflow_id, status FROM workflow_runs WHERE task_id = ?",
+                    (str(task.task_id),),
+                ).fetchone()
+                if workflow is not None:
+                    workflow_target = result.get("workflow_status")
+                    if target_status is TaskStatus.SUCCEEDED:
+                        workflow_target = "succeeded"
+                        allowed_workflow_states = ("running",)
+                    elif target_status is TaskStatus.FAILED:
+                        workflow_target = workflow_target or "failed"
+                        allowed_workflow_states = ("queued", "running")
+                    elif target_status is TaskStatus.WAITING_APPROVAL:
+                        workflow_target = workflow_target or "recovery_required"
+                        allowed_workflow_states = (
+                            "queued", "running", "paused", "recovery_required"
+                        )
+                    else:
+                        workflow_target = workflow_target or "cancelled"
+                        allowed_workflow_states = ("queued", "running", "paused")
+                    if workflow_target not in {
+                        "succeeded", "failed", "paused", "recovery_required", "cancelled"
+                    }:
+                        commit_ok = False
+                    else:
+                        placeholders = ", ".join("?" for _ in allowed_workflow_states)
+                        workflow_cursor = connection.execute(
+                            f"""
+                            UPDATE workflow_runs
+                            SET status = ?, last_error_code = ?, updated_at = ?
+                            WHERE task_id = ? AND status IN ({placeholders})
+                              AND EXISTS (
+                                SELECT 1 FROM worker_executions AS e
+                                WHERE e.task_id = workflow_runs.task_id
+                                  AND e.lease_owner = ? AND e.execution_token = ?
+                                  AND e.lease_expires_at > ?
+                              )
+                              AND (
+                                ? != 'succeeded'
+                                OR (
+                                  EXISTS (
+                                    SELECT 1 FROM workflow_steps AS s
+                                    WHERE s.workflow_id = workflow_runs.workflow_id
+                                  )
+                                  AND NOT EXISTS (
+                                    SELECT 1 FROM workflow_steps AS s
+                                    WHERE s.workflow_id = workflow_runs.workflow_id
+                                      AND s.status != 'succeeded'
+                                  )
+                                )
+                              )
+                            """,
+                            (
+                                workflow_target,
+                                None if workflow_target == "succeeded" else str(
+                                    result.get("error_code", "workflow_not_succeeded")
+                                ),
+                                now,
+                                str(task.task_id),
+                                *allowed_workflow_states,
+                                lease.owner,
+                                lease.fencing_token,
+                                now,
+                                workflow_target,
+                            ),
+                        )
+                        if workflow_cursor.rowcount != 1:
+                            commit_ok = False
+            if commit_ok:
+                task_states = (
+                    (TaskStatus.RUNNING.value, TaskStatus.WAITING_APPROVAL.value)
+                    if task.task_type == "agent.workflow"
+                    else (TaskStatus.RUNNING.value,)
+                )
+                task_placeholders = ", ".join("?" for _ in task_states)
+                cursor = connection.execute(
+                    f"""
+                    UPDATE tasks SET status = ?, updated_at = ?
+                    WHERE task_id = ? AND status IN ({task_placeholders})
+                      AND EXISTS (
+                        SELECT 1 FROM worker_executions AS e
+                        WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                          AND e.execution_token = ? AND e.lease_expires_at > ?
+                      )
+                    """,
+                    (
+                        target_status.value,
+                        now,
+                        str(task.task_id),
+                        *task_states,
+                        lease.owner,
+                        lease.fencing_token,
+                        now,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    commit_ok = False
+            if commit_ok:
                 idempotency_status = {
                     TaskStatus.SUCCEEDED: "completed",
                     TaskStatus.FAILED: "failed",
@@ -472,9 +559,14 @@ class WorkerEngine:
                      str(task.task_id)),
                 )
                 connection.execute(
-                    "UPDATE idempotency_records SET status = ? WHERE task_id = ? AND status = 'running'",
+                    "UPDATE idempotency_records SET status = ? WHERE task_id = ? AND status IN ('running', 'accepted', 'unknown_outcome')",
                     (idempotency_status, str(task.task_id)),
                 )
+            else:
+                connection.rollback()
+        if not commit_ok:
+            # Leave the lease-fenced task recoverable rather than commit half a lifecycle.
+            return self.repository.get(task.task_id)
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared during execution")
