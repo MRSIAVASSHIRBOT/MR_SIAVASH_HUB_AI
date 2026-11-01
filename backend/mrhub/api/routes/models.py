@@ -51,6 +51,12 @@ class AssessModelRequest(BaseModel):
     system_reserve_gib: float = Field(default=2.0, ge=0, le=64)
 
 
+class CompareModelsRequest(BaseModel):
+    hardware_report: dict[str, Any]
+    profile_ids: list[str] = Field(min_length=1, max_length=20)
+    system_reserve_gib: float = Field(default=2.0, ge=0, le=64)
+
+
 @router.get("")
 def list_models():
     return build_model_router().catalog()
@@ -85,6 +91,52 @@ def assess_model(payload: AssessModelRequest):
         payload.model_profile,
         system_reserve_gib=payload.system_reserve_gib,
     )
+
+
+@router.post("/compare")
+def compare_models(payload: CompareModelsRequest):
+    """Compare registered model profiles without starting inference or downloads."""
+    unique_ids = list(dict.fromkeys(payload.profile_ids))
+    profiles = {profile_id: get_model_profile(profile_id) for profile_id in unique_ids}
+    unknown_ids = [profile_id for profile_id, profile in profiles.items() if profile is None]
+    if unknown_ids:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Unknown model profile ID(s)", "profile_ids": unknown_ids},
+        )
+
+    results = []
+    for profile_id in unique_ids:
+        profile = profiles[profile_id]
+        assessment = assess_model_resources(
+            payload.hardware_report,
+            {
+                "name": profile["name"],
+                "minimum_ram_gib": profile["minimum_ram_gib"],
+                "recommended_ram_gib": profile["recommended_ram_gib"],
+                "requires_gpu": profile["requires_gpu"],
+            },
+            system_reserve_gib=payload.system_reserve_gib,
+        )
+        results.append(
+            {
+                "profile_id": profile_id,
+                "profile_verified": profile["verified"],
+                "source_kind": profile["source_kind"],
+                "assessment": assessment,
+            }
+        )
+
+    return {
+        "results": results,
+        "count": len(results),
+        "starts_inference": False,
+        "downloads_model": False,
+        "limitations": [
+            "Sample profiles are unverified estimates, not compatibility guarantees.",
+            "GPU VRAM and compute capability are not currently measured.",
+        ],
+    }
 
 
 @router.post("/generate")
