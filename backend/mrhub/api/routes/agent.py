@@ -20,3 +20,15 @@ def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
             status_code=503,
             detail="No registered provider satisfies the requested capabilities",
         ) from exc
+
+@router.post("/execute")
+def execute_agent_tools(request: AgentPlanRequest) -> dict[str, object]:
+    """Run only explicitly requested tools that pass the server policy checks."""
+    core = AgentCore(build_model_router(), build_tool_registry())
+    try:
+        return core.execute(request)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="No registered provider satisfies the requested capabilities",
+        ) from exc
