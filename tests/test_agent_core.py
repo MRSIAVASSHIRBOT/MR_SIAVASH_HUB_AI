@@ -173,3 +173,40 @@ def test_agent_execute_stops_after_runtime_failure():
     assert response["error_code"] == "tool_execution_failed"
     assert "private diagnostic detail" not in str(response)
     assert len(response["results"]) == 1
+
+def test_agent_execute_honors_cancellation_before_first_tool():
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Cancel before execution",
+            tools=[{"name": "text.echo", "payload": {"text": "must not run"}}],
+        ),
+        should_cancel=lambda: True,
+    )
+    assert response["cancelled"] is True
+    assert response["execution_completed"] is False
+    assert response["results"] == []
+    assert response["tools_executed"] is False
+
+
+def test_agent_execute_stops_between_tools_after_cancellation():
+    checks = 0
+
+    def cancel_after_first_tool():
+        nonlocal checks
+        checks += 1
+        return checks >= 2
+
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Stop between workflow steps",
+            tools=[
+                {"name": "text.echo", "payload": {"text": "first"}},
+                {"name": "text.echo", "payload": {"text": "must not run"}},
+            ],
+        ),
+        should_cancel=cancel_after_first_tool,
+    )
+    assert response["cancelled"] is True
+    assert response["execution_completed"] is False
+    assert len(response["results"]) == 1
+    assert response["results"][0]["result"]["character_count"] == 5
