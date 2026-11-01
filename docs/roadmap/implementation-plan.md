@@ -110,3 +110,8 @@ Exit criteria: a packaged single-user application can be installed, updated, bac
 
 ## First vertical slice
 The first implementation slice should be deliberately small: configuration -> API health -> database -> task submission -> mock execution -> status query -> cancellation -> tests. This proves the platform's control plane before introducing real model providers or external side effects.
+
+
+- [x] Add static model-profile registry with stable IDs and explicit unverified/source labels
+- [x] Expose authenticated profile listing and lookup endpoints
+- [ ] Replace illustrative estimates with reviewed requirements for exact model/version and quantization before recommending specific models
