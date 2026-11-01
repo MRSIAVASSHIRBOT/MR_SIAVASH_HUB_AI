@@ -56,6 +56,18 @@ The authenticated `/capabilities/candidates` API provides the first local regist
 
 See [the open-source integration catalog](docs/architecture/open-source-integration-catalog.md) for current candidates and the adoption gate. See [GitHub discovery](docs/architecture/github-discovery.md) for the endpoint contract and next stages.
 
+## Durable Agent workflows and the worker
+
+`POST /agent/workflows` now validates and persists a workflow, stores its bounded inputs encrypted, and returns a queued workflow without running tools in the HTTP request. Configure `MRH_WORKFLOW_INPUT_ENCRYPTION_KEY` before submitting workflows; generate a Fernet key with:
+
+```powershell
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Put the generated value in your private `.env` file, never commit it, and keep it stable so queued workflows can be decrypted after restarts. The example file intentionally leaves the key blank. If the key is missing or invalid, workflow submission fails closed instead of persisting plaintext.
+
+After installing the project, start the worker explicitly in a separate terminal with `mrhub-worker`. It polls the durable queue and executes allow-listed handlers under a fenced lease. Use `mrhub-worker --once` to process at most one eligible task, or `mrhub-worker --poll-seconds 2` to set the idle polling interval. The API does not start a worker implicitly. Workflow status can be read through `GET /agent/workflows/{workflow_id}`; cancellation before dispatch synchronizes the linked Job and Workflow, while an uncertain external outcome requires reconciliation rather than automatic replay.
+
 ## Model provider interface
 
 Provider adapters implement a typed contract for model metadata, request/response validation, health status, and generation. A registry resolves the selected provider/model pair; the router performs capability matching and refuses silent local-to-cloud fallback. Provider errors expose stable reason codes rather than request contents or credentials.
