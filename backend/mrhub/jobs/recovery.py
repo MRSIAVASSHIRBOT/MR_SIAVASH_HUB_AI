@@ -447,47 +447,63 @@ class WorkflowRecoveryRepository:
     def mark_interrupted(
         self, workflow_id: UUID, *, lease: WorkerLease | None = None
     ) -> int:
-        """Classify all active attempts as ambiguous; never replay them automatically."""
+        """Classify active attempts; only known-safe steps become retryable."""
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._assert_lease(connection, workflow_id, lease, now)
             rows = connection.execute(
                 """
-                SELECT step_id, step_number FROM workflow_steps
+                SELECT step_id, step_number, step_kind FROM workflow_steps
                 WHERE workflow_id = ? AND status = 'running'
                 """,
                 (str(workflow_id),),
             ).fetchall()
             if not rows:
+                connection.execute(
+                    """
+                    UPDATE workflow_runs
+                    SET status = 'paused', last_error_code = 'worker_interrupted_before_step',
+                        updated_at = ?
+                    WHERE workflow_id = ? AND status = 'running'
+                    """,
+                    (now, str(workflow_id)),
+                )
                 return 0
+
+            has_unknown_outcome = False
             for row in rows:
+                safe_to_retry = row["step_kind"] in {"provider_selection", "safe_tool"}
+                attempt_status = "failed" if safe_to_retry else "unknown_outcome"
+                step_status = "retry_wait" if safe_to_retry else "unknown_outcome"
+                if not safe_to_retry:
+                    has_unknown_outcome = True
                 connection.execute(
                     """
                     UPDATE workflow_step_attempts
-                    SET status = 'unknown_outcome', error_code = 'worker_interrupted',
-                        finished_at = ?
+                    SET status = ?, error_code = 'worker_interrupted', finished_at = ?
                     WHERE step_id = ? AND status = 'running'
                     """,
-                    (now, row["step_id"]),
+                    (attempt_status, now, row["step_id"]),
                 )
                 connection.execute(
                     """
                     UPDATE workflow_steps
-                    SET status = 'unknown_outcome', error_code = 'worker_interrupted',
+                    SET status = ?, error_code = 'worker_interrupted',
                         finished_at = ?, updated_at = ?
                     WHERE step_id = ? AND status = 'running'
                     """,
-                    (now, now, row["step_id"]),
+                    (step_status, now, now, row["step_id"]),
                 )
+            run_status = "recovery_required" if has_unknown_outcome else "paused"
+            error_code = "worker_interrupted" if has_unknown_outcome else "safe_step_interrupted"
             connection.execute(
                 """
                 UPDATE workflow_runs
-                SET status = 'recovery_required', last_error_code = 'worker_interrupted',
-                    updated_at = ?
+                SET status = ?, last_error_code = ?, updated_at = ?
                 WHERE workflow_id = ? AND status = 'running'
                 """,
-                (now, str(workflow_id)),
+                (run_status, error_code, now, str(workflow_id)),
             )
             return len(rows)
 
