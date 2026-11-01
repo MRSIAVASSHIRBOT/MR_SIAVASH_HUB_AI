@@ -167,3 +167,31 @@ def test_task_idempotency_key_rejects_blank_header(tmp_path, monkeypatch) -> Non
     assert response.status_code == 422
     assert client.get("/tasks").json() == []
     get_settings.cache_clear()
+
+
+
+def test_task_idempotency_status_tracks_worker_completion(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-lifecycle.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    key = "track-worker-lifecycle"
+    created = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "track status"},
+        headers={"Idempotency-Key": key},
+    )
+    assert created.status_code == 201
+
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.idempotency import IdempotencyRepository
+    from mrhub.jobs.worker import WorkerEngine
+
+    database_path = get_settings().database_path
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    completed = WorkerEngine(repository).run_once()
+    assert completed is not None and completed.status.value == "succeeded"
+
+    record = IdempotencyRepository(database_path).get("user:local-owner", key)
+    assert record is not None and record.status == "completed"
+    get_settings.cache_clear()
