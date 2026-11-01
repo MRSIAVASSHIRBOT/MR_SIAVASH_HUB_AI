@@ -110,3 +110,49 @@ def test_expired_payload_is_not_returned(tmp_path):
 
     with pytest.raises(ExecutionInputUnavailable, match="expired"):
         repo.load(workflow_id, "owner-1")
+
+
+def test_tampered_ciphertext_fails_closed(tmp_path):
+    key = Fernet.generate_key().decode("ascii")
+    database_path, workflow_id = setup_repo(tmp_path)
+    repo = WorkflowExecutionInputRepository(database_path, key)
+    repo.store(workflow_id, "owner-1", {"goal": "original"})
+
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        "UPDATE workflow_execution_inputs SET payload_ciphertext = ? WHERE workflow_id = ?",
+        (b"tampered-ciphertext", workflow_id),
+    )
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(ExecutionInputUnavailable, match="could not be authenticated"):
+        repo.load(workflow_id, "owner-1")
+
+
+def test_payload_digest_mismatch_fails_closed(tmp_path):
+    key = Fernet.generate_key().decode("ascii")
+    database_path, workflow_id = setup_repo(tmp_path)
+    repo = WorkflowExecutionInputRepository(database_path, key)
+    repo.store(workflow_id, "owner-1", {"goal": "original"})
+
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        "UPDATE workflow_execution_inputs SET payload_digest = ? WHERE workflow_id = ?",
+        ("0" * 64, workflow_id),
+    )
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(ExecutionInputUnavailable, match="integrity check failed"):
+        repo.load(workflow_id, "owner-1")
+
+
+def test_wrong_encryption_key_cannot_read_payload(tmp_path):
+    database_path, workflow_id = setup_repo(tmp_path)
+    writer = WorkflowExecutionInputRepository(database_path, Fernet.generate_key().decode("ascii"))
+    writer.store(workflow_id, "owner-1", {"goal": "private"})
+    reader = WorkflowExecutionInputRepository(database_path, Fernet.generate_key().decode("ascii"))
+
+    with pytest.raises(ExecutionInputUnavailable, match="key does not match"):
+        reader.load(workflow_id, "owner-1")
