@@ -16,7 +16,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2, 3, 4, 5]
+    assert migrator.migrate() == [1, 2, 3, 4, 5, 6]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
