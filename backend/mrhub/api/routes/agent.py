@@ -20,7 +20,7 @@ from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
-from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.tools.builtins import build_tool_registry
@@ -266,9 +266,7 @@ def cancel_agent_workflow(
         raise HTTPException(status_code=404, detail="Agent workflow not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Workflow cannot be cancelled") from exc
-    except RuntimeError as exc:
-        # WorkflowRecoveryError derives from RuntimeError, not ValueError.
-        # Keep invalid-state failures inside the API contract instead of leaking 500s.
+    except WorkflowRecoveryError as exc:
         raise HTTPException(status_code=409, detail="Workflow cannot be cancelled") from exc
 
 
