@@ -293,11 +293,15 @@ def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     assert second.status_code == 200
     assert second.json()["status"] == "cancelled"
 
-def test_worker_crash_after_external_side_effect_requires_reconciliation() -> None:
-    """A crash after an external action must not replay the uncertain step."""
+def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeypatch) -> None:
+    """An accepted external effect is not replayed after abrupt worker death."""
+    import pytest
+
     from mrhub.domain.tasks import TaskStatus
-    from mrhub.jobs.engine import JobEngine
     from mrhub.jobs.worker import WorkerEngine
+
+    class SimulatedWorkerProcessCrash(BaseException):
+        """Model process termination that bypasses ordinary exception handling."""
 
     client = authenticated_client()
     response = client.post(
@@ -314,7 +318,6 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation() -> No
 
     repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
-    # Model a registered external-side-effect step for this fault-injection test.
     with repository._connection() as connection:
         connection.execute(
             "UPDATE workflow_steps SET step_kind = 'external_tool' "
@@ -322,15 +325,21 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation() -> No
             (str(workflow_id),),
         )
 
-    recovery.start_run(workflow_id)
-    first_attempt = recovery.start_step(workflow_id, 1)
-    recovery.complete_step(workflow_id, first_attempt, "a" * 64)
-    recovery.start_step(workflow_id, 2)
+    external_effects: list[str] = []
 
-    # The external system accepted the operation, but the worker dies before
-    # persisting a result/checkpoint. Recovery must treat this as ambiguous.
-    external_effects = ["publish accepted by remote system"]
-    JobEngine(repository).transition(task_id, TaskStatus.RUNNING)
+    def crash_after_remote_acceptance(self, request, **callbacks):
+        # The runner records step-running before invoking this boundary.
+        # Simulate remote acceptance, then terminate before any result/checkpoint.
+        callbacks["on_step"](2, "running", None)
+        external_effects.append("publish accepted by remote system")
+        raise SimulatedWorkerProcessCrash()
+
+    monkeypatch.setattr(AgentCore, "execute", crash_after_remote_acceptance)
+    worker = WorkerEngine(repository)
+    with pytest.raises(SimulatedWorkerProcessCrash):
+        worker.run_once()
+
+    assert external_effects == ["publish accepted by remote system"]
     with repository._connection() as connection:
         connection.execute(
             """
@@ -346,14 +355,16 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation() -> No
             ),
         )
 
-    worker = WorkerEngine(repository)
-    assert worker.run_once() is None
+    # A fresh worker performs stale-lease recovery before claiming queued work.
+    recovery_worker = WorkerEngine(repository)
+    assert recovery_worker.run_once() is None
 
     stored = recovery.get_run(workflow_id, owner_user_id="local-owner")
     task = repository.get(task_id)
     assert task is not None and task.status is TaskStatus.WAITING_APPROVAL
     assert stored is not None and stored["status"] == "recovery_required"
     assert stored["steps"][1]["status"] == "unknown_outcome"
-    assert len(external_effects) == 1
-    assert worker.run_once() is None
-    assert len(external_effects) == 1
+
+    # The ambiguous step is not eligible for automatic replay.
+    assert recovery_worker.run_once() is None
+    assert external_effects == ["publish accepted by remote system"]
