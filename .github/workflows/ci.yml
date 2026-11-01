@@ -50,3 +50,7 @@ jobs:
           tests/test_worker.py
           backend/mrhub/agents/execution_inputs.py
           tests/test_workflow_execution_inputs.py
+          backend/mrhub/capabilities/registry.py
+          backend/mrhub/api/routes/capabilities.py
+          tests/test_capability_registry.py
+          tests/test_capability_api.py
