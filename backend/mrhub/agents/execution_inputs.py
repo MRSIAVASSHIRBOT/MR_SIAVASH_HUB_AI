@@ -109,6 +109,25 @@ class WorkflowExecutionInputRepository:
             raise ExecutionInputValidationError("Workflow input exceeds the 64 KiB limit")
         return encoded, hashlib.sha256(encoded).hexdigest()
 
+    @staticmethod
+    def _validate_expiry(expires_at: str | None) -> None:
+        if expires_at is None:
+            return
+        try:
+            expiry = datetime.fromisoformat(expires_at)
+        except (TypeError, ValueError) as exc:
+            raise ExecutionInputValidationError(
+                "Workflow input expiry must be a valid timezone-aware ISO timestamp"
+            ) from exc
+        if expiry.tzinfo is None or expiry.utcoffset() is None:
+            raise ExecutionInputValidationError(
+                "Workflow input expiry must include a timezone"
+            )
+        if expiry <= datetime.now(UTC):
+            raise ExecutionInputValidationError(
+                "Workflow input expiry must be in the future"
+            )
+
     def store(
         self,
         workflow_id: str,
@@ -120,6 +139,7 @@ class WorkflowExecutionInputRepository:
         """Encrypt and insert one payload; never overwrite an existing workflow input."""
         if not workflow_id or not owner_user_id:
             raise ExecutionInputValidationError("Workflow and owner identifiers are required")
+        self._validate_expiry(expires_at)
         cipher = self._cipher()
         encoded, digest = self._encode_payload(payload)
         ciphertext = cipher.encrypt(encoded)
