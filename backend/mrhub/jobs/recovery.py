@@ -131,6 +131,7 @@ class WorkflowRecoveryRepository:
         definition_version: int = 1,
         owner_user_id: str | None = None,
         payload_envelope: dict[str, object] | None = None,
+        workflow_id: UUID | None = None,
     ) -> UUID:
         """Create workflow/job metadata and an optional encrypted payload atomically."""
         self._validate_digest(request_digest, "Request digest")
@@ -160,7 +161,7 @@ class WorkflowRecoveryRepository:
             seen_numbers.add(number)
             normalized.append((number, kind, name))
 
-        workflow_id = uuid4()
+        workflow_id = workflow_id or uuid4()
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
