@@ -1,4 +1,5 @@
 import pytest
+from uuid import UUID
 
 from client_helpers import authenticated_client
 from mrhub.agents.core import AgentCore
@@ -33,23 +34,23 @@ def test_safe_interruption_keeps_job_resumable_and_resume_completes(monkeypatch)
         callbacks["on_step"](2, "running", None)
         raise RuntimeError("simulated interruption")
 
+    original_execute = AgentCore.execute
     monkeypatch.setattr(AgentCore, "execute", interrupt_during_safe_tool)
     with pytest.raises(RuntimeError, match="Workflow execution stopped"):
         client.post("/agent/workflows", json=request)
 
     repository, workflow_id, task_id = _workflow_and_task(client)
-    workflow = repository.database_path
     from mrhub.jobs.recovery import WorkflowRecoveryRepository
 
-    stored = WorkflowRecoveryRepository(workflow).get_run(__import__("uuid").UUID(workflow_id))
+    stored = WorkflowRecoveryRepository(workflow).get_run(UUID(workflow_id))
     assert stored is not None
     assert stored["status"] == "paused"
     assert stored["steps"][1]["status"] == "retry_wait"
-    task = repository.get(__import__("uuid").UUID(task_id))
+    task = repository.get(UUID(task_id))
     assert task is not None
     assert task.status.value == "waiting_approval"
 
-    monkeypatch.setattr(AgentCore, "execute", AgentCore.__dict__["execute"])
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
     resumed = client.post(
         f"/agent/workflows/{workflow_id}/resume",
         json={"request": request},
@@ -95,6 +96,6 @@ def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch
     assert resumed.json()["execution"]["execution_completed"] is True
     assert resumed.json()["execution"]["executed_tool_count"] == 0
 
-    task = repository.get(__import__("uuid").UUID(workflow["task_id"]))
+    task = repository.get(UUID(workflow["task_id"]))
     assert task is not None
     assert task.status.value == "succeeded"
