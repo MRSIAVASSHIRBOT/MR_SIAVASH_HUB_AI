@@ -2,9 +2,9 @@ from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
-from mrhub.main import create_app
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker import WorkerEngine
+from mrhub.main import create_app
 
 
 def _run_worker_once():
