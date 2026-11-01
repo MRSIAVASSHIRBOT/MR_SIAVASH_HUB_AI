@@ -208,8 +208,7 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_agent_runs_created_at ON agent_runs(created_at)",
         ),
-    )
-    ,
+    ),
     Migration.build(
         6,
         "agent_run_owner_scope",
