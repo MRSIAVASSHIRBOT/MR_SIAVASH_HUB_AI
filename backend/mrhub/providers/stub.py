@@ -22,5 +22,5 @@ class StubProvider:
             finish_reason="stub",
         )
 
-    def health(self) -> ProviderHealth:
+    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         return ProviderHealth(available=True, reason_code="stub_ready")
