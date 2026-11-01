@@ -1,0 +1,20 @@
+[
+  {
+    "title": "Worker Lease Safety",
+    "content": "Lease fencing prevents stale workers from committing workflow state after ownership changes. A fencing token must be checked at the durable commit boundary.",
+    "query": "lease fencing",
+    "expected_title": "Worker Lease Safety"
+  },
+  {
+    "title": "Private Memory Lifecycle",
+    "content": "Owner-scoped private memory supports JSON export, explicit deletion, expiry filtering, and removal from the FTS5 index.",
+    "query": "private memory export",
+    "expected_title": "Private Memory Lifecycle"
+  },
+  {
+    "title": "Local Model Provider",
+    "content": "The Ollama adapter is opt-in and accepts loopback HTTP only. Failed local inference never silently falls back to a cloud provider.",
+    "query": "Ollama loopback",
+    "expected_title": "Local Model Provider"
+  }
+]
