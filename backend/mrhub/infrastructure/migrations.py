@@ -98,6 +98,86 @@ MIGRATIONS = (
             )""",
         ),
     ),
+    Migration.build(
+        3,
+        "durable_workflow_recovery_primitives",
+        (
+            """CREATE TABLE IF NOT EXISTS workflow_runs (
+                workflow_id TEXT PRIMARY KEY,
+                task_id TEXT UNIQUE REFERENCES tasks(task_id) ON DELETE SET NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'queued', 'running', 'paused', 'waiting_approval',
+                    'recovery_required', 'succeeded', 'failed', 'cancelled'
+                )),
+                request_digest TEXT NOT NULL,
+                definition_version INTEGER NOT NULL DEFAULT 1,
+                current_step INTEGER NOT NULL DEFAULT 0 CHECK (current_step >= 0),
+                last_error_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_runs_status_updated "
+            "ON workflow_runs(status, updated_at)",
+            """CREATE TABLE IF NOT EXISTS workflow_steps (
+                step_id TEXT PRIMARY KEY,
+                workflow_id TEXT NOT NULL REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                step_number INTEGER NOT NULL CHECK (step_number > 0),
+                step_kind TEXT NOT NULL,
+                step_name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'pending', 'running', 'succeeded', 'failed',
+                    'retry_wait', 'unknown_outcome', 'cancelled'
+                )),
+                input_digest TEXT,
+                output_digest TEXT,
+                error_code TEXT,
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                started_at TEXT,
+                finished_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(workflow_id, step_number)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_workflow_steps_status "
+            "ON workflow_steps(workflow_id, status, step_number)",
+            """CREATE TABLE IF NOT EXISTS workflow_step_attempts (
+                attempt_id TEXT PRIMARY KEY,
+                step_id TEXT NOT NULL REFERENCES workflow_steps(step_id) ON DELETE CASCADE,
+                attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+                status TEXT NOT NULL CHECK (status IN (
+                    'running', 'succeeded', 'failed', 'unknown_outcome', 'cancelled'
+                )),
+                error_code TEXT,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                UNIQUE(step_id, attempt_number)
+            )""",
+            """CREATE TABLE IF NOT EXISTS workflow_checkpoints (
+                checkpoint_id TEXT PRIMARY KEY,
+                workflow_id TEXT NOT NULL REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                checkpoint_version INTEGER NOT NULL CHECK (checkpoint_version > 0),
+                step_number INTEGER NOT NULL CHECK (step_number >= 0),
+                state_digest TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(workflow_id, checkpoint_version)
+            )""",
+            """CREATE TABLE IF NOT EXISTS idempotency_records (
+                scope TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                task_id TEXT REFERENCES tasks(task_id) ON DELETE SET NULL,
+                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE SET NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'accepted', 'running', 'completed', 'failed', 'unknown_outcome'
+                )),
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                PRIMARY KEY(scope, idempotency_key)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
+            "ON idempotency_records(expires_at)",
+        ),
+    ),
 )
 
 
@@ -160,6 +240,11 @@ class SchemaMigrator:
                 elif migration.version == 2:
                     self._ensure_column("worker_executions", "recovered_at", "TEXT")
                     self._ensure_column("worker_executions", "next_attempt_at", "TEXT")
+                elif migration.version == 3:
+                    self._ensure_column("worker_executions", "lease_owner", "TEXT")
+                    self._ensure_column("worker_executions", "lease_expires_at", "TEXT")
+                    self._ensure_column("worker_executions", "heartbeat_at", "TEXT")
+                    self._ensure_column("worker_executions", "execution_token", "TEXT")
 
                 from datetime import UTC, datetime
 
