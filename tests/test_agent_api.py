@@ -125,7 +125,7 @@ def test_agent_execute_persists_metadata_without_prompt_or_tool_payload():
     from mrhub.agents.repository import AgentRunRepository
 
     history_repository = AgentRunRepository(get_settings().database_path)
-    assert history_repository.get(UUID(run["run_id"]), owner_user_id="not-the-owner") is None
+    assert history_repository.get(run["run_id"], owner_user_id="not-the-owner") is None
 
 
 def test_agent_run_history_returns_not_found_for_unknown_id():
