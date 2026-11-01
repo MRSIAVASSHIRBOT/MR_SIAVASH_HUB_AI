@@ -109,4 +109,4 @@ The latest Backend CI run for the implementation commit completed successfully:
 - The linked Job transitions through the existing lifecycle back into `running`, and the resumed execution must acquire a new durable lease/fencing token.
 - Previously succeeded steps are skipped. Only the first incomplete eligible step and later validated steps are executed.
 - The resume regression test simulates a worker interruption at a safe tool boundary and verifies that the workflow completes without replaying its previously succeeded provider-selection step.
-- Latest Backend CI run #480: Ruff passed; Pytest 187 passed, 1 warning; 0 failures.
+- Latest Backend CI run #485: Ruff passed; Pytest 188 passed, 1 warning; 0 failures.
