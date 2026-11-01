@@ -54,7 +54,7 @@ class AgentRunRepository:
         digest = hashlib.sha256(request_bytes).hexdigest()
         plan = execution["plan"]
         if not isinstance(plan, dict):
-            raise ValueError("Execution response does not contain a valid plan")
+            raise TypeError("Execution response does not contain a valid plan")
         steps = plan.get("steps", [])
         tool_names = [
             str(step["name"])
