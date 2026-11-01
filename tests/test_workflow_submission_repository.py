@@ -8,6 +8,8 @@ from mrhub.agents.submission_repository import (
     SubmissionStateError,
     WorkflowSubmissionRepository,
 )
+from mrhub.domain.tasks import TaskRecord
+from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 
 
 def make_repository(tmp_path):
@@ -114,3 +116,61 @@ def test_concurrent_duplicate_submissions_create_one_reservation(tmp_path):
     assert sum(result["created"] for result in results) == 1
     assert {result["state"] for result in results} == {"reserved"}
     assert len({result["created_at"] for result in results}) == 1
+
+
+def test_workflow_and_submission_binding_commit_atomically(tmp_path):
+    repository = make_repository(tmp_path)
+    digest = "a" * 64
+    repository.reserve("user-1", "/agent/workflows", "atomic-key", digest)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+
+    workflow_id = recovery.create_run(
+        digest,
+        [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
+        task=TaskRecord(task_type="agent.workflow", description="test workflow"),
+        owner_user_id="user-1",
+        submission=("user-1", "/agent/workflows", "atomic-key", digest),
+    )
+
+    connection = sqlite3.connect(repository.database_path)
+    row = connection.execute(
+        "SELECT state, workflow_id, task_id FROM workflow_submission_keys WHERE idempotency_key = ?",
+        ("atomic-key",),
+    ).fetchone()
+    workflow = connection.execute(
+        "SELECT task_id, status FROM workflow_runs WHERE workflow_id = ?", (str(workflow_id),)
+    ).fetchone()
+    task = connection.execute(
+        "SELECT status FROM tasks WHERE task_id = ?", (row[2],)
+    ).fetchone()
+    connection.close()
+
+    assert row == ("bound", str(workflow_id), workflow[0])
+    assert workflow[1] == "queued"
+    assert task[0] == "queued"
+
+
+def test_failed_atomic_binding_rolls_back_job_and_workflow_creation(tmp_path):
+    repository = make_repository(tmp_path)
+    digest = "b" * 64
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+
+    with pytest.raises(WorkflowRecoveryError, match="reservation changed"):
+        recovery.create_run(
+            digest,
+            [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
+            task=TaskRecord(task_type="agent.workflow", description="test workflow"),
+            owner_user_id="user-1",
+            submission=("user-1", "/agent/workflows", "missing-key", digest),
+        )
+
+    connection = sqlite3.connect(repository.database_path)
+    workflows = connection.execute(
+        "SELECT COUNT(*) FROM workflow_runs WHERE request_digest = ?", (digest,)
+    ).fetchone()[0]
+    tasks = connection.execute(
+        "SELECT COUNT(*) FROM tasks WHERE task_type = 'agent.workflow'"
+    ).fetchone()[0]
+    connection.close()
+    assert workflows == 0
+    assert tasks == 0
