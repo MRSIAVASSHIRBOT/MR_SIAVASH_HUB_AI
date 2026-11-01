@@ -150,10 +150,14 @@ def dispatch_queued_workflow(
         if expected != actual:
             raise ValueError("workflow_definition_changed")
     except (ExecutionInputUnavailable, LookupError, ValueError, TypeError):
-        recovery.fail_queued_run(workflow_id, error_code="workflow_input_unavailable")
-        return {"_worker_task_status": "failed", "error_code": "workflow_input_unavailable"}
+        return {
+            "_worker_task_status": "failed",
+            "workflow_status": "failed",
+            "error_code": "workflow_input_unavailable",
+        }
 
     attempts: dict[int, StepAttempt] = {}
+    needs_review = False
     try:
         decision = recovery.resume_decision(
             workflow_id, row["request_digest"], owner_user_id=owner_user_id
@@ -165,7 +169,6 @@ def dispatch_queued_workflow(
         recovery.start_run(workflow_id, lease=lease)
         start_step = decision.next_step or 2
         if decision.decision == "finish":
-            recovery.finish_run(workflow_id, "succeeded", lease=lease)
             return {
                 "_worker_task_status": "succeeded",
                 "workflow_id": str(workflow_id),
@@ -191,16 +194,21 @@ def dispatch_queued_workflow(
                 raise RuntimeError("workflow_cancel_requested")
 
         def on_step(number: int, status: str, error_code: str | None) -> None:
+            nonlocal needs_review
             ensure_active()
             if status == "running":
                 attempts[number] = recovery.start_step(workflow_id, number, lease=lease)
             elif status == "failed" and number in attempts:
                 tool = request.tools[number - 2]
                 definition = core.tool_registry.get(tool.name)
+                needs_review = needs_review or definition.external_side_effect
                 recovery.fail_step(
-                    workflow_id, attempts.pop(number),
+                    workflow_id,
+                    attempts.pop(number),
                     error_code or "tool_execution_failed",
-                    unknown_outcome=definition.external_side_effect, lease=lease,
+                    unknown_outcome=definition.external_side_effect,
+                    lease=lease,
+                    defer_terminal=True,
                 )
 
         def on_step_result(number: int, output_digest: str) -> None:
@@ -215,23 +223,15 @@ def dispatch_queued_workflow(
         )
         current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if execution.get("execution_completed"):
-            recovery.finish_run(workflow_id, "succeeded", lease=lease)
             return {
                 "_worker_task_status": "succeeded",
                 "workflow_id": str(workflow_id),
                 "execution_completed": True,
                 "executed_tool_count": len(execution.get("results", [])),
             }
-        status = current["status"] if current else "failed"
-        if status == "running":
-            recovery.finish_run(workflow_id, "failed", lease=lease)
-            status = "failed"
+        status = "recovery_required" if needs_review else "failed"
         return {
-            "_worker_task_status": (
-                "waiting_approval"
-                if status in {"paused", "recovery_required"}
-                else "failed"
-            ),
+            "_worker_task_status": "waiting_approval" if needs_review else "failed",
             "workflow_id": str(workflow_id),
             "workflow_status": status,
             "error_code": "workflow_step_failed",
@@ -245,7 +245,9 @@ def dispatch_queued_workflow(
             TaskStatus.CANCELLED, TaskStatus.WAITING_APPROVAL
         }:
             try:
-                workflow_status = recovery.cancel_run(workflow_id, lease=lease)
+                workflow_status = recovery.cancel_run(
+                    workflow_id, lease=lease, defer_terminal=True
+                )
             except Exception as cancel_error:  # noqa: BLE001
                 logger.warning(
                     "Workflow cancellation state could not be persisted (%s)",
@@ -263,15 +265,18 @@ def dispatch_queued_workflow(
             return {"_worker_task_status": "cancelled", "workflow_id": str(workflow_id)}
         if not lease_lost.is_set():
             try:
-                recovery.mark_interrupted(workflow_id, lease=lease)
+                recovery.mark_interrupted(
+                    workflow_id, lease=lease, defer_terminal=True
+                )
             except Exception as recovery_error:  # noqa: BLE001
                 logger.warning(
                     "Workflow recovery update failed (%s)", type(recovery_error).__name__
                 )
         current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
-        status = current["status"] if current else "failed"
+        step_statuses = {step["status"] for step in current["steps"]} if current else set()
+        status = "recovery_required" if "unknown_outcome" in step_statuses else "paused"
         return {
-            "_worker_task_status": "waiting_approval" if status in {"paused", "recovery_required"} else "failed",
+            "_worker_task_status": "waiting_approval",
             "workflow_id": str(workflow_id),
             "workflow_status": status,
             "error_code": "workflow_interrupted",
