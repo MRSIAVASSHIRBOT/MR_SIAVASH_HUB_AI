@@ -44,3 +44,39 @@ def test_blocked_workflow_cannot_be_started(tmp_path):
     assert workflow["status"] == "blocked"
     with pytest.raises(RuntimeError):
         repository.start(UUID(workflow["workflow_id"]))
+
+
+def test_workflow_rejects_replaying_a_completed_step(tmp_path):
+    repository = AgentWorkflowRepository(tmp_path / "workflow.sqlite3")
+    workflow = repository.create(
+        "d" * 64,
+        {
+            "execution_ready": True,
+            "steps": [{"step": 2, "kind": "tool", "name": "text.echo", "status": "ready"}],
+        },
+    )
+    workflow_id = UUID(workflow["workflow_id"])
+    repository.start(workflow_id)
+    repository.record_step(workflow_id, 2, "running")
+    repository.record_step(workflow_id, 2, "succeeded")
+
+    with pytest.raises(RuntimeError, match="transition is not allowed"):
+        repository.record_step(workflow_id, 2, "running")
+
+
+def test_workflow_rejects_terminal_step_mutation(tmp_path):
+    repository = AgentWorkflowRepository(tmp_path / "workflow.sqlite3")
+    workflow = repository.create(
+        "e" * 64,
+        {
+            "execution_ready": True,
+            "steps": [{"step": 2, "kind": "tool", "name": "text.echo", "status": "ready"}],
+        },
+    )
+    workflow_id = UUID(workflow["workflow_id"])
+    repository.start(workflow_id)
+    repository.record_step(workflow_id, 2, "running")
+    repository.record_step(workflow_id, 2, "failed", "tool_execution_failed")
+
+    with pytest.raises(RuntimeError, match="transition is not allowed"):
+        repository.record_step(workflow_id, 2, "succeeded")
