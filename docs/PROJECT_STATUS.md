@@ -20,38 +20,34 @@ Unrelated repositories (Gshop, the game, Telegram bot, and others) must remain o
 
 ## Live pull-request snapshot
 
-Checked 2026-11-02 (UTC). Draft status is intentional; green CI alone does not mean a PR is merge-ready.
+Reviewed 2026-11-02 (UTC). Main now includes the clean integration from PR #15.
 
-- **PR #3 — Phase 4.2 worker-owned workflow execution**: open, Draft, based on main. Head `ca1b40f27201f7d353d8ee82ee760019126eb231`. Backend CI and CI workflow runs were completed successfully for this head. Still requires explicit fault-injection coverage for worker termination during an external side effect and lease-expiry races before merge.
-- **PR #4 — ADR-0042 knowledge/memory architecture**: open, Draft, documentation-only. Head `2dea4730191d3d396e2f89a9e90649950f3c5386`. Backend CI completed successfully. This is an architecture proposal, not an implementation of memory.
-- **PR #6 — workflow dispatch and GitHub capability discovery**: open, Draft, based on `feat/phase-4-2-unified-job-recovery`. Head `3b2c5a2e68bd6741f0a2a419e83cc7a9405c0e36`. Its recorded base SHA is `68ea8fa5af009d7a9cfded116fe279dd3db0ed82`; live comparison of the base/head refs reports `diverged`, 140 commits ahead and 69 behind, with that SHA as merge base. PR #3 currently has a newer head (`ca1b40f27201f7d353d8ee82ee760019126eb231`). No PR-triggered workflow runs were returned for PR #6's current head. PR #6 is not mergeable and must not be retargeted or merged until the branch history is reconciled and CI passes on the resulting head.
-- **PR #7 — Phase 4.3 cancellation/recovery hardening**: open, Draft, based on main. Latest reviewed head `6ed6bcc5d439189107ac66f3a5b35af24085c3a2` adds a regression test rejecting stale worker heartbeats and updates the hardening checklist. Backend CI and CI both completed successfully on this exact head, including Python 3.11 and 3.12. The release gate remains open because branch-overlap and broader cancellation/recovery review are still required. Keep Draft until latest-head CI, readiness behavior, cancellation/recovery crash windows, and the acceptance checklist/runbook are reconciled and reviewed.
-- **PR #10 — this project status ledger**: merged into `main` via squash commit `1ae9afe09ed231c0a2b3327f5b0fd7d810e0d982` after the latest-head Backend CI passed. Keep this ledger updated through reviewed documentation PRs; do not treat it as a substitute for live metadata.
-- **PR #11**: merged. **PR #12**: merged. Do not list either as open.
+- **PR #15 — Phase 4.2/4.3 worker execution + Phase 4.5 capability catalog: MERGED.** Squash commit `0caa50637800c470b1d52f4ebd2ada78f9196ab8`. The exact integration head `87438c66f102be5faf62c35391c4dc9cab8a0f3e` passed Backend CI and CI before merge. Both post-merge workflows also passed on the exact `main` commit `0caa50637800c470b1d52f4ebd2ada78f9196ab8`: Backend CI, including dependency audit, Ruff and tests; CI matrix for Python 3.11 and 3.12, including tests and lint.
+- **PR #3 — Phase 4.2 worker-owned workflow execution: CLOSED as superseded.** Its changed paths are included in PR #15's integrated snapshot.
+- **PR #7 — Phase 4.3 cancellation/recovery hardening: CLOSED as superseded.** Its changed paths are included in PR #15's integrated snapshot.
+- **PR #14 — standalone Phase 4.5 capability catalog: CLOSED as superseded.** All 14 changed paths were included in PR #15.
+- **PR #6 — legacy Phase 4.5 workflow dispatch/capability discovery: OPEN, Draft, NOT merge-ready.** Its branch history diverged from the former PR #3 base (recorded comparison: 140 ahead / 69 behind) and it has ten changed paths not present in PR #15. These include an alternative encrypted-input repository, an alternative submission/idempotency repository, an older worker CLI, and associated tests/docs. Do not merge or retarget it. Audit those unique files for requirements or regression tests not already covered by the merged AES-GCM envelope, atomic idempotency repository, worker service, and integration tests; selectively port only verified gaps into a new main-based PR.
+- **PR #4 — ADR-0042 memory/knowledge architecture: OPEN, Draft, documentation-only.** It is an architecture proposal, not a memory implementation. Keep it separate from runtime changes until scope and acceptance criteria are settled.
 
-## Confirmed file-overlap and dependency risks
+## Confirmed integration and release risks
 
-Changed-file lists were compared live:
-
-- PR #3 and PR #7 share **40 paths**, including workflow execution, persistence/migrations, worker, API routes, security, README, and tests. They must be reconciled deliberately; do not merge both based only on independent green CI.
-- PR #3 and PR #6 share **15 paths**.
-- PR #6 and PR #7 share **16 paths**.
-- PR #6 targets the PR #3 feature branch as its base, but the recorded base SHA is older than PR #3's current head and the refs have diverged. This is a history-reconciliation blocker, not merely a merge-order choice.
-- PR #4 and PR #6 both touch `docs/roadmap/implementation-plan.md`; resolve the documentation overlap if both changes are retained.
-- PR #10 is documentation-only and does not resolve implementation branch conflicts.
-
-A clean GitHub mergeability flag does not prove logical compatibility. Run integration tests after every dependency-aware merge.
+- The integrated code now exists on `main`; it is no longer correct to describe worker-owned workflow execution, cancellation/recovery hardening, or the metadata-only capability catalog as merely draft-branch work.
+- Green CI is evidence that the tested suite passes, not proof of production readiness or arbitrary external-system exactly-once behavior.
+- The worker is explicitly pull-driven and must be run as a separate process from the API. Durable workflow submission requires `MRH_WORKFLOW_PAYLOAD_KEY`; there is no plaintext fallback.
+- Capability discovery reads public GitHub repository metadata only. It does not fetch, install, import, or execute repository source, and popularity signals never auto-approve a candidate.
+- The legacy PR #6 branch is the remaining branch-history hazard. Avoid merging its ancestry; reconcile only specific missing requirements on a fresh branch from `main`.
+- The operator UI, real remote model adapters, actual memory/retrieval implementation, and content/media vertical remain roadmap work unless independently verified on `main`.
 
 ## Recommended execution order
 
-1. Keep implementation PRs in Draft while completing review. Do not merge PR #6 or change its base yet: reconcile the divergent branch history against PR #3 first, then rerun CI on the resulting head.
-2. Review PR #7's latest-head implementation and tests against the readiness/cancellation acceptance checklist. Verify read-only readiness with absent/unmigrated schema, missing/stale heartbeat, and worker-required mode. Verify stale workers cannot overwrite successor-owned state and uncertain external outcomes are not blindly replayed.
-3. Review PR #3's encrypted payload, worker lifecycle, idempotency, lease handling, and crash-window tests. Add fault-injection tests for worker termination during external side effects and lease expiry before considering merge.
-4. Reconcile PR #3 and PR #7 overlapping paths on a controlled integration branch or by updating one feature branch at a time; rerun all CI on the final rebased head. Preserve explicit user approval and audit boundaries.
-5. Rebase/reconcile PR #6 only after its required base is settled. Resolve the 15/16 overlapping paths and run CI on its new head; add crash-window and ambiguous-external-outcome tests.
-6. Keep PR #4 as a documentation decision until a separate, scoped implementation PR adds memory: scoped records, provenance/trust metadata, SQLite FTS5 retrieval, citations, and export/expiry/deletion controls. No broad repository ingestion or automatic durable-memory writes without explicit scope and policy.
-7. Implement the smallest operator UI only after API contracts stabilize.
-8. Then implement the content/media vertical with drafts, approval, deduplication, auditability, and local FFmpeg processing before optional external generators. Continue with NEXUS read-only analysis and reviewable patches, defensive security, and packaging afterward.
+1. Audit the ten unique paths in PR #6 against the merged implementation and tests. Document each as already covered, useful missing requirement, or obsolete/conflicting implementation.
+2. If the audit finds genuine gaps, create a fresh main-based implementation PR containing only those gaps and regression tests; run latest-head CI before merge. Otherwise close PR #6 as superseded with a clear explanation.
+3. Run a local operational smoke test in a controlled environment: initialize a fresh database, configure a deployment-specific workflow payload key, start API and worker separately, submit a deterministic workflow, verify completion/cancellation/recovery and inspect that payload ciphertext is removed on terminal outcomes. CI is green, but this real-process check has not yet been observed in this management session.
+4. Once the execution/control plane is stable, implement the smallest operator UI against the existing API contracts.
+5. Implement memory/retrieval as a separate scoped feature with provenance, owner scope, expiry/deletion controls and citation tests.
+6. Add remote model adapters only as explicit opt-in providers with no silent cloud fallback.
+7. Build the content/media vertical with draft generation, explicit publishing approval, deduplication and auditable job status; keep external generation providers optional.
+8. Continue NEXUS read-only analysis/reviewable patches, defensive security, and packaging after the core user-facing workflow is usable.
 
 ## Definition of done for each code change
 
