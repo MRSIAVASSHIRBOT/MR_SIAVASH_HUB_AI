@@ -221,7 +221,6 @@ def dispatch_queued_workflow(
         execution = core.execute(
             request, on_step=on_step, on_step_result=on_step_result, start_step=start_step
         )
-        current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if execution.get("execution_completed"):
             return {
                 "_worker_task_status": "succeeded",
