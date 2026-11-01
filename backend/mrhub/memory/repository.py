@@ -172,8 +172,8 @@ class MemoryRepository:
             rows = connection.execute(
                 """
                 SELECT m.*
-                FROM memory_entries_fts AS f
-                JOIN memory_entries AS m ON m.memory_id = f.memory_id
+                FROM memory_entries_fts
+                JOIN memory_entries AS m ON m.memory_id = memory_entries_fts.memory_id
                 WHERE memory_entries_fts MATCH ?
                   AND m.owner_user_id = ?
                   AND (m.expires_at IS NULL OR m.expires_at > ?)
@@ -186,8 +186,13 @@ class MemoryRepository:
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         """Export all owned entries, including expired records, for user-controlled cleanup."""
+        with self.tasks._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM memory_entries WHERE owner_user_id = ? ORDER BY created_at ASC",
+                (owner_user_id,),
+            ).fetchall()
         return {
             "export_version": 1,
             "exported_at": self._now(),
-            "entries": self.list_entries(owner_user_id, 100, include_expired=True),
+            "entries": [self._record(row) for row in rows],
         }
