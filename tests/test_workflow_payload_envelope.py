@@ -1,4 +1,5 @@
 """Security tests for encrypted workflow payload envelopes."""
+# ruff: noqa: I001
 import base64
 
 import pytest
