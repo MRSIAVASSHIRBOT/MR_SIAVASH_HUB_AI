@@ -12,8 +12,10 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from threading import Lock
-from uuid import UUID
+from threading import Event, Lock, Thread
+from uuid import UUID, uuid4
+
+from mrhub.jobs.leases import LeaseManager, WorkerLease
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
@@ -56,11 +58,17 @@ class WorkerEngine:
         self,
         repository: TaskRepository,
         clock: Callable[[], datetime] | None = None,
+        lease_seconds: int = 60,
     ) -> None:
         self.repository = repository
         self.database_path = repository.database_path
         self._run_lock = Lock()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._worker_id = str(uuid4())
+        self._lease_seconds = lease_seconds
+        self._lease_manager = LeaseManager(
+            self.database_path, lease_seconds=lease_seconds, clock=self._clock
+        )
         self.handlers: dict[str, Callable[[TaskRecord], dict[str, str]]] = {
             "demo.echo": self._echo,
         }
@@ -111,8 +119,9 @@ class WorkerEngine:
                 SELECT t.* FROM tasks AS t
                 JOIN worker_executions AS e ON e.task_id = t.task_id
                 WHERE t.status = ? AND e.started_at < ?
+                  AND (e.lease_expires_at IS NULL OR e.lease_expires_at <= ?)
                 """,
-                (TaskStatus.RUNNING.value, cutoff),
+                (TaskStatus.RUNNING.value, cutoff, now),
             ).fetchall()
             for row in rows:
                 task = TaskRecord(
@@ -217,35 +226,72 @@ class WorkerEngine:
         if task is None:
             return None
 
+        lease = self._lease_manager.acquire(str(task.task_id), self._worker_id)
+        if lease is None:
+            # Another owner or inconsistent persisted state: never dispatch without ownership.
+            return self.repository.get(task.task_id)
+
+        stop_heartbeat = Event()
+        lease_lost = Event()
+        heartbeat = Thread(
+            target=self._heartbeat_loop,
+            args=(lease, stop_heartbeat, lease_lost),
+            name=f"mrhub-lease-{task.task_id}",
+            daemon=True,
+        )
+        heartbeat.start()
+        try:
+            if not self._lease_manager.is_current(lease):
+                lease_lost.set()
+                return self.repository.get(task.task_id)
+            return self._execute_claimed(task, lease, lease_lost)
+        finally:
+            stop_heartbeat.set()
+            heartbeat.join(timeout=max(1.0, self._lease_seconds))
+            self._lease_manager.release(lease)
+
+    def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lease_lost: Event) -> None:
+        interval = max(0.1, self._lease_seconds / 3)
+        while not stop.wait(interval):
+            if self._lease_manager.heartbeat(lease) is None:
+                lease_lost.set()
+                return
+
+    def _execute_claimed(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> TaskRecord | None:
         approval = self.repository.get_task_approval(task.task_id)
         if task.risk_class in {RiskClass.HIGH, RiskClass.PROHIBITED}:
             if task.risk_class is RiskClass.PROHIBITED:
-                return self._finish_failure(task, "prohibited_task")
+                return self._finish_failure(task, "prohibited_task", lease=lease)
             if (
                 approval is None
                 or approval.get("decision") != "approved"
                 or approval.get("action_fingerprint") != action_fingerprint(task)
             ):
-                return self._finish_failure(task, "approval_missing_or_stale")
+                return self._finish_failure(task, "approval_missing_or_stale", lease=lease)
 
         current = self.repository.get(task.task_id)
         if current is None:
             raise WorkerError("Claimed task disappeared before dispatch")
         if current.status is TaskStatus.CANCELLED:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
             return current
 
         handler = self.handlers.get(task.task_type)
         if handler is None:
-            return self._finish_failure(task, "handler_not_registered")
+            return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
             result = handler(task)
         except RetryableWorkerError:
-            return self._schedule_retry_or_fail(task)
+            return self._schedule_retry_or_fail(task, lease=lease)
         except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
-            return self._finish_failure(task, "handler_failed")
+            return self._finish_failure(task, "handler_failed", lease=lease)
+
+        if lease_lost.is_set():
+            return self.repository.get(task.task_id)
 
         now = self._now().isoformat()
         with self._connection() as connection:
@@ -253,8 +299,14 @@ class WorkerEngine:
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
+                  AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                  )
                 """,
-                (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
+                (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
+                 lease.owner, lease.fencing_token, now),
             )
             if cursor.rowcount == 1:
                 connection.execute(
@@ -276,12 +328,14 @@ class WorkerEngine:
         if saved.status is TaskStatus.SUCCEEDED:
             self._audit(task, "succeeded", "worker_completed")
         else:
-            self._mark_cancelled(task)
+            self._mark_cancelled(task, lease=lease)
         return saved
 
-    def _schedule_retry_or_fail(self, task: TaskRecord) -> TaskRecord:
+    def _schedule_retry_or_fail(
+        self, task: TaskRecord, *, lease: WorkerLease
+    ) -> TaskRecord:
         if task.task_type not in self.RETRY_SAFE_TASK_TYPES:
-            return self._finish_failure(task, "retry_not_permitted")
+            return self._finish_failure(task, "retry_not_permitted", lease=lease)
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT attempt_count FROM worker_executions WHERE task_id = ?",
@@ -289,7 +343,7 @@ class WorkerEngine:
             ).fetchone()
         attempts = row["attempt_count"] if row else self.MAX_ATTEMPTS
         if attempts >= self.MAX_ATTEMPTS:
-            return self._finish_failure(task, "retry_limit_exceeded")
+            return self._finish_failure(task, "retry_limit_exceeded", lease=lease)
 
         delay = min(
             self.RETRY_BASE_SECONDS * (2 ** max(attempts - 1, 0)),
@@ -302,12 +356,20 @@ class WorkerEngine:
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
+                  AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                  )
                 """,
                 (
                     TaskStatus.QUEUED.value,
                     now.isoformat(),
                     str(task.task_id),
                     TaskStatus.RUNNING.value,
+                    lease.owner,
+                    lease.fencing_token,
+                    now.isoformat(),
                 ),
             )
             if cursor.rowcount == 1:
@@ -329,15 +391,23 @@ class WorkerEngine:
             self._mark_cancelled(task)
         return saved
 
-    def _finish_failure(self, task: TaskRecord, error_code: str) -> TaskRecord:
+    def _finish_failure(
+        self, task: TaskRecord, error_code: str, *, lease: WorkerLease
+    ) -> TaskRecord:
         now = self._now().isoformat()
         with self._connection() as connection:
             cursor = connection.execute(
                 """
                 UPDATE tasks SET status = ?, updated_at = ?
                 WHERE task_id = ? AND status = ?
+                  AND EXISTS (
+                    SELECT 1 FROM worker_executions AS e
+                    WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                      AND e.execution_token = ? AND e.lease_expires_at > ?
+                  )
                 """,
-                (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value),
+                (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
+                 lease.owner, lease.fencing_token, now),
             )
             if cursor.rowcount == 1:
                 connection.execute(
@@ -357,7 +427,7 @@ class WorkerEngine:
             self._mark_cancelled(task)
         return saved
 
-    def _mark_cancelled(self, task: TaskRecord) -> None:
+    def _mark_cancelled(self, task: TaskRecord, *, lease: WorkerLease) -> None:
         now = self._now().isoformat()
         with self._connection() as connection:
             connection.execute(
@@ -365,9 +435,9 @@ class WorkerEngine:
                 UPDATE worker_executions
                 SET error_code = 'cancelled_during_execution', finished_at = ?,
                     next_attempt_at = NULL
-                WHERE task_id = ?
+                WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
                 """,
-                (now, str(task.task_id)),
+                (now, str(task.task_id), lease.owner, lease.fencing_token),
             )
         self._audit(task, "cancelled", "cancelled_during_execution")
 
