@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import sqlite3
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -171,19 +172,37 @@ def execute_agent_workflow(
                 name = tool.name
             step_specs.append({"step_number": number, "kind": kind, "name": name})
 
-        recovery.create_run(
-            request_digest,
-            step_specs,
-            task=task,
-            owner_user_id=current_user.user_id,
-            workflow_id=workflow_id,
-            payload_envelope={
-                "version": encrypted.version,
-                "nonce_b64": encrypted.nonce_b64,
-                "ciphertext_b64": encrypted.ciphertext_b64,
-            },
-            idempotency_binding=idempotency_binding,
-        )
+        try:
+            recovery.create_run(
+                request_digest,
+                step_specs,
+                task=task,
+                owner_user_id=current_user.user_id,
+                workflow_id=workflow_id,
+                payload_envelope={
+                    "version": encrypted.version,
+                    "nonce_b64": encrypted.nonce_b64,
+                    "ciphertext_b64": encrypted.ciphertext_b64,
+                },
+                idempotency_binding=idempotency_binding,
+            )
+        except sqlite3.IntegrityError as exc:
+            if idempotency_key is not None:
+                record = idempotency.get(scope, idempotency_key)
+                if record is not None and record.request_digest == request_digest and record.workflow_id:
+                    existing = recovery.get_run(
+                        UUID(record.workflow_id), owner_user_id=current_user.user_id
+                    )
+                    if existing is not None:
+                        return {
+                            "workflow": existing,
+                            "execution": None,
+                            "idempotent_replay": True,
+                        }
+            raise HTTPException(
+                status_code=409,
+                detail="Workflow submission conflicts with an existing resource",
+            ) from exc
         AuditLogger(tasks).record(
             event_type="task.submitted",
             outcome="queued",
