@@ -236,7 +236,9 @@ def test_readiness_endpoint_reports_migrated_database(tmp_path, monkeypatch) -> 
         body = response.json()
         assert body["status"] == "ready"
         assert body["database"] == "ready"
-        assert body["schema_version"] >= 1
+        assert body["schema_version"] >= 8
+        assert body["worker"] == "not_detected"
+        assert body["worker_heartbeat_age_seconds"] is None
     finally:
         get_settings.cache_clear()
 
@@ -250,5 +252,45 @@ def test_readiness_endpoint_does_not_create_a_missing_database(tmp_path, monkeyp
         assert response.status_code == 503
         assert response.json()["detail"] == "Database is not ready"
         assert not database_path.exists()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_readiness_can_require_a_live_worker_heartbeat(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "worker-required.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("MRH_REQUIRE_WORKER_FOR_READINESS", "true")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            response = client.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Worker process is not ready"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_readiness_recognizes_fresh_worker_heartbeat(tmp_path, monkeypatch) -> None:
+    import sqlite3
+    from datetime import UTC, datetime
+
+    database_path = tmp_path / "worker-heartbeat.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    monkeypatch.setenv("MRH_REQUIRE_WORKER_FOR_READINESS", "true")
+    get_settings.cache_clear()
+    try:
+        with TestClient(create_app()) as client:
+            with sqlite3.connect(database_path) as connection:
+                stamp = datetime.now(UTC).isoformat()
+                connection.execute(
+                    """INSERT INTO worker_instances
+                       (instance_id, process_id, started_at, heartbeat_at, status)
+                       VALUES ('test-worker', 123, ?, ?, 'running')""",
+                    (stamp, stamp),
+                )
+            response = client.get("/ready")
+        assert response.status_code == 200
+        assert response.json()["worker"] == "running"
+        assert response.json()["worker_heartbeat_age_seconds"] is not None
     finally:
         get_settings.cache_clear()
