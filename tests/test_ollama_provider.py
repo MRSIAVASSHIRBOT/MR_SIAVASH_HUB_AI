@@ -84,3 +84,11 @@ def test_ollama_rejects_invalid_response_shape():
     )
     with pytest.raises(ProviderUnavailableError):
         provider.generate(ProviderRequest(input_text="hello"))
+
+
+def test_ollama_health_probe_timeout_is_bounded():
+    provider = OllamaProvider("tiny-model")
+    with pytest.raises(ProviderConfigurationError):
+        provider.health(timeout_seconds=0.01)
+    with pytest.raises(ProviderConfigurationError):
+        provider.health(timeout_seconds=11)
