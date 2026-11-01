@@ -565,8 +565,12 @@ class WorkerEngine:
             else:
                 connection.rollback()
         if not commit_ok:
-            # Leave the lease-fenced task recoverable rather than commit half a lifecycle.
-            return self.repository.get(task.task_id)
+            # Preserve legacy generic-task cancellation bookkeeping; workflow state stays atomic.
+            saved = self.repository.get(task.task_id)
+            if saved is not None and saved.status is TaskStatus.CANCELLED:
+                self._mark_cancelled(task, lease=lease)
+                return saved
+            return saved
         saved = self.repository.get(task.task_id)
         if saved is None:
             raise WorkerError("Claimed task disappeared during execution")
