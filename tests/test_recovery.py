@@ -3,7 +3,10 @@ from uuid import UUID
 
 import pytest
 
+from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import JobEngine
+from mrhub.jobs.leases import LeaseManager
 from mrhub.jobs.recovery import (
     RecoveryRequired,
     WorkflowRecoveryError,
@@ -248,3 +251,74 @@ def test_run_lookup_returns_only_bounded_recovery_metadata(tmp_path):
     assert run["status"] == "queued"
     assert run["current_step"] == 0
     assert len(run["steps"]) == 3
+
+
+
+def test_workflow_step_commit_is_fenced_against_expired_owner(tmp_path):
+    database_path = tmp_path / "workflow-lease-fence.sqlite3"
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    recovery = WorkflowRecoveryRepository(database_path)
+    task = TaskRecord(task_type="agent.workflow", description="leased workflow")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    jobs = JobEngine(tasks)
+    jobs.transition(task.task_id, TaskStatus.RUNNING)
+    leases = LeaseManager(database_path)
+    old_lease = leases.acquire(str(task.task_id), "old-runner")
+    assert old_lease is not None
+    recovery.start_run(workflow_id, lease=old_lease)
+    attempt = recovery.start_step(workflow_id, 1, lease=old_lease)
+
+    with tasks._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET lease_expires_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+    successor = leases.acquire(str(task.task_id), "successor-runner")
+    assert successor is not None
+    assert successor.fencing_token > old_lease.fencing_token
+
+    with pytest.raises(RecoveryRequired, match="lease was lost"):
+        recovery.complete_step(
+            workflow_id, attempt, "b" * 64, lease=old_lease
+        )
+    assert recovery.latest_checkpoint(workflow_id) is None
+
+    assert recovery.mark_interrupted(workflow_id, lease=successor) == 1
+    decision = recovery.resume_decision(workflow_id, "a" * 64)
+    assert decision.decision == "reconcile"
+
+
+def test_job_engine_rejects_terminal_transition_from_stale_workflow_lease(tmp_path):
+    database_path = tmp_path / "job-lease-fence.sqlite3"
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    task = TaskRecord(task_type="agent.workflow", description="leased job")
+    tasks.create(task)
+    jobs = JobEngine(tasks)
+    jobs.transition(task.task_id, TaskStatus.RUNNING)
+    with tasks._connection() as connection:
+        connection.execute(
+            "INSERT INTO worker_executions (task_id, attempt_count) VALUES (?, 0)",
+            (str(task.task_id),),
+        )
+
+    leases = LeaseManager(database_path)
+    old_lease = leases.acquire(str(task.task_id), "old-job-runner")
+    assert old_lease is not None
+    with tasks._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET lease_expires_at = ? WHERE task_id = ?",
+            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+        )
+    successor = leases.acquire(str(task.task_id), "new-job-runner")
+    assert successor is not None
+
+    with pytest.raises(RuntimeError, match="lease changed concurrently"):
+        jobs.transition(task.task_id, TaskStatus.SUCCEEDED, lease=old_lease)
+    stored = tasks.get(task.task_id)
+    assert stored is not None and stored.status is TaskStatus.RUNNING
