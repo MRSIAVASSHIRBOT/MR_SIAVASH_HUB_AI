@@ -9,9 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
@@ -55,54 +58,35 @@ def get_agent_run(run_id: UUID) -> dict[str, object]:
 
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
-    """Fingerprint non-sensitive request metadata only."""
-    metadata = {
-        "goal_length": len(request.goal),
-        "tool_names": [tool.name for tool in request.tools],
-        "requires_text": request.requires_text,
-        "requires_vision": request.requires_vision,
-        "requires_audio": request.requires_audio,
-        "requires_tool_calling": request.requires_tool_calling,
-        "prefer_local": request.prefer_local,
-    }
-    encoded = json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    """Fingerprint the complete in-memory request without persisting its contents."""
+    encoded = json.dumps(
+        request.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
 @router.post("/workflows")
 def execute_agent_workflow(request: AgentPlanRequest) -> dict[str, object]:
-    """Execute an allowed workflow while persisting each step transition."""
+    """Execute an allowed workflow under the canonical Job lifecycle."""
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
         plan = core.plan(request)
-        repository = AgentWorkflowRepository(get_settings().database_path)
-        workflow = repository.create(_workflow_digest(request), plan)
-        if workflow["status"] == "blocked":
+        request_digest = _workflow_digest(request)
+        if not plan["execution_ready"]:
+            # Preserve legacy blocked-workflow history without creating an executable job.
+            legacy = AgentWorkflowRepository(get_settings().database_path)
+            workflow = legacy.create(request_digest, plan)
             return {"workflow": workflow, "execution": None}
-        workflow_id = UUID(str(workflow["workflow_id"]))
-        repository.start(workflow_id)
-        execution = core.execute(
-            request,
-            on_step=lambda number, status, error: repository.record_step(
-                workflow_id, number, status, error
-            ),
+
+        settings = get_settings()
+        task_repository = TaskRepository(settings.database_path)
+        task_repository.initialize()
+        return AgentWorkflowRunner(task_repository, core).execute(
+            request, plan, request_digest
         )
-        terminal_status = (
-            "succeeded" if execution["execution_completed"]
-            else "failed" if execution.get("execution_started")
-            else "blocked"
-        )
-        repository.finish(workflow_id, terminal_status)
-        return {
-            "workflow": repository.get(workflow_id),
-            "execution": {
-                "execution_completed": execution["execution_completed"],
-                "model_inference_started": execution["model_inference_started"],
-                "tools_executed": execution["tools_executed"],
-                "error_code": execution.get("error_code"),
-                "executed_tool_count": len(execution["results"]),
-            },
-        }
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
@@ -112,9 +96,17 @@ def execute_agent_workflow(request: AgentPlanRequest) -> dict[str, object]:
 
 @router.get("/workflows/{workflow_id}")
 def get_agent_workflow(workflow_id: UUID) -> dict[str, object]:
-    repository = AgentWorkflowRepository(get_settings().database_path)
-    repository.initialize()
-    workflow = repository.get(workflow_id)
+    settings = get_settings()
+    task_repository = TaskRepository(settings.database_path)
+    task_repository.initialize()
+    workflow = WorkflowRecoveryRepository(task_repository.database_path).get_run(workflow_id)
+    if workflow is not None:
+        return workflow
+
+    # Read legacy workflow rows created before the unified Job/Workflow migration.
+    legacy = AgentWorkflowRepository(settings.database_path)
+    legacy.initialize()
+    workflow = legacy.get(workflow_id)
     if workflow is None:
         raise HTTPException(status_code=404, detail="Agent workflow not found")
     return workflow
