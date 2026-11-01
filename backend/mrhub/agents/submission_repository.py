@@ -55,6 +55,23 @@ class WorkflowSubmissionRepository:
 
         TaskRepository(self.database_path).initialize()
 
+    def _fail_stale_reservations(self) -> None:
+        """Fail old unbound reservations in their own commit, even if a later key conflicts."""
+        now = datetime.now(UTC).isoformat()
+        stale_before = datetime.fromtimestamp(
+            datetime.now(UTC).timestamp() - self.STALE_RESERVATION_SECONDS, UTC
+        ).isoformat()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                UPDATE workflow_submission_keys
+                SET state = 'failed', updated_at = ?
+                WHERE state = 'reserved' AND julianday(updated_at) < julianday(?)
+                """,
+                (now, stale_before),
+            )
+
     def reserve(
         self,
         owner_user_id: str,
@@ -71,24 +88,10 @@ class WorkflowSubmissionRepository:
         self._validate(endpoint, "endpoint")
         self._validate(idempotency_key, "idempotency_key")
         self._validate(request_digest, "request_digest")
+        self._fail_stale_reservations()
         now = datetime.now(UTC).isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            # A process may die after reserving a key but before creating its Job/Workflow.
-            # Expire only old, still-unbound reservations; the write lock serializes this
-            # with create_run's atomic bind, so a bound execution is never invalidated.
-            stale_before = (
-                datetime.now(UTC).timestamp() - self.STALE_RESERVATION_SECONDS
-            )
-            connection.execute(
-                """
-                UPDATE workflow_submission_keys
-                SET state = 'failed', updated_at = ?
-                WHERE state = 'reserved'
-                  AND julianday(updated_at) < julianday(?)
-                """,
-                (now, datetime.fromtimestamp(stale_before, UTC).isoformat()),
-            )
             row = connection.execute(
                 """SELECT request_digest, state, workflow_id, task_id, created_at, updated_at
                    FROM workflow_submission_keys
