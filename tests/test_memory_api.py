@@ -94,7 +94,7 @@ def test_memory_rejects_obvious_credentials_and_requires_authentication() -> Non
     )
     assert response.status_code == 422
 
-        get_settings.cache_clear()
+    get_settings.cache_clear()
     unauthenticated = TestClient(create_app())
     assert unauthenticated.get("/memory").status_code in (401, 403)
 
