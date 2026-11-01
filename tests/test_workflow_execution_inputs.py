@@ -108,8 +108,8 @@ def test_expired_payload_is_not_returned(tmp_path):
     expiry = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
     repo.store(workflow_id, "owner-1", {"goal": "expired"}, expires_at=expiry)
 
-    with pytest.raises(ExecutionInputUnavailable, match="expired"):
-        repo.load(workflow_id, "owner-1")
+    with pytest.raises(ExecutionInputValidationError, match="future"):
+        repo.store(workflow_id, "owner-1", {"goal": "expired"}, expires_at=expiry)
 
 
 def test_tampered_ciphertext_fails_closed(tmp_path):
