@@ -190,4 +190,8 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
         )
     }
     assert {"agent_runs", "agent_workflows"} <= tables
+    agent_run_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")
+    }
+    assert "owner_user_id" in agent_run_columns
     connection.close()
