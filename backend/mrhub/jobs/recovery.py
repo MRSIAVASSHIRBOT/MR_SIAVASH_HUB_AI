@@ -242,14 +242,6 @@ class WorkflowRecoveryRepository:
             if run["status"] != "running":
                 raise WorkflowRecoveryError("Workflow is not running")
 
-            run = connection.execute(
-                "SELECT status FROM workflow_runs WHERE workflow_id = ?",
-                (str(workflow_id),),
-            ).fetchone()
-            if run is None:
-                raise LookupError("Workflow not found")
-            if run["status"] != "running":
-                raise WorkflowRecoveryError("Workflow is not running")
             step = connection.execute(
                 """
                 SELECT step_id, status FROM workflow_steps
