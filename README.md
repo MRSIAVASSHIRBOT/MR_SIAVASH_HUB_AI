@@ -7,6 +7,22 @@ MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabiliti
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
 
+## Open-source-first integration strategy
+
+The Hub is developed as an independent repository. It does not depend on or absorb the owner's earlier projects. Its specialist capabilities are selected from third-party open-source projects and maintained behind Hub-owned interfaces.
+
+Candidate upstreams to evaluate include:
+
+- `headroomlabs-ai/headroom` — context optimization.
+- `cloudflare/security-audit-skill` — defensive Cloudflare configuration auditing.
+- `StarTrail-org/PixelRAG` — retrieval and multimodal knowledge workflows.
+- GLM-compatible provider adapters — model access behind the typed provider contract.
+- A reviewed sandbox/runtime project — isolated execution, selected only after threat-model and license review.
+
+These are candidates, not claims of completed integration. Before adoption, the Discovery Engine must record each upstream's canonical URL, license and compatibility evidence, maintenance signals, dependency/security findings, required permissions, integration boundary, and test plan. Reuse must preserve upstream license obligations and attribution. The Hub must not copy code from an unreviewed repository or execute discovered code automatically.
+
+The integration order is: discover and evaluate upstreams; define stable Hub interfaces; integrate one capability at a time; run contract, security, and regression tests; document provenance; and only then enable it in a workflow. Existing user-owned repositories remain untouched.
+
 ## Engineering principles
 - **Local-first, hybrid-capable:** run feasible workloads locally and route heavier tasks to explicitly configured providers.
 - **Modular monolith first:** maintain clear module contracts without introducing distributed-system overhead prematurely.
