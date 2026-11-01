@@ -11,13 +11,14 @@ from mrhub.agents.execution_inputs import (
     WorkflowExecutionInputRepository,
 )
 from mrhub.domain.tasks import TaskRecord
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 
 
-def setup_repo(tmp_path, key=None):
+def setup_repo(tmp_path):
     database_path = tmp_path / "inputs.sqlite3"
+    TaskRepository(database_path).initialize()
     recovery = WorkflowRecoveryRepository(database_path)
-    recovery.initialize()
     connection = sqlite3.connect(database_path)
     connection.execute(
         """INSERT INTO auth_users
