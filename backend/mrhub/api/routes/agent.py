@@ -112,6 +112,20 @@ def execute_agent_workflow(
             description="Agent workflow execution",
         )
         workflow_id = uuid4()
+        try:
+            encrypted = encrypt_payload(
+                request.model_dump(mode="json"),
+                workflow_id=str(workflow_id),
+                task_id=str(task.task_id),
+                owner_user_id=current_user.user_id,
+                key=load_payload_key(),
+            )
+        except PayloadEnvelopeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Workflow execution is disabled until a valid payload key is configured",
+            ) from exc
+
         if idempotency_key is not None:
             try:
                 reservation = idempotency.reserve(scope, idempotency_key, request_digest)
@@ -145,20 +159,6 @@ def execute_agent_workflow(
                 task_id=str(task.task_id),
                 workflow_id=str(workflow_id),
             )
-
-        try:
-            encrypted = encrypt_payload(
-                request.model_dump(mode="json"),
-                workflow_id=str(workflow_id),
-                task_id=str(task.task_id),
-                owner_user_id=current_user.user_id,
-                key=load_payload_key(),
-            )
-        except PayloadEnvelopeError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Workflow execution is disabled until a valid payload key is configured",
-            ) from exc
 
         step_specs = []
         raw_steps = plan.get("steps", [])
