@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
-from mrhub.tools.registry import ToolRegistry
+from mrhub.tools.registry import ToolExecutionError, ToolRegistry
 
 
 class AgentToolRequest(BaseModel):
@@ -60,7 +60,7 @@ class AgentCore:
                 result = self.tool_registry.invoke(
                     requested_tool.name, requested_tool.payload
                 )
-            except (ValueError, TypeError, KeyError, RuntimeError):
+            except (ToolExecutionError, ValueError, TypeError, KeyError, RuntimeError):
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
