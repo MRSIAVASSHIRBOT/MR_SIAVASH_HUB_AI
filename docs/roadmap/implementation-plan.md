@@ -41,14 +41,22 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Provider dispatch is explicit and testable; local Ollama inference is available only after explicit configuration, while the stub performs no inference. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
 
 ## Phase 2 — AI Core and Memory
-- One provider adapter at a time
-- Capability-aware model routing
-- Context budget management
-- Explicit memory scopes and provenance
-- SQLite FTS search before vector database adoption
-- Data export and deletion controls
 
-Exit criteria: a conversation task can retrieve only authorized context and explain which sources were used.
+Architecture proposal: [ADR-0042 — Local-first Knowledge and Memory](../architecture/adr-0042-knowledge-memory.md).
+
+- [ ] Separate project knowledge, durable user memory, and operational execution history.
+- [ ] Define owner, project, sensitivity, trust, provenance, and retention contracts.
+- [ ] Add versioned SQLite schema and migration compatibility tests.
+- [ ] Implement owner-scoped memory CRUD, export, expiry, and deletion.
+- [ ] Ingest bounded local Markdown/plain-text documents with source hashes and provenance.
+- [ ] Add SQLite FTS5 indexing and index-consistency/deletion tests.
+- [ ] Implement scoped retrieval with citations, source freshness, and bounded context assembly.
+- [ ] Add prompt-injection, cross-owner isolation, stale-source, and retrieval-quality tests.
+- [ ] Integrate retrieval into Agent context only after standalone retrieval gates pass.
+- [ ] Evaluate embeddings/vector retrieval only if measured FTS5 quality is insufficient.
+- [ ] Continue one provider adapter at a time and enforce model/context budget limits.
+
+Exit criteria: a conversation task can retrieve only authorized, in-scope context; every material knowledge result carries verifiable provenance; memory can be exported and deleted; retrieval quality and isolation are covered by repeatable tests. No retrieved document can grant tool permissions or authorize an action.
 
 ## Phase 3 — Content and media vertical
 - Content brief, draft, review, and approval lifecycle
