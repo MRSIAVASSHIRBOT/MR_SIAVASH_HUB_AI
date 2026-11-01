@@ -9,6 +9,7 @@ from mrhub.api.routes.jobs import router as jobs_router
 from mrhub.api.routes.models import router as models_router
 from mrhub.api.routes.policy import router as policy_router
 from mrhub.api.routes.tasks import router as tasks_router
+from mrhub.api.routes.tools import router as tools_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(policy_router)
     app.include_router(models_router)
+    app.include_router(tools_router)
     return app
 
 
