@@ -182,7 +182,6 @@ MIGRATIONS = (
         4,
         "workflow_owner_scope",
         (
-            "ALTER TABLE workflow_runs ADD COLUMN owner_user_id TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
             "CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)",
             """CREATE TABLE IF NOT EXISTS agent_workflows (
                 workflow_id TEXT PRIMARY KEY, status TEXT NOT NULL,
