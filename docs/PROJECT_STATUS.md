@@ -16,7 +16,8 @@ Unrelated repositories (Gshop, the game, Telegram bot, and others) must remain o
 - PR #11 is merged: the OpenCode action is pinned to a specific commit SHA and its prompt requires verified reporting.
 - PR #12 is merged: OpenCode uses the explicit `openrouter/cohere/north-mini-code:free` model identifier. Availability and actual zero-cost operation remain provider-dependent; do not assume this endpoint is permanently available or free.
 - PR #15 is merged via integration commit `0caa50637800c470b1d52f4ebd2ada78f9196ab8`: it brings worker-owned workflow execution, durable recovery, lease fencing, cancellation handling, worker heartbeat readiness, and the metadata-only capability discovery catalog into `main`. Backend CI and CI passed on integrated head `87438c66f102be5faf62c35391c4dc9cab8a0f3e`, including Python 3.11 and 3.12.
-- PR #16 is merged via squash commit `e91c9d51c258292cf995e2b4fbb6b24469d91718`: adds fault-injection coverage for a worker crash after an external side effect. Backend CI and CI passed on head `81bf8868e3869468c00a95988db81cdeb6428e39`.
+- PR #16 is merged via squash commit `e91c9d51c258292cf995e2b4fbb6b24469d91718`; its initial regression was superseded by a stronger fault-injection test.
+- **PR #19 — real external-side-effect crash injection**: merged via squash commit `603b5b141b711cbfbfdaf04bba00969e0078464e`. The test injects an abrupt process crash after the simulated remote action is accepted and before the step result/checkpoint is persisted, then verifies `unknown_outcome` recovery and no automatic replay. Backend CI and CI passed on exact head `6e8b76de633c9776ac7b98022435ffa5d37394ec` (Python 3.11 and 3.12).
 - Local inference remains disabled by default. The operator UI, real remote provider adapters, memory implementation, and content/media vertical remain roadmap work unless separately verified on main.
 
 ## Live pull-request snapshot
@@ -36,7 +37,7 @@ Checked 2026-11-02 (UTC). Re-check live GitHub metadata before making a new merg
 ## Integration outcomes and remaining risks
 
 - The overlapping worker/recovery/cancellation code from PR #3 and PR #7 is now represented in one main-based integration commit, rather than merging their long feature-branch histories.
-- Lease fencing and interrupted external-step recovery are covered by existing regression tests; PR #16 adds a fault-injection case asserting that an already-accepted external effect becomes `unknown_outcome` after worker interruption and is not replayed.
+- Lease fencing and interrupted external-step recovery are covered by existing regression tests. PR #19 provides the stronger fault-injection case: the worker crashes at the dispatch boundary after a simulated external effect is accepted, then a fresh worker marks the step `unknown_outcome` and does not replay it.
 - Capability discovery is metadata-only: it queries public GitHub repository metadata, does not download or execute source code, and never auto-approves candidates. Approval requires explicit license, security, compatibility, and test-plan evidence.
 - The original PR #6 worker-dispatch changes were not merged wholesale because they duplicate the current `jobs/workflow_dispatch.py`, `jobs/payload_envelope.py`, and `jobs/idempotency.py` architecture and also conflict on ADR numbering. Any unique improvement needs a fresh, focused PR based on current `main`.
 - Phase 2 knowledge/memory remains a proposal. The operator UI, real remote provider adapters, and content/media vertical remain roadmap work.
