@@ -6,13 +6,14 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 
 class AgentWorkflowRepository:
     """Persist workflow and per-step state, never prompts, payloads, or outputs."""
 
-    _STEP_TRANSITIONS = {
+    _STEP_TRANSITIONS: ClassVar[dict[str, set[str]]] = {
         "pending": {"running", "blocked"},
         "running": {"succeeded", "failed", "blocked"},
         "succeeded": set(),
