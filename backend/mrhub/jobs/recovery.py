@@ -801,6 +801,58 @@ class WorkflowRecoveryRepository:
             )
             return cursor.rowcount == 1
 
+    def request_cancellation(
+        self, workflow_id: UUID, *, owner_user_id: str
+    ) -> dict[str, str]:
+        """Cancel queued work or request cooperative cancellation of a running workflow."""
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                """
+                SELECT workflow_id, task_id, status FROM workflow_runs
+                WHERE workflow_id = ? AND owner_user_id = ?
+                """,
+                (str(workflow_id), owner_user_id),
+            ).fetchone()
+            if run is None or run["task_id"] is None:
+                raise LookupError("Workflow not found")
+            status = run["status"]
+            task_id = run["task_id"]
+            if status in {"succeeded", "failed", "cancelled"}:
+                return {"workflow_id": str(workflow_id), "status": status}
+            if status == "queued":
+                connection.execute(
+                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'queued'",
+                    (now, task_id),
+                )
+                connection.execute(
+                    "UPDATE workflow_runs SET status = 'cancelled', updated_at = ? WHERE workflow_id = ? AND status = 'queued'",
+                    (now, str(workflow_id)),
+                )
+                connection.execute(
+                    "DELETE FROM workflow_payloads WHERE workflow_id = ?",
+                    (str(workflow_id),),
+                )
+            elif status == "running":
+                cursor = connection.execute(
+                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'running'",
+                    (now, task_id),
+                )
+                if cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Running task state changed during cancellation")
+            else:
+                raise WorkflowRecoveryError("Workflow cannot be cancelled in its current state")
+            connection.execute(
+                "UPDATE idempotency_records SET status = 'failed' WHERE task_id = ? AND status IN ('accepted', 'running')",
+                (task_id,),
+            )
+            return {
+                "workflow_id": str(workflow_id),
+                "task_id": task_id,
+                "status": "cancelled" if status == "queued" else "cancellation_requested",
+            }
+
     def get_encrypted_payload(
         self, workflow_id: UUID, *, owner_user_id: str
     ) -> dict[str, object] | None:
