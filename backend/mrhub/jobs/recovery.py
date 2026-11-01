@@ -291,8 +291,12 @@ class WorkflowRecoveryRepository:
                     (now, run["task_id"]),
                 )
                 connection.execute(
-                    "UPDATE worker_executions SET error_code = 'cancelled_before_dispatch', finished_at = ? WHERE task_id = ?",
+                    "UPDATE worker_executions SET error_code = 'cancelled_before_dispatch', finished_at = ?, next_attempt_at = NULL WHERE task_id = ?",
                     (now, run["task_id"]),
+                )
+                connection.execute(
+                    "UPDATE idempotency_records SET status = 'failed' WHERE task_id = ? AND status IN ('accepted', 'running', 'unknown_outcome')",
+                    (run["task_id"],),
                 )
 
     def cancel_paused_run(self, workflow_id: UUID) -> None:
