@@ -174,3 +174,26 @@ def test_failed_atomic_binding_rolls_back_job_and_workflow_creation(tmp_path):
     connection.close()
     assert workflows == 0
     assert tasks == 0
+
+
+def test_stale_unbound_reservation_is_failed_instead_of_staying_stuck(tmp_path):
+    repository = make_repository(tmp_path)
+    repository.reserve("user-1", "/agent/workflows", "stale-key", "digest-stale")
+    connection = sqlite3.connect(repository.database_path)
+    connection.execute(
+        "UPDATE workflow_submission_keys SET updated_at = ? WHERE idempotency_key = ?",
+        ("2020-01-01T00:00:00+00:00", "stale-key"),
+    )
+    connection.commit()
+    connection.close()
+
+    recovered = repository.reserve(
+        "user-1", "/agent/workflows", "stale-key", "digest-stale"
+    )
+
+    assert recovered["state"] == "failed"
+    assert recovered["created"] is False
+    with pytest.raises(SubmissionStateError, match="Only a reserved"):
+        repository.bind(
+            "user-1", "/agent/workflows", "stale-key", "digest-stale", "workflow-1", "task-1"
+        )
