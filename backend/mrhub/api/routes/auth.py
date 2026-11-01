@@ -67,13 +67,24 @@ def login(
     client_key = request.client.host if request.client else "unknown"
     retry_after = limiter.retry_after(client_key)
     if retry_after:
-        response.headers["Retry-After"] = str(retry_after)
-        raise HTTPException(status_code=429, detail="Too many failed login attempts")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts",
+            headers={
+                "Retry-After": str(retry_after),
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+            },
+        )
 
     result = service.login(payload.username, payload.password)
     if result is None:
         limiter.record_failure(client_key)
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+            headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        )
     limiter.reset(client_key)
     token, user = result
     return SessionResponse(
