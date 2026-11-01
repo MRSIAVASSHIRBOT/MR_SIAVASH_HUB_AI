@@ -4,12 +4,13 @@ from __future__ import annotations
 import argparse
 import logging
 import signal
-import time
 from threading import Event
 
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker import WorkerEngine
+
+logger = logging.getLogger(__name__)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -45,7 +46,11 @@ def main() -> int:
     while not stop.is_set():
         task = worker.run_once()
         if task is not None:
-            logging.info("worker task finished: task_id=%s status=%s", task.task_id, task.status.value)
+            logger.info(
+                "worker task finished: task_id=%s status=%s",
+                task.task_id,
+                task.status.value,
+            )
         if args.once:
             break
         if task is None:
