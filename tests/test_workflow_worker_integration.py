@@ -29,8 +29,15 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     recovery = WorkflowRecoveryRepository(repository.database_path)
+    with repository._connection() as connection:
+        owner_row = connection.execute(
+            "SELECT owner_user_id FROM workflow_runs WHERE workflow_id = ?",
+            (str(workflow_id),),
+        ).fetchone()
+    assert owner_row is not None
+    owner_user_id = owner_row["owner_user_id"]
     encrypted = recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="local-owner"
+        workflow_id, owner_user_id=owner_user_id
     )
     assert encrypted is not None
     assert encrypted["task_id"] == str(task_id)
@@ -50,7 +57,7 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
     assert stored_workflow["status"] == "succeeded"
     assert stored_workflow["steps"][1]["status"] == "succeeded"
     assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="local-owner"
+        workflow_id, owner_user_id=owner_user_id
     ) is None
 
     worker_result = __import__(
