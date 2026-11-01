@@ -247,7 +247,7 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_worker_instances_heartbeat ON worker_instances(status, heartbeat_at)",
         ),
-    ),,
+    ),
     Migration.build(
         9,
         "capability_discovery_catalog",
