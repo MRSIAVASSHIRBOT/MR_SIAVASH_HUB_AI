@@ -33,12 +33,5 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Run test suite
         run: python -m pytest
-      - name: Lint changed workflow files
-        run: >-
-          python -m ruff check
-          backend/mrhub/agents/submission_repository.py
-          backend/mrhub/api/routes/agent.py
-          backend/mrhub/infrastructure/migrations.py
-          tests/test_migrations.py
-          tests/test_workflow_submission_repository.py
-          tests/test_workflow_submission_api.py
+      - name: Lint backend and tests
+        run: python -m ruff check backend/mrhub tests
