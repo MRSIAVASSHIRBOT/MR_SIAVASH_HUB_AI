@@ -1,0 +1,80 @@
+# ADR-0043: Worker-owned Agent Workflow Execution
+
+- Status: Proposed
+- Phase: 4.5 — Workflow Dispatch and Cancellation
+- Date: 2026-11-01
+
+## Context
+
+The durable workflow runner currently creates a Job and a Workflow, acquires a lease, and executes AgentCore steps within the HTTP request handler. The generic pull-driven WorkerEngine is separate and supports only registered TaskRecord handlers. Generic Job cancellation changes the Job state, but there is no single worker-owned state machine coordinating cancellation with the workflow run and its current step.
+
+Simply registering the existing request-scoped runner as a handler is unsafe: the original AgentPlanRequest contains tool arguments, and current workflow recovery deliberately avoids persisting raw prompts, arguments, and outputs. A worker cannot safely resume after process restart unless the execution input has an explicit storage and privacy design.
+
+## Decisions
+
+### 1. Submission and execution are separate
+
+The HTTP endpoint must validate and plan the request, reserve idempotency, create the Job/Workflow and return a queued response. It must not execute tools or perform model inference synchronously.
+
+Only a worker holding the current lease/fencing token may advance durable workflow state. The existing explicit pull-driven model remains in place until a separately reviewed runtime lifecycle is added.
+
+### 2. No raw payload persistence by accident
+
+Before dispatching workflows through a worker, define an explicit execution-input repository. Tool arguments may contain private data, so the default design is to persist a bounded, versioned, encrypted payload only when encryption key management is available and configured. Otherwise the API must require a caller-provided resume payload or fail closed; it must not store plaintext tool arguments merely to make background execution convenient.
+
+Workflow metadata, logs, checkpoints, and audit events retain digests and identifiers rather than raw inputs or outputs. Secret values are rejected from durable input storage unless a specific secret-reference mechanism is implemented.
+
+### 3. Idempotency is atomic with submission
+
+Workflow submission accepts a bounded Idempotency-Key. A unique key is scoped to the authenticated owner and endpoint. Within one SQLite transaction, the service must reserve the key, create the Job and Workflow, and bind their IDs and request digest.
+
+- Same owner, same key, same digest: return the existing workflow without executing it again.
+- Same owner and key but different digest: return HTTP 409.
+- Concurrent duplicate submissions: exactly one reservation wins; losers read and return the existing record.
+- No raw request body is stored in the idempotency record.
+
+### 4. Cancellation is a durable request, not an optimistic state flip
+
+Cancellation is represented as a durable signal associated with the Job/Workflow. The worker checks it before each step dispatch and after each handler returns. Cancellation cannot forcibly reverse an external side effect already in flight.
+
+For an interrupted external step whose outcome cannot be verified, the step becomes unknown_outcome and requires reconciliation. The system must not label it cleanly cancelled or automatically replay it. Safe deterministic steps may be resumed only according to their explicit retry policy.
+
+Job and Workflow terminal transitions must be committed atomically where they share a database, with lease/fencing checks applied to the transition.
+
+### 5. No background thread started implicitly by an API request
+
+The API remains a submit/status interface. Worker execution is explicitly invoked by a worker process or an operator-controlled run loop. Application startup does not silently begin executing queued work.
+
+### 6. State machine and audit requirements
+
+Expected lifecycle:
+- submit: queued
+- worker claim: running
+- user cancellation before dispatch: cancelled
+- safe interrupted work: paused / resumable
+- uncertain external outcome: recovery_required
+- successful completion: succeeded
+- terminal known failure: failed
+
+Audit events record actor, Job ID, Workflow ID, transition, and reason code. They must not contain request payloads, secrets, or tool outputs.
+
+## Implementation sequence
+
+1. Add a typed, owner-scoped workflow submission/idempotency service with transaction-level concurrency tests.
+2. Define and implement execution-input retention and encryption policy before background execution requires persisted arguments.
+3. Add a registered worker handler that loads only a validated input reference, not arbitrary serialized Python objects.
+4. Refactor the runner into a worker-owned single-step state machine that checks cancellation and lease fencing at each boundary.
+5. Make Job/Workflow cancellation and terminal-state updates atomic.
+6. Add crash-injection, concurrent duplicate-submission, cancel-before-step, cancel-during-safe-step, and ambiguous-external-outcome tests.
+7. Update API contract and operations docs; keep external-side-effect tools disabled until the gates pass.
+
+## Acceptance criteria
+
+- API response time is bounded by validation and durable submission.
+- Repeated idempotent requests do not create duplicate Jobs/Workflows.
+- A cancelled workflow dispatches no subsequent step.
+- No raw tool arguments are stored in plaintext as a side effect of this refactor.
+- A valid fencing lease is required for every worker-owned state advance.
+- Job and Workflow terminal states cannot diverge after a committed transition.
+- Ambiguous side effects require reconciliation; no exactly-once guarantee is claimed for arbitrary external systems.
+- Existing tests for owner isolation, migration compatibility, recovery, and safe resume remain green.
