@@ -132,8 +132,9 @@ class WorkflowRecoveryRepository:
         owner_user_id: str | None = None,
         payload_envelope: dict[str, object] | None = None,
         workflow_id: UUID | None = None,
+        idempotency_binding: dict[str, str] | None = None,
     ) -> UUID:
-        """Create workflow/job metadata and an optional encrypted payload atomically."""
+        """Atomically create workflow/job, encrypted payload, and optional idempotency binding."""
         self._validate_digest(request_digest, "Request digest")
         if task is not None and task_id is not None:
             raise WorkflowRecoveryError("Provide either task or task_id, not both")
@@ -203,6 +204,24 @@ class WorkflowRecoveryRepository:
                     definition_version, now, now, owner_user_id,
                 ),
             )
+            if idempotency_binding is not None:
+                scope = idempotency_binding.get("scope")
+                key = idempotency_binding.get("key")
+                if not isinstance(scope, str) or not scope or not isinstance(key, str) or not key:
+                    raise WorkflowRecoveryError("Idempotency binding is invalid")
+                cursor = connection.execute(
+                    """
+                    UPDATE idempotency_records
+                    SET task_id = ?, workflow_id = ?
+                    WHERE scope = ? AND idempotency_key = ?
+                      AND request_digest = ? AND task_id IS NULL AND workflow_id IS NULL
+                      AND status = 'accepted'
+                    """,
+                    (task_id, str(workflow_id), scope, key, request_digest),
+                )
+                if cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Idempotency reservation cannot be bound")
+
             if payload_envelope is not None:
                 if task_id is None or task is None or not owner_user_id:
                     raise WorkflowRecoveryError(
