@@ -1,0 +1,37 @@
+name: OpenCode Agent
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  opencode:
+    if: >-
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'COLLABORATOR' ||
+       github.event.comment.author_association == 'MEMBER') &&
+      (contains(github.event.comment.body, '/opencode') ||
+       contains(github.event.comment.body, '/oc'))
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run OpenCode
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
+        with:
+          model: openrouter/openrouter/free
+          prompt: |
+            Work carefully on this repository. First inspect the project instructions and current architecture.
+            Make only changes relevant to the request. Do not expose secrets or modify unrelated files.
+            Run the most relevant available checks. Summarize changes, tests, and remaining risks.
