@@ -168,8 +168,8 @@ def dispatch_queued_workflow(
             if lease_lost.is_set():
                 raise RuntimeError("worker_lease_lost")
             current = repository.get(task.task_id)
-            if current is None or current.status is TaskStatus.CANCELLED:
-                raise RuntimeError("workflow_cancelled")
+            if current is None or current.status is not TaskStatus.RUNNING:
+                raise RuntimeError("workflow_cancel_requested")
 
         def on_step(number: int, status: str, error_code: str | None) -> None:
             ensure_active()
@@ -213,8 +213,21 @@ def dispatch_queued_workflow(
         }
     except Exception:
         current_task = repository.get(task.task_id)
-        if current_task is not None and current_task.status is TaskStatus.CANCELLED:
-            recovery.cancel_run(workflow_id, lease=lease)
+        if current_task is not None and current_task.status in {
+            TaskStatus.CANCELLED, TaskStatus.WAITING_APPROVAL
+        }:
+            try:
+                workflow_status = recovery.cancel_run(workflow_id, lease=lease)
+            except Exception:
+                current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+                workflow_status = current["status"] if current else "failed"
+            if workflow_status == "recovery_required":
+                return {
+                    "_worker_task_status": "waiting_approval",
+                    "workflow_id": str(workflow_id),
+                    "workflow_status": workflow_status,
+                    "error_code": "cancel_external_outcome_unknown",
+                }
             return {"_worker_task_status": "cancelled", "workflow_id": str(workflow_id)}
         if not lease_lost.is_set():
             try:
