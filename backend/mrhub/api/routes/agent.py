@@ -12,7 +12,7 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
-from mrhub.agents.worker_dispatch import enqueue_workflow
+from mrhub.agents.worker_dispatch import enqueue_workflow, queue_workflow_resume
 from mrhub.agents.execution_inputs import ExecutionInputUnavailable
 from mrhub.agents.submission_repository import (
     IdempotencyConflict,
@@ -268,23 +268,22 @@ def resume_agent_workflow(
     request: WorkflowResumeCheckRequest,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
-    """Resume an owned workflow only after re-planning and validating original inputs."""
+    """Validate supplied original inputs and queue continuation for WorkerEngine."""
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
-        plan = core.plan(request.request)
-        return AgentWorkflowRunner(tasks, core).resume(
-            workflow_id,
-            request.request,
-            plan,
-            _workflow_digest(request.request),
-            current_user.user_id,
+        return queue_workflow_resume(
+            tasks, core, workflow_id, request.request, current_user.user_id
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except ExecutionInputUnavailable as exc:
+        raise HTTPException(
+            status_code=503, detail="Encrypted workflow input is unavailable"
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Workflow is not safely resumable") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail="Workflow resume could not be completed") from exc
+        raise HTTPException(status_code=409, detail="Workflow resume could not be queued") from exc
