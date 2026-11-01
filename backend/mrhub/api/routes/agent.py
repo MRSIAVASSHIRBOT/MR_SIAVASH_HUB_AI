@@ -229,6 +229,26 @@ def get_agent_workflow(
     return workflow
 
 
+@router.post("/workflows/{workflow_id}/cancel")
+def cancel_agent_workflow(
+    workflow_id: UUID,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, str]:
+    """Request owner-scoped cancellation; running tools finish their current step."""
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    recovery = WorkflowRecoveryRepository(settings.database_path)
+    try:
+        return recovery.request_cancellation(
+            workflow_id, owner_user_id=current_user.user_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Agent workflow not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="Workflow cannot be cancelled") from exc
+
+
 @router.post("/workflows/{workflow_id}/reconciliation")
 def reconcile_agent_workflow(
     workflow_id: UUID,
