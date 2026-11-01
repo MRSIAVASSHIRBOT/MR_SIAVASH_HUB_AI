@@ -266,6 +266,10 @@ def cancel_agent_workflow(
         raise HTTPException(status_code=404, detail="Agent workflow not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Workflow cannot be cancelled") from exc
+    except RuntimeError as exc:
+        # WorkflowRecoveryError derives from RuntimeError, not ValueError.
+        # Keep invalid-state failures inside the API contract instead of leaking 500s.
+        raise HTTPException(status_code=409, detail="Workflow cannot be cancelled") from exc
 
 
 @router.post("/workflows/{workflow_id}/reconciliation")
