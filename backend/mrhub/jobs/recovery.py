@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from mrhub.domain.tasks import TaskRecord, TaskStatus
+
 
 class WorkflowRecoveryError(RuntimeError):
     """Raised when a workflow cannot safely advance or recover."""
@@ -98,10 +100,17 @@ class WorkflowRecoveryRepository:
         steps: list[dict[str, object]],
         *,
         task_id: str | None = None,
+        task: TaskRecord | None = None,
         definition_version: int = 1,
     ) -> UUID:
-        """Create a queued workflow and its step identities, excluding all payloads."""
+        """Create a queued workflow and optional linked job in one transaction."""
         self._validate_digest(request_digest, "Request digest")
+        if task is not None and task_id is not None:
+            raise WorkflowRecoveryError("Provide either task or task_id, not both")
+        if task is not None and task.status is not TaskStatus.QUEUED:
+            raise WorkflowRecoveryError("A linked workflow task must start queued")
+        if task is not None:
+            task_id = str(task.task_id)
         if definition_version < 1:
             raise WorkflowRecoveryError("Definition version must be positive")
         if not steps:
@@ -126,6 +135,24 @@ class WorkflowRecoveryRepository:
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if task is not None:
+                connection.execute(
+                    """
+                    INSERT INTO tasks (
+                        task_id, task_type, status, risk_class,
+                        created_at, updated_at, description
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(task.task_id),
+                        task.task_type,
+                        task.status.value,
+                        task.risk_class.value,
+                        task.created_at.isoformat(),
+                        task.updated_at.isoformat(),
+                        task.description,
+                    ),
+                )
             connection.execute(
                 """
                 INSERT INTO workflow_runs (
