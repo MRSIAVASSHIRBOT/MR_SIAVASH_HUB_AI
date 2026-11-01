@@ -46,6 +46,9 @@ class AgentWorkflowRepository:
                 )
                 """
             )
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_workflows)")}
+            if "owner_user_id" not in columns:
+                connection.execute("ALTER TABLE agent_workflows ADD COLUMN owner_user_id TEXT")
 
     def create(self, request_digest: str, plan: dict[str, object], *, owner_user_id: str | None = None) -> dict[str, object]:
         self.initialize()
