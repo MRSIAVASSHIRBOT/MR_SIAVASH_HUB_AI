@@ -4,7 +4,7 @@
 
 The authenticated `POST /capabilities/discover` endpoint accepts a public repository URL such as `https://github.com/OWNER/REPO`. It calls only the fixed GitHub API metadata endpoint and uses a bounded timeout and response-size limit. It records the candidate in the local catalog with repository name, description, default branch, primary language, topics, license identifier when available, archive/fork flags, update time, and public activity counts.
 
-The endpoint is metadata-only. It does not clone the repository, fetch source files, install dependencies, import modules, execute scripts, or approve the candidate. Duplicate sources return a conflict. Missing repositories, rate limits, timeouts, and upstream failures are reported with bounded error responses.
+A deterministic metadata-only triage result is also returned. It exposes a bounded 0–100 prioritization score, explainable signals, and a review recommendation based on reported license, archived/disabled/fork flags, stars, and update time. This is only a queue-prioritization aid: it is not a security audit and never approves or activates a candidate. Missing license metadata forces manual review. The endpoint does not clone the repository, fetch source files, install dependencies, import modules, execute scripts, or approve the candidate. Duplicate sources return a conflict. Missing repositories, rate limits, timeouts, and upstream failures are reported with bounded error responses.
 
 ## API example
 
@@ -20,7 +20,7 @@ Authorization: Bearer <local-session-token>
 }
 ```
 
-The result contains the discovered repository metadata, the local candidate record, and explicit false flags for source execution, installation, and approval.
+The result contains discovered repository metadata, the local candidate record, a metadata-only triage assessment, and explicit false flags for source execution, installation, and approval.
 
 ## Next stages
 
