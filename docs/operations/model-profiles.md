@@ -39,3 +39,16 @@ only marked as a candidate when its declared RAM assessment is `likely_fit`
 or `likely_tight`; GPU-required profiles remain non-candidates until GPU data
 is available. Because the current entries are unverified examples, this is a
 software-level demonstration, not a recommendation for a specific real model.
+
+
+## Provider inventory
+
+The authenticated `GET /models/providers` endpoint lists adapters registered
+in the current application configuration, including each model's declared
+capabilities, local/remote classification, selection priority, and declared
+availability. The inventory is deterministic and read-only. It does not call
+provider health endpoints, start inference, download models, or expose provider
+configuration such as base URLs and credentials. `health_status` is reported
+as `not_checked`; it must not be interpreted as live availability. Live
+provider health monitoring is a separate operation with explicit timeouts and
+failure handling.
