@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(capabilities_router)
     app.include_router(tasks_router)
     app.include_router(jobs_router)
+    app.include_router(knowledge_router)
     app.include_router(policy_router)
     app.include_router(models_router)
     app.include_router(memory_router)
