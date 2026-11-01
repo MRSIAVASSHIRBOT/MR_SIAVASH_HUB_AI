@@ -68,9 +68,10 @@ class WorkerEngine:
         self._lease_manager = LeaseManager(
             self.database_path, lease_seconds=lease_seconds, clock=self._clock
         )
-        self.handlers: dict[str, Callable[[TaskRecord], dict[str, str]]] = {
+        self.handlers: dict[str, Callable[..., dict[str, object]]] = {
             "demo.echo": self._echo,
         }
+        self.handlers["agent.workflow"] = self._run_agent_workflow
         self._initialize()
 
     def _now(self) -> datetime:
@@ -103,8 +104,18 @@ class WorkerEngine:
         self.repository.initialize()
 
     @staticmethod
-    def _echo(task: TaskRecord) -> dict[str, str]:
+    def _echo(task: TaskRecord) -> dict[str, object]:
         return {"message": task.description, "task_type": task.task_type}
+
+    def _run_agent_workflow(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Dispatch a workflow using the worker's canonical lease."""
+        from mrhub.jobs.workflow_dispatch import WorkflowWorkerHandler
+
+        return WorkflowWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
 
     def _recover_interrupted(self) -> None:
         """Recover stale jobs without replaying an ambiguous workflow step."""
@@ -283,7 +294,6 @@ class WorkerEngine:
                 SELECT t.* FROM tasks AS t
                 LEFT JOIN worker_executions AS e ON e.task_id = t.task_id
                 WHERE t.status = ?
-                  AND t.task_type != 'agent.workflow'
                   AND (e.next_attempt_at IS NULL OR e.next_attempt_at <= ?)
                 ORDER BY t.created_at LIMIT 1
                 """,
@@ -408,7 +418,10 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            result = handler(task)
+            if task.task_type == "agent.workflow":
+                result = handler(task, lease, lease_lost)
+            else:
+                result = handler(task)
         except RetryableWorkerError:
             return self._schedule_retry_or_fail(task, lease=lease)
         except (ValueError, TypeError, KeyError):
