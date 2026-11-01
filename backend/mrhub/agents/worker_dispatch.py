@@ -152,17 +152,33 @@ def dispatch_queued_workflow(
 
     attempts: dict[int, StepAttempt] = {}
     try:
+        decision = recovery.resume_decision(
+            workflow_id, row["request_digest"], owner_user_id=owner_user_id
+        )
+        if decision.decision not in {"resume", "finish"}:
+            raise ValueError("workflow_not_resumable")
         if lease_lost.is_set():
             raise RuntimeError("worker_lease_lost")
         recovery.start_run(workflow_id, lease=lease)
-        provider_attempt = recovery.start_step(workflow_id, 1, lease=lease)
-        provider_bytes = json.dumps(
-            plan.get("selected_provider", {}), sort_keys=True, separators=(",", ":")
-        ).encode()
-        recovery.complete_step(
-            workflow_id, provider_attempt, hashlib.sha256(provider_bytes).hexdigest(),
-            lease=lease,
-        )
+        start_step = decision.next_step or 2
+        if decision.decision == "finish":
+            recovery.finish_run(workflow_id, "succeeded", lease=lease)
+            return {
+                "_worker_task_status": "succeeded",
+                "workflow_id": str(workflow_id),
+                "execution_completed": True,
+                "executed_tool_count": 0,
+            }
+        if start_step == 1:
+            provider_attempt = recovery.start_step(workflow_id, 1, lease=lease)
+            provider_bytes = json.dumps(
+                plan.get("selected_provider", {}), sort_keys=True, separators=(",", ":")
+            ).encode()
+            recovery.complete_step(
+                workflow_id, provider_attempt, hashlib.sha256(provider_bytes).hexdigest(),
+                lease=lease,
+            )
+            start_step = 2
 
         def ensure_active() -> None:
             if lease_lost.is_set():
@@ -191,7 +207,9 @@ def dispatch_queued_workflow(
                 raise RuntimeError("workflow_step_attempt_missing")
             recovery.complete_step(workflow_id, attempt, output_digest, lease=lease)
 
-        execution = core.execute(request, on_step=on_step, on_step_result=on_step_result)
+        execution = core.execute(
+            request, on_step=on_step, on_step_result=on_step_result, start_step=start_step
+        )
         current = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if execution.get("execution_completed"):
             recovery.finish_run(workflow_id, "succeeded", lease=lease)
