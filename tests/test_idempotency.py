@@ -1,10 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 
-from mrhub.infrastructure.database import TaskRepository
 from mrhub.domain.tasks import TaskRecord
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.idempotency import (
     IdempotencyConflict,
     IdempotencyError,
