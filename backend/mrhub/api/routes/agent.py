@@ -5,13 +5,17 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.agents.submission_repository import (
+    IdempotencyConflict,
+    WorkflowSubmissionRepository,
+)
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
@@ -85,24 +89,87 @@ def _workflow_digest(request: AgentPlanRequest) -> str:
 def execute_agent_workflow(
     request: AgentPlanRequest,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=128)] = None,
 ) -> dict[str, object]:
-    """Execute an allowed workflow under the canonical Job lifecycle."""
+    """Execute an allowed workflow; optional idempotency keys prevent duplicate submissions."""
     core = AgentCore(build_model_router(), build_tool_registry())
+    settings = get_settings()
+    submission_repository = WorkflowSubmissionRepository(settings.database_path)
     try:
         plan = core.plan(request)
         request_digest = _workflow_digest(request)
         if not plan["execution_ready"]:
             # Preserve legacy blocked-workflow history without creating an executable job.
-            legacy = AgentWorkflowRepository(get_settings().database_path)
+            legacy = AgentWorkflowRepository(settings.database_path)
             workflow = legacy.create(request_digest, plan, owner_user_id=current_user.user_id)
             return {"workflow": workflow, "execution": None}
 
-        settings = get_settings()
+        if idempotency_key is not None:
+            try:
+                reservation = submission_repository.reserve(
+                    current_user.user_id,
+                    "/agent/workflows",
+                    idempotency_key,
+                    request_digest,
+                )
+            except IdempotencyConflict as exc:
+                raise HTTPException(status_code=409, detail="Idempotency key reused with different request") from exc
+
+            if not reservation["created"]:
+                if reservation["state"] == "bound":
+                    workflow_id = UUID(str(reservation["workflow_id"]))
+                    workflow = WorkflowRecoveryRepository(settings.database_path).get_run(
+                        workflow_id, owner_user_id=current_user.user_id
+                    )
+                    if workflow is None:
+                        raise HTTPException(status_code=409, detail="Existing idempotent workflow is unavailable")
+                    return {
+                        "workflow": workflow,
+                        "execution": None,
+                        "idempotent_replay": True,
+                    }
+                if reservation["state"] == "reserved":
+                    return {
+                        "submission_state": "reserved",
+                        "execution_started": False,
+                        "idempotent_replay": True,
+                    }
+                raise HTTPException(status_code=409, detail="Previous submission failed; use a new idempotency key")
+
         task_repository = TaskRepository(settings.database_path)
         task_repository.initialize()
-        return AgentWorkflowRunner(task_repository, core).execute(
-            request, plan, request_digest, current_user.user_id
-        )
+        try:
+            result = AgentWorkflowRunner(task_repository, core).execute(
+                request, plan, request_digest, current_user.user_id
+            )
+            if idempotency_key is not None:
+                workflow = result.get("workflow", {})
+                workflow_id = workflow.get("workflow_id") if isinstance(workflow, dict) else None
+                task_id = workflow.get("task_id") if isinstance(workflow, dict) else None
+                if not workflow_id or not task_id:
+                    submission_repository.mark_failed(
+                        current_user.user_id, "/agent/workflows", idempotency_key, request_digest
+                    )
+                    raise RuntimeError("Workflow execution returned no durable workflow/task identifiers")
+                submission_repository.bind(
+                    current_user.user_id,
+                    "/agent/workflows",
+                    idempotency_key,
+                    request_digest,
+                    str(workflow_id),
+                    str(task_id),
+                )
+            return result
+        except Exception:
+            if idempotency_key is not None:
+                try:
+                    submission_repository.mark_failed(
+                        current_user.user_id, "/agent/workflows", idempotency_key, request_digest
+                    )
+                except Exception:
+                    # Keep the original execution error; a failed reservation blocks replay.
+                    pass
+            raise
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
