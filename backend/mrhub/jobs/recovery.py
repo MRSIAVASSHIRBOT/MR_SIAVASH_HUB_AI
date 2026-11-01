@@ -239,6 +239,35 @@ class WorkflowRecoveryRepository:
                     raise WorkflowRecoveryError("Submission reservation changed before atomic binding")
         return workflow_id
 
+    def fail_queued_run(self, workflow_id: UUID, *, error_code: str) -> None:
+        """Mark a never-started workflow failed if its encrypted input cannot be saved."""
+        if not self._ERROR_PATTERN.fullmatch(error_code):
+            raise WorkflowRecoveryError("Invalid bounded error code")
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT task_id, status FROM workflow_runs WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchone()
+            if run is None:
+                raise LookupError("Workflow not found")
+            if run["status"] != "queued":
+                raise WorkflowRecoveryError("Workflow is not queued")
+            connection.execute(
+                "UPDATE workflow_runs SET status = 'failed', last_error_code = ?, updated_at = ? WHERE workflow_id = ? AND status = 'queued'",
+                (error_code, now, str(workflow_id)),
+            )
+            if run["task_id"] is not None:
+                connection.execute(
+                    "UPDATE tasks SET status = 'failed', updated_at = ? WHERE task_id = ? AND status = 'queued'",
+                    (now, run["task_id"]),
+                )
+                connection.execute(
+                    "UPDATE worker_executions SET error_code = ?, finished_at = ? WHERE task_id = ?",
+                    (error_code, now, run["task_id"]),
+                )
+
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
         now = self._now()
         with self._connection() as connection:
