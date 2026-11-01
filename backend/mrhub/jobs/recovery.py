@@ -268,7 +268,34 @@ class WorkflowRecoveryRepository:
                     (error_code, now, run["task_id"]),
                 )
 
-    def cancel_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
+    def cancel_queued_run(self, workflow_id: UUID) -> None:
+        """Atomically cancel a workflow and linked task before worker dispatch."""
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT task_id, status FROM workflow_runs WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchone()
+            if run is None:
+                raise LookupError("Workflow not found")
+            if run["status"] != "queued":
+                raise WorkflowRecoveryError("Workflow is no longer queued")
+            connection.execute(
+                "UPDATE workflow_runs SET status = 'cancelled', last_error_code = 'cancelled_before_dispatch', updated_at = ? WHERE workflow_id = ? AND status = 'queued'",
+                (now, str(workflow_id)),
+            )
+            if run["task_id"] is not None:
+                connection.execute(
+                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'queued'",
+                    (now, run["task_id"]),
+                )
+                connection.execute(
+                    "UPDATE worker_executions SET error_code = 'cancelled_before_dispatch', finished_at = ? WHERE task_id = ?",
+                    (now, run["task_id"]),
+                )
+
+    def cancel_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> str:
         """Persist cancellation under the current worker fencing token."""
         now = self._now()
         with self._connection() as connection:
@@ -305,6 +332,7 @@ class WorkflowRecoveryRepository:
                 "UPDATE workflow_runs SET status = ?, last_error_code = ?, updated_at = ? WHERE workflow_id = ?",
                 (status, code, now, str(workflow_id)),
             )
+            return status
 
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
         now = self._now()
