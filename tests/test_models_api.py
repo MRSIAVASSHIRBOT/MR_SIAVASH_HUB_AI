@@ -75,3 +75,33 @@ def test_model_resource_assessment_returns_insufficient_data_when_gpu_is_require
     assert response.json()["status"] == "insufficient_data"
     assert response.json()["starts_inference"] is False
     get_settings.cache_clear()
+
+
+
+def test_model_profile_catalog_endpoint_is_authenticated_and_explicit(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    response = client.get("/models/profiles")
+    assert response.status_code == 200
+    assert len(response.json()) >= 2
+    assert all(profile["verified"] is False for profile in response.json())
+    get_settings.cache_clear()
+
+
+def test_unknown_model_profile_returns_404(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    response = client.get("/models/profiles/not-a-real-profile")
+    assert response.status_code == 404
+    get_settings.cache_clear()
+
+
+def test_model_profile_catalog_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.get("/models/profiles")
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
