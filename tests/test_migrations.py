@@ -104,6 +104,15 @@ def test_v3_preserves_legacy_agent_workflow_rows(tmp_path):
     assert connection.execute(
         "SELECT 1 FROM workflow_runs WHERE workflow_id = 'legacy-1'"
     ).fetchone() is None
+    # Historical rows have no trustworthy owner identity. Migration must preserve
+    # them without guessing an owner or making them visible to arbitrary users.
+    columns = {
+        item["name"] for item in connection.execute("PRAGMA table_info(agent_workflows)")
+    }
+    assert "owner_user_id" in columns
+    assert connection.execute(
+        "SELECT owner_user_id FROM agent_workflows WHERE workflow_id = 'legacy-1'"
+    ).fetchone()["owner_user_id"] is None
     connection.close()
 
 
