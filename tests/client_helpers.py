@@ -3,9 +3,9 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-from cryptography.fernet import Fernet
-
 from fastapi.testclient import TestClient
+
+from cryptography.fernet import Fernet
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
