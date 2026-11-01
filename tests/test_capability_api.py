@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
+from mrhub.capabilities.github_discovery import GitHubDiscoveryError
 from mrhub.config import get_settings
 from mrhub.main import create_app
-from mrhub.capabilities.github_discovery import GitHubDiscoveryError
 
 
 def test_capability_candidate_registration_and_list_are_authenticated(tmp_path, monkeypatch):
