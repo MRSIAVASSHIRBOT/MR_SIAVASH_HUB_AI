@@ -69,10 +69,10 @@ def list_candidates(
     ] | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> dict[str, object]:
-    registry = get_registry()
+    items = get_registry().list_candidates(status=candidate_status, limit=limit)
     return {
-        "items": [item.as_dict() for item in registry.list_candidates(status=candidate_status, limit=limit)],
-        "count": len(registry.list_candidates(status=candidate_status, limit=limit)),
+        "items": [item.as_dict() for item in items],
+        "count": len(items),
         "allowed_statuses": sorted(STATUSES),
     }
 
