@@ -345,3 +345,26 @@ def test_interrupted_safe_step_becomes_retry_wait_not_unknown_outcome(tmp_path):
     decision = repository.resume_decision(workflow_id, "a" * 64)
     assert decision.decision == "resume"
     assert decision.next_step == 1
+
+
+
+def test_workflow_records_are_scoped_to_the_authenticated_owner(tmp_path):
+    repository = make_repository(tmp_path)
+    task = TaskRecord(task_type="agent.workflow", description="owned workflow")
+    workflow_id = repository.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
+        task=task,
+        owner_user_id="user-a",
+    )
+
+    assert repository.get_run(workflow_id, owner_user_id="user-a") is not None
+    assert repository.get_run(workflow_id, owner_user_id="user-b") is None
+    with pytest.raises(LookupError, match="Workflow not found"):
+        repository.resume_decision(
+            workflow_id, "a" * 64, owner_user_id="user-b"
+        )
+    with pytest.raises(LookupError, match="Workflow not found"):
+        repository.resolve_unknown_step(
+            workflow_id, 1, "failed", owner_user_id="user-b"
+        )
