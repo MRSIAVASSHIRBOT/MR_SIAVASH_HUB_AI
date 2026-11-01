@@ -531,20 +531,21 @@ def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
 
 
 
-def test_generic_worker_does_not_claim_agent_workflow_jobs(tmp_path):
-    """Workflow jobs require the workflow runner, not generic task handlers."""
+def test_worker_fails_closed_for_workflow_without_encrypted_payload(tmp_path):
+    """A queued workflow without owner-bound encrypted input must never execute."""
     repository, worker = make_worker(tmp_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
-    task = TaskRecord(task_type="agent.workflow", description="workflow must stay queued")
+    task = TaskRecord(task_type="agent.workflow", description="missing payload")
     workflow_id = recovery.create_run(
         "e" * 64,
         [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
         task=task,
     )
 
-    assert worker.run_once() is None
+    result = worker.run_once()
 
     stored_task = repository.get(task.task_id)
     stored_workflow = recovery.get_run(workflow_id)
-    assert stored_task is not None and stored_task.status is TaskStatus.QUEUED
-    assert stored_workflow is not None and stored_workflow["status"] == "queued"
+    assert result is not None and result.status is TaskStatus.FAILED
+    assert stored_task is not None and stored_task.status is TaskStatus.FAILED
+    assert stored_workflow is not None and stored_workflow["status"] == "failed"
