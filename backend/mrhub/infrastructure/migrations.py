@@ -275,9 +275,51 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_capability_candidates_status_updated ON capability_candidates(status, updated_at)",
         ),
     ),
+    Migration.build(
+        10,
+        "owner_scoped_memory_and_fts5",
+        (
+            """CREATE TABLE IF NOT EXISTS memory_entries (
+                memory_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                scope TEXT NOT NULL DEFAULT 'private' CHECK (scope = 'private'),
+                category TEXT NOT NULL CHECK (length(category) BETWEEN 1 AND 80),
+                content TEXT NOT NULL CHECK (length(content) BETWEEN 1 AND 2000),
+                provenance TEXT NOT NULL CHECK (length(provenance) BETWEEN 1 AND 300),
+                confidence REAL NOT NULL DEFAULT 0.7 CHECK (confidence >= 0.0 AND confidence <= 1.0),
+                verification_status TEXT NOT NULL CHECK (
+                    verification_status IN ('user_authored', 'user_approved')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                expires_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_memory_owner_updated ON memory_entries(owner_user_id, updated_at)",
+            """CREATE VIRTUAL TABLE IF NOT EXISTS memory_entries_fts USING fts5(
+                memory_id UNINDEXED,
+                owner_user_id UNINDEXED,
+                category,
+                content,
+                provenance,
+                tokenize='unicode61'
+            )""",
+            """CREATE TRIGGER IF NOT EXISTS memory_entries_ai AFTER INSERT ON memory_entries BEGIN
+                INSERT INTO memory_entries_fts(memory_id, owner_user_id, category, content, provenance)
+                VALUES (new.memory_id, new.owner_user_id, new.category, new.content, new.provenance);
+            END""",
+            """CREATE TRIGGER IF NOT EXISTS memory_entries_au AFTER UPDATE ON memory_entries BEGIN
+                DELETE FROM memory_entries_fts WHERE memory_id = old.memory_id;
+                INSERT INTO memory_entries_fts(memory_id, owner_user_id, category, content, provenance)
+                VALUES (new.memory_id, new.owner_user_id, new.category, new.content, new.provenance);
+            END""",
+            """CREATE TRIGGER IF NOT EXISTS memory_entries_ad AFTER DELETE ON memory_entries BEGIN
+                DELETE FROM memory_entries_fts WHERE memory_id = old.memory_id;
+            END""",
+        ),
+    ),
 )
 
-
+ 
 class SchemaMigrator:
     """Applies immutable schema versions and detects migration-history drift."""
 
