@@ -32,7 +32,7 @@ This checklist tracks the 19-step workflow hardening sequence. Status distinguis
 
 ## Acceptance criteria
 
-1. CI passed on commit `e1e5a7ad173601fbb50a2619c81b030d63be4ac7`, including dependency audit, lint, and tests. Rerun before merge if any further code changes are pushed.
+1. Backend CI and CI passed on the reviewed head `43306eb107a2c2edf771b18e9d0d43fde0e13459`, including dependency audit, lint, and tests. Any subsequent code or documentation commit requires a fresh latest-head check before merge.
 2. A cancellation request survives worker interruption and cannot be overwritten by late success.
 3. Lease-losing workers cannot commit checkpoints, results, or terminal transitions.
 4. Unknown external outcomes remain blocked from automatic replay until reconciled.
