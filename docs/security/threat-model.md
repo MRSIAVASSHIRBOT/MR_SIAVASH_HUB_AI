@@ -43,6 +43,8 @@ Treat user content, model output, web pages, documents, and plugin responses as 
 | Destructive file or repository changes | Dry-run, diff preview, backup, explicit approval and rollback plan |
 | Resource exhaustion | Bounded concurrency, CPU/memory/time limits, queue quotas |
 | Local API exposure | Loopback bind by default, authentication, CSRF protections where relevant |
+| Password guessing / login resource exhaustion | Per-client failed-login throttling, bounded limiter state, generic authentication errors, no-store responses |
+| Session token disclosure through caches | Bearer tokens returned only in no-store responses; session tokens stored as hashes |
 | Audit tampering or data loss | Append-oriented audit records, backup, integrity checks |
 
 ## 5. Risk classes
@@ -79,5 +81,7 @@ The Cybersecurity Lab is limited to defensive and authorized work: static analys
 ## 9. Verification
 
 Security tests must cover authorization boundaries, prompt-injection resistance at the tool boundary, SSRF controls, upload limits, secret redaction, workspace isolation, cancellation, and approval-token binding.
+
+The current login throttle is process-local and assumes the documented single-process local runtime. A multi-worker or reverse-proxy deployment must use a shared rate-limit store and trusted-proxy configuration before exposure; forwarded client-address headers are not trusted by the application.
 
 This is an initial threat model. Update it whenever a new integration, permission, data source, or execution capability is introduced.
