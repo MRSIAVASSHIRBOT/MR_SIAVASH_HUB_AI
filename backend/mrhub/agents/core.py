@@ -60,7 +60,7 @@ class AgentCore:
                 result = self.tool_registry.invoke(
                     requested_tool.name, requested_tool.payload
                 )
-            except Exception:
+            except (ValueError, TypeError, KeyError, RuntimeError):
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
