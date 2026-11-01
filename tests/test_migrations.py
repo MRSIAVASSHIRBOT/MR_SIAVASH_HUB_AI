@@ -195,3 +195,32 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     }
     assert "owner_user_id" in agent_run_columns
     connection.close()
+
+
+def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations
+
+    connection = connect(tmp_path / "historical-agent-runs.sqlite3")
+    original = migrations.MIGRATIONS
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:5])
+    SchemaMigrator(connection).migrate()
+    connection.execute(
+        """INSERT INTO agent_runs (
+            run_id, request_digest, status, provider_name, model_name,
+            plan_json, tool_names_json, executed_tool_count, error_code, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            "historical-run", "a" * 64, "succeeded", None, None,
+            "{}", "[]", 0, None, "2026-01-01T00:00:00+00:00",
+        ),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations, "MIGRATIONS", original)
+    SchemaMigrator(connection).migrate()
+
+    row = connection.execute(
+        "SELECT owner_user_id FROM agent_runs WHERE run_id = 'historical-run'"
+    ).fetchone()
+    assert row["owner_user_id"] is None
+    connection.close()
