@@ -57,3 +57,17 @@ payloads, or tool outputs. The immediate execution response still returns
 outputs to the authenticated caller; the history endpoint deliberately does
 not. The current implementation records completed, blocked, or failed
 synchronous executions. It is not yet a resumable background workflow.
+
+
+## Workflow step transition integrity
+
+Workflow step updates use a SQLite immediate write transaction and an explicit
+transition table. A step can move from pending to running, then to exactly one
+terminal state (succeeded, failed, or blocked). Terminal steps cannot be
+reopened or replayed through the repository API. This serializes competing
+writers and prevents duplicate state transitions.
+
+This is a concurrency and audit-integrity safeguard, not automatic crash
+recovery. A process that stops while a step is running leaves that step
+ambiguous; it must not be replayed until the system can prove the operation is
+idempotent or obtain a safe, explicit recovery decision.
