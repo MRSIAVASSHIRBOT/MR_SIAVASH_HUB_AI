@@ -16,12 +16,12 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert migrator.migrate() == [1, 2, 3, 4, 5, 6, 7, 8, 9]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
@@ -31,7 +31,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     } <= worker_columns
     assert {
         "workflow_runs", "workflow_steps", "workflow_step_attempts",
-        "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads",
+        "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads", "capability_candidates",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -66,7 +66,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5, 6, 7, 8, 9]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
@@ -182,7 +182,7 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
     tables = {
         row["name"]
         for row in connection.execute(
