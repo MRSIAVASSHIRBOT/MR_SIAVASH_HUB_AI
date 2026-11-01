@@ -78,4 +78,44 @@ class JobEngine:
         return saved
 
     def cancel(self, task_id: UUID) -> TaskRecord:
+        """Coordinate workflow cancellation without claiming an external effect was undone."""
+        current = self.repository.get(task_id)
+        if current is None:
+            raise KeyError("Task not found")
+        if current.task_type == "agent.workflow":
+            from mrhub.jobs.recovery import WorkflowRecoveryRepository
+
+            recovery = WorkflowRecoveryRepository(self.repository.database_path)
+            with self.repository._connection() as connection:
+                run = connection.execute(
+                    "SELECT workflow_id, status FROM workflow_runs WHERE task_id = ?",
+                    (str(task_id),),
+                ).fetchone()
+                active_external = False
+                if run is not None and run["status"] == "running":
+                    active_external = connection.execute(
+                        "SELECT 1 FROM workflow_steps WHERE workflow_id = ? AND status = 'running' AND step_kind = 'external_tool' LIMIT 1",
+                        (run["workflow_id"],),
+                    ).fetchone() is not None
+            if run is not None and run["status"] == "queued" and current.status is TaskStatus.QUEUED:
+                recovery.cancel_queued_run(UUID(run["workflow_id"]))
+                saved = self.repository.get(task_id)
+                if saved is None:
+                    raise KeyError("Task not found")
+                AuditLogger(self.repository).record(
+                    event_type="task.status_changed",
+                    outcome="success",
+                    subject_id=str(task_id),
+                    metadata={
+                        "task_type": current.task_type,
+                        "previous_status": current.status.value,
+                        "new_status": TaskStatus.CANCELLED.value,
+                        "risk_class": current.risk_class.value,
+                    },
+                )
+                return saved
+            if active_external and current.status is TaskStatus.RUNNING:
+                # The worker will fence and reconcile the in-flight step. Do not report
+                # cancellation as complete while an external side effect may be in flight.
+                return self.transition(task_id, TaskStatus.WAITING_APPROVAL)
         return self.transition(task_id, TaskStatus.CANCELLED)
