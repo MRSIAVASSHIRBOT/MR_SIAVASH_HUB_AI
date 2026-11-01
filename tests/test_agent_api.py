@@ -155,7 +155,8 @@ def test_agent_workflow_executes_and_persists_each_step():
     assert workflow["stored_request"] is False
     assert workflow["stored_step_payloads"] is False
     assert workflow["stored_step_outputs"] is False
-    assert body["execution"]["execution_completed"] is True
+    assert body["execution"] is None
+    assert body["queue"]["status"] == "queued"
     assert workflow["task_id"] is not None
 
     linked_task = client.get(f"/tasks/{workflow['task_id']}")
