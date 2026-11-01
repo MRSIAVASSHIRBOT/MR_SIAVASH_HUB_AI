@@ -11,6 +11,7 @@ from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.capabilities import router as capabilities_router
 from mrhub.api.routes.health import router as health_router
 from mrhub.api.routes.jobs import router as jobs_router
+from mrhub.api.routes.memory import router as memory_router
 from mrhub.api.routes.models import router as models_router
 from mrhub.api.routes.policy import router as policy_router
 from mrhub.api.routes.tasks import router as tasks_router
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(policy_router)
     app.include_router(models_router)
+    app.include_router(memory_router)
     app.include_router(tools_router)
     app.include_router(agent_router)
     return app
