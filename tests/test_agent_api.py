@@ -221,6 +221,8 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
         },
     )
     assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
     workflow_id = created.json()["workflow"]["workflow_id"]
     checked = client.post(
         f"/agent/workflows/{workflow_id}/resume-check",
@@ -248,6 +250,8 @@ def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step():
     }
     created = client.post("/agent/workflows", json=original)
     assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
 
@@ -370,6 +374,8 @@ def test_agent_workflow_resume_rejects_changed_original_request_without_executio
     }
     created = client.post("/agent/workflows", json=original)
     assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
 
@@ -418,6 +424,8 @@ def test_agent_workflow_duplicate_resume_does_not_replay_completed_work():
     }
     created = client.post("/agent/workflows", json=original)
     assert created.status_code == 200
+    from client_helpers import run_worker_once
+    assert run_worker_once() is not None
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
 
