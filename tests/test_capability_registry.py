@@ -89,6 +89,25 @@ def test_approval_requires_license_security_compatibility_and_test_plan(tmp_path
     assert set(approved.evidence) == set(evidence)
 
 
+def test_approval_rejects_non_https_license_evidence(tmp_path):
+    registry = make_registry(tmp_path)
+    candidate = registry.add_candidate(
+        source_url="https://github.com/example/tool", display_name="Tool"
+    )
+    registry.transition(candidate.candidate_id, "reviewing")
+    evidence = {
+        "license_url": "http://example.com/LICENSE",
+        "security_review": "Reviewed without executing upstream code.",
+        "compatibility_notes": "Requires an adapter boundary.",
+        "test_plan": "Run contract and regression tests.",
+    }
+
+    with pytest.raises(CapabilityValidationError, match="public HTTPS license URL"):
+        registry.transition(
+            candidate.candidate_id, "approved", license_id="MIT", evidence=evidence
+        )
+
+
 def test_status_transitions_are_enforced_and_rejected_sources_can_be_revisited(tmp_path):
     registry = make_registry(tmp_path)
     candidate = registry.add_candidate(
