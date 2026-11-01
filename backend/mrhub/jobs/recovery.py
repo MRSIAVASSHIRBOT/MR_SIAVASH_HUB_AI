@@ -763,6 +763,32 @@ class WorkflowRecoveryRepository:
                 return ResumeDecision("resume", next_step["step_number"], checkpoint_version, None)
             return ResumeDecision("finish", None, checkpoint_version, "all_steps_succeeded")
 
+    def get_encrypted_payload(
+        self, workflow_id: UUID, *, owner_user_id: str
+    ) -> dict[str, object] | None:
+        """Return encrypted bytes only for the matching owner; never decrypt here."""
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT workflow_id, task_id, owner_user_id, envelope_version,
+                       nonce_b64, ciphertext_b64, created_at
+                FROM workflow_payloads
+                WHERE workflow_id = ? AND owner_user_id = ?
+                """,
+                (str(workflow_id), owner_user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "workflow_id": row["workflow_id"],
+            "task_id": row["task_id"],
+            "owner_user_id": row["owner_user_id"],
+            "version": row["envelope_version"],
+            "nonce_b64": row["nonce_b64"],
+            "ciphertext_b64": row["ciphertext_b64"],
+            "created_at": row["created_at"],
+        }
+
     def get_run(self, workflow_id: UUID, *, owner_user_id: str | None = None) -> dict[str, object] | None:
         with self._connection() as connection:
             run = connection.execute(
