@@ -244,7 +244,7 @@ class SchemaMigrator:
                     self._ensure_column("worker_executions", "lease_owner", "TEXT")
                     self._ensure_column("worker_executions", "lease_expires_at", "TEXT")
                     self._ensure_column("worker_executions", "heartbeat_at", "TEXT")
-                    self._ensure_column("worker_executions", "execution_token", "TEXT")
+                    self._ensure_column("worker_executions", "execution_token", "INTEGER NOT NULL DEFAULT 0")
 
                 from datetime import UTC, datetime
 
