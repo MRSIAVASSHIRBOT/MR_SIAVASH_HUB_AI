@@ -101,7 +101,7 @@ class ToolRegistry:
 
         try:
             raw_result = tool.handler(validated_input)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ToolExecutionError("Tool handler failed") from exc
         validated_output = tool.output_model.model_validate(raw_result)
         return validated_output.model_dump(mode="json")
