@@ -135,6 +135,119 @@ class TelegramBotApiAdapter:
             self._client.close()
 
 
+class InstagramGraphImageAdapter:
+    """Publish one approved image via Instagram Graph API; public media hosting is required."""
+
+    def __init__(
+        self,
+        access_token: str,
+        instagram_user_id: str,
+        api_version: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> None:
+        if not access_token.strip() or not instagram_user_id.strip():
+            raise ValueError("Instagram credentials are required")
+        if not re.fullmatch(r"v[0-9]+[.][0-9]+", api_version):
+            raise ValueError("A valid explicit Graph API version is required")
+        self._access_token = access_token
+        self._user_id = instagram_user_id
+        self._api_version = api_version
+        self._base_url = f"https://graph.facebook.com/{api_version}"
+        self._client = client or httpx.Client(timeout=20.0, follow_redirects=False, trust_env=False)
+        self._owns_client = client is None
+
+    @staticmethod
+    def _validate_public_media_url(value: object) -> str:
+        if not isinstance(value, str) or len(value) > 2_000:
+            raise PermanentPublishError("Instagram image URL is missing or invalid")
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+        ):
+            raise PermanentPublishError("Instagram requires a public HTTPS media URL")
+        hostname = parsed.hostname.rstrip(".").lower()
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
+            raise PermanentPublishError("Instagram media URL must use a public hostname")
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            address = None
+        if address is not None and (
+            address.is_private or address.is_loopback or address.is_link_local
+            or address.is_multicast or address.is_reserved or address.is_unspecified
+        ):
+            raise PermanentPublishError("Instagram media URL must use a public address")
+        return value
+
+    def _post(self, endpoint: str, data: dict[str, str]) -> dict[str, Any]:
+        try:
+            response = self._client.post(
+                f"{self._base_url}/{endpoint}",
+                data={**data, "access_token": self._access_token},
+            )
+        except httpx.HTTPError as exc:
+            raise UnknownPublishOutcome("Instagram Graph API request outcome is unknown") from exc
+        if response.status_code == 429:
+            raise TransientPublishError("Instagram Graph API rate limited the request")
+        if response.status_code >= 500:
+            raise UnknownPublishOutcome("Instagram Graph API returned an ambiguous server response")
+        if response.status_code >= 400:
+            raise PermanentPublishError("Instagram Graph API rejected the request")
+        try:
+            payload: Any = response.json()
+        except ValueError as exc:
+            raise UnknownPublishOutcome("Instagram Graph API returned an unreadable response") from exc
+        if not isinstance(payload, dict):
+            raise UnknownPublishOutcome("Instagram Graph API returned an unexpected response")
+        if payload.get("error"):
+            error = payload["error"]
+            code = error.get("code") if isinstance(error, dict) else None
+            if code == 4:
+                raise TransientPublishError("Instagram Graph API rate limited the request")
+            raise PermanentPublishError("Instagram Graph API rejected the request")
+        return payload
+
+    def publish(
+        self, draft: dict[str, object], *, idempotency_key: str
+    ) -> PublishReceipt:
+        # Graph API publishing has no general idempotency key for this two-step flow.
+        del idempotency_key
+        if draft.get("platform") != "instagram":
+            raise PermanentPublishError("Instagram adapter received a non-Instagram draft")
+        media_url = self._validate_public_media_url(draft.get("media_url"))
+        body = str(draft.get("body", "")).strip()
+        hashtags = draft.get("hashtags", [])
+        suffix = " ".join(str(tag).strip() for tag in hashtags if str(tag).strip()) if isinstance(hashtags, list) else ""
+        caption = "\n\n".join(part for part in (body, suffix) if part)
+        if not caption or len(caption) > 2_200:
+            raise PermanentPublishError("Instagram caption must contain 1 to 2200 characters")
+
+        container = self._post(
+            f"{self._user_id}/media",
+            {"image_url": media_url, "caption": caption},
+        )
+        container_id = container.get("id")
+        if not isinstance(container_id, (str, int)) or not str(container_id):
+            raise UnknownPublishOutcome("Instagram did not confirm media container creation")
+        published = self._post(
+            f"{self._user_id}/media_publish",
+            {"creation_id": str(container_id)},
+        )
+        post_id = published.get("id")
+        if not isinstance(post_id, (str, int)) or not str(post_id):
+            raise UnknownPublishOutcome("Instagram did not confirm post publication")
+        return PublishReceipt(provider_post_id=str(post_id))
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
+
+
 def configured_publish_adapters(settings: Settings | None = None) -> dict[str, TelegramBotApiAdapter]:
     """Return only adapters whose credentials are explicitly configured."""
     config = settings or get_settings()
