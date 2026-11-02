@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import json
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 from mrhub.knowledge.repository import KnowledgeRepository
 
@@ -86,28 +86,38 @@ def run_reference_evaluation() -> dict[str, object]:
     fixtures = [
         (
             "DNS Troubleshooting",
-            "DNS troubleshooting starts by checking resolver configuration, name resolution, "
-            "the configured DNS server, and whether the hostname resolves to the expected address.",
+            (
+                "DNS troubleshooting starts by checking resolver configuration, name resolution, "
+                "the configured DNS server, and whether the hostname resolves to the expected address."
+            ),
         ),
         (
             "Signed Media Delivery",
-            "Signed media URL delivery uses HTTPS, an HMAC signature, an asset identifier, "
-            "and a short expiry to let an external image service fetch an approved image.",
+            (
+                "Signed media URL delivery uses HTTPS, an HMAC signature, an asset identifier, "
+                "and a short expiry to let an external image service fetch an approved image."
+            ),
         ),
         (
             "Worker Lease Safety",
-            "A worker lease and fencing token prevent stale workers from committing results "
-            "after ownership changes; ambiguous external operations require reconciliation.",
+            (
+                "A worker lease and fencing token prevent stale workers from committing results "
+                "after ownership changes; ambiguous external operations require reconciliation."
+            ),
         ),
         (
             "Python AST Review",
-            "Python AST analysis parses source structure without importing or executing code, "
-            "and reports line-specific static findings for human review.",
+            (
+                "Python AST analysis parses source structure without importing or executing code, "
+                "and reports line-specific static findings for human review."
+            ),
         ),
         (
             "SQLite Backup Restore",
-            "SQLite backup and restore verifies a checksum manifest, file size, and database "
-            "integrity before creating a new destination without overwriting existing files.",
+            (
+                "SQLite backup and restore verifies a checksum manifest, file size, and database "
+                "integrity before creating a new destination without overwriting existing files."
+            ),
         ),
     ]
 
