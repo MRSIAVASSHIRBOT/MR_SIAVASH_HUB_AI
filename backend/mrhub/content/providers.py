@@ -211,8 +211,6 @@ class InstagramGraphImageAdapter:
 def configured_publish_adapters(settings: Settings | None = None) -> dict[str, Any]:
     """Return only adapters whose credentials are explicitly configured."""
     config = settings or get_settings()
-    if config.telegram_bot_token is None or not config.telegram_chat_id:
-        return {}
     adapters: dict[str, Any] = {}
     if config.telegram_bot_token is not None and config.telegram_chat_id:
         adapters["telegram"] = TelegramBotApiAdapter(
