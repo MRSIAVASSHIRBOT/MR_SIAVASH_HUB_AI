@@ -32,7 +32,7 @@ class RetrievalCase:
 def _validated_relevant_ids(case: RetrievalCase) -> set[str]:
     identifiers = case.relevant_document_ids
     if not isinstance(identifiers, (tuple, list)):
-        raise ValueError("relevant_document_ids must be a tuple or list")
+        raise TypeError("relevant_document_ids must be a tuple or list")
     if not identifiers or len(identifiers) > MAX_RELEVANT_DOCUMENTS_PER_CASE:
         raise ValueError(
             "Each case must contain between 1 and "
@@ -46,7 +46,7 @@ def _validated_relevant_ids(case: RetrievalCase) -> set[str]:
             or not identifier
             or len(identifier) > MAX_DOCUMENT_ID_CHARS
         ):
-            raise ValueError("Each relevant document ID must be a non-empty bounded string")
+            raise TypeError("Each relevant document ID must be a string")
         normalized.append(identifier)
 
     if len(set(normalized)) != len(normalized):
@@ -65,9 +65,9 @@ def evaluate_retrieval(
     if not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= MAX_K:
         raise ValueError(f"k must be between 1 and {MAX_K}")
     if not isinstance(owner_user_id, str) or not owner_user_id or len(owner_user_id) > 80:
-        raise ValueError("owner_user_id must be a non-empty bounded string")
+        raise TypeError("owner_user_id must be a string")
     if not isinstance(cases, Sequence) or isinstance(cases, (str, bytes)):
-        raise ValueError("cases must be a bounded sequence")
+        raise TypeError("cases must be a bounded sequence")
     if not cases or len(cases) > MAX_EVALUATION_CASES:
         raise ValueError(
             f"cases must contain between 1 and {MAX_EVALUATION_CASES} items"
@@ -82,12 +82,12 @@ def evaluate_retrieval(
 
     for case in cases:
         if not isinstance(case, RetrievalCase):
-            raise ValueError("Every evaluation case must be a RetrievalCase")
+            raise TypeError("Every evaluation case must be a RetrievalCase")
         if (
             not isinstance(case.query, str)
-            or not case.query.strip()
-            or len(case.query) > MAX_QUERY_CHARS
         ):
+            raise TypeError("Each evaluation query must be a string")
+        if not case.query.strip() or len(case.query) > MAX_QUERY_CHARS:
             raise ValueError(
                 f"Each query must contain 1 to {MAX_QUERY_CHARS} characters"
             )
@@ -170,28 +170,38 @@ def run_reference_evaluation() -> dict[str, Any]:
     fixtures = [
         (
             "DNS Troubleshooting",
-            "DNS troubleshooting starts by checking resolver configuration, name resolution, "
-            "the configured DNS server, and whether the hostname resolves to the expected address.",
+            (
+                "DNS troubleshooting starts by checking resolver configuration, name resolution, "
+                "the configured DNS server, and whether the hostname resolves to the expected address."
+            ),
         ),
         (
             "Signed Media Delivery",
-            "Signed media URL delivery uses HTTPS, an HMAC signature, an asset identifier, "
-            "and a short expiry to let an external image service fetch an approved image.",
+            (
+                "Signed media URL delivery uses HTTPS, an HMAC signature, an asset identifier, "
+                "and a short expiry to let an external image service fetch an approved image."
+            ),
         ),
         (
             "Worker Lease Safety",
-            "A worker lease and fencing token prevent stale workers from committing workflow state "
-            "after ownership changes; ambiguous external operations require reconciliation.",
+            (
+                "A worker lease and fencing token prevent stale workers from committing workflow state "
+                "after ownership changes; ambiguous external operations require reconciliation."
+            ),
         ),
         (
             "Python AST Review",
-            "Python AST analysis parses source structure without importing or executing code, "
-            "and reports line-specific static findings for human review.",
+            (
+                "Python AST analysis parses source structure without importing or executing code, "
+                "and reports line-specific static findings for human review."
+            ),
         ),
         (
             "SQLite Backup Restore",
-            "SQLite backup and restore verifies a checksum manifest, file size, and database "
-            "integrity before creating a new destination without overwriting existing files.",
+            (
+                "SQLite backup and restore verifies a checksum manifest, file size, and database "
+                "integrity before creating a new destination without overwriting existing files."
+            ),
         ),
     ]
 
