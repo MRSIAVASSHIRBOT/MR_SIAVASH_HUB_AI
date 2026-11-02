@@ -131,3 +131,8 @@ The content draft API provides owner-scoped draft/version management, deduplicat
 - Public media delivery is disabled until `MRH_PUBLIC_MEDIA_BASE_URL` and `MRH_PUBLIC_MEDIA_SIGNING_KEY` are configured. Instagram publishing additionally requires valid professional-account credentials and permissions.
 - CI verifies the signed URL generation, expiry/signature handling, and scheduled dispatcher handoff using test doubles. It does not verify public network reachability or publish to a real Instagram account.
 - External reachability, edge rate limiting, and a controlled live-account acceptance test remain deployment gates. Production publishing must not be described as end-to-end verified until those gates pass.
+
+
+## Defensive Python static analysis
+
+Bandit runs a report-only scan of the application package on pull requests, pushes to `main`, and a weekly schedule. It complements (and does not replace) NEXUS static checks, Ruff, tests, and dependency auditing. See `docs/security/bandit.md` for scope and operational guidance.
