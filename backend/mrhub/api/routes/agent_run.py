@@ -14,7 +14,6 @@ from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
-from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
