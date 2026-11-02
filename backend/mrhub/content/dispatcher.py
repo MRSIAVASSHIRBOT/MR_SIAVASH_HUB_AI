@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+from fastapi import HTTPException
+
+from mrhub.api.routes.public_media import sign_asset_url
 from mrhub.content.scheduling import ContentScheduleRepository
 from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.media.repository import MAX_UPLOAD_BYTES, MediaAssetRepository
@@ -183,23 +186,48 @@ class ContentScheduleDispatcher:
                     or media_path.stat().st_size != int(asset["file_size"])
                 ):
                     raise ValueError("Media asset file is missing or inconsistent")
-                draft["media_asset"] = {
-                    "media_type": str(asset["media_type"]),
-                    "filename": str(asset["original_filename"]),
-                    "path": str(media_path),
-                    "file_size": int(asset["file_size"]),
+                if platform == "instagram":
+                    if asset["media_type"] not in {"image/jpeg", "image/png"}:
+                        raise ValueError("Instagram publishing requires JPEG or PNG media")
+                    # The Graph API fetches the media itself; never pass a local path.
+                    draft["media_url"] = sign_asset_url(str(asset["asset_id"]))
+                else:
+                    draft["media_asset"] = {
+                        "media_type": str(asset["media_type"]),
+                        "filename": str(asset["original_filename"]),
+                        "path": str(media_path),
+                        "file_size": int(asset["file_size"]),
+                    }
+            except HTTPException as exc:
+                reason = (
+                    "public_media_not_configured"
+                    if exc.status_code == 503
+                    else "public_media_url_unavailable"
+                )
+                self._finish(
+                    str(claimed["schedule_id"]), "failed", reason, now=self._now()
+                )
+                return {
+                    "schedule_id": str(claimed["schedule_id"]),
+                    "status": "failed",
+                    "reason_code": reason,
                 }
             except (OSError, ValueError):
+                reason = (
+                    "instagram_media_invalid"
+                    if platform == "instagram"
+                    else "media_asset_unavailable"
+                )
                 self._finish(
                     str(claimed["schedule_id"]),
                     "failed",
-                    "media_asset_unavailable",
+                    reason,
                     now=self._now(),
                 )
                 return {
                     "schedule_id": str(claimed["schedule_id"]),
                     "status": "failed",
-                    "reason_code": "media_asset_unavailable",
+                    "reason_code": reason,
                 }
 
         adapter = self.adapters.get(platform)
