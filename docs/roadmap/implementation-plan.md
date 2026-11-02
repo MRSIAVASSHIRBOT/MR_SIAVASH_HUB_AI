@@ -65,7 +65,8 @@ Exit criteria: a conversation task can retrieve only authorized, in-scope contex
 - [x] Durable scheduled publishing jobs with explicit approval policy and worker-driven dispatch
 - [x] Opt-in Telegram text publishing adapter
 - [x] Media-aware Telegram photo/video upload for approved owner-scoped draft attachments.
-- [ ] Instagram Graph API publishing adapter and publicly reachable media hosting/configuration
+- [x] Opt-in Instagram Graph API image adapter and short-lived signed public-media delivery integrated into the scheduled dispatcher
+- [ ] Configure and externally verify the public HTTPS media origin; validate Graph API credentials/scopes and complete a controlled professional-account acceptance test
 - [x] Owner-scoped local media asset registry and metadata
 - [x] Bounded local FFmpeg video-transcoding adapter
 - Optional external generation providers
@@ -160,3 +161,13 @@ The first implementation slice should be deliberately small: configuration -> AP
 - PR #53–#54: approved Telegram JPEG/PNG/MP4 media attachments are validated at dispatch and can be managed from the local UI; no real Telegram post was performed in CI.
 - PR #55: operator UI exposes Agent runs and source metadata.
 - Next gates: durable Agent worker execution, Instagram public-media hosting/Graph API credentials, target-device restore drill, and broader NEXUS/dependency/configuration coverage.
+
+
+
+## Verified implementation snapshot — 2026-11-02 (after Instagram media integration)
+
+- PR #59 added the opt-in signed public-media route. It serves only stored JPEG/PNG assets, binds signatures to asset UUID and expiry, caps URL lifetime at 15 minutes, and fails closed when configuration is absent.
+- PR #60 connected Instagram draft media attachments to scheduled dispatch, fixed DNS-hostname validation, and added a dispatcher integration test. Backend CI and CI passed on the exact PR head; the full test suite passed on Python 3.11 and 3.12.
+- Instagram publishing is **not production-verified**: public origin reachability, edge rate limiting, real Graph API credentials/scopes, and a controlled real-account post remain external acceptance gates.
+- Worker-owned durable Agent workflow submission/resume is implemented; this is distinct from the still-open scheduled-workflow-trigger and in-flight external-operation stop semantics.
+- Remaining release gates include the target-device backup/restore drill and protected media/key backup procedure, repeatable retrieval-quality and source-freshness evaluation, NEXUS patch-proposal review plus isolated tests, broader defensive dependency/configuration auditing, and packaging/rollback checks.
