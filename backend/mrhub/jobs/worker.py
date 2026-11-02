@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
 from uuid import UUID, uuid4
 
+from mrhub.content.dispatcher import ContentScheduleDispatcher
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseManager, WorkerLease
@@ -58,6 +59,7 @@ class WorkerEngine:
         repository: TaskRepository,
         clock: Callable[[], datetime] | None = None,
         lease_seconds: int = 60,
+        content_schedule_dispatcher: ContentScheduleDispatcher | None = None,
     ) -> None:
         self.repository = repository
         self.database_path = repository.database_path
@@ -65,6 +67,7 @@ class WorkerEngine:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._worker_id = str(uuid4())
         self._lease_seconds = lease_seconds
+        self._content_schedule_dispatcher = content_schedule_dispatcher
         self._lease_manager = LeaseManager(
             self.database_path, lease_seconds=lease_seconds, clock=self._clock
         )
@@ -425,7 +428,10 @@ class WorkerEngine:
     def run_once(self) -> TaskRecord | None:
         """Execute at most one eligible task; serialize calls through this worker instance."""
         with self._run_lock:
-            return self._run_once()
+            result = self._run_once()
+            if self._content_schedule_dispatcher is not None:
+                self._content_schedule_dispatcher.run_once()
+            return result
 
     def _run_once(self) -> TaskRecord | None:
         self._recover_interrupted()
