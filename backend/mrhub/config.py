@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     instagram_access_token: SecretStr | None = None
     instagram_user_id: str | None = None
     instagram_graph_api_version: str | None = None
+    public_media_base_url: str | None = None
+    public_media_signing_key: SecretStr | None = None
 
 
 @lru_cache
