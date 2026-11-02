@@ -171,3 +171,17 @@ The first implementation slice should be deliberately small: configuration -> AP
 - Instagram publishing is **not production-verified**: public origin reachability, edge rate limiting, real Graph API credentials/scopes, and a controlled real-account post remain external acceptance gates.
 - Worker-owned durable Agent workflow submission/resume is implemented; this is distinct from the still-open scheduled-workflow-trigger and in-flight external-operation stop semantics.
 - Remaining release gates include the target-device backup/restore drill and protected media/key backup procedure, repeatable retrieval-quality and source-freshness evaluation, NEXUS patch-proposal review plus isolated tests, broader defensive dependency/configuration auditing, and packaging/rollback checks.
+
+
+## Optional SiaCode integration — proposed, not implemented
+
+Design document: [SiaCode adapter proposal](../integrations/siacode-adapter.md).
+
+- [x] Review upstream README and document architecture/security constraints.
+- [ ] Implement disabled-by-default, read-only preflight adapter with bounded health checks.
+- [ ] Add tests for missing configuration, unreachable endpoint, timeout, redirect rejection, response bounds, and secret redaction.
+- [ ] Add policy-gated coding request dispatch only after preflight tests pass.
+- [ ] Add isolated workspace handling, reviewable diffs, cancellation reporting, and audit coverage.
+- [ ] Verify external service availability and terms before any live acceptance test.
+
+Do not mark this integration complete until a runtime adapter exists and its tests pass. No SiaCode process, notebook, tunnel, or model download is started by the hub automatically.
