@@ -96,6 +96,37 @@
 
       <section class="panel">
         <div class="section-heading">
+          <div><p class="eyebrow">CONTENT WORKSPACE</p><h2>پیش‌نویس‌های محتوا</h2></div>
+          <span class="status-pill status-muted">بدون انتشار خودکار</span>
+        </div>
+        <form id="content-draft-form" class="form-grid">
+          <label>عنوان<input name="title" required maxlength="200"></label>
+          <label>پلتفرم
+            <select name="platform" required>
+              <option value="generic">عمومی</option>
+              <option value="instagram">Instagram</option>
+              <option value="telegram">Telegram</option>
+            </select>
+          </label>
+          <label>نوع محتوا
+            <select name="content_type" required>
+              <option value="caption">کپشن</option>
+              <option value="post_text">متن پست</option>
+              <option value="script">سناریو</option>
+              <option value="reel_script">سناریوی ریلز</option>
+              <option value="video_brief">شرح ویدئو</option>
+            </select>
+          </label>
+          <label>هشتگ‌ها (با ویرگول جدا شوند)<input name="hashtags" maxlength="2000" placeholder="#AI, #Security"></label>
+          <label class="field-wide">متن پیش‌نویس<textarea name="body" rows="4" required maxlength="20000"></textarea></label>
+          <button class="button button-primary" type="submit">ذخیرهٔ پیش‌نویس</button>
+        </form>
+        <p class="muted">تأیید فقط وضعیت پیش‌نویس را ثبت می‌کند؛ این نسخه هیچ محتوایی را در شبکهٔ اجتماعی منتشر نمی‌کند.</p>
+        <div id="content-draft-list" class="record-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
           <div><p class="eyebrow">PRIVATE MEMORY</p><h2>حافظهٔ شخصی</h2></div>
         </div>
         <form id="memory-form" class="form-grid">
