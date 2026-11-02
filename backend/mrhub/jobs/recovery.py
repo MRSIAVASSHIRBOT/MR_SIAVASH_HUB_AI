@@ -981,6 +981,30 @@ class WorkflowRecoveryRepository:
             "created_at": row["created_at"],
         }
 
+    def list_runs(
+        self, *, owner_user_id: str, limit: int = 50
+    ) -> list[dict[str, object]]:
+        """List bounded workflow metadata for one owner without exposing payloads."""
+        if not owner_user_id.strip():
+            raise WorkflowRecoveryError("Workflow owner is required")
+        if not 1 <= limit <= 100:
+            raise WorkflowRecoveryError("Workflow list limit must be between 1 and 100")
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT workflow_id FROM workflow_runs
+                WHERE owner_user_id = ?
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT ?
+                """,
+                (owner_user_id, limit),
+            ).fetchall()
+        workflows = [
+            self.get_run(UUID(row["workflow_id"]), owner_user_id=owner_user_id)
+            for row in rows
+        ]
+        return [workflow for workflow in workflows if workflow is not None]
+
     def get_run(self, workflow_id: UUID, *, owner_user_id: str | None = None) -> dict[str, object] | None:
         with self._connection() as connection:
             run = connection.execute(
