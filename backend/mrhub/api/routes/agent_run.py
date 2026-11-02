@@ -136,6 +136,7 @@ def run_agent(
         "external_side_effects_performed": False,
     }
 
+
 @router.get("/model-runs")
 def list_model_runs(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
