@@ -32,6 +32,10 @@ class TransientPublishError(RuntimeError):
     """Provider definitively rejected the request and confirms no post was created."""
 
 
+class PermanentPublishError(RuntimeError):
+    """Provider definitively rejected the request for a non-retryable reason."""
+
+
 class UnknownPublishOutcome(RuntimeError):
     """Provider outcome is ambiguous; the post may already exist."""
 
@@ -163,6 +167,15 @@ class ContentScheduleDispatcher:
 
         try:
             receipt = adapter.publish(draft, idempotency_key=idempotency_key)
+        except PermanentPublishError:
+            self._finish(
+                schedule_id, "failed", "provider_rejected", now=self._now()
+            )
+            return {
+                "schedule_id": schedule_id,
+                "status": "failed",
+                "reason_code": "provider_rejected",
+            }
         except TransientPublishError:
             if attempt_count < self.MAX_ATTEMPTS:
                 delay = min(60, 5 * (2 ** (attempt_count - 1)))

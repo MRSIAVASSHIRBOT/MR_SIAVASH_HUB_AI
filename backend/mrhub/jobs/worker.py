@@ -67,6 +67,14 @@ class WorkerEngine:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._worker_id = str(uuid4())
         self._lease_seconds = lease_seconds
+        if content_schedule_dispatcher is None:
+            from mrhub.content.providers import configured_publish_adapters
+
+            adapters = configured_publish_adapters()
+            if adapters:
+                content_schedule_dispatcher = ContentScheduleDispatcher(
+                    repository.database_path, adapters=adapters
+                )
         self._content_schedule_dispatcher = content_schedule_dispatcher
         self._lease_manager = LeaseManager(
             self.database_path, lease_seconds=lease_seconds, clock=self._clock
