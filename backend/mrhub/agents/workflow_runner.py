@@ -401,7 +401,7 @@ class AgentWorkflowRunner:
     ) -> dict[str, object]:
         """Resume a workflow under the pull worker's lease, or a local lease for tests."""
         worker_owned_lease = lease is not None
-        workflow, decision, task_id = self._validate_resume(
+        _workflow, decision, task_id = self._validate_resume(
             workflow_id,
             request,
             plan,
