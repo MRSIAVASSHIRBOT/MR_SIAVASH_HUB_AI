@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from mrhub.content.scheduling import ContentScheduleRepository
+from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.security.audit import AuditLogger
 
 
@@ -51,6 +52,7 @@ class ContentScheduleDispatcher:
         clock=None,
     ) -> None:
         self.repository = ContentScheduleRepository(database_path)
+        self._control = WorkerControlRepository(database_path)
         self.adapters = adapters or {}
         self._clock = clock or (lambda: datetime.now(UTC))
 
@@ -62,6 +64,8 @@ class ContentScheduleDispatcher:
 
     def run_once(self) -> dict[str, object] | None:
         """Claim and process at most one due schedule; never runs automatically at startup."""
+        if self._control.is_stopped():
+            return None
         now = self._now()
         now_text = now.isoformat()
         stale_before = (now - self.CLAIM_STALE_AFTER).isoformat()
@@ -81,6 +85,9 @@ class ContentScheduleDispatcher:
 
         with tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if self._control.is_stopped(connection):
+                connection.commit()
+                return None
             row = connection.execute(
                 """
                 SELECT * FROM content_publish_schedules
