@@ -45,6 +45,14 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
     }
     assert {"freshness_status", "freshness_checked_at", "freshness_checked_by"} <= source_columns
+    draft_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(content_drafts)")
+    }
+    version_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(content_draft_versions)")
+    }
+    assert "media_asset_id" in draft_columns
+    assert "media_asset_id" in version_columns
 
     workflow_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(workflow_runs)")
