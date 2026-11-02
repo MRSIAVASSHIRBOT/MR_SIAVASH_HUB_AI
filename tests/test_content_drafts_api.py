@@ -203,6 +203,7 @@ def test_telegram_draft_binds_media_asset_and_versions_approval_changes():
     draft = created.json()
     assert draft["media_asset_id"] == asset_id
     assert draft["status"] == "draft"
+    assert client.delete(f"/content/assets/{asset_id}").status_code == 409
 
     approved = client.post(f"/content/drafts/{draft['draft_id']}/approve")
     assert approved.status_code == 200
