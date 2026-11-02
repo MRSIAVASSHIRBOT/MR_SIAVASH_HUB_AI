@@ -57,7 +57,12 @@ def discover_agent_capabilities() -> dict[str, object]:
                 "model": item.model,
                 "local": item.local,
                 "priority": item.priority,
-                "capabilities": item.capability.model_dump(),
+                "capabilities": {
+                    "text": item.capability.text,
+                    "vision": item.capability.vision,
+                    "audio": item.capability.audio,
+                    "tool_calling": item.capability.tool_calling,
+                },
             }
             for item in models
         ],
