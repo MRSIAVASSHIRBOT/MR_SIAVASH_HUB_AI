@@ -19,7 +19,7 @@ deployment network. Merely setting an HTTPS URL does not prove reachability. App
 rate limits at the edge and avoid logging query strings because they contain short-lived
 bearer signatures.
 
-This is the secure delivery foundation, not a claim that the complete scheduled Instagram
-workflow is finished. Dispatcher integration, end-to-end tests against a controlled
-professional Instagram account, and external reachability verification remain required
-before production schedules are enabled.
+The pull-driven dispatcher now generates a short-lived signed URL for approved JPEG/PNG
+assets when processing an Instagram schedule. The API still does not prove that the configured
+origin is reachable from Meta; verify that externally, then run an end-to-end acceptance test
+against a controlled professional Instagram account before enabling production schedules.
