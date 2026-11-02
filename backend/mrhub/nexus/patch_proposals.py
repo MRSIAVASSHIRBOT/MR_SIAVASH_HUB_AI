@@ -34,7 +34,7 @@ def _validate_label(path: str) -> str:
 def _syntax_status(source: str) -> dict[str, Any]:
     try:
         ast.parse(source)
-    except SyntaxError as exc:
+    except (SyntaxError, ValueError) as exc:
         return {
             "status": "syntax_error",
             "line": max(1, exc.lineno or 1),
