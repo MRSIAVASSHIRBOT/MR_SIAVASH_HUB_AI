@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,7 @@ def _private_permissions(path: Path) -> None:
 
 def _quick_check(path: Path) -> None:
     try:
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection:
             rows = connection.execute("PRAGMA quick_check").fetchall()
     except sqlite3.Error as exc:
         raise BackupError("SQLite integrity check could not run") from exc
@@ -59,10 +60,11 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
             prefix=".mrhub-backup-", suffix=".sqlite3", dir=destination_path.parent, delete=False
         ) as temporary:
             temporary_path = Path(temporary.name)
-        with sqlite3.connect(source_path) as source_connection, sqlite3.connect(
-            temporary_path
+        with closing(sqlite3.connect(source_path)) as source_connection, closing(
+            sqlite3.connect(temporary_path)
         ) as backup_connection:
             source_connection.backup(backup_connection)
+            backup_connection.commit()
         _quick_check(temporary_path)
         _private_permissions(temporary_path)
         manifest = {
@@ -133,10 +135,11 @@ def restore_database(backup: str | Path, destination: str | Path) -> dict[str, A
             prefix=".mrhub-restore-", suffix=".sqlite3", dir=destination_path.parent, delete=False
         ) as temporary:
             temporary_path = Path(temporary.name)
-        with sqlite3.connect(backup_path) as backup_connection, sqlite3.connect(
-            temporary_path
+        with closing(sqlite3.connect(backup_path)) as backup_connection, closing(
+            sqlite3.connect(temporary_path)
         ) as destination_connection:
             backup_connection.backup(destination_connection)
+            destination_connection.commit()
         _quick_check(temporary_path)
         _private_permissions(temporary_path)
         os.replace(temporary_path, destination_path)
