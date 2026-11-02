@@ -10,9 +10,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
+from uuid import UUID
 
 from mrhub.content.scheduling import ContentScheduleRepository
 from mrhub.jobs.worker_control import WorkerControlRepository
+from mrhub.media.repository import MAX_UPLOAD_BYTES, MediaAssetRepository
 from mrhub.security.audit import AuditLogger
 
 
@@ -153,6 +155,7 @@ class ContentScheduleDispatcher:
                 "title": draft_row["title"],
                 "body": draft_row["body"],
                 "hashtags": json.loads(draft_row["hashtags_json"]),
+                "media_asset_id": draft_row["media_asset_id"],
                 "content_hash": draft_row["content_hash"],
                 "version": draft_row["version"],
             }
@@ -160,6 +163,44 @@ class ContentScheduleDispatcher:
             idempotency_key = claimed["idempotency_key"]
             attempt_count = claimed["attempt_count"]
             platform = claimed["platform"]
+
+        media_asset_id = draft.get("media_asset_id")
+        if media_asset_id is not None:
+            try:
+                media_repository = MediaAssetRepository(tasks.database_path)
+                asset = media_repository.get(
+                    str(claimed["owner_user_id"]), UUID(str(media_asset_id))
+                )
+                if (
+                    asset is None
+                    or asset["media_type"] not in {"image/jpeg", "image/png", "video/mp4"}
+                    or not 1 <= int(asset["file_size"]) <= MAX_UPLOAD_BYTES
+                ):
+                    raise ValueError("Media asset is not publishable")
+                media_path = media_repository.file_path(str(asset["storage_key"]))
+                if (
+                    not media_path.is_file()
+                    or media_path.stat().st_size != int(asset["file_size"])
+                ):
+                    raise ValueError("Media asset file is missing or inconsistent")
+                draft["media_asset"] = {
+                    "media_type": str(asset["media_type"]),
+                    "filename": str(asset["original_filename"]),
+                    "path": str(media_path),
+                    "file_size": int(asset["file_size"]),
+                }
+            except (OSError, ValueError):
+                self._finish(
+                    str(claimed["schedule_id"]),
+                    "failed",
+                    "media_asset_unavailable",
+                    now=self._now(),
+                )
+                return {
+                    "schedule_id": str(claimed["schedule_id"]),
+                    "status": "failed",
+                    "reason_code": "media_asset_unavailable",
+                }
 
         adapter = self.adapters.get(platform)
         if adapter is None:

@@ -172,3 +172,89 @@ def test_content_draft_api_requires_authentication_and_has_no_publish_endpoint()
     assert client.get("/content/drafts").status_code in (401, 403)
     assert client.post("/content/drafts/publish").status_code in (401, 403, 404, 405)
     get_settings.cache_clear()
+
+
+
+def test_telegram_draft_binds_media_asset_and_versions_approval_changes():
+    client = authenticated_client()
+    upload = client.post(
+        "/content/assets",
+        content=b"\x89PNG\r\n\x1a\nmedia-fixture",
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "draft-preview.png",
+        },
+    )
+    assert upload.status_code == 201
+    asset_id = upload.json()["asset_id"]
+
+    created = client.post(
+        "/content/drafts",
+        json={
+            "platform": "telegram",
+            "content_type": "post_text",
+            "title": "Media draft",
+            "body": "An approved Telegram photo post.",
+            "hashtags": ["#Media"],
+            "media_asset_id": asset_id,
+        },
+    )
+    assert created.status_code == 201
+    draft = created.json()
+    assert draft["media_asset_id"] == asset_id
+    assert draft["status"] == "draft"
+    assert client.delete(f"/content/assets/{asset_id}").status_code == 409
+
+    approved = client.post(f"/content/drafts/{draft['draft_id']}/approve")
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+    detached = client.patch(
+        f"/content/drafts/{draft['draft_id']}",
+        json={"media_asset_id": None},
+    )
+    assert detached.status_code == 200
+    assert detached.json()["media_asset_id"] is None
+    assert detached.json()["status"] == "draft"
+    assert detached.json()["version"] == 2
+
+    versions = client.get(f"/content/drafts/{draft['draft_id']}/versions").json()["versions"]
+    by_version = {item["version_number"]: item for item in versions}
+    assert by_version[1]["media_asset_id"] == asset_id
+    assert by_version[2]["media_asset_id"] is None
+
+
+def test_telegram_draft_cannot_attach_another_owners_media_asset():
+    client = authenticated_client()
+    repository = ContentDraftRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                "media-other-owner",
+                "media-other-owner",
+                "00",
+                "00",
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+    from mrhub.media.repository import MediaAssetRepository
+
+    other_asset = MediaAssetRepository(get_settings().database_path).store_upload(
+        "media-other-owner",
+        "other.png",
+        "image/png",
+        b"\x89PNG\r\n\x1a\nother-owner",
+    )
+    response = client.post(
+        "/content/drafts",
+        json={
+            "platform": "telegram",
+            "content_type": "post_text",
+            "title": "Invalid attachment",
+            "body": "This must not attach another owner's media.",
+            "media_asset_id": other_asset["asset_id"],
+        },
+    )
+    assert response.status_code == 422

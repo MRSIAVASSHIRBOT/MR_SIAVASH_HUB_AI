@@ -8,6 +8,11 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.media.repository import MAX_UPLOAD_BYTES, MediaAssetRepository
+
+
+class MediaAttachmentError(ValueError):
+    """Raised when a media asset cannot safely be attached to a draft."""
 
 
 class ContentDraftRepository:
@@ -21,14 +26,24 @@ class ContentDraftRepository:
         return datetime.now(UTC).isoformat()
 
     @staticmethod
-    def _hash(platform: str, content_type: str, body: str, hashtags: list[str]) -> str:
+    def _hash(
+        platform: str,
+        content_type: str,
+        body: str,
+        hashtags: list[str],
+        media_asset_id: str | None = None,
+    ) -> str:
+        payload: dict[str, object] = {
+            "platform": platform,
+            "content_type": content_type,
+            "body": " ".join(body.split()),
+            "hashtags": sorted(tag.strip().casefold() for tag in hashtags),
+        }
+        # Preserve historical hashes for text-only drafts; bind media only when present.
+        if media_asset_id is not None:
+            payload["media_asset_id"] = str(media_asset_id)
         canonical = json.dumps(
-            {
-                "platform": platform,
-                "content_type": content_type,
-                "body": " ".join(body.split()),
-                "hashtags": sorted(tag.strip().casefold() for tag in hashtags),
-            },
+            payload,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -45,6 +60,7 @@ class ContentDraftRepository:
             "title": row["title"],
             "body": row["body"],
             "hashtags": json.loads(row["hashtags_json"]),
+            "media_asset_id": row["media_asset_id"],
             "status": row["status"],
             "content_hash": row["content_hash"],
             "version": row["version"],
@@ -54,14 +70,38 @@ class ContentDraftRepository:
             "updated_at": row["updated_at"],
         }
 
+    def _validate_media_asset(
+        self,
+        owner_user_id: str,
+        platform: str,
+        media_asset_id: str | UUID | None,
+    ) -> str | None:
+        if media_asset_id is None:
+            return None
+        try:
+            asset_uuid = UUID(str(media_asset_id))
+        except (TypeError, ValueError) as exc:
+            raise MediaAttachmentError("Invalid media asset ID") from exc
+        if platform != "telegram":
+            raise MediaAttachmentError("Media attachments are currently supported for Telegram drafts only")
+        asset = MediaAssetRepository(self.database_path).get(owner_user_id, asset_uuid)
+        if asset is None:
+            raise MediaAttachmentError("Media asset is missing or belongs to another owner")
+        if asset["media_type"] not in {"image/jpeg", "image/png", "video/mp4"}:
+            raise MediaAttachmentError("Telegram media attachments support JPEG, PNG, and MP4 only")
+        if int(asset["file_size"]) < 1 or int(asset["file_size"]) > MAX_UPLOAD_BYTES:
+            raise MediaAttachmentError("Media asset size is outside the publishing limit")
+        return str(asset["asset_id"])
+
     @staticmethod
     def _save_version(connection, record: dict[str, object], changed_by: str, created_at: str) -> None:
         connection.execute(
             """
             INSERT INTO content_draft_versions (
                 version_id, draft_id, owner_user_id, version_number, platform,
-                content_type, title, body, hashtags_json, content_hash, changed_by, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                content_type, title, body, hashtags_json, content_hash, media_asset_id,
+                changed_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(uuid4()),
@@ -74,6 +114,7 @@ class ContentDraftRepository:
                 record["body"],
                 json.dumps(record["hashtags"], ensure_ascii=False, separators=(",", ":")),
                 record["content_hash"],
+                record["media_asset_id"],
                 changed_by,
                 created_at,
             ),
@@ -99,11 +140,13 @@ class ContentDraftRepository:
         title: str,
         body: str,
         hashtags: list[str],
+        media_asset_id: str | UUID | None = None,
     ) -> dict[str, object]:
         title = title.strip()
         body = body.strip()
         hashtags = [tag.strip() for tag in hashtags]
-        content_hash = self._hash(platform, content_type, body, hashtags)
+        media_asset_id = self._validate_media_asset(owner_user_id, platform, media_asset_id)
+        content_hash = self._hash(platform, content_type, body, hashtags, media_asset_id)
         draft_id = str(uuid4())
         now = self._now()
         record = {
@@ -114,6 +157,7 @@ class ContentDraftRepository:
             "title": title,
             "body": body,
             "hashtags": hashtags,
+            "media_asset_id": media_asset_id,
             "status": "draft",
             "content_hash": content_hash,
             "version": 1,
@@ -127,9 +171,9 @@ class ContentDraftRepository:
                 """
                 INSERT INTO content_drafts (
                     draft_id, owner_user_id, platform, content_type, title, body,
-                    hashtags_json, status, content_hash, version, approved_by,
+                    hashtags_json, media_asset_id, status, content_hash, version, approved_by,
                     approved_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1, NULL, NULL, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1, NULL, NULL, ?, ?)
                 """,
                 (
                     draft_id,
@@ -139,6 +183,7 @@ class ContentDraftRepository:
                     title,
                     body,
                     json.dumps(hashtags, ensure_ascii=False, separators=(",", ":")),
+                    media_asset_id,
                     content_hash,
                     now,
                     now,
@@ -178,7 +223,7 @@ class ContentDraftRepository:
     def update(
         self, owner_user_id: str, changed_by: str, draft_id: UUID, changes: dict[str, object]
     ) -> dict[str, object] | None:
-        allowed = {"platform", "content_type", "title", "body", "hashtags"}
+        allowed = {"platform", "content_type", "title", "body", "hashtags", "media_asset_id"}
         if not changes or any(key not in allowed for key in changes):
             raise ValueError("At least one supported field must be updated")
         with self.tasks._connection() as connection:
@@ -195,11 +240,17 @@ class ContentDraftRepository:
             current["title"] = str(current["title"]).strip()
             current["body"] = str(current["body"]).strip()
             current["hashtags"] = [str(tag).strip() for tag in current["hashtags"]]
+            current["media_asset_id"] = self._validate_media_asset(
+                owner_user_id,
+                str(current["platform"]),
+                current.get("media_asset_id"),
+            )
             current["content_hash"] = self._hash(
                 str(current["platform"]),
                 str(current["content_type"]),
                 str(current["body"]),
                 list(current["hashtags"]),
+                current["media_asset_id"],
             )
             current["version"] = int(row["version"]) + 1
             current["status"] = "draft"
@@ -210,7 +261,7 @@ class ContentDraftRepository:
                 """
                 UPDATE content_drafts
                 SET platform = ?, content_type = ?, title = ?, body = ?, hashtags_json = ?,
-                    status = 'draft', content_hash = ?, version = ?, approved_by = NULL,
+                    media_asset_id = ?, status = 'draft', content_hash = ?, version = ?, approved_by = NULL,
                     approved_at = NULL, updated_at = ?
                 WHERE draft_id = ? AND owner_user_id = ?
                 """,
@@ -220,6 +271,7 @@ class ContentDraftRepository:
                     current["title"],
                     current["body"],
                     json.dumps(current["hashtags"], ensure_ascii=False, separators=(",", ":")),
+                    current["media_asset_id"],
                     current["content_hash"],
                     current["version"],
                     current["updated_at"],
@@ -343,7 +395,7 @@ class ContentDraftRepository:
             rows = connection.execute(
                 """
                 SELECT version_id, draft_id, owner_user_id, version_number, platform,
-                       content_type, title, body, hashtags_json, content_hash,
+                       content_type, title, body, hashtags_json, content_hash, media_asset_id,
                        changed_by, created_at
                 FROM content_draft_versions
                 WHERE draft_id = ? AND owner_user_id = ?
@@ -361,6 +413,7 @@ class ContentDraftRepository:
                 "title": row["title"],
                 "body": row["body"],
                 "hashtags": json.loads(row["hashtags_json"]),
+                "media_asset_id": row["media_asset_id"],
                 "content_hash": row["content_hash"],
                 "changed_by": row["changed_by"],
                 "created_at": row["created_at"],

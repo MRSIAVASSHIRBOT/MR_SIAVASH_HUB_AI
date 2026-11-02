@@ -27,3 +27,8 @@ All routes require the authenticated owner.
 ## Current limits
 
 This milestone is draft management only. There is no social publishing endpoint, no external scheduler, no media upload, and no FFmpeg process invocation. Those require separate provider/asset adapters, sandboxing, approval binding, and integration tests. Draft storage does not guarantee erasure of old database backup copies.
+
+
+## Telegram media attachments
+
+A Telegram draft may reference an owner-owned JPEG, PNG, or MP4 asset via `media_asset_id`. The ID is included in the content hash and each version snapshot. Attaching, replacing, or detaching media creates a new draft version and revokes approval. Deleting an asset that is referenced by a current or historical draft version is rejected; delete the draft/history first if the media should be removed permanently. Media attachment support is Telegram-only for now.

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.content.repository import ContentDraftRepository
+from mrhub.content.repository import ContentDraftRepository, MediaAttachmentError
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 
@@ -26,6 +26,7 @@ class ContentDraftCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20_000)
     hashtags: list[str] = Field(default_factory=list, max_length=30)
+    media_asset_id: UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -56,6 +57,7 @@ class ContentDraftUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     body: str | None = Field(default=None, min_length=1, max_length=20_000)
     hashtags: list[str] | None = Field(default=None, max_length=30)
+    media_asset_id: UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -119,11 +121,17 @@ def create_draft(
     repository = _repository()
     try:
         record = repository.create(user.user_id, user.user_id, **payload.model_dump())
+    except MediaAttachmentError as exc:
+        raise HTTPException(status_code=422, detail="Invalid media attachment") from exc
     except sqlite3.IntegrityError as exc:
         duplicate = repository.find_duplicate(
             user.user_id,
             repository._hash(
-                payload.platform, payload.content_type, payload.body, payload.hashtags
+                payload.platform,
+                payload.content_type,
+                payload.body,
+                payload.hashtags,
+                str(payload.media_asset_id) if payload.media_asset_id is not None else None,
             ),
         )
         if duplicate is not None:
@@ -172,13 +180,17 @@ def update_draft(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     submitted = payload.model_dump(exclude_unset=True)
-    if not submitted or any(value is None for value in submitted.values()):
-        raise HTTPException(status_code=422, detail="Provide at least one non-null field")
+    if not submitted or any(
+        value is None for key, value in submitted.items() if key != "media_asset_id"
+    ):
+        raise HTTPException(status_code=422, detail="Provide at least one supported field")
     repository = _repository()
     try:
         record = repository.update(user.user_id, user.user_id, draft_id, submitted)
     except sqlite3.IntegrityError as exc:
         raise _duplicate_conflict() from exc
+    except MediaAttachmentError as exc:
+        raise HTTPException(status_code=422, detail="Invalid media attachment") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if record is None:

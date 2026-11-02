@@ -541,6 +541,14 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_knowledge_sources_freshness ON knowledge_sources(owner_user_id, freshness_status, updated_at)",
         ),
     ),
+    Migration.build(
+        18,
+        "content_draft_media_asset_binding",
+        (
+            "ALTER TABLE content_drafts ADD COLUMN media_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE RESTRICT",
+            "ALTER TABLE content_draft_versions ADD COLUMN media_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE RESTRICT",
+        ),
+    ),
 )
 
  

@@ -1,6 +1,7 @@
 """Explicitly configured social publishing adapters."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -15,10 +16,10 @@ from mrhub.content.dispatcher import (
 
 
 class TelegramBotApiAdapter:
-    """Publish text posts to a Telegram chat/channel using the Bot API.
+    """Publish text or approved local photo/video assets through the Telegram Bot API.
 
-    Telegram does not offer an idempotency key for sendMessage. The key is accepted
-    by the adapter contract but cannot be used to guarantee exactly-once delivery.
+    Telegram does not offer an idempotency key for these operations. The key is
+    accepted by the adapter contract but cannot guarantee exactly-once delivery.
     """
 
     def __init__(
@@ -50,18 +51,58 @@ class TelegramBotApiAdapter:
         text = "\n\n".join(part for part in (body, suffix) if part)
         if not text:
             raise PermanentPublishError("Telegram message is empty")
-        if len(text) > 4096:
-            raise PermanentPublishError("Telegram message exceeds the text limit")
 
-        endpoint = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
-        try:
-            response = self._client.post(
-                endpoint,
-                json={"chat_id": self._chat_id, "text": text},
-            )
-        except httpx.HTTPError as exc:
-            # A transport failure can occur after Telegram has accepted the message.
-            raise UnknownPublishOutcome("Telegram request outcome is unknown") from exc
+        media = draft.get("media_asset")
+        if media is None:
+            if len(text) > 4096:
+                raise PermanentPublishError("Telegram message exceeds the text limit")
+            endpoint = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+            try:
+                response = self._client.post(
+                    endpoint,
+                    json={"chat_id": self._chat_id, "text": text},
+                )
+            except httpx.HTTPError as exc:
+                # A transport failure can occur after Telegram has accepted the message.
+                raise UnknownPublishOutcome("Telegram request outcome is unknown") from exc
+        else:
+            if not isinstance(media, dict):
+                raise PermanentPublishError("Telegram media metadata is invalid")
+            media_type = str(media.get("media_type", ""))
+            upload_field = {
+                "image/jpeg": "photo",
+                "image/png": "photo",
+                "video/mp4": "video",
+            }.get(media_type)
+            media_path = Path(str(media.get("path", "")))
+            filename = Path(str(media.get("filename", ""))).name
+            try:
+                file_size = media_path.stat().st_size
+            except OSError as exc:
+                raise PermanentPublishError("Telegram media file is unavailable") from exc
+            if (
+                upload_field is None
+                or not filename
+                or not media_path.is_file()
+                or not 1 <= file_size <= 25_000_000
+                or file_size != int(media.get("file_size", -1))
+            ):
+                raise PermanentPublishError("Telegram media file is invalid or exceeds the upload limit")
+            if len(text) > 1024:
+                raise PermanentPublishError("Telegram media caption exceeds the 1024 character limit")
+            endpoint = f"https://api.telegram.org/bot{self._bot_token}/sendPhoto" if upload_field == "photo" else f"https://api.telegram.org/bot{self._bot_token}/sendVideo"
+            try:
+                with media_path.open("rb") as media_file:
+                    response = self._client.post(
+                        endpoint,
+                        data={"chat_id": self._chat_id, "caption": text},
+                        files={upload_field: (filename, media_file, media_type)},
+                    )
+            except OSError as exc:
+                raise PermanentPublishError("Telegram media file is unavailable") from exc
+            except httpx.HTTPError as exc:
+                # The provider may have accepted the upload before the response was lost.
+                raise UnknownPublishOutcome("Telegram media request outcome is unknown") from exc
 
         if response.status_code == 429:
             raise TransientPublishError("Telegram rate limited the request")
