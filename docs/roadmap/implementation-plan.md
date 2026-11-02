@@ -52,8 +52,9 @@ Architecture proposal: [ADR-0042 — Local-first Knowledge and Memory](../archit
 - [x] Add SQLite FTS5 indexing and index-consistency/deletion tests.
 - [x] Implement owner-scoped FTS5 retrieval with citations and bounded context assembly.
 - [x] Add initial prompt-injection and trust-boundary regression coverage.
-- [ ] Add source freshness/staleness metadata and repeatable retrieval-quality evaluation.
-- [ ] Integrate retrieved context into the model-driven Agent path only after freshness, citation, size-budget, and tool-boundary gates pass.
+- [x] Add owner-declared source freshness metadata (default unknown; not automatic URL verification).
+- [x] Integrate bounded retrieved context into authenticated `POST /agent/run`, preserving citations/trust/freshness metadata and treating passages as untrusted.
+- [ ] Add repeatable retrieval-quality evaluation and stronger stale-source verification.
 - [ ] Evaluate embeddings/vector retrieval only if measured FTS5 quality is insufficient.
 - [ ] Continue one provider adapter at a time and enforce model/context budget limits.
 
@@ -63,7 +64,8 @@ Exit criteria: a conversation task can retrieve only authorized, in-scope contex
 - [x] Content brief, draft, review, and approval lifecycle
 - [x] Durable scheduled publishing jobs with explicit approval policy and worker-driven dispatch
 - [x] Opt-in Telegram text publishing adapter
-- [ ] Media-aware Telegram upload and Instagram Graph API publishing adapters
+- [x] Media-aware Telegram photo/video upload for approved owner-scoped draft attachments.
+- [ ] Instagram Graph API publishing adapter and publicly reachable media hosting/configuration
 - [x] Owner-scoped local media asset registry and metadata
 - [x] Bounded local FFmpeg video-transcoding adapter
 - Optional external generation providers
@@ -72,12 +74,13 @@ Exit criteria: a conversation task can retrieve only authorized, in-scope contex
 Exit criteria: produce a draft and media asset locally; external publishing remains gated and auditable.
 
 ## Phase 4 — Agents, workflows, and plugins
-- [x] Bounded model-driven orchestration primitive (not yet wired to public API, durable jobs, or context retrieval)
+- [x] Bounded model-driven orchestration primitive and authenticated Agent API (synchronous; not a durable job)
 - [ ] Agent registry and bounded delegation
 - [x] Durable workflow definitions and step history\n- [ ] Scheduled workflow triggers
 - [x] Built-in tool manifests, validation, policy grants, and audit events
 - Plugin compatibility and integrity checks
-- [x] Durable pause/resume, safe retry, cancellation, checkpoint recovery, and lease fencing\n- [x] Durable owner-authenticated worker emergency-stop and schedule-dispatch pause controls
+- [x] Durable pause/resume, safe retry, cancellation, checkpoint recovery, and lease fencing
+- [x] Durable owner-authenticated worker emergency-stop and schedule-dispatch pause controls
 - [ ] Define and test stop behavior for already-running synchronous and external operations
 
 Exit criteria: a multi-step workflow runs with bounded tools and traceable state transitions. Verified by worker-owned submit/resume paths, separate-process smoke tests, crash-injection recovery, and cancellation regressions.
@@ -148,3 +151,12 @@ The first implementation slice should be deliberately small: configuration -> AP
 - PR #48 added an offline defensive configuration review foundation; it is not a network scanner.
 - PR #40 (already merged earlier) added durable worker stop state and authenticated controls. Tests cover preventing new claims while stopped; in-flight external-operation semantics remain an operational gate.
 - Next critical gate: integrate retrieval safely into the model-driven Agent path only after source freshness and citation-preserving context-budget evaluation are added.
+
+
+## Verified implementation snapshot — 2026-11-02 (supersedes prior snapshot)
+
+- PR #50: source freshness labels are owner-declared and carried into context; automatic source verification and retrieval-quality evaluation remain open.
+- PR #51–#52: authenticated bounded Agent API with explicit provider mode, no stub/cloud fallback, max three turns, and 30-second provider-call cap.
+- PR #53–#54: approved Telegram JPEG/PNG/MP4 media attachments are validated at dispatch and can be managed from the local UI; no real Telegram post was performed in CI.
+- PR #55: operator UI exposes Agent runs and source metadata.
+- Next gates: durable Agent worker execution, Instagram public-media hosting/Graph API credentials, target-device restore drill, and broader NEXUS/dependency/configuration coverage.
