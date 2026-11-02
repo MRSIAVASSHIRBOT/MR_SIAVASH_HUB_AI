@@ -1,4 +1,4 @@
-from mrhub.integrations.assistant_gateway import (
+from mrhub.integrations.health_probe import (
     validate_health_path,
     validate_loopback_base_url,
 )
