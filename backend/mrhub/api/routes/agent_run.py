@@ -15,6 +15,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
@@ -83,7 +84,11 @@ def run_agent(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Agent input exceeds the supported bounds") from exc
 
-    result = AgentOrchestrator(model_router, build_tool_registry()).run(request)
+    worker_control = WorkerControlRepository(settings.database_path)
+    result = AgentOrchestrator(model_router, build_tool_registry()).run(
+        request,
+        should_cancel=worker_control.is_stopped,
+    )
     run_id = str(uuid4())
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()

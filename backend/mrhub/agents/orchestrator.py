@@ -142,6 +142,14 @@ class AgentOrchestrator:
                     error_code="tool_call_budget_exceeded",
                 )
 
+            # A stop raised during provider inference must prevent a newly proposed tool call.
+            # This is cooperative: it cannot interrupt the provider request already in flight.
+            if should_cancel is not None and should_cancel():
+                return self._result(
+                    "cancelled", transcript, selection, turn, tool_calls,
+                    error_code="cancelled",
+                )
+
             # Every proposal is revalidated and policy checked by the registry.
             try:
                 observation = self.tool_registry.invoke(proposal.name, proposal.payload)

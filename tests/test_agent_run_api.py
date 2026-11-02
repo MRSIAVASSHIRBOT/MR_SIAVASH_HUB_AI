@@ -112,3 +112,37 @@ def test_agent_run_fails_closed_when_requested_provider_is_not_configured(monkey
     )
     assert response.status_code == 503
     assert "remote inference provider" in response.json()["detail"]
+
+
+def test_agent_run_emergency_stop_prevents_model_inference(monkeypatch):
+    from mrhub.jobs.worker_control import WorkerControlRepository
+
+    client = authenticated_client()
+    provider = ScriptedProvider(json.dumps({
+        "type": "final",
+        "answer": "This must not be generated while stopped.",
+    }))
+    router = ModelRouter()
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(WorkerControlRepository, "is_stopped", lambda self: True)
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Do not run while emergency stop is active.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["execution"]["status"] == "cancelled"
+    assert body["execution"]["turns"] == 0
+    assert body["execution"]["model_inference_started"] is False
+    assert provider.requests == []
