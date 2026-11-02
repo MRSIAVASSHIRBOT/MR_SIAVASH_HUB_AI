@@ -35,8 +35,8 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Loopback-only Ollama local inference adapter with opt-in activation, bounded requests, health checks, and sanitized errors
 - [x] Read-only host hardware report for local model planning (CPU, total/available memory, disk, and safe GPU-name probe)
 - [x] Conservative RAM resource advisor with explicit model profiles, safety reserve, unknown-data handling, and no inference side effects
-- [ ] Real remote provider adapter (separate opt-in milestone; explicit secrets and network policy required)
-- [ ] Minimal React/TypeScript operator view
+- [x] Explicit opt-in OpenRouter text adapter with origin restriction, bounded requests, sanitized errors, and no silent fallback; general tool-calling providers remain future work
+- [x] Minimal self-hosted RTL operator view (vanilla JavaScript, same-origin APIs, restrictive CSP)
 
 Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Provider dispatch is explicit and testable; local Ollama inference is available only after explicit configuration, while the stub performs no inference. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
 
@@ -44,12 +44,12 @@ Exit criteria: local app starts predictably, health checks pass, policy-gated ta
 
 Architecture proposal: [ADR-0042 — Local-first Knowledge and Memory](../architecture/adr-0042-knowledge-memory.md).
 
-- [ ] Separate project knowledge, durable user memory, and operational execution history.
-- [ ] Define owner, project, sensitivity, trust, provenance, and retention contracts.
-- [ ] Add versioned SQLite schema and migration compatibility tests.
-- [ ] Implement owner-scoped memory CRUD, export, expiry, and deletion.
-- [ ] Ingest bounded local Markdown/plain-text documents with source hashes and provenance.
-- [ ] Add SQLite FTS5 indexing and index-consistency/deletion tests.
+- [x] Separate project knowledge, durable user memory, and operational execution history.
+- [x] Define owner, sensitivity, trust, provenance, and retention contracts for the implemented memory and knowledge APIs.
+- [x] Add versioned SQLite schema and migration compatibility tests.
+- [x] Implement owner-scoped memory CRUD, export, expiry, and deletion.
+- [x] Ingest bounded user-supplied Markdown/plain-text documents with source hashes and provenance; supplied URLs are labels only.
+- [x] Add SQLite FTS5 indexing and index-consistency/deletion tests.
 - [ ] Implement scoped retrieval with citations, source freshness, and bounded context assembly.
 - [ ] Add prompt-injection, cross-owner isolation, stale-source, and retrieval-quality tests.
 - [ ] Integrate retrieval into Agent context only after standalone retrieval gates pass.
@@ -59,11 +59,11 @@ Architecture proposal: [ADR-0042 — Local-first Knowledge and Memory](../archit
 Exit criteria: a conversation task can retrieve only authorized, in-scope context; every material knowledge result carries verifiable provenance; memory can be exported and deleted; retrieval quality and isolation are covered by repeatable tests. No retrieved document can grant tool permissions or authorize an action.
 
 ## Phase 3 — Content and media vertical
-- Content brief, draft, review, and approval lifecycle
+- [x] Content brief, draft, review, and approval lifecycle
 - Social channel adapters behind the publishing service
 - Scheduled publishing jobs with explicit approval policy
-- Media asset registry
-- FFmpeg-based local processing adapter
+- [x] Owner-scoped local media asset registry and metadata
+- [x] Bounded local FFmpeg video-transcoding adapter
 - Optional external generation providers
 - Retry, deduplication, and failure reporting
 
@@ -71,12 +71,12 @@ Exit criteria: produce a draft and media asset locally; external publishing rema
 
 ## Phase 4 — Agents, workflows, and plugins
 - Agent registry and bounded delegation
-- Workflow definitions and schedules
-- Tool manifests, validation, grants, and audit
+- [x] Durable workflow definitions and step history\n- [ ] Scheduled workflow triggers
+- [x] Built-in tool manifests, validation, policy grants, and audit events
 - Plugin compatibility and integrity checks
-- Pause/resume/retry and emergency stop
+- [x] Durable pause/resume, safe retry, cancellation, checkpoint recovery, and lease fencing\n- [ ] Explicit emergency-stop control
 
-Exit criteria: a multi-step workflow runs with bounded tools and traceable state transitions.
+Exit criteria: a multi-step workflow runs with bounded tools and traceable state transitions. Verified by worker-owned submit/resume paths, separate-process smoke tests, crash-injection recovery, and cancellation regressions.
 
 ## Phase 5 — NEXUS and Discovery
 - Repository-aware read-only analysis first
@@ -105,6 +105,14 @@ Exit criteria: no capability can exceed its declared authorization scope.
 - Multi-user isolation only after single-user security is established
 
 Exit criteria: a packaged single-user application can be installed, updated, backed up, and rolled back safely.
+
+
+## Verified implementation snapshot — 2026-11-02
+
+- PR #29 provides the local media asset foundation and bounded FFmpeg processing; social publishing and scheduled delivery are still gated roadmap work.
+- PR #30 makes both initial execution and resume execution worker-owned. Resume HTTP requests validate and enqueue only; the pull worker executes under a lease/fencing token.
+- PR #31 extends the self-hosted RTL console with Job Engine metrics, owner-scoped Workflow history, step inspection, cancellation, resume-check/enqueue, and manual reconciliation.
+- Latest verified CI: PR #31 exact head passed Backend CI and CI on Python 3.11 and 3.12; the Backend suite reported 298 passed.
 
 ## Quality gates for every phase
 - Formatting and linting
