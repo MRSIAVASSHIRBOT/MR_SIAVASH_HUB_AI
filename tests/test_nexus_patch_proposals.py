@@ -80,7 +80,7 @@ def test_patch_proposal_handles_null_byte_source_as_syntax_error():
     result = create_patch_proposal(
         "module.py",
         "x = 1\n",
-        "x = \\x00\n",
+        "x = \x00\n",
     )
 
     assert result["proposed_syntax"]["status"] == "syntax_error"
