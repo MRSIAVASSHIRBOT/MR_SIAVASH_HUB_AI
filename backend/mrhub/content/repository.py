@@ -82,13 +82,21 @@ class ContentDraftRepository:
             asset_uuid = UUID(str(media_asset_id))
         except (TypeError, ValueError) as exc:
             raise MediaAttachmentError("Invalid media asset ID") from exc
-        if platform != "telegram":
-            raise MediaAttachmentError("Media attachments are currently supported for Telegram drafts only")
+        if platform not in {"telegram", "instagram"}:
+            raise MediaAttachmentError("Media attachments are not supported for this platform")
         asset = MediaAssetRepository(self.database_path).get(owner_user_id, asset_uuid)
         if asset is None:
             raise MediaAttachmentError("Media asset is missing or belongs to another owner")
-        if asset["media_type"] not in {"image/jpeg", "image/png", "video/mp4"}:
-            raise MediaAttachmentError("Telegram media attachments support JPEG, PNG, and MP4 only")
+        allowed_types = (
+            {"image/jpeg", "image/png"}
+            if platform == "instagram"
+            else {"image/jpeg", "image/png", "video/mp4"}
+        )
+        if asset["media_type"] not in allowed_types:
+            supported = "JPEG and PNG" if platform == "instagram" else "JPEG, PNG, and MP4"
+            raise MediaAttachmentError(
+                f"{platform.title()} media attachments support {supported} only"
+            )
         if int(asset["file_size"]) < 1 or int(asset["file_size"]) > MAX_UPLOAD_BYTES:
             raise MediaAttachmentError("Media asset size is outside the publishing limit")
         return str(asset["asset_id"])
