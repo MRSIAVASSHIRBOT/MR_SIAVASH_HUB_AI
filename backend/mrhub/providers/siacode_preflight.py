@@ -95,7 +95,7 @@ class SiaCodePreflight:
                     self._settings.siacode_max_response_bytes,
                     self.MAX_RESPONSE_BYTES,
                 )
-                for chunk in response.iter_bytes():
+                for chunk in response.iter_bytes(chunk_size=1024):
                     body.extend(chunk)
                     if len(body) > limit:
                         return {
