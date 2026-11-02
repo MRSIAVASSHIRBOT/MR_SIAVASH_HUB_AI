@@ -212,3 +212,17 @@ The following hardening changes were merged after the release-readiness update a
 - **PR #82 — distributable wheel asset verification:** merged as `f3fc765d54673bf551bb0cac2363f61275501b1c`. CI passed on Python 3.11 and 3.12; the pipeline builds a wheel and checks that `index.html`, `app.css`, and `app.js` are packaged.
 
 These changes improve automated evidence for media delivery, bounded static analysis, defensive configuration review, and packaging. They do **not** close external deployment gates: public HTTPS reachability and edge controls still need deployment verification, live Instagram publishing needs a controlled authorized account test, and clean install/upgrade/restore drills still need to run on the intended target device. Do not store access tokens, signing keys, or private media in this repository.
+
+
+## Packaging follow-up — 2026-11-02 UTC
+
+- **PR #83 — status ledger synchronization:** merged. This section is now superseded by this follow-up where newer merged changes are listed.
+- **PR #84 — clean wheel-install smoke test:** merged as `9c42cf9613231efe5caceb0bec41c700996bb213`. The CI pipeline creates a fresh virtual environment, installs the built wheel, imports the installed application, and requests `/health` under an isolated test database. Latest-head Backend CI and CI both passed; CI matrix coverage includes Python 3.11 and 3.12.
+- This closes the *automated clean-wheel installation smoke test* gate. It does not establish a Windows target-device install/upgrade/rollback drill, restore drill, public HTTPS reachability, edge rate-limit/log-redaction configuration, or a live authorized Instagram publish/reconciliation test.
+
+### Next acceptance gates
+
+1. Run clean installation, upgrade, rollback, and SQLite restore on the intended Windows device; separately verify how media and secret/key material are backed up and restored.
+2. Run an authorized Instagram Graph API acceptance test only after professional-account credentials are configured securely and the signed-media URL is reachable over public HTTPS.
+3. Evaluate stale-source handling and prompt-injection behavior using a repeatable synthetic retrieval corpus before expanding Agent tool access.
+4. Keep all production claims tied to exact-head CI plus relevant target-environment evidence.
