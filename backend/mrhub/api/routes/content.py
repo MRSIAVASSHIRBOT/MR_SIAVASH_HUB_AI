@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.content.repository import ContentDraftRepository
+from mrhub.content.repository import ContentDraftRepository, MediaAttachmentError
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 
@@ -121,6 +121,8 @@ def create_draft(
     repository = _repository()
     try:
         record = repository.create(user.user_id, user.user_id, **payload.model_dump())
+    except MediaAttachmentError as exc:
+        raise HTTPException(status_code=422, detail="Invalid media attachment") from exc
     except sqlite3.IntegrityError as exc:
         duplicate = repository.find_duplicate(
             user.user_id,
@@ -187,6 +189,8 @@ def update_draft(
         record = repository.update(user.user_id, user.user_id, draft_id, submitted)
     except sqlite3.IntegrityError as exc:
         raise _duplicate_conflict() from exc
+    except MediaAttachmentError as exc:
+        raise HTTPException(status_code=422, detail="Invalid media attachment") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if record is None:
