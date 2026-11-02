@@ -44,9 +44,13 @@ def sign_asset_url(asset_id: str, *, now: int | None = None) -> str:
     host = parsed.hostname
     try:
         port = parsed.port
-        address = ipaddress.ip_address(host) if host else None
     except ValueError as exc:
         raise ValueError("Invalid public media base URL") from exc
+    try:
+        address = ipaddress.ip_address(host) if host else None
+    except ValueError:
+        # A DNS hostname is expected here; only parseable IP literals need IP checks.
+        address = None
     if (
         parsed.scheme != "https" or not host or parsed.username or parsed.password
         or parsed.query or parsed.fragment or port not in (None, 443)
