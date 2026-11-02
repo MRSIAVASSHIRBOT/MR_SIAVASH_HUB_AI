@@ -7,7 +7,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.knowledge.repository import KnowledgeRepository
+from mrhub.security.auth import AuthService
 
 MAX_EVALUATION_CASES = 100
 
@@ -81,6 +83,16 @@ def evaluate_retrieval(
     }
 
 
+def _create_fixture_owner(database_path: Path) -> str:
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    AuthService(tasks).initialize_owner("retrieval-evaluation-fixture-password")
+    owner = tasks.get_auth_user("owner")
+    if owner is None:
+        raise RuntimeError("Could not initialize the synthetic evaluation owner")
+    return str(owner["user_id"])
+
+
 def run_reference_evaluation() -> dict[str, object]:
     """Run a small synthetic benchmark in a temporary database; no user data is read."""
     fixtures = [
@@ -122,8 +134,9 @@ def run_reference_evaluation() -> dict[str, object]:
     ]
 
     with tempfile.TemporaryDirectory(prefix="mrhub-retrieval-eval-") as directory:
-        repository = KnowledgeRepository(Path(directory) / "evaluation.sqlite3")
-        owner_id = "retrieval-evaluation-fixture-owner"
+        database_path = Path(directory) / "evaluation.sqlite3"
+        owner_id = _create_fixture_owner(database_path)
+        repository = KnowledgeRepository(database_path)
         document_ids: dict[str, str] = {}
         for title, content in fixtures:
             document = repository.create_document(
