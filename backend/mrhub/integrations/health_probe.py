@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit, urlunsplit
-
 import ipaddress
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
