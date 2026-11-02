@@ -544,3 +544,28 @@ def test_agent_workflow_list_is_owner_scoped_and_bounded():
     assert "payload" not in body["workflows"][0]
 
     assert client.get("/agent/workflows?limit=101").status_code == 422
+
+
+def test_agent_capability_discovery_is_read_only_and_reports_typed_inventory():
+    client = authenticated_client()
+    response = client.get("/agent/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == "1.0"
+    assert body["discovery_mode"] == "read_only"
+    assert body["models"]
+    assert body["models"][0]["capabilities"]["text"] is True
+    assert [item["name"] for item in body["tools"]] == ["text.echo"]
+    assert body["tools"][0]["input_schema"]["properties"]["text"]["maxLength"] == 500
+    assert body["assistant_gateway"]["health_status"] == "not_checked"
+    assert body["execution_started"] is False
+    assert body["network_probes_performed"] is False
+    assert body["downloads_started"] is False
+
+
+def test_agent_capability_discovery_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    response = TestClient(create_app()).get("/agent/capabilities")
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
