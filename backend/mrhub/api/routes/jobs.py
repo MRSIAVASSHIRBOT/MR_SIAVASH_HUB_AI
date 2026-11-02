@@ -69,10 +69,13 @@ def enable_emergency_stop(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Block new task claims and schedule dispatch until the owner explicitly resumes."""
+    reason = payload.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="Stop reason must not be blank")
     _repository, control = control_repository()
     return control.set_stopped(
         True,
-        reason=payload.reason.strip()[:500],
+        reason=reason[:500],
         changed_by=current_user.user_id,
     )
 
