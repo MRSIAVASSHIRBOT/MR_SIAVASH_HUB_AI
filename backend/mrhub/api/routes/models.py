@@ -1,7 +1,7 @@
 """Authenticated model catalog and explicitly enabled local inference endpoint."""
 
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -20,11 +20,17 @@ from mrhub.providers.stub import StubProvider
 router = APIRouter(prefix="/models", tags=["models"], dependencies=[Depends(require_user)])
 
 
-def build_model_router() -> ModelRouter:
+def build_model_router(
+    *,
+    provider_mode: Literal["all", "local", "remote"] = "all",
+    include_stub: bool = True,
+) -> ModelRouter:
+    """Build an explicit provider set; constrained modes never silently fall back."""
     settings = get_settings()
     model_router = ModelRouter()
-    model_router.register_provider(StubProvider())
-    if settings.local_inference_enabled and settings.local_inference_model:
+    if include_stub and provider_mode == "all":
+        model_router.register_provider(StubProvider())
+    if provider_mode in {"all", "local"} and settings.local_inference_enabled and settings.local_inference_model:
         model_router.register_provider(
             OllamaProvider(
                 model=settings.local_inference_model,
@@ -33,7 +39,8 @@ def build_model_router() -> ModelRouter:
             )
         )
     if (
-        settings.remote_inference_enabled
+        provider_mode in {"all", "remote"}
+        and settings.remote_inference_enabled
         and settings.remote_inference_api_key is not None
         and settings.remote_inference_model
     ):

@@ -37,3 +37,27 @@ This is the context assembly contract and authenticated preview endpoint. The cu
 ## Source freshness signal
 
 Knowledge passages now carry `freshness_status` and `freshness_checked_at`. The default is `unknown`; an owner can manually mark a source `owner_reviewed_current` or `stale` through the Knowledge API. The context marks this metadata as not automatically verified and keeps every passage untrusted regardless of freshness status. No URL fetch or external freshness probe occurs.
+
+
+## Authenticated model-driven Agent run
+
+`POST /agent/run` is the bounded synchronous entry point for the model-driven orchestration primitive. It assembles owner-scoped memory/knowledge evidence, passes the evidence JSON as untrusted data, and returns source references/freshness metadata separately from the answer.
+
+Example request:
+
+```json
+{
+  "goal": "Summarize the relevant evidence and cite its source references.",
+  "provider_mode": "local",
+  "include_memory": true,
+  "include_knowledge": true,
+  "max_turns": 3,
+  "max_output_tokens": 512
+}
+```
+
+- `provider_mode=local` requires an explicitly enabled local provider. `provider_mode=remote` requires an explicitly enabled remote provider. The endpoint does not use the stub provider or silently fall back between local and remote.
+- The current tool catalog exposes only the deterministic `text.echo` tool; the model cannot add tools or grant itself permissions.
+- The synchronous request is deliberately bounded and intended as an initial integration slice, not a replacement for durable worker-owned long-running workflows.
+- The endpoint audits status/provider/turn/tool-count metadata, not the goal, retrieved text, or answer. It does not publish content or perform external side effects.
+- Context sources remain untrusted. `owner_reviewed_current` is a manual owner assertion, not automatic source verification.
