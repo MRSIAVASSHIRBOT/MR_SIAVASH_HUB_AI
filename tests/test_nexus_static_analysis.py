@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from mrhub.nexus.static_analysis import (
-    MAX_FILES,
     MAX_FILE_BYTES,
+    MAX_FILES,
     StaticAnalysisError,
     analyze_python_repository,
 )
