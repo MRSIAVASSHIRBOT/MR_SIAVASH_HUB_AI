@@ -32,7 +32,7 @@ All retrieved content is explicitly marked as untrusted evidence. Documents can 
 
 ## Current limitation — important
 
-This is the context assembly contract and authenticated preview endpoint. The current `AgentCore` remains a deterministic planner/tool runner and does not yet send model-facing prompts, so this change does **not** claim that memory/knowledge is automatically injected into local or remote model inference. A subsequent integration must pass the structured evidence as a separate untrusted-data field to a real inference call and pass prompt-injection, citation-attribution, size-bound, and tool-boundary regression tests before enabling automatic injection.
+The standalone `POST /agent/context/assemble` endpoint is a retrieval preview and does not invoke a model. The separate `AgentCore` remains a deterministic planner/tool runner. The bounded model-driven path is `POST /agent/run`, documented below; it explicitly passes the assembled evidence as untrusted model input and retains independent server-side tool validation and policy checks. This synchronous path is not a durable worker-owned execution workflow.
 
 ## Source freshness signal
 
