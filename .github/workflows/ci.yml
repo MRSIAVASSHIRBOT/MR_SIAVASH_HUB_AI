@@ -53,5 +53,9 @@ jobs:
           assert not missing, f"wheel is missing packaged UI assets: {sorted(missing)}"
           print(f"Verified wheel: {wheels[0].name}; UI assets: {len(required)}")
           PY
+          python -m venv /tmp/mrhub-wheel-smoke
+          /tmp/mrhub-wheel-smoke/bin/python -m pip install dist/*.whl
+          MRH_ENVIRONMENT=test MRH_DATABASE_PATH=/tmp/mrhub-wheel-smoke.sqlite3 \
+            /tmp/mrhub-wheel-smoke/bin/python -c "from mrhub.main import create_app; app = create_app(); assert any(route.path == '/health' for route in app.routes)"
       - name: Lint backend and tests
         run: python -m ruff check backend/mrhub tests
