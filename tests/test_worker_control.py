@@ -1,3 +1,5 @@
+from threading import Event, Thread
+
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker import WorkerEngine
@@ -36,3 +38,50 @@ def test_worker_control_defaults_to_running_after_schema_migration(tmp_path):
 
     assert state["stopped"] is False
     assert state["reason"] is None
+
+
+def test_stop_during_active_handler_drains_current_task_but_blocks_next_claim(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-control-inflight.sqlite3")
+    repository.initialize()
+    active = TaskRecord(task_type="demo.echo", description="already running")
+    queued = TaskRecord(task_type="demo.echo", description="must remain queued")
+    repository.create(active)
+    repository.create(queued)
+
+    control = WorkerControlRepository(repository.database_path)
+    worker = WorkerEngine(repository)
+    entered = Event()
+    release = Event()
+    calls = []
+
+    def blocking_handler(task):
+        calls.append(task.task_id)
+        entered.set()
+        assert release.wait(timeout=5)
+        return {"message": task.description}
+
+    worker.handlers["demo.echo"] = blocking_handler
+    results = []
+    thread = Thread(target=lambda: results.append(worker.run_once()))
+    thread.start()
+    assert entered.wait(timeout=3)
+
+    stopped = control.set_stopped(
+        True, reason="operator requested stop", changed_by="owner-1"
+    )
+    assert stopped["stopped"] is True
+    release.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert len(results) == 1
+    assert results[0] is not None and results[0].status is TaskStatus.SUCCEEDED
+    assert calls == [active.task_id]
+
+    # Stop is a dispatch-quiesce control, not a force-kill of in-flight Python code.
+    assert worker.run_once() is None
+    active_after = repository.get(active.task_id)
+    queued_after = repository.get(queued.task_id)
+    assert active_after is not None and active_after.status is TaskStatus.SUCCEEDED
+    assert queued_after is not None and queued_after.status is TaskStatus.QUEUED
+    assert calls == [active.task_id]
