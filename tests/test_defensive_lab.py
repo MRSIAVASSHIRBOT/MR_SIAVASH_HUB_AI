@@ -62,3 +62,20 @@ def test_configuration_audit_reports_line_evidence_without_values():
 def test_configuration_audit_enforces_input_limit():
     with pytest.raises(ValueError, match="1 MB"):
         audit_configuration_text("x" * 1_000_001)
+
+
+def test_configuration_audit_flags_insecure_cookie_settings_without_echoing_values():
+    result = audit_configuration_text(
+        "SESSION_COOKIE_SECURE = false\n"
+        "SESSION_COOKIE_HTTPONLY = false\n",
+        filename="app.env",
+    )
+
+    assert {(item["rule_id"], item["line"]) for item in result["findings"]} == {
+        ("CFG005", 1),
+        ("CFG006", 2),
+    }
+    assert "false" not in str(result)
+    assert result["configuration_values_included"] is False
+    assert result["network_requests_made"] is False
+    assert result["targets_modified"] is False

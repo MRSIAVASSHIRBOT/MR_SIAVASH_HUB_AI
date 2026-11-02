@@ -68,6 +68,14 @@ _RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
         "CFG004", "medium", "Wildcard cross-origin policy appears configured.",
         re.compile(r"(?i)(?:allow_origins|allowed_origins|cors_origins)\s*[:=].*(?:\*|\[['\"]\*['\"]\])"),
     ),
+    (
+        "CFG005", "medium", "Secure cookie flag appears disabled.",
+        re.compile(r"(?im)^\s*(?:session_cookie_secure|cookie_secure|secure_cookies)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"),
+    ),
+    (
+        "CFG006", "medium", "HttpOnly cookie flag appears disabled.",
+        re.compile(r"(?im)^\s*(?:session_cookie_httponly|cookie_httponly|httponly)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"),
+    ),
 )
 
 
