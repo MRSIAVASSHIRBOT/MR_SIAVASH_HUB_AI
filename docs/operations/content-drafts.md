@@ -26,9 +26,11 @@ All routes require the authenticated owner.
 
 ## Current limits
 
-This milestone is draft management only. There is no social publishing endpoint, no external scheduler, no media upload, and no FFmpeg process invocation. Those require separate provider/asset adapters, sandboxing, approval binding, and integration tests. Draft storage does not guarantee erasure of old database backup copies.
+Draft management is separate from publishing. Scheduled publishing uses an explicit pull-driven dispatcher, opt-in provider adapters, approval/version/hash revalidation, bounded retry for known transient failures, and an `unknown_outcome` state for ambiguous provider results. It does not run automatically at API startup. Local media upload and bounded FFmpeg processing are implemented separately. Draft storage does not guarantee erasure of old database backup copies.
 
 
-## Telegram media attachments
+## Media attachments
 
-A Telegram draft may reference an owner-owned JPEG, PNG, or MP4 asset via `media_asset_id`. The ID is included in the content hash and each version snapshot. Attaching, replacing, or detaching media creates a new draft version and revokes approval. Deleting an asset that is referenced by a current or historical draft version is rejected; delete the draft/history first if the media should be removed permanently. Media attachment support is Telegram-only for now.
+A Telegram draft may reference an owner-owned JPEG, PNG, or MP4 asset via `media_asset_id`. An Instagram draft may reference an owner-owned JPEG or PNG asset; video publishing is not implemented by the Instagram adapter. The asset ID is included in the content hash and each version snapshot. Attaching, replacing, or detaching media creates a new draft version and revokes approval. Deleting an asset that is referenced by a current or historical draft version is rejected; delete the draft/history first if the media should be removed permanently.
+
+Instagram schedules require the opt-in signed public-media route because Meta must fetch a public HTTPS image URL. That route is disabled until `MRH_PUBLIC_MEDIA_BASE_URL` and `MRH_PUBLIC_MEDIA_SIGNING_KEY` are configured. External reachability, edge rate limiting, Graph API credentials/scopes, and a controlled real-account acceptance test remain deployment requirements.
