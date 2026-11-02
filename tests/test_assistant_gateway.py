@@ -32,3 +32,5 @@ def test_health_path_rejects_absolute_urls_and_traversal():
     assert validate_health_path("//example.com/health") is None
     assert validate_health_path("/../admin") is None
     assert validate_health_path("/health?token=secret") is None
+    assert validate_health_path("/%2e%2e/admin") is None
+    assert validate_health_path("/health\\admin") is None
