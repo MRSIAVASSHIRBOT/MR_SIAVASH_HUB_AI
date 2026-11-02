@@ -110,4 +110,6 @@ The source-backed knowledge API accepts bounded user-submitted text, stores sour
 
 An optional OpenRouter text adapter can be enabled explicitly through environment configuration and invoked with `POST /models/generate-remote`. It is disabled by default, restricted to the approved HTTPS origin, and never silently falls back to another provider. See `docs/operations/remote-models.md`.
 
-The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task, provider, memory, knowledge, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
+The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task, provider, memory, knowledge, content draft, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
+
+The content draft API provides owner-scoped draft/version management, deduplication, explicit approval/revocation, archive/restore, and audit events. It does not publish externally. See `docs/operations/content-drafts.md`.
