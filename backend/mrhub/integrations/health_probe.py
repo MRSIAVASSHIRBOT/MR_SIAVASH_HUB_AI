@@ -9,6 +9,9 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 
+INTEGRATION_CONTRACT_VERSION = "1.0"
+
+
 def validate_loopback_base_url(value: str | None) -> str | None:
     """Accept only HTTP(S) URLs whose host is a literal loopback IP."""
     if not value:
@@ -53,7 +56,7 @@ async def probe_loopback_service(
     base = validate_loopback_base_url(base_url)
     path = validate_health_path(health_path)
     if base is None or path is None:
-        return {"status": "invalid_configuration", "configured": False}
+        return {"contract_version": INTEGRATION_CONTRACT_VERSION, "status": "invalid_configuration", "configured": False}
     try:
         async with httpx.AsyncClient(
             timeout=timeout_seconds, follow_redirects=False, trust_env=False
@@ -61,9 +64,10 @@ async def probe_loopback_service(
             "GET", f"{base}{path}", headers={"Accept": "application/json"}
         ) as response:
             if response.is_redirect:
-                return {"status": "rejected_redirect", "configured": True}
+                return {"contract_version": INTEGRATION_CONTRACT_VERSION, "status": "rejected_redirect", "configured": True}
             if not 200 <= response.status_code < 300:
                 return {
+                    "contract_version": INTEGRATION_CONTRACT_VERSION,
                     "status": "unreachable",
                     "configured": True,
                     "http_status": response.status_code,
@@ -72,11 +76,16 @@ async def probe_loopback_service(
             async for chunk in response.aiter_bytes(chunk_size=1024):
                 received += len(chunk)
                 if received > max_response_bytes:
-                    return {"status": "response_too_large", "configured": True}
+                    return {"contract_version": INTEGRATION_CONTRACT_VERSION, "status": "response_too_large", "configured": True}
             return {
+                "contract_version": INTEGRATION_CONTRACT_VERSION,
                 "status": "reachable",
                 "configured": True,
                 "http_status": response.status_code,
             }
     except (httpx.HTTPError, OSError, ValueError):
-        return {"status": "unreachable", "configured": True}
+        return {
+            "contract_version": INTEGRATION_CONTRACT_VERSION,
+            "status": "unreachable",
+            "configured": True,
+        }
