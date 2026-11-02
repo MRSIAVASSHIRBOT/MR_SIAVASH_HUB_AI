@@ -267,7 +267,7 @@ class WorkflowRecoveryRepository:
             self._assert_lease(connection, workflow_id, lease, now)
             cursor = connection.execute(
                 """
-                UPDATE workflow_runs SET status = 'running', updated_at = ?
+                UPDATE workflow_runs SET status = 'running', last_error_code = NULL, updated_at = ?
                 WHERE workflow_id = ? AND status IN ('queued', 'paused')
                 """,
                 (now, str(workflow_id)),
