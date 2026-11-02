@@ -1,5 +1,7 @@
 """Source freshness propagation through the untrusted Agent context boundary."""
 
+import pytest
+
 from mrhub.agents.context import AgentContextAssembler
 
 
@@ -117,8 +119,6 @@ def test_context_rejects_unknown_freshness_policy():
     assembler = AgentContextAssembler.__new__(AgentContextAssembler)
     assembler.memory = EmptyMemory()
     assembler.knowledge = EmptyMemory()
-
-    import pytest
 
     with pytest.raises(ValueError, match="Unsupported knowledge freshness policy"):
         assembler.assemble(
