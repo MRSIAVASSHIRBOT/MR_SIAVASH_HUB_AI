@@ -136,3 +136,20 @@ The content draft API provides owner-scoped draft/version management, deduplicat
 ## Defensive Python static analysis
 
 Bandit runs a report-only scan of the application package on pull requests, pushes to `main`, and a weekly schedule. It complements (and does not replace) NEXUS static checks, Ruff, tests, and dependency auditing. See `docs/security/bandit.md` for scope and operational guidance.
+
+
+## Optional MCP tool interoperability
+
+The optional MCP bridge exposes the canonical Hub tool registry to compatible MCP hosts through a separate, loopback-only Streamable HTTP process. It is disabled by default and does not start with the API or worker.
+
+Install and run it with:
+
+```powershell
+python -m pip install -e ".[mcp]"
+$env:MRH_MCP_ENABLED = "true"
+$env:MRH_MCP_HOST = "127.0.0.1"
+$env:MRH_MCP_PORT = "8765"
+mrhub-mcp
+```
+
+The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools` and `hub.invoke_tool`; every invocation goes through the existing Hub registry and policy engine without implicit permission grants. It currently exposes only registered built-in tools (initially the deterministic `text.echo`). It does not launch stdio subprocesses or connect to arbitrary MCP servers. See [MCP Tool Bridge](docs/integrations/mcp-tool-bridge.md) for security boundaries and validation.
