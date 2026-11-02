@@ -38,7 +38,7 @@ Both status endpoints return the same status vocabulary:
 - `rejected_redirect`: redirect was not followed.
 - `response_too_large`: response exceeded the configured limit.
 
-Responses never include the external response body or configured URL. Probes disable environment proxy inheritance and redirects and use bounded streaming reads.
+Responses never include the external response body or configured URL. Probes disable environment proxy inheritance and redirects, accept literal loopback IPs only, reject encoded or ambiguous path segments, and enforce the configured response-byte limit while streaming.
 
 ## Capability discovery
 
