@@ -69,7 +69,9 @@ The platform is intended for legitimate personal productivity, software developm
 External publishing, spending, destructive operations, access to sensitive data, and other high-impact actions require explicit policy checks and, where configured, user approval.
 
 ## Current status
-The repository contains the architecture baseline and initial control-plane slice: versioned SQLite schema migrations, task records, policy evaluation, job state transitions/cancellation, capability-aware model selection, structured audit events, local owner authentication, action-bound approvals, and a pull-driven worker with fail-closed dispatch and bounded retry for deterministic demo tasks. The provider layer has typed contracts, an explicit registry, capability-aware dispatch, a deterministic stub, and an opt-in Ollama adapter restricted to loopback HTTP. Local inference is disabled by default; remote provider calls, shell, arbitrary code execution, and external publishing are not enabled. Worker execution remains explicitly pull-driven and intended for a single local worker process; distributed leases and forced interruption of synchronous handlers are not implemented.
+The repository now contains a modular FastAPI/SQLite control plane, owner authentication, policy and approval gates, structured audit events, a typed model registry, local memory and source-backed knowledge APIs, content drafts, and owner-scoped local media assets with bounded FFmpeg processing. The Job and Workflow Engine supports durable task state, idempotency, checkpoints, lease/fencing checks, interrupted-step recovery, safe resume, cancellation, and a separate pull-driven worker. Both initial workflow execution and resume execution are worker-owned; HTTP requests validate and enqueue rather than executing workflow steps.
+
+The deterministic stub is available for tests. Ollama local inference and the OpenRouter text adapter are separate opt-in providers and remain disabled by default; neither silently falls back to another provider. The worker is started explicitly as a separate process. This is not yet a claim of production-grade distributed-worker high availability or forced interruption of synchronous handlers. Arbitrary shell execution, arbitrary code execution, and external social publishing remain disabled.
 
 
 ## Durable agent workflow execution
@@ -113,6 +115,6 @@ The source-backed knowledge API accepts bounded user-submitted text, stores sour
 
 An optional OpenRouter text adapter can be enabled explicitly through environment configuration and invoked with `POST /models/generate-remote`. It is disabled by default, restricted to the approved HTTPS origin, and never silently falls back to another provider. See `docs/operations/remote-models.md`.
 
-The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task, provider, memory, knowledge, content draft, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
+The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task and Job Engine metrics, owner-scoped Workflow history, step inspection, cancellation, safe-resume enqueueing, external-outcome reconciliation, provider, memory, knowledge, content-draft, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
 
 The content draft API provides owner-scoped draft/version management, deduplication, explicit approval/revocation, archive/restore, and audit events. It does not publish externally. See `docs/operations/content-drafts.md`.
