@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.integrations.health_probe import probe_loopback_service
+from mrhub.integrations.health_probe import (
+    INTEGRATION_CONTRACT_VERSION,
+    probe_loopback_service,
+)
 
 router = APIRouter(
     prefix="/integrations/assistant-gateway",
@@ -19,6 +22,7 @@ async def assistant_gateway_status() -> dict[str, object]:
     settings = get_settings()
     if not settings.assistant_gateway_enabled:
         return {
+            "contract_version": INTEGRATION_CONTRACT_VERSION,
             "status": "disabled",
             "configured": bool(settings.assistant_gateway_base_url),
         }
