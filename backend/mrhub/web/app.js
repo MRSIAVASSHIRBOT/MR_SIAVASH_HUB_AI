@@ -4,6 +4,7 @@
   const $ = (selector) => document.querySelector(selector);
   const tokenKey = "mrh_session_token";
   let token = sessionStorage.getItem(tokenKey);
+  let mediaAssetsCache = [];
 
   function message(target, text, kind = "") {
     const node = $(target);
@@ -346,13 +347,114 @@
     message("#workspace-message", failures ? `به‌روزرسانی انجام شد؛ ${failures} بخش در دسترس نبود.` : "وضعیت به‌روز شد.", failures ? "error" : "success");
   }
 
+  async function loadMediaAssets() {
+    const response = await api("/content/assets?limit=100");
+    mediaAssetsCache = Array.isArray(response.assets) ? response.assets : [];
+    const select = $("#draft-media-select");
+    const selected = select.value;
+    select.replaceChildren(element("option", "بدون رسانه"));
+    select.options[0].value = "";
+    for (const asset of mediaAssetsCache) {
+      const sizeMb = (Number(asset.file_size || 0) / (1024 * 1024)).toFixed(1);
+      const option = element(
+        "option",
+        `${asset.original_filename} · ${asset.media_type} · ${sizeMb} MB`
+      );
+      option.value = asset.asset_id;
+      select.append(option);
+    }
+    if (mediaAssetsCache.some((asset) => asset.asset_id === selected)) select.value = selected;
+    updateMediaSelectAvailability();
+    renderRecords("#media-asset-list", mediaAssetsCache, (asset) => {
+      const sizeMb = (Number(asset.file_size || 0) / (1024 * 1024)).toFixed(1);
+      const card = recordCard(
+        asset.original_filename,
+        asset.media_type,
+        `${sizeMb} MB · ${asset.processing_status} · ${asset.asset_id}`
+      );
+      card.append(deleteButton("حذف رسانه", async () => {
+        if (!window.confirm("این فایل رسانه‌ای حذف شود؟ اگر در تاریخچهٔ پیش‌نویس استفاده شده باشد، حذف رد می‌شود.")) return;
+        try {
+          await api(`/content/assets/${encodeURIComponent(asset.asset_id)}`, { method: "DELETE" });
+          await loadMediaAssets();
+          message("#media-message", "رسانه حذف شد.", "success");
+        } catch (error) {
+          message("#media-message", error.message, "error");
+        }
+      }));
+      return card;
+    }, "هنوز رسانه‌ای آپلود نشده است.");
+    return mediaAssetsCache;
+  }
+
+  function updateMediaSelectAvailability() {
+    const form = $("#content-draft-form");
+    if (!form) return;
+    const isTelegram = form.elements.platform.value === "telegram";
+    const select = $("#draft-media-select");
+    select.disabled = !isTelegram;
+    if (!isTelegram) select.value = "";
+    $("#media-attachment-help").textContent = isTelegram
+      ? "فقط JPEG، PNG و MP4 تا ۲۵ مگابایت قابل پیوست‌اند؛ تغییر رسانه تأیید پیش‌نویس را باطل می‌کند."
+      : "پیوست رسانه فعلاً فقط برای پیش‌نویس‌های Telegram پشتیبانی می‌شود.";
+  }
+
+  async function uploadSelectedMedia() {
+    const input = $("#media-file-input");
+    const file = input.files && input.files[0];
+    if (!file) {
+      message("#media-message", "ابتدا یک فایل انتخاب کنید.", "error");
+      return;
+    }
+    const allowedTypes = new Set(["image/jpeg", "image/png", "video/mp4"]);
+    if (!allowedTypes.has(file.type)) {
+      message("#media-message", "فقط JPEG، PNG یا MP4 پذیرفته می‌شود.", "error");
+      return;
+    }
+    if (file.size < 1 || file.size > 25_000_000) {
+      message("#media-message", "اندازهٔ فایل باید بین ۱ بایت و ۲۵ مگابایت باشد.", "error");
+      return;
+    }
+    message("#media-message", "در حال آپلود به فضای محلی…");
+    const headers = new Headers({
+      "Content-Type": file.type,
+      "X-File-Name": file.name,
+    });
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    try {
+      const response = await fetch("/content/assets", {
+        method: "POST",
+        headers,
+        body: file,
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+      });
+      let payload = null;
+      try { payload = await response.json(); } catch { payload = null; }
+      if (response.status === 401 || response.status === 403) endSession();
+      if (!response.ok) {
+        const detail = payload && payload.detail;
+        throw new Error(typeof detail === "string" ? detail : `آپلود ناموفق بود (HTTP ${response.status})`);
+      }
+      input.value = "";
+      await loadMediaAssets();
+      if ($("#draft-media-select").disabled === false) {
+        $("#draft-media-select").value = payload.asset_id;
+      }
+      message("#media-message", "رسانه در فضای محلی ذخیره شد؛ هنوز چیزی منتشر نشده است.", "success");
+    } catch (error) {
+      message("#media-message", error.message, "error");
+    }
+  }
+
   async function loadContentDrafts() {
     const response = await api("/content/drafts?limit=100");
     renderRecords("#content-draft-list", response.drafts, (draft) => {
       const card = recordCard(
         draft.title,
         draft.body,
-        `${draft.platform} · ${draft.content_type} · ${draft.status} · نسخه ${draft.version}`
+        `${draft.platform} · ${draft.content_type} · ${draft.status} · نسخه ${draft.version}${draft.media_asset_id ? " · دارای رسانه" : ""}`
       );
       const actions = element("div", undefined, "button-row");
       if (draft.status === "draft") {
@@ -417,7 +519,7 @@
 
   async function refreshAll() {
     try {
-      await Promise.all([loadOverview(), loadContentDrafts(), loadMemory(), loadKnowledge()]);
+      await Promise.all([loadOverview(), loadContentDrafts(), loadMediaAssets(), loadMemory(), loadKnowledge()]);
     } catch (error) {
       message("#workspace-message", error.message, "error");
     }
@@ -479,6 +581,12 @@
   });
   $("#refresh-button").addEventListener("click", refreshAll);
 
+  $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
+  $("#media-refresh-button").addEventListener("click", () =>
+    loadMediaAssets().catch((error) => message("#media-message", error.message, "error"))
+  );
+  $("#content-draft-form").elements.platform.addEventListener("change", updateMediaSelectAvailability);
+
   $("#content-draft-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -495,6 +603,7 @@
           content_type: form.get("content_type"),
           body: form.get("body"),
           hashtags,
+          media_asset_id: String(form.get("media_asset_id") || "").trim() || null,
         },
       });
       event.currentTarget.reset();
