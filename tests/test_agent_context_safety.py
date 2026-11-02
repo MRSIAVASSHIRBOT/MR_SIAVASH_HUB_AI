@@ -1,7 +1,5 @@
 """Regression tests for retrieved evidence boundaries and deterministic budgets."""
 
-from pathlib import Path
-
 import pytest
 
 from mrhub.agents.context import (
