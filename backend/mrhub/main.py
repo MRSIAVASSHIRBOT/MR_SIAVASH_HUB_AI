@@ -1,4 +1,4 @@
-"""FastAPI application entry point."""
+""""FastAPI application entry point."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from mrhub.api.routes.agent import router as agent_router
+from mrhub.api.routes.agent_context import router as agent_context_router
 from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.capabilities import router as capabilities_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(media_router)
     app.include_router(tools_router)
     app.include_router(agent_router)
+    app.include_router(agent_context_router)
     app.mount(
         "/ui",
         StaticFiles(directory=Path(__file__).resolve().parent / "web", html=True),
