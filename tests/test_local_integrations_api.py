@@ -41,8 +41,12 @@ def test_both_local_integrations_are_disabled_by_default_without_probing(
         code = client.get("/integrations/code-engine/status")
         assert assistant.status_code == 200
         assert code.status_code == 200
-        assert assistant.json() == {"status": "disabled", "configured": False}
-        assert code.json() == {"status": "disabled", "configured": False}
+        assert assistant.json() == {
+            "contract_version": "1.0", "status": "disabled", "configured": False
+        }
+        assert code.json() == {
+            "contract_version": "1.0", "status": "disabled", "configured": False
+        }
         assert "base_url" not in assistant.text
         assert "base_url" not in code.text
     finally:
@@ -63,13 +67,14 @@ def test_assistant_gateway_status_uses_shared_bounded_probe_and_sanitizes_result
 
     async def fake_probe(base_url, health_path, *, timeout_seconds, max_response_bytes):
         calls.append((base_url, health_path, timeout_seconds, max_response_bytes))
-        return {"status": "reachable", "configured": True, "http_status": 200}
+        return {"contract_version": "1.0", "status": "reachable", "configured": True, "http_status": 200}
 
     monkeypatch.setattr(assistant_gateway, "probe_loopback_service", fake_probe)
     try:
         response = authenticated_client().get("/integrations/assistant-gateway/status")
         assert response.status_code == 200
         assert response.json() == {
+            "contract_version": "1.0",
             "status": "reachable",
             "configured": True,
             "http_status": 200,
@@ -96,13 +101,15 @@ def test_code_engine_status_uses_shared_bounded_probe_and_sanitizes_result(
 
     async def fake_probe(base_url, health_path, *, timeout_seconds, max_response_bytes):
         calls.append((base_url, health_path, timeout_seconds, max_response_bytes))
-        return {"status": "unreachable", "configured": True}
+        return {"contract_version": "1.0", "status": "unreachable", "configured": True}
 
     monkeypatch.setattr(code_engine, "probe_loopback_service", fake_probe)
     try:
         response = authenticated_client().get("/integrations/code-engine/status")
         assert response.status_code == 200
-        assert response.json() == {"status": "unreachable", "configured": True}
+        assert response.json() == {
+            "contract_version": "1.0", "status": "unreachable", "configured": True
+        }
         assert calls == [("http://[::1]:9123", "/health", 3.5, 4096)]
         assert "::1" not in response.text
     finally:
@@ -130,6 +137,7 @@ def test_capability_discovery_lists_both_integrations_without_probing(
         response = authenticated_client().get("/agent/capabilities")
         assert response.status_code == 200
         body = response.json()
+        assert body["integration_contract_version"] == "1.0"
         assert body["integrations"]["assistant_gateway"] == {
             "enabled": True,
             "configured": True,
