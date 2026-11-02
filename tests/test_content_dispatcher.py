@@ -5,12 +5,12 @@ from uuid import UUID
 from client_helpers import authenticated_client
 from mrhub.api.routes import public_media
 from mrhub.config import get_settings
-from mrhub.media.repository import MediaAssetRepository
 from mrhub.content.dispatcher import (
     ContentScheduleDispatcher,
     PublishReceipt,
     UnknownPublishOutcome,
 )
+from mrhub.media.repository import MediaAssetRepository
 
 
 class ConfirmingAdapter:
