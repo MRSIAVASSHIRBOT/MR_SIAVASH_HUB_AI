@@ -70,7 +70,11 @@ def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
     assert response.status_code == 200
     assert 'id="agent-run-form"' in response.text
     assert 'name="provider_mode"' in response.text
+    assert 'name="knowledge_freshness_policy"' in response.text
+    assert 'value="owner_reviewed_current_only"' in response.text
     assert 'id="agent-run-result"' in response.text
     script = client.get("/ui/app.js").text
     assert 'api("/agent/run"' in script
     assert "context_sources" in script
+    assert "knowledge_freshness_policy" in script
+    assert "excluded_stale_knowledge_count" in script
