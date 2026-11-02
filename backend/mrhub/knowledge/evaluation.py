@@ -41,12 +41,10 @@ def _validated_relevant_ids(case: RetrievalCase) -> set[str]:
 
     normalized: list[str] = []
     for identifier in identifiers:
-        if (
-            not isinstance(identifier, str)
-            or not identifier
-            or len(identifier) > MAX_DOCUMENT_ID_CHARS
-        ):
+        if not isinstance(identifier, str):
             raise TypeError("Each relevant document ID must be a string")
+        if not identifier or len(identifier) > MAX_DOCUMENT_ID_CHARS:
+            raise ValueError("Each relevant document ID must be a non-empty bounded string")
         normalized.append(identifier)
 
     if len(set(normalized)) != len(normalized):
@@ -62,12 +60,16 @@ def evaluate_retrieval(
     k: int = 5,
 ) -> dict[str, Any]:
     """Compute bounded document-level top-k metrics without returning source text."""
-    if not isinstance(k, int) or isinstance(k, bool) or not 1 <= k <= MAX_K:
+    if not isinstance(k, int) or isinstance(k, bool):
+        raise TypeError("k must be an integer")
+    if not 1 <= k <= MAX_K:
         raise ValueError(f"k must be between 1 and {MAX_K}")
-    if not isinstance(owner_user_id, str) or not owner_user_id or len(owner_user_id) > 80:
+    if not isinstance(owner_user_id, str):
         raise TypeError("owner_user_id must be a string")
+    if not owner_user_id or len(owner_user_id) > 80:
+        raise ValueError("owner_user_id must contain 1 to 80 characters")
     if not isinstance(cases, Sequence) or isinstance(cases, (str, bytes)):
-        raise TypeError("cases must be a bounded sequence")
+        raise TypeError("cases must be a sequence")
     if not cases or len(cases) > MAX_EVALUATION_CASES:
         raise ValueError(
             f"cases must contain between 1 and {MAX_EVALUATION_CASES} items"
