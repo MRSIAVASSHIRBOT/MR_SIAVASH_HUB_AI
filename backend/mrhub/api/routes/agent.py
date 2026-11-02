@@ -19,6 +19,7 @@ from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
@@ -50,6 +51,7 @@ def discover_agent_capabilities() -> dict[str, object]:
     )
     return {
         "schema_version": "1.0",
+        "integration_contract_version": INTEGRATION_CONTRACT_VERSION,
         "discovery_mode": "read_only",
         "models": [
             {
