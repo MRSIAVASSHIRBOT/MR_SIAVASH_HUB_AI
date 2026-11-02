@@ -62,6 +62,8 @@ def test_instagram_image_publish_uses_container_then_publish_and_returns_id():
         "https://localhost/image.jpg",
         "https://127.0.0.1/image.jpg",
         "https://192.168.1.10/image.jpg",
+        "https://[::1]/image.jpg",
+        "https://media.example-cdn.com:8443/image.jpg",
         "https://service.local/image.jpg",
         "https://user:password@media.example.com/image.jpg",
         "https://media.example.com/image.jpg#fragment",
