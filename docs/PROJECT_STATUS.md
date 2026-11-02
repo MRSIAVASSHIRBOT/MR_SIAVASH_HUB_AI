@@ -116,3 +116,34 @@ These results verify the configured CI jobs on this commit; they do not replace 
 - The operator UI exists; production exposure, backup/restore verification, packaging, and target-device resource measurements remain open.
 
 See [remaining-work-dependency-map.md](architecture/remaining-work-dependency-map.md) for the seven remaining workstreams, their prerequisites, and acceptance gates.
+
+
+## Superseding integration snapshot — 2026-11-02 UTC
+
+This snapshot supersedes earlier roadmap/status statements that conflict with the merged PRs listed here. Review baseline immediately before this documentation update: main contained `e0166007ea42dafa1ef780d9094c0d3b1baf79b4`. CI on that pre-documentation head was still running when checked; do not treat it as a completed check result.
+
+### Newly merged milestones
+
+- **PR #44 — registry-driven migration expectations**: merged as `71d5a347a49643e6ad64cd3f57d13b5dd1bf14f5`. Migration tests now derive expected versions from `MIGRATIONS`, avoiding hard-coded version lists when new migrations are added.
+- **PR #45 — verified local SQLite backup/restore**: merged as `5552286b28edc5fb2fbc484a5e057e8d70febf95`. Adds SQLite online backup, SHA-256/size manifest validation, SQLite quick-check, no-overwrite destination publication, tests, and a release-readiness checklist. This backs up SQLite only; media files, provider secrets, and workflow encryption keys remain separate.
+- **PR #46 — bounded model-driven Agent orchestration primitive**: merged as `1576a6204158a62dd19a085b717fc8199275d9d5`. Adds a finite model/proposal/tool/observation loop with strict proposal schema, turn/input/tool/output limits, cancellation checks, and independent server-side registry policy checks. It is not yet connected to the public API, durable worker jobs, or the context assembler; this is a primitive, not a complete autonomous agent.
+- **PR #47 — NEXUS read-only Python static analysis**: merged as `0bdaee649d1a469d2e09397686392068c2599db9`. Adds bounded repository inventory and AST checks with file/line/rule evidence; analyzed code is not imported or executed and no files are modified. Findings are advisory and the rule set is intentionally narrow.
+- **PR #48 — offline defensive configuration review**: merged as `e0166007ea42dafa1ef780d9094c0d3b1baf79b4`. Adds explicit scope/expiry validation and bounded checks for selected risky configuration patterns. It is a local/offline review foundation, not an active scanner or comprehensive security audit.
+
+### Current verified boundaries
+
+- Worker emergency-stop state is implemented and prevents new worker claims while stopped; stop semantics for already-running synchronous/external operations still need explicit operational treatment.
+- Memory/knowledge context assembly and initial prompt-injection boundary regression tests exist. Source freshness and retrieval-quality evaluation remain incomplete, and the new Agent loop does not yet consume retrieved context through an end-to-end model-facing path.
+- Drafts, explicit approval, durable content schedules, worker-driven dispatch, local media storage/transcoding, and opt-in Telegram text publishing exist. Media-aware Telegram publishing and Instagram Graph API publishing remain incomplete.
+- Backup/restore code has CI coverage, but a restore drill on the target machine and protected backup procedures for media/key material have not been performed here.
+- NEXUS static analysis and offline configuration review are foundations only. Reviewable patch proposals, dependency auditing, target-device packaging, and clean install/upgrade/rollback drills remain open.
+
+### Recommended next delivery order
+
+1. Finish retrieval freshness, citation-preserving context budgets, and end-to-end safety tests before connecting retrieved context to the model loop.
+2. Integrate the bounded Agent loop through an authenticated, bounded execution path with auditable provider selection and explicit cancellation/timeout behavior.
+3. Complete media-aware Telegram publishing with upload/size/type validation and ambiguous-outcome handling; separately design Instagram's professional Graph API and publicly reachable media delivery.
+4. Verify backup/restore, encrypted workflow recovery, migrations, clean installation, and rollback on the intended Windows machine.
+5. Extend NEXUS and defensive review with reviewable patch proposals, dependency/configuration coverage, and stronger scope/evidence tests.
+
+A green CI result is not equivalent to target-machine validation or production readiness.
