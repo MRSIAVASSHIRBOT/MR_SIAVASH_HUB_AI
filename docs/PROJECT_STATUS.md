@@ -85,3 +85,34 @@ Only legitimate software development, content creation, and authorized defensive
 ## Status reporting rule
 
 Never report a feature complete based only on a plan, PR description, or successful test claim. Verify code/branch, latest CI, relevant tests, and actual integration state. Always distinguish main, draft PR branches, and roadmap work.
+
+
+## Superseding live snapshot — 2026-11-02
+
+This section supersedes any earlier statements in this ledger that conflict with the merged main head below. The current main commit at the time of review is `d2e4689dcdc873391ca4820dfaba60fba6298cbf`.
+
+### Newly integrated milestones
+
+- **PR #32 — status/roadmap synchronization**: merged.
+- **PR #33 — bounded memory and knowledge context assembly**: merged. The assembler is present, but this does not by itself establish a fully model-driven agent reasoning loop or prove that every agent path consumes retrieved context.
+- **PR #34 — durable approval-gated content scheduling**: merged. Schedule records and approval/version binding are implemented.
+- **PR #35 — worker-driven schedule dispatch**: merged. Dispatch is pull-driven through the worker; it does not create an always-on scheduler at API startup.
+- **PR #36 — configurable Telegram publishing adapter**: merged. Telegram text publishing is opt-in through environment configuration and an explicit worker cycle. Telegram does not provide a provider idempotency key for `sendMessage`; ambiguous outcomes are quarantined rather than blindly retried.
+- Instagram publishing remains unavailable: it requires the professional-account Graph API path, credentials, and a publicly reachable media URL. The local media asset endpoint is not a substitute for a public media URL.
+
+### Exact-head CI evidence
+
+On `d2e4689dcdc873391ca4820dfaba60fba6298cbf`, both latest push workflows completed successfully:
+- Backend CI: run [41374734670](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/41374734670)
+- CI: run [41374734542](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/41374734542)
+
+These results verify the configured CI jobs on this commit; they do not replace target-device runtime, backup/restore, or real provider-account acceptance tests.
+
+### Current product boundaries
+
+- The memory/knowledge context assembler is implemented, but retrieval evaluation, prompt-injection regression coverage, and safe integration into a true model-driven agent loop remain explicit gates.
+- The content path now includes drafts, approval, durable schedules, worker dispatch, and an opt-in Telegram text adapter. Instagram, media publication, and external generation are not complete.
+- The workflow engine is durable and worker-owned, but a production-grade emergency stop and multi-worker deployment approval remain open.
+- The operator UI exists; production exposure, backup/restore verification, packaging, and target-device resource measurements remain open.
+
+See [remaining-work-dependency-map.md](architecture/remaining-work-dependency-map.md) for the seven remaining workstreams, their prerequisites, and acceptance gates.
