@@ -226,3 +226,20 @@ These changes improve automated evidence for media delivery, bounded static anal
 2. Run an authorized Instagram Graph API acceptance test only after professional-account credentials are configured securely and the signed-media URL is reachable over public HTTPS.
 3. Evaluate stale-source handling and prompt-injection behavior using a repeatable synthetic retrieval corpus before expanding Agent tool access.
 4. Keep all production claims tied to exact-head CI plus relevant target-environment evidence.
+
+
+
+## Follow-up verification — 2026-11-03 UTC
+
+- **PR #90 — emergency stop regression:** merged. The worker stop switch blocks scheduled content dispatch and only resumes after an explicit operator reset; an in-flight synchronous handler is not falsely reported as cancelled.
+- **PR #91 — SiaCode Stage 2 preflight:** merged after Backend CI and CI passed on Python 3.11/3.12. The optional probe is disabled by default, loopback-only, redirect-disabled, proxy-environment-independent, timeout/response-size bounded, and returns sanitized state codes. It does not launch processes, download models, create tunnels, or submit coding requests.
+- **PR #93 — stop-vs-publish race gate:** merged after Backend CI and CI passed on Python 3.11/3.12. The dispatcher re-checks the durable stop switch immediately before calling a provider and returns a claimed schedule to `scheduled` if stop is latched. This narrows but cannot eliminate the race after a remote request has started; ambiguous outcomes remain quarantined.
+- **PR #94 — emergency-stop API authorization tests:** merged after Backend CI and CI passed on Python 3.11/3.12. Tests cover unauthenticated access denial, persisted owner attribution through stop/resume, and blank-reason rejection.
+- **PR #96 — authenticated SiaCode preflight API:** implementation is on a pending branch/PR; do not call it merged until the latest-head Backend CI and both CI matrix jobs pass. The route is diagnostic-only and reports that coding requests remain disabled. The PR also stabilizes a pre-existing signed-media expiry test by moving its overlong-expiry assertion farther from the 900-second boundary.
+
+### Current hard boundaries
+
+- SiaCode Stage 2 is a health-probe foundation, not code execution integration. Upstream `molab_proxy.py` forwards `GET` requests to its configured upstream rather than implementing a dedicated local health handler, so the real response contract must be validated in a controlled setup before relying on `ready=true`.
+- No SiaCode notebook, tunnel, remote model, or coding request has been launched by this project. Stage 3 requires a separately reviewed request contract, authorization gate, isolated workspace, bounded output, and explicit diff review.
+- Scheduled social publishing still has no general provider-side idempotency guarantee. Ambiguous provider results must remain `unknown_outcome`; do not blindly retry or claim exactly-once publication.
+- Public signed-media reachability/edge controls, a live authorized Instagram publish-and-reconciliation test, and clean Windows install/upgrade/rollback/restore drills remain external acceptance gates.
