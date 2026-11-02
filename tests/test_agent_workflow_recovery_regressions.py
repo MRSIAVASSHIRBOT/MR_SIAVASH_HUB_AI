@@ -88,20 +88,29 @@ def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch
     assert created.status_code == 200
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
-    assert run_worker_once() is not None
+
+    from mrhub.jobs.recovery import WorkflowRecoveryRepository
+
+    original_finish = WorkflowRecoveryRepository.finish_run
+
+    def interrupt_before_finalize(self, current_workflow_id, status, **kwargs):
+        if status == "succeeded":
+            raise RuntimeError("simulated crash after final checkpoint")
+        return original_finish(self, current_workflow_id, status, **kwargs)
+
+    monkeypatch.setattr(WorkflowRecoveryRepository, "finish_run", interrupt_before_finalize)
+    with pytest.raises(RuntimeError, match="Workflow execution stopped"):
+        run_worker_once()
+    monkeypatch.setattr(WorkflowRecoveryRepository, "finish_run", original_finish)
+
     workflow = client.get(f"/agent/workflows/{workflow_id}").json()
+    assert workflow["status"] == "paused"
+    assert all(step["status"] == "succeeded" for step in workflow["steps"])
 
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
-    with repository._connection() as connection:
-        connection.execute(
-            "UPDATE workflow_runs SET status = 'paused' WHERE workflow_id = ?",
-            (workflow_id,),
-        )
-        connection.execute(
-            "UPDATE tasks SET status = 'waiting_approval' WHERE task_id = ?",
-            (workflow["task_id"],),
-        )
+    task = repository.get(UUID(workflow["task_id"]))
+    assert task is not None and task.status.value == "waiting_approval"
 
     def must_not_replay(self, agent_request, **callbacks):
         raise AssertionError("A fully checkpointed workflow must not invoke tools again")
