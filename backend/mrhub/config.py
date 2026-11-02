@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     remote_inference_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
     require_worker_for_readiness: bool = False
     worker_heartbeat_timeout_seconds: int = Field(default=15, ge=3, le=300)
+    telegram_bot_token: SecretStr | None = None
+    telegram_chat_id: str | None = None
 
 
 @lru_cache
