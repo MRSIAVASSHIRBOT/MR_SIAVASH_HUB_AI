@@ -6,7 +6,7 @@ import sqlite3
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
@@ -84,6 +84,22 @@ def _workflow_digest(request: AgentPlanRequest) -> str:
         separators=(",", ":"),
     ).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+@router.get("/workflows")
+def list_agent_workflows(
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict[str, object]:
+    """List only the authenticated owner's bounded workflow metadata."""
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    workflows = WorkflowRecoveryRepository(settings.database_path).list_runs(
+        owner_user_id=current_user.user_id,
+        limit=limit,
+    )
+    return {"workflows": workflows, "count": len(workflows)}
 
 
 @router.post("/workflows")
