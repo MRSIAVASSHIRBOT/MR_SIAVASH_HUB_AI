@@ -1,0 +1,72 @@
+"""Optional MCP bridge contract and policy tests."""
+
+import json
+
+import pytest
+from pydantic import BaseModel
+
+mcp = pytest.importorskip("mcp")
+
+from mcp import Client
+from mrhub.domain.tasks import RiskClass
+from mrhub.integrations.mcp_server import create_mcp_server
+from mrhub.tools.builtins import build_tool_registry
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
+
+
+@pytest.mark.anyio
+async def test_mcp_bridge_lists_and_invokes_registered_safe_hub_tool():
+    server = create_mcp_server(build_tool_registry())
+    async with Client(server) as client:
+        catalog = await client.list_tools()
+        names = {item.name for item in catalog.tools}
+        assert names == {"hub.list_tools", "hub.invoke_tool"}
+
+        result = await client.call_tool(
+            "hub.invoke_tool",
+            {"name": "text.echo", "payload": {"text": "hello"}},
+        )
+        assert not result.isError
+        response = json.loads(result.content[0].text)
+        assert response == {
+            "ok": True,
+            "result": {"text": "hello", "character_count": 5},
+        }
+
+
+class EmptyInput(BaseModel):
+    pass
+
+
+class EmptyOutput(BaseModel):
+    ok: bool
+
+
+def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="custom.external",
+            description="Test-only external operation",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: {"ok": True},
+            risk_class=RiskClass.LOW,
+            external_side_effect=True,
+        )
+    )
+    server = create_mcp_server(registry)
+
+    async def invoke():
+        async with Client(server) as client:
+            return await client.call_tool(
+                "hub.invoke_tool",
+                {"name": "custom.external", "payload": {}},
+            )
+
+    import anyio
+
+    result = anyio.run(invoke)
+    assert not result.isError
+    response = json.loads(result.content[0].text)
+    assert response == {"ok": False, "error_code": "policy_denied"}
