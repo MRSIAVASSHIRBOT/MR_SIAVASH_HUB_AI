@@ -11,6 +11,10 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.media.repository import MAX_UPLOAD_BYTES, MediaAssetRepository
 
 
+class MediaAttachmentError(ValueError):
+    """Raised when a media asset cannot safely be attached to a draft."""
+
+
 class ContentDraftRepository:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -77,16 +81,16 @@ class ContentDraftRepository:
         try:
             asset_uuid = UUID(str(media_asset_id))
         except (TypeError, ValueError) as exc:
-            raise ValueError("Invalid media asset ID") from exc
+            raise MediaAttachmentError("Invalid media asset ID") from exc
         if platform != "telegram":
-            raise ValueError("Media attachments are currently supported for Telegram drafts only")
+            raise MediaAttachmentError("Media attachments are currently supported for Telegram drafts only")
         asset = MediaAssetRepository(self.database_path).get(owner_user_id, asset_uuid)
         if asset is None:
-            raise ValueError("Media asset is missing or belongs to another owner")
+            raise MediaAttachmentError("Media asset is missing or belongs to another owner")
         if asset["media_type"] not in {"image/jpeg", "image/png", "video/mp4"}:
-            raise ValueError("Telegram media attachments support JPEG, PNG, and MP4 only")
+            raise MediaAttachmentError("Telegram media attachments support JPEG, PNG, and MP4 only")
         if int(asset["file_size"]) < 1 or int(asset["file_size"]) > MAX_UPLOAD_BYTES:
-            raise ValueError("Media asset size is outside the publishing limit")
+            raise MediaAttachmentError("Media asset size is outside the publishing limit")
         return str(asset["asset_id"])
 
     @staticmethod
