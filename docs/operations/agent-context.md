@@ -64,3 +64,20 @@ Example request:
 ## Operator UI
 
 The local dashboard exposes the bounded Agent endpoint with explicit local/remote provider mode, optional memory/knowledge context, a maximum of three turns, and a maximum of 512 output tokens. It displays the answer and source metadata separately, including freshness labels. Remote mode requires deliberate selection; the UI does not fall back between provider modes. The endpoint remains synchronous and is not a durable workflow runner.
+
+
+## Knowledge freshness filtering
+
+Both `POST /agent/context/assemble` and `POST /agent/run` accept
+`knowledge_freshness_policy`:
+
+- `include_all` (default) preserves the existing behavior and labels each passage.
+- `owner_reviewed_current_only` includes only knowledge sources whose freshness status
+  is `owner_reviewed_current` and whose review timestamp is present. Stale, unknown,
+  and incomplete review records are excluded before context budgeting.
+
+The response reports `excluded_stale_knowledge_count` and
+`excluded_unreviewed_knowledge_count`. This policy relies on the owner's manual review
+assertion; it does **not** perform automatic URL checks or prove that a source is current.
+Memory evidence is unaffected by this knowledge-only filter. Retrieved content remains
+untrusted and cannot grant tool permissions.
