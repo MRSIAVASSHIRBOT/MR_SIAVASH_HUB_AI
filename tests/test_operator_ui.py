@@ -30,6 +30,14 @@ def test_operator_ui_and_assets_are_served_locally_with_strict_csp(tmp_path, mon
     assert "sessionStorage" in script.text
     assert "localStorage" not in script.text
     assert "default-src 'self'" in script.headers["content-security-policy"]
+    assert 'id="job-summary"' in page.text
+    assert 'id="workflow-list"' in page.text
+    assert 'id="workflow-resume-form"' in page.text
+    assert 'id="workflow-reconciliation-form"' in page.text
+    assert 'api("/jobs/summary")' in script.text
+    assert 'api("/agent/workflows?limit=50")' in script.text
+    assert "resume-check" in script.text
+    assert "workflow-step-list" in script.text
 
     # Serving the shell does not bypass API authentication.
     assert client.get("/memory").status_code in (401, 403)

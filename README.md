@@ -83,6 +83,9 @@ Workflow submission is asynchronous. POST /agent/workflows validates the request
 4. Start the API process as usual, then start a worker in a separate process from the repository root:
    `python -m mrhub.worker_service`
 5. Poll GET /agent/workflows/{workflow_id} for durable state. The API does not silently start a worker; the separate process is an explicit operational choice.
+6. Open `http://127.0.0.1:8000/ui/` for the authenticated operator console. It displays queue metrics and owner-scoped workflow history, and provides explicit cancellation, safe-resume enqueueing, and externally verified outcome reconciliation.
+
+Workflow resume is asynchronous too: POST /agent/workflows/{workflow_id}/resume validates the original request and enqueues the existing job. Only the pull worker executes resumed steps under its lease and fencing token. The original request must be supplied again because plaintext inputs are not stored in workflow history. A resume request never runs tools inside the HTTP process. The console can inspect the resume decision before enqueueing.
 
 The encrypted envelope is bound with authenticated associated data to the workflow ID, task ID, and owner ID. Raw request/tool inputs are not written to workflow history or logs. External-side-effect steps must not be blindly replayed after an ambiguous outcome.
 

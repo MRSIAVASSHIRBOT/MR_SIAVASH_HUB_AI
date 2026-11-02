@@ -77,3 +77,17 @@ summary { color: var(--green); cursor: pointer; }
   .search-form { grid-template-columns: 1fr 1fr; }
   .search-form label { grid-column: 1 / -1; }
 }
+
+.workflow-tools { border-top: 1px solid var(--line); margin-top: 1.5rem; padding-top: 1.25rem; }
+.workflow-tools .section-heading { margin-bottom: .75rem; }
+.workflow-tools h3 { font-size: 1.05rem; margin: 0; }
+.workflow-step-list { display: grid; gap: .45rem; margin-top: .65rem; }
+.workflow-step { border: 1px solid var(--line); border-radius: .6rem; padding: .6rem .75rem; background: #07130f; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .7rem; }
+.workflow-step strong { overflow-wrap: anywhere; }
+.workflow-step small { color: var(--muted); overflow-wrap: anywhere; grid-column: 1 / -1; }
+.workflow-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.workflow-actions .button { justify-self: start; }
+@media (max-width: 760px) {
+  .workflow-step { grid-template-columns: 1fr; }
+  .workflow-step small { grid-column: auto; }
+}
