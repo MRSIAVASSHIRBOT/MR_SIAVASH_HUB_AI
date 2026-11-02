@@ -17,7 +17,8 @@ class FakeResponse:
 
     async def aiter_bytes(self, chunk_size=1024):
         for chunk in self._chunks:
-            yield chunk
+            for offset in range(0, len(chunk), chunk_size):
+                yield chunk[offset : offset + chunk_size]
 
 
 class FakeClient:
@@ -105,3 +106,38 @@ def test_probe_returns_only_sanitized_reachability_metadata(monkeypatch):
         "http_status": 200,
     }
     assert "ready" not in str(result)
+
+
+
+def test_validators_reject_encoded_or_ambiguous_local_paths():
+    assert health_probe.validate_health_path("/health") == "/health"
+    assert health_probe.validate_health_path("/health/%2e%2e/admin") is None
+    assert health_probe.validate_health_path("/health//admin") is None
+    assert health_probe.validate_loopback_base_url(
+        "http://127.0.0.1/prefix/%2e%2e/admin"
+    ) is None
+    assert health_probe.validate_loopback_base_url(
+        "http://127.0.0.1/prefix//admin"
+    ) is None
+
+
+def test_probe_rejects_invalid_response_limit_before_reading(monkeypatch):
+    response = FakeResponse(status_code=200, chunks=(b"ok",))
+
+    def fake_client(**kwargs):
+        return FakeClient(response, **kwargs)
+
+    monkeypatch.setattr(health_probe.httpx, "AsyncClient", fake_client)
+    result = asyncio.run(
+        health_probe.probe_loopback_service(
+            "http://127.0.0.1:18789",
+            "/health",
+            timeout_seconds=1,
+            max_response_bytes=0,
+        )
+    )
+    assert result == {
+        "contract_version": "1.0",
+        "status": "invalid_configuration",
+        "configured": False,
+    }
