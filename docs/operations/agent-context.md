@@ -64,3 +64,14 @@ Example request:
 ## Operator UI
 
 The local dashboard exposes the bounded Agent endpoint with explicit local/remote provider mode, optional memory/knowledge context, a maximum of three turns, and a maximum of 512 output tokens. It displays the answer and source metadata separately, including freshness labels. Remote mode requires deliberate selection; the UI does not fall back between provider modes. The endpoint remains synchronous and is not a durable workflow runner.
+
+
+## Model-driven Agent run history
+
+The authenticated model-run history is available without persisting prompts, retrieved passage bodies, answers, tool inputs, or tool outputs.
+
+- `GET /agent/model-runs?limit=20` lists the most recent runs for the current owner. The limit is bounded to 1–100.
+- `GET /agent/model-runs/{run_id}` retrieves one run belonging to the current owner; another owner's run is indistinguishable from a missing run (404).
+- Records contain the run identifier, outcome, timestamp, provider mode, terminal status, selected provider, turn count, tool-call count, and retrieved-passage count.
+- The history is backed by the existing audit-event store; no schema migration or duplicate history table is introduced.
+- The audit metadata allow-list explicitly permits only these operational fields. Arbitrary request fields, prompts, evidence, answers, credentials, and tool payloads remain excluded.
