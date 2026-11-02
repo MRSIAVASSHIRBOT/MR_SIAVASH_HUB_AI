@@ -2,7 +2,7 @@
 
 **Status:** proposed integration design; not yet a runtime adapter.  
 **Source reviewed:** [Siavashc/SiaCode](https://github.com/Siavashc/SiaCode) README on 2026-11-02.  
-**Owner project:** MR_SIAVASS_HUB_AI.
+**Owner project:** MR_SIAVASH_HUB_AI.
 
 ## Decision
 
