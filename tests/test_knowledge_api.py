@@ -156,3 +156,89 @@ def test_knowledge_routes_require_authentication() -> None:
     get_settings.cache_clear()
     client = TestClient(create_app())
     assert client.get("/knowledge/documents").status_code in (401, 403)
+
+
+
+def test_source_freshness_is_owner_scoped_manual_metadata_and_survives_search():
+    client = authenticated_client()
+    created = client.post(
+        "/knowledge/documents",
+        json={
+            "title": "Freshness Fixture",
+            "content": "Freshness metadata search marker for owner review.",
+            "source_ref": "https://example.invalid/reference",
+        },
+    )
+    assert created.status_code == 201
+    source_id = created.json()["source_id"]
+    assert created.json()["freshness_status"] == "unknown"
+    assert created.json()["freshness_checked_at"] is None
+
+    marked_current = client.patch(
+        f"/knowledge/sources/{source_id}/freshness",
+        json={"status": "owner_reviewed_current"},
+    )
+    assert marked_current.status_code == 200
+    assert marked_current.json()["freshness_status"] == "owner_reviewed_current"
+    assert marked_current.json()["freshness_checked_at"] is not None
+    assert marked_current.json()["automatic_verification"] is False
+
+    search = client.post(
+        "/knowledge/search",
+        json={"query": "freshness metadata marker"},
+    )
+    result = next(
+        item for item in search.json()["results"]
+        if item["source_id"] == source_id
+    )
+    assert result["freshness_status"] == "owner_reviewed_current"
+    assert result["freshness_checked_at"] is not None
+
+    marked_stale = client.patch(
+        f"/knowledge/sources/{source_id}/freshness",
+        json={"status": "stale"},
+    )
+    assert marked_stale.status_code == 200
+    stale_search = client.post(
+        "/knowledge/search",
+        json={"query": "freshness metadata marker"},
+    )
+    stale_result = next(
+        item for item in stale_search.json()["results"]
+        if item["source_id"] == source_id
+    )
+    assert stale_result["freshness_status"] == "stale"
+
+    reset = client.patch(
+        f"/knowledge/sources/{source_id}/freshness",
+        json={"status": "unknown"},
+    )
+    assert reset.status_code == 200
+    assert reset.json()["freshness_checked_at"] is None
+
+
+def test_source_freshness_cannot_be_changed_by_another_owner():
+    client = authenticated_client()
+    repository = KnowledgeRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                "freshness-other-owner",
+                "freshness-other-owner",
+                "00",
+                "00",
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+    other = repository.create_document(
+        "freshness-other-owner",
+        title="Other Owner",
+        content="A source that belongs to another owner.",
+    )
+    response = client.patch(
+        f"/knowledge/sources/{other['source_id']}/freshness",
+        json={"status": "stale"},
+    )
+    assert response.status_code == 404
