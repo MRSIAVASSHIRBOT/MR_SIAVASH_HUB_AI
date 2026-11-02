@@ -81,3 +81,6 @@ The response reports `excluded_stale_knowledge_count` and
 assertion; it does **not** perform automatic URL checks or prove that a source is current.
 Memory evidence is unaffected by this knowledge-only filter. Retrieved content remains
 untrusted and cannot grant tool permissions.
+
+The operator UI exposes the same policy selector in its bounded Agent run panel and
+shows the number of stale and unreviewed knowledge passages excluded from each run.
