@@ -27,7 +27,6 @@ class SiaCodePreflight:
     ) -> None:
         self._settings = settings or get_settings()
         self._client = client
-        self._owns_client = False
 
     @staticmethod
     def _health_url(value: str | None) -> str | None:
@@ -47,8 +46,8 @@ class SiaCodePreflight:
             or parsed.fragment
         ):
             return None
-        # The adapter is intentionally restricted to loopback; remote tunnels and
-        # arbitrary hosts require a separate reviewed integration stage.
+
+        # Remote tunnels and arbitrary hosts require a separately reviewed stage.
         netloc = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
         if port is not None:
             netloc += f":{port}"
@@ -56,28 +55,41 @@ class SiaCodePreflight:
         return urlunsplit((parsed.scheme, netloc, f"{base_path}/health", "", ""))
 
     def check(self) -> dict[str, str | bool]:
-        """Return stable state/reason fields; never return URLs, response bodies, or secrets."""
+        """Return stable state/reason fields, never URLs, response bodies, or secrets."""
         if not self._settings.siacode_enabled:
             return {"state": "disabled", "ready": False, "reason_code": "disabled"}
+
         url = self._health_url(self._settings.siacode_base_url)
         if url is None:
-            return {"state": "unconfigured", "ready": False, "reason_code": "invalid_or_missing_config"}
+            return {
+                "state": "unconfigured",
+                "ready": False,
+                "reason_code": "invalid_or_missing_config",
+            }
 
         client = self._client
-        owns_client = False
+        owns_client = client is None
         if client is None:
             client = httpx.Client(
                 timeout=self._settings.siacode_timeout_seconds,
                 follow_redirects=False,
                 trust_env=False,
             )
-            owns_client = True
         try:
             with client.stream("GET", url, follow_redirects=False) as response:
                 if 300 <= response.status_code < 400:
-                    return {"state": "failed", "ready": False, "reason_code": "redirect_rejected"}
+                    return {
+                        "state": "failed",
+                        "ready": False,
+                        "reason_code": "redirect_rejected",
+                    }
                 if response.status_code != 200:
-                    return {"state": "unavailable", "ready": False, "reason_code": "health_status_not_ok"}
+                    return {
+                        "state": "unavailable",
+                        "ready": False,
+                        "reason_code": "health_status_not_ok",
+                    }
+
                 body = bytearray()
                 limit = min(
                     self._settings.siacode_max_response_bytes,
@@ -86,18 +98,34 @@ class SiaCodePreflight:
                 for chunk in response.iter_bytes():
                     body.extend(chunk)
                     if len(body) > limit:
-                        return {"state": "failed", "ready": False, "reason_code": "response_too_large"}
+                        return {
+                            "state": "failed",
+                            "ready": False,
+                            "reason_code": "response_too_large",
+                        }
                 try:
                     payload = json.loads(body)
                 except (ValueError, UnicodeDecodeError):
-                    return {"state": "failed", "ready": False, "reason_code": "invalid_health_payload"}
+                    return {
+                        "state": "failed",
+                        "ready": False,
+                        "reason_code": "invalid_health_payload",
+                    }
                 if not isinstance(payload, dict):
-                    return {"state": "failed", "ready": False, "reason_code": "invalid_health_payload"}
+                    return {
+                        "state": "failed",
+                        "ready": False,
+                        "reason_code": "invalid_health_payload",
+                    }
                 return {"state": "ready", "ready": True, "reason_code": "health_ok"}
         except httpx.TimeoutException:
             return {"state": "unavailable", "ready": False, "reason_code": "timeout"}
         except httpx.HTTPError:
-            return {"state": "unavailable", "ready": False, "reason_code": "endpoint_unreachable"}
+            return {
+                "state": "unavailable",
+                "ready": False,
+                "reason_code": "endpoint_unreachable",
+            }
         finally:
             if owns_client:
                 client.close()
