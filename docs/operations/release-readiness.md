@@ -2,6 +2,9 @@
 
 Use this checklist before tagging a release. A green unit-test suite is necessary but not sufficient.
 
+## Windows real-device acceptance
+- [ ] Complete the [Windows Local Acceptance Checklist](windows-acceptance-checklist.md) on a real Windows machine and record the tested commit SHA and sanitized results.
+
 ## Clean installation
 - [ ] Create a fresh Python 3.11 and/or 3.12 environment and install `.[dev]` from the checked-out commit.
 - [ ] Confirm the installed package imports and the documented local startup command works.
