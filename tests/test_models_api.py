@@ -336,3 +336,63 @@ def test_provider_health_check_requires_authentication(tmp_path, monkeypatch):
     response = client.post("/models/providers/health-check", json={})
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
+
+
+
+def test_build_model_router_applies_agent_timeout_cap(monkeypatch):
+    from pydantic import SecretStr
+
+    from mrhub.api.routes import models
+    from mrhub.config import Settings
+    from mrhub.providers.base import ProviderHealth, ProviderRequest, ProviderResponse
+    from mrhub.providers.types import ModelCapability, ModelDescriptor
+
+    observed = {}
+
+    class FakeProvider:
+        def __init__(self, *, model, timeout_seconds, **kwargs):
+            self.timeout_seconds = timeout_seconds
+            provider_name = "ollama" if model == "local-model" else "openrouter"
+            observed[provider_name] = timeout_seconds
+            self.descriptor = ModelDescriptor(
+                provider=provider_name,
+                model=model,
+                capability=ModelCapability(text=True),
+                available=True,
+                local=provider_name == "ollama",
+                priority=1,
+            )
+
+        def health(self, timeout_seconds=2.0):
+            return ProviderHealth(available=True, reason_code="test_ready")
+
+        def generate(self, request: ProviderRequest):
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text="{}",
+            )
+
+    monkeypatch.setattr(models, "OllamaProvider", FakeProvider)
+    monkeypatch.setattr(models, "OpenRouterProvider", FakeProvider)
+    monkeypatch.setattr(
+        models,
+        "get_settings",
+        lambda: Settings(
+            local_inference_enabled=True,
+            local_inference_model="local-model",
+            local_inference_timeout_seconds=300,
+            remote_inference_enabled=True,
+            remote_inference_api_key=SecretStr("test-key"),
+            remote_inference_model="remote-model",
+            remote_inference_timeout_seconds=120,
+        ),
+    )
+
+    models.build_model_router(
+        provider_mode="all",
+        include_stub=False,
+        max_timeout_seconds=30,
+    )
+
+    assert observed == {"ollama": 30, "openrouter": 30}
