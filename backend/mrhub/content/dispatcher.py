@@ -188,7 +188,7 @@ class ContentScheduleDispatcher:
                 "status": "unknown_outcome",
                 "reason_code": "provider_outcome_unknown",
             }
-        except Exception:
+        except Exception:  # noqa: BLE001 - provider errors can be ambiguous after a side effect
             # Unknown exceptions may occur after the remote side effect. Fail closed.
             self._finish(
                 schedule_id, "unknown_outcome", "provider_outcome_unknown", now=self._now()
