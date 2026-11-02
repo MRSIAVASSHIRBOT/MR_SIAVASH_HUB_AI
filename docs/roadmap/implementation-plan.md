@@ -89,8 +89,8 @@ Exit criteria: a multi-step workflow runs with bounded tools and traceable state
 
 ## Phase 5 — NEXUS and Discovery
 - [x] Bounded read-only Python repository inventory and AST analysis foundation
-- [ ] Patch proposal and diff review
-- Tests executed in an isolated, bounded environment
+- [x] Bounded patch proposal and unified-diff review (no filesystem writes, patch application, or code execution)
+- [ ] Execute tests in an isolated, bounded environment before considering patch application
 - Research connectors with source attribution
 - Untrusted-content handling and source provenance
 
@@ -172,4 +172,4 @@ The first implementation slice should be deliberately small: configuration -> AP
 - Instagram publishing is **not production-verified**: public origin reachability, edge rate limiting, real Graph API credentials/scopes, and a controlled real-account post remain external acceptance gates.
 - Worker-owned durable Agent workflow submission/resume is implemented; this is distinct from the still-open scheduled-workflow-trigger work.
 - The durable stop switch is explicitly a dispatch-quiesce control: active handlers are allowed to finish, new claims are blocked, and ambiguous external outcomes require reconciliation. See docs/operations/worker-stop-contract.md; provider-specific cancellation/timeouts remain open.
-- Remaining release gates include the target-device backup/restore drill and protected media/key backup procedure, repeatable retrieval-quality and source-freshness evaluation, NEXUS patch-proposal review plus isolated tests, broader defensive dependency/configuration auditing, and packaging/rollback checks.
+- Remaining release gates include the target-device backup/restore drill and protected media/key backup procedure, repeatable retrieval-quality and source-freshness evaluation, isolated NEXUS test execution and safe patch-application controls, broader defensive dependency/configuration auditing, and packaging/rollback checks.
