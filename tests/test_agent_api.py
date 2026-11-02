@@ -243,6 +243,7 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
 def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step(monkeypatch):
     from client_helpers import run_worker_once
     from mrhub.agents.core import AgentCore
+    from mrhub.infrastructure.database import TaskRepository
     from mrhub.jobs.worker import WorkerEngine
     from uuid import UUID
 
@@ -293,9 +294,9 @@ def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step(monk
     final_workflow = client.get(f"/agent/workflows/{workflow_id}").json()
     assert final_workflow["status"] == "succeeded"
     assert final_workflow["steps"][1]["status"] == "succeeded"
-    result = WorkerEngine(__import__("mrhub.infrastructure.database", fromlist=["TaskRepository"]).TaskRepository(
-        get_settings().database_path
-    )).get_result(UUID(paused["task_id"]))
+    result = WorkerEngine(TaskRepository(get_settings().database_path)).get_result(
+        UUID(paused["task_id"])
+    )
     assert result is not None
     assert result["result"]["executed_tool_count"] == 1
 
@@ -459,9 +460,9 @@ def test_agent_workflow_duplicate_resume_does_not_replay_completed_work(monkeypa
     assert history.status_code == 200
     assert history.json()["status"] == "succeeded"
 
-    repository = __import__(
-        "mrhub.infrastructure.database", fromlist=["TaskRepository"]
-    ).TaskRepository(get_settings().database_path)
+    from mrhub.infrastructure.database import TaskRepository
+
+    repository = TaskRepository(get_settings().database_path)
     result = WorkerEngine(repository).get_result(UUID(paused["task_id"]))
     assert result is not None
     assert result["result"]["executed_tool_count"] == 0
