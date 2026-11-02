@@ -126,3 +126,53 @@ def test_context_rejects_unknown_freshness_policy():
             query="review",
             knowledge_freshness_policy="automatically_verified",
         )
+
+
+
+class ManyStaleThenCurrentKnowledge:
+    def search(self, owner_user_id: str, query: str, limit: int):
+        assert limit == 25
+        results = []
+        for index in range(4):
+            results.append({
+                "citation_ref": f"knowledge://documents/stale-{index}#chunk-0",
+                "source_ref": f"local-note:stale-{index}",
+                "trust_classification": "user_supplied",
+                "freshness_status": "stale",
+                "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+                "document_hash": "a" * 64,
+                "chunk_hash": "b" * 64,
+                "content": "stale result",
+            })
+        results.append({
+            "citation_ref": "knowledge://documents/current-after-stale#chunk-0",
+            "source_ref": "local-note:current",
+            "trust_classification": "user_supplied",
+            "freshness_status": "owner_reviewed_current",
+            "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+            "document_hash": "c" * 64,
+            "chunk_hash": "d" * 64,
+            "content": "current result after stale candidates",
+        })
+        return results
+
+
+def test_current_only_policy_searches_past_the_default_four_chunk_limit():
+    assembler = AgentContextAssembler.__new__(AgentContextAssembler)
+    assembler.memory = EmptyMemory()
+    assembler.knowledge = ManyStaleThenCurrentKnowledge()
+
+    result = assembler.assemble(
+        "owner-a",
+        query="review",
+        include_memory=False,
+        include_knowledge=True,
+        knowledge_freshness_policy="owner_reviewed_current_only",
+    )
+
+    assert len(result["passages"]) == 1
+    assert result["passages"][0]["reference"] == (
+        "knowledge://documents/current-after-stale#chunk-0"
+    )
+    assert result["excluded_stale_knowledge_count"] == 4
+    assert result["excluded_unreviewed_knowledge_count"] == 0
