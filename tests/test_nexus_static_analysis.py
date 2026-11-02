@@ -104,7 +104,7 @@ def test_static_analysis_marks_inventory_incomplete_when_directory_walk_fails(
     blocked_directory = tmp_path / "restricted"
 
     def failing_walk(root, *, followlinks, onerror):
-        onerror(PermissionError("permission denied", str(blocked_directory)))
+        onerror(PermissionError(13, "permission denied", str(blocked_directory)))
         yield str(root), [], ["visible.py"]
 
     (tmp_path / "visible.py").write_text("value = 1\n", encoding="utf-8")
