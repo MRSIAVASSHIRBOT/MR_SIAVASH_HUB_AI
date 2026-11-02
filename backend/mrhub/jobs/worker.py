@@ -19,6 +19,7 @@ from mrhub.content.dispatcher import ContentScheduleDispatcher
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseManager, WorkerLease
+from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.security.audit import AuditLogger
 
 
@@ -63,6 +64,7 @@ class WorkerEngine:
     ) -> None:
         self.repository = repository
         self.database_path = repository.database_path
+        self._control = WorkerControlRepository(self.database_path)
         self._run_lock = Lock()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._worker_id = str(uuid4())
@@ -374,6 +376,9 @@ class WorkerEngine:
         """Atomically claim one eligible queued task."""
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if self._control.is_stopped(connection):
+                connection.commit()
+                return None
             now = self._now().isoformat()
             row = connection.execute(
                 """
@@ -436,8 +441,13 @@ class WorkerEngine:
     def run_once(self) -> TaskRecord | None:
         """Execute at most one eligible task; serialize calls through this worker instance."""
         with self._run_lock:
+            if self._control.is_stopped():
+                return None
             result = self._run_once()
-            if self._content_schedule_dispatcher is not None:
+            if (
+                self._content_schedule_dispatcher is not None
+                and not self._control.is_stopped()
+            ):
                 self._content_schedule_dispatcher.run_once()
             return result
 

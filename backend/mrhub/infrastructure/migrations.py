@@ -513,7 +513,21 @@ MIGRATIONS = (
             "ALTER TABLE content_publish_schedules ADD COLUMN next_attempt_at TEXT",
             "CREATE INDEX IF NOT EXISTS idx_content_publish_schedules_retry_due ON content_publish_schedules(status, next_attempt_at, scheduled_at)",
         ),
-    )
+    ),
+    Migration.build(
+        16,
+        "durable_worker_emergency_stop",
+        (
+            """CREATE TABLE IF NOT EXISTS worker_control (
+                control_id INTEGER PRIMARY KEY CHECK (control_id = 1),
+                stopped INTEGER NOT NULL CHECK (stopped IN (0, 1)),
+                reason TEXT,
+                changed_by TEXT,
+                changed_at TEXT NOT NULL
+            )""",
+            "INSERT OR IGNORE INTO worker_control (control_id, stopped, reason, changed_by, changed_at) VALUES (1, 0, NULL, NULL, CURRENT_TIMESTAMP)",
+        ),
+    ),
 )
 
  
