@@ -11,6 +11,10 @@
 
 These are HUB-owned, vendor-neutral integration IDs. They do not rename or claim ownership of external products. The two adapters remain separate because their responsibilities differ, while sharing one validation and health-probe implementation.
 
+## Protocol versioning
+
+The local integration protocol is versioned independently from the capability-discovery schema. Current `contract_version` is `1.0` and appears in every integration status response, including disabled and invalid-configuration results. `integration_contract_version` in `/agent/capabilities` identifies the same contract. A breaking change to status fields, status meanings, or request semantics requires a new major version; additive optional fields may remain within the current major version.
+
 ## Shared configuration contract
 
 Each integration uses the same settings shape:
