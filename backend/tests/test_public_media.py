@@ -103,3 +103,31 @@ def test_signed_route_rejects_expired_url(monkeypatch, tmp_path: Path):
             signature="0" * 64,
         )
     assert exc.value.status_code == 403
+
+
+def test_signed_route_rejects_mismatched_image_signature(monkeypatch, tmp_path: Path):
+    now = 1_800_000_000
+    settings = Settings(
+        database_path=tmp_path / "db.sqlite3",
+        public_media_base_url="https://media.example.com",
+        public_media_signing_key=SecretStr("s" * 40),
+    )
+    monkeypatch.setattr(public_media, "get_settings", lambda: settings)
+    monkeypatch.setattr(public_media.time, "time", lambda: now)
+    repository = MediaAssetRepository(settings.database_path)
+    asset = repository.store_upload(
+        "owner-1",
+        "not-really-a-png.png",
+        "image/png",
+        b"not a png file",
+    )
+    url = public_media.sign_asset_url(str(asset["asset_id"]), now=now)
+    query = parse_qs(urlsplit(url).query)
+    with pytest.raises(HTTPException) as exc:
+        public_media.serve_signed_media(
+            asset["asset_id"],
+            expires=int(query["expires"][0]),
+            signature=query["signature"][0],
+        )
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "media_asset_type_mismatch"
