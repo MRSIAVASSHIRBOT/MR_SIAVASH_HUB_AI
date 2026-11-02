@@ -226,3 +226,9 @@ These changes improve automated evidence for media delivery, bounded static anal
 2. Run an authorized Instagram Graph API acceptance test only after professional-account credentials are configured securely and the signed-media URL is reachable over public HTTPS.
 3. Evaluate stale-source handling and prompt-injection behavior using a repeatable synthetic retrieval corpus before expanding Agent tool access.
 4. Keep all production claims tied to exact-head CI plus relevant target-environment evidence.
+
+
+## Packaging verification update — 2026-11-02 UTC
+
+- **PR #84 — clean wheel-install smoke test:** merged as `9c42cf9613231efe5caceb0bec41c700996bb213`. Latest-head Backend CI and CI both completed successfully (workflow runs 41456196416 and 41456196431). The pipeline installs the built wheel into a fresh virtual environment and calls the packaged application's `/health` route with an isolated test database.
+- This verifies a clean wheel install and basic application startup under CI. It does not replace installation, upgrade/rollback, or backup/restore drills on the intended Windows target device.
