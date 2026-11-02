@@ -49,3 +49,15 @@ def test_operator_ui_assets_are_included_in_installed_package() -> None:
     assert package.joinpath("web/index.html").is_file()
     assert package.joinpath("web/app.js").is_file()
     assert package.joinpath("web/app.css").is_file()
+
+
+
+def test_operator_ui_exposes_local_media_upload_and_draft_attachment_controls():
+    client = TestClient(create_app())
+    response = client.get("/ui/")
+    assert response.status_code == 200
+    assert 'id="media-file-input"' in response.text
+    assert 'id="media-upload-button"' in response.text
+    assert 'id="draft-media-select"' in response.text
+    assert "media_asset_id" in client.get("/ui/app.js").text
+    assert "/content/assets" in client.get("/ui/app.js").text
