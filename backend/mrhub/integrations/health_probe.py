@@ -57,27 +57,26 @@ async def probe_loopback_service(
     try:
         async with httpx.AsyncClient(
             timeout=timeout_seconds, follow_redirects=False, trust_env=False
-        ) as client:
-            async with client.stream(
-                "GET", f"{base}{path}", headers={"Accept": "application/json"}
-            ) as response:
-                if response.is_redirect:
-                    return {"status": "rejected_redirect", "configured": True}
-                if not 200 <= response.status_code < 300:
-                    return {
-                        "status": "unreachable",
-                        "configured": True,
-                        "http_status": response.status_code,
-                    }
-                received = 0
-                async for chunk in response.aiter_bytes(chunk_size=1024):
-                    received += len(chunk)
-                    if received > max_response_bytes:
-                        return {"status": "response_too_large", "configured": True}
+        ) as client, client.stream(
+            "GET", f"{base}{path}", headers={"Accept": "application/json"}
+        ) as response:
+            if response.is_redirect:
+                return {"status": "rejected_redirect", "configured": True}
+            if not 200 <= response.status_code < 300:
                 return {
-                    "status": "reachable",
+                    "status": "unreachable",
                     "configured": True,
                     "http_status": response.status_code,
                 }
+            received = 0
+            async for chunk in response.aiter_bytes(chunk_size=1024):
+                received += len(chunk)
+                if received > max_response_bytes:
+                    return {"status": "response_too_large", "configured": True}
+            return {
+                "status": "reachable",
+                "configured": True,
+                "http_status": response.status_code,
+            }
     except (httpx.HTTPError, OSError, ValueError):
         return {"status": "unreachable", "configured": True}
