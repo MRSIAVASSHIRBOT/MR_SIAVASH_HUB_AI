@@ -35,3 +35,10 @@ All endpoints require the authenticated owner's bearer session.
 ## Current limits
 
 This slice supports text submitted through the authenticated API, not arbitrary local filesystem paths, automatic URL retrieval, PDF/OCR, vector search, cloud indexing, or automatic agent memory writes. Future ingestion formats must use explicit bounded adapters and preserve source provenance.
+
+
+## Manual source freshness metadata
+
+Every source starts with `freshness_status=unknown`. An authenticated owner can update `PATCH /knowledge/sources/{source_id}/freshness` with `owner_reviewed_current`, `stale`, or `unknown`. The service records the review time and owner identity for non-unknown states, and search results/context passages preserve that metadata.
+
+This is an owner-declared review label, not automatic verification. Source URLs remain labels only: the application does not fetch them, crawl them, or independently verify that a document is current. Unknown or stale evidence must not be presented as freshly verified.
