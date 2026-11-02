@@ -4,11 +4,7 @@ from fastapi import APIRouter, Depends
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.integrations.health_probe import (
-    probe_loopback_service,
-    validate_health_path,
-    validate_loopback_base_url,
-)
+from mrhub.integrations.health_probe import probe_loopback_service
 
 router = APIRouter(
     prefix="/integrations/assistant-gateway",
