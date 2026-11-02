@@ -89,6 +89,52 @@
 
       <section class="panel">
         <div class="section-heading">
+          <div><p class="eyebrow">BOUNDED AGENT RUN</p><h2>اجرای عامل با زمینهٔ بازیابی‌شده</h2></div>
+          <span class="status-pill status-muted">محدود به ۳ نوبت · بدون انتشار محتوا</span>
+        </div>
+        <form id="agent-run-form" class="stack-form">
+          <label>هدف عامل
+            <textarea name="goal" rows="3" required maxlength="1000" placeholder="هدف را دقیق و محدود بنویسید…"></textarea>
+          </label>
+          <label>عبارت جست‌وجوی حافظه و اسناد (اختیاری)
+            <input name="context_query" maxlength="200" placeholder="در صورت خالی‌بودن از هدف استفاده می‌شود">
+          </label>
+          <label>ارائه‌دهندهٔ مدل
+            <select name="provider_mode">
+              <option value="local">مدل محلی (بدون ارسال به سرویس ابری)</option>
+              <option value="remote">مدل ابری (ارسال صریح به سرویس ثالث)</option>
+            </select>
+          </label>
+          <div class="checkbox-grid">
+            <label class="checkbox-row"><input name="include_memory" type="checkbox" checked> استفاده از حافظهٔ شخصی</label>
+            <label class="checkbox-row"><input name="include_knowledge" type="checkbox" checked> استفاده از اسناد دانشی</label>
+          </div>
+          <div class="form-grid">
+            <label>حداکثر نوبت‌ها
+              <select name="max_turns">
+                <option value="1">۱</option>
+                <option value="2">۲</option>
+                <option value="3" selected>۳</option>
+              </select>
+            </label>
+            <label>حداکثر توکن خروجی
+              <select name="max_output_tokens">
+                <option value="128">۱۲۸</option>
+                <option value="256">۲۵۶</option>
+                <option value="512" selected>۵۱۲</option>
+              </select>
+            </label>
+          </div>
+          <button class="button button-primary" type="submit">اجرای عامل</button>
+        </form>
+        <p class="muted">مدل محلی به پیکربندی صریح نیاز دارد. حالت ابری متن هدف و زمینهٔ بازیابی‌شده را به ارائه‌دهندهٔ انتخاب‌شده می‌فرستد و ممکن است هزینه داشته باشد. اگر ارائه‌دهنده آماده نباشد، درخواست متوقف می‌شود و به حالت دیگری سوییچ نمی‌کند.</p>
+        <pre id="agent-run-result" class="output-box" aria-live="polite">هنوز اجرایی انجام نشده است.</pre>
+        <h3>منابع زمینهٔ استفاده‌شده</h3>
+        <div id="agent-run-sources" class="record-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
           <div><p class="eyebrow">TASK QUEUE</p><h2>آخرین کارها</h2></div>
         </div>
         <div id="task-list" class="record-list"></div>
