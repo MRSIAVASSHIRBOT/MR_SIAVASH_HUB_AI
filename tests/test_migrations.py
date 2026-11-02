@@ -33,7 +33,8 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "workflow_runs", "workflow_steps", "workflow_step_attempts",
         "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads", "capability_candidates",
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
-        "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",\n        "content_publish_schedules",
+        "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
+        "content_publish_schedules",
     } <= {
         row["name"]
         for row in connection.execute(
