@@ -557,7 +557,10 @@ def test_agent_capability_discovery_is_read_only_and_reports_typed_inventory():
     assert body["models"][0]["capabilities"]["text"] is True
     assert [item["name"] for item in body["tools"]] == ["text.echo"]
     assert body["tools"][0]["input_schema"]["properties"]["text"]["maxLength"] == 500
-    assert body["assistant_gateway"]["health_status"] == "not_checked"
+    assert body["integrations"]["assistant_gateway"]["health_status"] == "not_checked"
+    assert body["integrations"]["assistant_gateway"]["status_endpoint"] == "/integrations/assistant-gateway/status"
+    assert body["integrations"]["code_engine"]["health_status"] == "not_checked"
+    assert body["integrations"]["code_engine"]["status_endpoint"] == "/integrations/code-engine/status"
     assert body["execution_started"] is False
     assert body["network_probes_performed"] is False
     assert body["downloads_started"] is False
