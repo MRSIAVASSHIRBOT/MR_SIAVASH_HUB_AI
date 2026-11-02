@@ -33,5 +33,25 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Run test suite
         run: python -m pytest
+      - name: Build wheel and verify packaged UI assets
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir dist
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"expected one wheel, found {len(wheels)}"
+          with ZipFile(wheels[0]) as wheel:
+              packaged = set(wheel.namelist())
+          required = {
+              "mrhub/web/index.html",
+              "mrhub/web/app.css",
+              "mrhub/web/app.js",
+          }
+          missing = required - packaged
+          assert not missing, f"wheel is missing packaged UI assets: {sorted(missing)}"
+          print(f"Verified wheel: {wheels[0].name}; UI assets: {len(required)}")
+          PY
       - name: Lint backend and tests
         run: python -m ruff check backend/mrhub tests
