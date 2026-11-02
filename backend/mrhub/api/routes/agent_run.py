@@ -15,6 +15,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
@@ -42,13 +43,15 @@ def run_agent(
 ) -> dict[str, object]:
     """Run one explicitly bounded model loop; no stub or provider fallback is permitted."""
     settings = get_settings()
+    worker_control = WorkerControlRepository(settings.database_path)
     model_router = build_model_router(
         provider_mode=payload.provider_mode,
         include_stub=False,
         max_timeout_seconds=30.0,
     )
     try:
-        model_router.select(
+        if not worker_control.is_stopped():
+            model_router.select(
             ModelRequest(
                 requires_text=True,
                 prefer_local=payload.provider_mode == "local",
@@ -83,7 +86,10 @@ def run_agent(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Agent input exceeds the supported bounds") from exc
 
-    result = AgentOrchestrator(model_router, build_tool_registry()).run(request)
+    result = AgentOrchestrator(model_router, build_tool_registry()).run(
+        request,
+        should_cancel=worker_control.is_stopped,
+    )
     run_id = str(uuid4())
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
