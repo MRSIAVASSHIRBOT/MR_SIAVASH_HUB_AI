@@ -504,3 +504,43 @@ def test_agent_workflow_idempotency_key_rejects_changed_request():
         headers=headers,
     )
     assert conflict.status_code == 409
+
+
+def test_agent_workflow_list_is_owner_scoped_and_bounded():
+    from mrhub.domain.tasks import TaskRecord
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.jobs.recovery import WorkflowRecoveryRepository
+
+    client = authenticated_client()
+    request = {
+        "goal": "Visible to the authenticated owner",
+        "tools": [{"name": "text.echo", "payload": {"text": "private"}}],
+    }
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200
+    own_id = created.json()["workflow"]["workflow_id"]
+
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    repository.create_auth_user("other-owner", "other", "s" * 32, "h" * 64)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    other_task = TaskRecord(
+        task_type="agent.workflow",
+        description="another owner's private workflow",
+    )
+    recovery.create_run(
+        "d" * 64,
+        [{"step_number": 1, "kind": "provider_selection", "name": "provider_selection"}],
+        task=other_task,
+        owner_user_id="other-owner",
+    )
+
+    response = client.get("/agent/workflows?limit=10")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert [workflow["workflow_id"] for workflow in body["workflows"]] == [own_id]
+    assert body["workflows"][0]["stored_request"] is False
+    assert "payload" not in body["workflows"][0]
+
+    assert client.get("/agent/workflows?limit=101").status_code == 422
