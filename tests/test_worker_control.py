@@ -96,3 +96,27 @@ def test_emergency_stop_does_not_replay_inflight_handler_and_blocks_next_claim(t
     resumed = second_worker.run_once()
     assert resumed is not None and resumed.task_id == second_task.task_id
     assert resumed.status is TaskStatus.SUCCEEDED
+
+def test_emergency_stop_blocks_scheduled_content_dispatch(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-control-schedules.sqlite3")
+    repository.initialize()
+    control = WorkerControlRepository(repository.database_path)
+
+    class CountingDispatcher:
+        def __init__(self):
+            self.calls = 0
+
+        def run_once(self):
+            self.calls += 1
+
+    dispatcher = CountingDispatcher()
+    worker = WorkerEngine(repository, content_schedule_dispatcher=dispatcher)
+    control.set_stopped(True, reason="maintenance", changed_by="owner-1")
+
+    assert worker.run_once() is None
+    assert dispatcher.calls == 0
+
+    control.set_stopped(False, reason=None, changed_by="owner-1")
+    assert worker.run_once() is None
+    assert dispatcher.calls == 1
+
