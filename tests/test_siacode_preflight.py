@@ -85,3 +85,11 @@ def test_unreachable_endpoint_returns_stable_error_without_url():
         "ready": False,
         "reason_code": "endpoint_unreachable",
     }
+
+
+def test_timeout_returns_stable_sanitized_error():
+    def handler(request):
+        raise httpx.ReadTimeout("private timeout detail")
+    result = SiaCodePreflight(settings(), client=client_for(handler)).check()
+    assert result == {"state": "unavailable", "ready": False, "reason_code": "timeout"}
+    assert "private timeout detail" not in str(result)
