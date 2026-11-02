@@ -69,7 +69,7 @@ def test_oversized_health_body_is_rejected():
 
 
 def test_invalid_json_is_rejected_without_exposing_body():
-    secret_like_body = b'{"token":"never-return-this"}'
+    secret_like_body = b'token=never-return-this'
     client = client_for(lambda request: httpx.Response(200, content=secret_like_body))
     result = SiaCodePreflight(settings(), client=client).check()
     assert result["reason_code"] == "invalid_health_payload"
