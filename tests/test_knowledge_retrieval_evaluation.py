@@ -17,7 +17,9 @@ def test_retrieval_evaluation_reports_precision_recall_and_mrr(tmp_path: Path):
     tasks = TaskRepository(database_path)
     tasks.initialize()
     AuthService(tasks).initialize_owner("retrieval-evaluation-test-password")
-    owner = str(tasks.get_auth_user("owner")["user_id"])
+    owner_record = tasks.get_auth_user("owner")
+    assert owner_record is not None
+    owner = str(owner_record["user_id"])
     repository = KnowledgeRepository(database_path)
     dns = repository.create_document(
         owner,
@@ -54,7 +56,9 @@ def test_retrieval_evaluation_validates_case_and_k_bounds(tmp_path: Path):
     tasks = TaskRepository(database_path)
     tasks.initialize()
     AuthService(tasks).initialize_owner("retrieval-evaluation-test-password")
-    owner = str(tasks.get_auth_user("owner")["user_id"])
+    owner_record = tasks.get_auth_user("owner")
+    assert owner_record is not None
+    owner = str(owner_record["user_id"])
     repository = KnowledgeRepository(database_path)
 
     with pytest.raises(ValueError, match="k must be between"):
