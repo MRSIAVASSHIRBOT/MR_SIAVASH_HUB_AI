@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from client_helpers import authenticated_client
