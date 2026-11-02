@@ -17,9 +17,10 @@ Both source classes are enabled by default, but each can be disabled per request
 ## Bounds and provenance
 
 - Query: 1–200 characters.
-- Up to 4 memory entries and 4 knowledge chunks.
+- Up to 4 memory entries and 4 knowledge chunks before budget enforcement.
 - Memory passage content is capped at 600 characters; knowledge chunks at 1,400 characters.
-- Combined passage content is capped at 6,000 characters.
+- The **complete serialized model-facing evidence block**, including its trust-boundary prefix, JSON syntax, metadata, and escaped content, is capped at 6,000 characters. Oversized final passages are deterministically truncated; a passage that cannot fit with its metadata is omitted.
+- The response exposes `context_char_count` so callers and tests can verify the actual serialized size.
 - Knowledge passages retain stable `knowledge://documents/...` citation references, source references, trust classifications, and content hashes.
 - Memory passages retain their memory reference, provenance, and verification status.
 - Audit events record inclusion flags, retrieval method, and passage count only. Query text and retrieved content are not logged.
@@ -33,11 +34,9 @@ All retrieved content is explicitly marked as untrusted evidence. Documents can 
 
 This is the context assembly contract and authenticated preview endpoint. The current `AgentCore` remains a deterministic planner/tool runner and does not yet send model-facing prompts, so this change does **not** claim that memory/knowledge is automatically injected into local or remote model inference. A subsequent integration must pass the structured evidence as a separate untrusted-data field to a real inference call and pass prompt-injection, citation-attribution, size-bound, and tool-boundary regression tests before enabling automatic injection.
 
-
 ## Source freshness signal
 
 Knowledge passages now carry `freshness_status` and `freshness_checked_at`. The default is `unknown`; an owner can manually mark a source `owner_reviewed_current` or `stale` through the Knowledge API. The context marks this metadata as not automatically verified and keeps every passage untrusted regardless of freshness status. No URL fetch or external freshness probe occurs.
-
 
 ## Authenticated model-driven Agent run
 
@@ -61,7 +60,6 @@ Example request:
 - The synchronous request is deliberately bounded: at most three model turns, with each provider request capped at 30 seconds (roughly 90 seconds of maximum provider wait, plus local processing overhead). It is an initial integration slice, not a replacement for durable worker-owned long-running workflows.
 - The endpoint audits status/provider/turn/tool-count metadata, not the goal, retrieved text, or answer. It does not publish content or perform external side effects.
 - Context sources remain untrusted. `owner_reviewed_current` is a manual owner assertion, not automatic source verification.
-
 
 ## Operator UI
 
