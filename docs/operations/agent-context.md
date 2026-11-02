@@ -73,8 +73,10 @@ Both `POST /agent/context/assemble` and `POST /agent/run` accept
 
 - `include_all` (default) preserves the existing behavior and labels each passage.
 - `owner_reviewed_current_only` includes only knowledge sources whose freshness status
-  is `owner_reviewed_current` and whose review timestamp is present. Stale, unknown,
-  and incomplete review records are excluded before context budgeting.
+  is `owner_reviewed_current` and whose review timestamp is present. The filtered mode
+  inspects up to 25 ranked chunk candidates before selecting at most 4 eligible passages,
+  so stale top-ranked chunks do not automatically hide a later reviewed candidate. Stale,
+  unknown, and incomplete review records are excluded before context budgeting.
 
 The response reports `excluded_stale_knowledge_count` and
 `excluded_unreviewed_knowledge_count`. This policy relies on the owner's manual review
