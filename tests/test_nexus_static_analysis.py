@@ -62,3 +62,18 @@ def test_static_analysis_rejects_invalid_root_and_limits(tmp_path: Path):
     with pytest.raises(ValueError):
         analyze_python_repository(tmp_path, max_files=MAX_FILES + 1)
 
+
+
+def test_static_analysis_marks_inventory_truncated_at_file_budget(tmp_path: Path):
+    (tmp_path / "a.py").write_text("value = 1\\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("value = 2\\n", encoding="utf-8")
+    (tmp_path / "c.py").write_text("value = 3\\n", encoding="utf-8")
+
+    result = analyze_python_repository(tmp_path, max_files=1)
+
+    assert result["files_scanned"] == 1
+    assert result["truncated"] is True
+    assert len(result["inventory"]) == 1
+    assert result["source_code_included"] is False
+    assert result["targets_executed"] is False
+    assert result["files_modified"] is False
