@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -48,6 +49,8 @@ def validate_health_path(value: str) -> str | None:
     parsed = urlsplit(value)
     if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
         return None
+    if not re.fullmatch(r"/[A-Za-z0-9._~/-]*", parsed.path):
+        return None
     if any(part in {".", ".."} for part in parsed.path.split("/")):
         return None
     return parsed.path
@@ -80,7 +83,7 @@ async def assistant_gateway_status() -> dict[str, object]:
                 if response.status_code < 200 or response.status_code >= 300:
                     return {"status": "unreachable", "configured": True, "http_status": response.status_code}
                 received = 0
-                async for chunk in response.aiter_bytes():
+                async for chunk in response.aiter_bytes(chunk_size=1024):
                     received += len(chunk)
                     if received > settings.assistant_gateway_max_response_bytes:
                         return {"status": "response_too_large", "configured": True}
