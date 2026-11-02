@@ -96,6 +96,65 @@
 
       <section class="panel">
         <div class="section-heading">
+          <div><p class="eyebrow">JOB & WORKFLOW ENGINE</p><h2>مدیریت وظایف و گردش‌کارها</h2></div>
+          <span class="status-pill status-muted">اجرای وظایف فقط توسط Worker</span>
+        </div>
+        <div id="job-summary" class="status-grid"></div>
+        <div class="section-heading">
+          <h3>گردش‌کارهای اخیر</h3>
+          <button id="workflow-refresh-button" class="button button-quiet" type="button">به‌روزرسانی</button>
+        </div>
+        <div id="workflow-list" class="record-list"></div>
+
+        <div class="workflow-tools">
+          <div class="section-heading">
+            <div><p class="eyebrow">SAFE RESUME</p><h3>ادامهٔ گردش‌کار متوقف‌شده</h3></div>
+          </div>
+          <p class="muted">برای ادامه، ورودی اصلی را دقیقاً با همان محتوا وارد کنید. این درخواست ابتدا بررسی و سپس در صف Worker قرار می‌گیرد؛ اجرای ابزار داخل مرورگر یا درخواست HTTP انجام نمی‌شود.</p>
+          <form id="workflow-resume-form" class="form-grid">
+            <label>شناسهٔ Workflow
+              <input name="workflow_id" required maxlength="36" placeholder="UUID گردش‌کار">
+            </label>
+            <label class="field-wide">ورودی اصلی (JSON)
+              <textarea name="request_json" rows="5" required maxlength="32000" spellcheck="false" placeholder='{"goal":"...","tools":[{"name":"text.echo","payload":{"text":"..."}}]}'></textarea>
+            </label>
+            <div class="button-row field-wide">
+              <button id="workflow-resume-check" class="button button-secondary" type="button">بررسی امکان ادامه</button>
+              <button id="workflow-resume-submit" class="button button-primary" type="submit">قرار دادن ادامه در صف</button>
+            </div>
+          </form>
+          <p id="workflow-resume-message" class="message" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="workflow-tools">
+          <div class="section-heading">
+            <div><p class="eyebrow">EXTERNAL OUTCOME RECONCILIATION</p><h3>تطبیق نتیجهٔ نامشخص</h3></div>
+          </div>
+          <p class="muted">فقط پس از بررسی مستقل نتیجه در سرویس مقصد، وضعیت را ثبت کنید. تأیید موفقیت به SHA-256 خروجی نیاز دارد. این فرم هیچ ابزار خارجی را اجرا نمی‌کند.</p>
+          <form id="workflow-reconciliation-form" class="form-grid">
+            <label>شناسهٔ Workflow
+              <input name="workflow_id" required maxlength="36" placeholder="UUID گردش‌کار">
+            </label>
+            <label>شمارهٔ مرحله
+              <input name="step_number" type="number" min="1" max="100" required value="1">
+            </label>
+            <label>نتیجهٔ تأییدشده
+              <select name="outcome" required>
+                <option value="succeeded">موفق</option>
+                <option value="failed">ناموفق</option>
+              </select>
+            </label>
+            <label class="field-wide">SHA-256 خروجی (فقط برای موفقیت)
+              <input name="output_digest" inputmode="text" pattern="[0-9a-f]{64}" maxlength="64" placeholder="۶۴ نویسهٔ hexadecimal">
+            </label>
+            <button class="button button-secondary" type="submit">ثبت نتیجهٔ تطبیق</button>
+          </form>
+          <p id="workflow-reconciliation-message" class="message" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
           <div><p class="eyebrow">CONTENT WORKSPACE</p><h2>پیش‌نویس‌های محتوا</h2></div>
           <span class="status-pill status-muted">بدون انتشار خودکار</span>
         </div>
