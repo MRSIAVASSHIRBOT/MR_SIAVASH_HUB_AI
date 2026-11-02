@@ -191,3 +191,41 @@ def test_instagram_dispatcher_passes_short_lived_signed_media_url(monkeypatch):
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["cache-control"] == "private, no-store"
     assert response.content.startswith(bytes([137, 80, 78, 71, 13, 10, 26, 10]))
+
+
+
+def test_signed_media_rejects_tampered_signature_before_asset_lookup(monkeypatch):
+    import time
+    from uuid import uuid4
+
+    monkeypatch.setenv("MRH_PUBLIC_MEDIA_SIGNING_KEY", "test-only-signing-key-0123456789abcdef")
+    client = authenticated_client()
+    asset_id = str(uuid4())
+    expires = int(time.time()) + 120
+    response = client.get(
+        f"/public/media/{asset_id}?expires={expires}&signature={'0' * 64}"
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "invalid_media_signature"
+
+
+def test_signed_media_rejects_expired_and_overlong_expiry_before_asset_lookup(monkeypatch):
+    import time
+    from uuid import uuid4
+
+    monkeypatch.setenv("MRH_PUBLIC_MEDIA_SIGNING_KEY", "test-only-signing-key-0123456789abcdef")
+    client = authenticated_client()
+    asset_id = str(uuid4())
+    signature = "0" * 64
+    now = int(time.time())
+
+    expired = client.get(
+        f"/public/media/{asset_id}?expires={now}&signature={signature}"
+    )
+    too_far = client.get(
+        f"/public/media/{asset_id}?expires={now + 901}&signature={signature}"
+    )
+    assert expired.status_code == 403
+    assert expired.json()["detail"] == "media_url_expired"
+    assert too_far.status_code == 403
+    assert too_far.json()["detail"] == "media_url_expired"
