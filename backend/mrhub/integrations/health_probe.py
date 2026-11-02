@@ -101,29 +101,16 @@ async def probe_loopback_service(
                     "status": "invalid_configuration",
                     "configured": False,
                 }
-            received = 0
-            while received <= max_response_bytes:
-                # Request at most the remaining budget plus one byte. This keeps
-                # memory/network consumption bounded even for oversized chunks.
-                chunk_size = min(1024, max_response_bytes + 1 - received)
-                chunk = await response.aread() if chunk_size <= 0 else None
-                if chunk is not None:
-                    received += len(chunk)
-                    break
-                async for part in response.aiter_bytes(chunk_size=chunk_size):
-                    received += len(part)
-                    break
-                else:
-                    break
-            if received > max_response_bytes:
+            if not 1 <= max_response_bytes <= 16384:
                 return {
                     "contract_version": INTEGRATION_CONTRACT_VERSION,
-                    "status": "response_too_large",
-                    "configured": True,
+                    "status": "invalid_configuration",
+                    "configured": False,
                 }
-            # A single read may not exhaust a response when a transport yields
-            # multiple chunks; continue with the remaining byte budget.
-            async for chunk in response.aiter_bytes(chunk_size=1024):
+            received = 0
+            # One-byte chunks make the configured limit strict: no oversized
+            # chunk is buffered before the limit check can stop the stream.
+            async for chunk in response.aiter_bytes(chunk_size=1):
                 received += len(chunk)
                 if received > max_response_bytes:
                     return {
