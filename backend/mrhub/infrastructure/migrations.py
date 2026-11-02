@@ -478,6 +478,34 @@ MIGRATIONS = (
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_assets_one_derivative ON content_assets(source_asset_id) WHERE source_asset_id IS NOT NULL",
         ),
     ),
+    Migration.build(
+        14,
+        "durable_content_publish_schedules",
+        (
+            """CREATE TABLE IF NOT EXISTS content_publish_schedules (
+                schedule_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE CASCADE,
+                platform TEXT NOT NULL CHECK (platform IN ('instagram', 'telegram', 'generic')),
+                scheduled_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'scheduled' CHECK (
+                    status IN ('scheduled', 'publishing', 'published', 'cancelled', 'failed', 'unknown_outcome')
+                ),
+                draft_version INTEGER NOT NULL CHECK (draft_version > 0),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                idempotency_key TEXT NOT NULL UNIQUE,
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                last_error_code TEXT,
+                provider_post_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                published_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_content_publish_schedules_due ON content_publish_schedules(status, scheduled_at)",
+            "CREATE INDEX IF NOT EXISTS idx_content_publish_schedules_owner ON content_publish_schedules(owner_user_id, scheduled_at)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_publish_schedules_active_draft ON content_publish_schedules(owner_user_id, draft_id) WHERE status IN ('scheduled', 'publishing', 'unknown_outcome')",
+        ),
+    )
 )
 
  
