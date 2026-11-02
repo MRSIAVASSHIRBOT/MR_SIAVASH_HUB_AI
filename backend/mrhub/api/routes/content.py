@@ -26,6 +26,7 @@ class ContentDraftCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20_000)
     hashtags: list[str] = Field(default_factory=list, max_length=30)
+    media_asset_id: UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -56,6 +57,7 @@ class ContentDraftUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     body: str | None = Field(default=None, min_length=1, max_length=20_000)
     hashtags: list[str] | None = Field(default=None, max_length=30)
+    media_asset_id: UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -123,7 +125,11 @@ def create_draft(
         duplicate = repository.find_duplicate(
             user.user_id,
             repository._hash(
-                payload.platform, payload.content_type, payload.body, payload.hashtags
+                payload.platform,
+                payload.content_type,
+                payload.body,
+                payload.hashtags,
+                str(payload.media_asset_id) if payload.media_asset_id is not None else None,
             ),
         )
         if duplicate is not None:
@@ -172,8 +178,10 @@ def update_draft(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     submitted = payload.model_dump(exclude_unset=True)
-    if not submitted or any(value is None for value in submitted.values()):
-        raise HTTPException(status_code=422, detail="Provide at least one non-null field")
+    if not submitted or any(
+        value is None for key, value in submitted.items() if key != "media_asset_id"
+    ):
+        raise HTTPException(status_code=422, detail="Provide at least one supported field")
     repository = _repository()
     try:
         record = repository.update(user.user_id, user.user_id, draft_id, submitted)
