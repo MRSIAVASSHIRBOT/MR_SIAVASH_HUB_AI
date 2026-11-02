@@ -146,3 +146,50 @@ def test_agent_run_emergency_stop_prevents_model_inference(monkeypatch):
     assert body["execution"]["turns"] == 0
     assert body["execution"]["model_inference_started"] is False
     assert provider.requests == []
+
+
+
+def test_agent_run_can_exclude_stale_knowledge_from_model_evidence(monkeypatch):
+    client = authenticated_client()
+    document = client.post(
+        "/knowledge/documents",
+        json={
+            "title": "Stale model context fixture",
+            "content": "freshness policy agent-run fixture evidence",
+            "source_ref": "local-note:stale-model-context",
+        },
+    )
+    assert document.status_code == 201
+    marked = client.patch(
+        f"/knowledge/sources/{document.json()['source_id']}/freshness",
+        json={"status": "stale"},
+    )
+    assert marked.status_code == 200
+
+    provider = ScriptedProvider(json.dumps({"type": "final", "answer": "No current evidence."}))
+    router = ModelRouter()
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Summarize only manually reviewed current evidence.",
+            "context_query": "freshness policy agent-run fixture",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": True,
+            "knowledge_freshness_policy": "owner_reviewed_current_only",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["knowledge_freshness_policy"] == "owner_reviewed_current_only"
+    assert body["context_passage_count"] == 0
+    assert body["excluded_stale_knowledge_count"] == 1
+    assert body["excluded_unreviewed_knowledge_count"] == 0
+    assert "freshness policy agent-run fixture evidence" not in provider.requests[0].input_text
