@@ -267,7 +267,7 @@ class WorkflowRecoveryRepository:
             self._assert_lease(connection, workflow_id, lease, now)
             cursor = connection.execute(
                 """
-                UPDATE workflow_runs SET status = 'running', updated_at = ?
+                UPDATE workflow_runs SET status = 'running', last_error_code = NULL, updated_at = ?
                 WHERE workflow_id = ? AND status IN ('queued', 'paused')
                 """,
                 (now, str(workflow_id)),
@@ -705,6 +705,86 @@ class WorkflowRecoveryRepository:
             row["created_at"],
         )
 
+    def queue_resume(
+        self,
+        workflow_id: UUID,
+        *,
+        owner_user_id: str,
+        request_digest: str,
+        definition_version: int = 1,
+    ) -> dict[str, str]:
+        """Atomically enqueue a validated resume; the worker remains the executor."""
+        self._validate_digest(request_digest, "Supplied request digest")
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                """
+                SELECT task_id, status, request_digest, definition_version
+                FROM workflow_runs
+                WHERE workflow_id = ? AND owner_user_id = ?
+                """,
+                (str(workflow_id), owner_user_id),
+            ).fetchone()
+            if run is None or run["task_id"] is None:
+                raise LookupError("Workflow not found")
+            if run["status"] != "paused":
+                raise WorkflowRecoveryError("Workflow is not awaiting a safe resume")
+            if run["request_digest"] != request_digest:
+                raise WorkflowRecoveryError("Workflow request does not match the stored request")
+            if run["definition_version"] != definition_version:
+                raise WorkflowRecoveryError("Workflow definition changed; replan before resuming")
+
+            blocked = connection.execute(
+                """
+                SELECT 1 FROM workflow_steps
+                WHERE workflow_id = ? AND status IN ('failed', 'unknown_outcome', 'cancelled', 'running')
+                LIMIT 1
+                """,
+                (str(workflow_id),),
+            ).fetchone()
+            if blocked is not None:
+                raise WorkflowRecoveryError("Workflow has a step that is not safe to resume")
+
+            task_cursor = connection.execute(
+                """
+                UPDATE tasks SET status = 'queued', updated_at = ?
+                WHERE task_id = ? AND status = 'waiting_approval'
+                """,
+                (now, run["task_id"]),
+            )
+            if task_cursor.rowcount != 1:
+                raise WorkflowRecoveryError("Workflow job is not awaiting a resume")
+
+            execution_cursor = connection.execute(
+                """
+                UPDATE worker_executions
+                SET error_code = NULL, result_json = NULL, finished_at = NULL,
+                    next_attempt_at = NULL
+                WHERE task_id = ?
+                """,
+                (run["task_id"],),
+            )
+            if execution_cursor.rowcount != 1:
+                raise WorkflowRecoveryError("Workflow worker execution record is missing")
+
+            run_cursor = connection.execute(
+                """
+                UPDATE workflow_runs
+                SET last_error_code = 'resume_queued', updated_at = ?
+                WHERE workflow_id = ? AND status = 'paused'
+                """,
+                (now, str(workflow_id)),
+            )
+            if run_cursor.rowcount != 1:
+                raise WorkflowRecoveryError("Workflow state changed while queuing resume")
+
+        return {
+            "workflow_id": str(workflow_id),
+            "task_id": str(run["task_id"]),
+            "status": "queued",
+        }
+
     def resume_decision(
         self,
         workflow_id: UUID,
@@ -821,13 +901,13 @@ class WorkflowRecoveryRepository:
             task_id = run["task_id"]
             if status in {"succeeded", "failed", "cancelled"}:
                 return {"workflow_id": str(workflow_id), "status": status}
-            if status == "queued":
-                # The worker may have claimed the task but not started the workflow
-                # yet. Cancellation must fence both queued and claimed/running tasks.
+            if status in {"queued", "paused"}:
+                # A paused workflow may have a queued resume request. Fence both
+                # that queued job and an unclaimed recovery-waiting job atomically.
                 task_cursor = connection.execute(
                     """
                     UPDATE tasks SET status = 'cancelled', updated_at = ?
-                    WHERE task_id = ? AND status IN ('queued', 'running')
+                    WHERE task_id = ? AND status IN ('queued', 'running', 'waiting_approval')
                     """,
                     (now, task_id),
                 )
@@ -835,10 +915,11 @@ class WorkflowRecoveryRepository:
                     raise WorkflowRecoveryError("Task state changed during cancellation")
                 run_cursor = connection.execute(
                     """
-                    UPDATE workflow_runs SET status = 'cancelled', updated_at = ?
-                    WHERE workflow_id = ? AND status = 'queued'
+                    UPDATE workflow_runs SET status = 'cancelled', last_error_code = NULL,
+                        updated_at = ?
+                    WHERE workflow_id = ? AND status = ?
                     """,
-                    (now, str(workflow_id)),
+                    (now, str(workflow_id), status),
                 )
                 if run_cursor.rowcount != 1:
                     raise WorkflowRecoveryError("Workflow state changed during cancellation")
@@ -863,7 +944,7 @@ class WorkflowRecoveryRepository:
                     raise WorkflowRecoveryError("Running task state changed during cancellation")
             else:
                 raise WorkflowRecoveryError("Workflow cannot be cancelled in its current state")
-            if status == "queued":
+            if status in {"queued", "paused"}:
                 connection.execute(
                     "UPDATE idempotency_records SET status = 'failed' WHERE task_id = ? AND status IN ('accepted', 'running')",
                     (task_id,),
@@ -871,7 +952,7 @@ class WorkflowRecoveryRepository:
             return {
                 "workflow_id": str(workflow_id),
                 "task_id": task_id,
-                "status": "cancelled" if status == "queued" else "cancellation_requested",
+                "status": "cancelled" if status in {"queued", "paused"} else "cancellation_requested",
             }
 
     def get_encrypted_payload(
