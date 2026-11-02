@@ -13,8 +13,22 @@ import httpx
 INTEGRATION_CONTRACT_VERSION = "1.0"
 
 
+def _valid_local_path(value: str, *, allow_root: bool = True) -> bool:
+    """Accept plain URL path segments only; reject encoded or ambiguous separators."""
+    if not value.startswith("/") or value.startswith("//"):
+        return False
+    if not re.fullmatch(r"/[A-Za-z0-9._~/-]*", value):
+        return False
+    if not allow_root and value == "/":
+        return False
+    parts = value.split("/")[1:]
+    return all(part not in {"", ".", ".."} for part in parts) or (
+        allow_root and value == "/"
+    )
+
+
 def validate_loopback_base_url(value: str | None) -> str | None:
-    """Accept only HTTP(S) URLs whose host is a literal loopback IP."""
+    """Accept HTTP(S) URLs whose host is a literal loopback IP and path is unambiguous."""
     if not value:
         return None
     try:
@@ -27,21 +41,21 @@ def validate_loopback_base_url(value: str | None) -> str | None:
             return None
         if not ipaddress.ip_address(parsed.hostname).is_loopback:
             return None
+        if parsed.path and not _valid_local_path(parsed.path):
+            return None
     except (ValueError, TypeError):
         return None
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
 def validate_health_path(value: str) -> str | None:
-    """Reject absolute URLs, traversal, query strings, and ambiguous paths."""
-    if not value or not value.startswith("/") or value.startswith("//"):
+    """Reject absolute URLs, traversal, encoded separators, and ambiguous paths."""
+    if not value:
         return None
     parsed = urlsplit(value)
     if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
         return None
-    if not re.fullmatch(r"/[A-Za-z0-9._~/-]*", parsed.path):
-        return None
-    if any(part in {".", ".."} for part in parsed.path.split("/")):
+    if not _valid_local_path(parsed.path):
         return None
     return parsed.path
 
@@ -81,7 +95,34 @@ async def probe_loopback_service(
                     "configured": True,
                     "http_status": response.status_code,
                 }
+            if not 1 <= max_response_bytes <= 16384:
+                return {
+                    "contract_version": INTEGRATION_CONTRACT_VERSION,
+                    "status": "invalid_configuration",
+                    "configured": False,
+                }
             received = 0
+            while received <= max_response_bytes:
+                # Request at most the remaining budget plus one byte. This keeps
+                # memory/network consumption bounded even for oversized chunks.
+                chunk_size = min(1024, max_response_bytes + 1 - received)
+                chunk = await response.aread() if chunk_size <= 0 else None
+                if chunk is not None:
+                    received += len(chunk)
+                    break
+                async for part in response.aiter_bytes(chunk_size=chunk_size):
+                    received += len(part)
+                    break
+                else:
+                    break
+            if received > max_response_bytes:
+                return {
+                    "contract_version": INTEGRATION_CONTRACT_VERSION,
+                    "status": "response_too_large",
+                    "configured": True,
+                }
+            # A single read may not exhaust a response when a transport yields
+            # multiple chunks; continue with the remaining byte budget.
             async for chunk in response.aiter_bytes(chunk_size=1024):
                 received += len(chunk)
                 if received > max_response_bytes:
