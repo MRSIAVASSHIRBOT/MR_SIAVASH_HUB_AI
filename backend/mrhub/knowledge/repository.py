@@ -58,6 +58,8 @@ class KnowledgeRepository:
             "source_ref": row["canonical_origin"],
             "trust_classification": row["trust_classification"],
             "sensitivity_classification": row["sensitivity_classification"],
+            "freshness_status": row["freshness_status"],
+            "freshness_checked_at": row["freshness_checked_at"],
             "content_hash": row["content_hash"],
             "version": row["version"],
             "created_at": row["created_at"],
@@ -150,6 +152,7 @@ class KnowledgeRepository:
                 SELECT d.document_id, d.source_id, d.owner_user_id, d.title, d.language,
                        d.content_hash, d.version, d.created_at, d.updated_at,
                        s.canonical_origin, s.trust_classification, s.sensitivity_classification,
+                       s.freshness_status, s.freshness_checked_at,
                        (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.document_id = d.document_id)
                            AS chunk_count
                 FROM knowledge_documents d
@@ -169,6 +172,7 @@ class KnowledgeRepository:
                 SELECT d.document_id, d.source_id, d.owner_user_id, d.title, d.language,
                        d.content_hash, d.version, d.created_at, d.updated_at,
                        s.canonical_origin, s.trust_classification, s.sensitivity_classification,
+                       s.freshness_status, s.freshness_checked_at,
                        (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.document_id = d.document_id)
                            AS chunk_count
                 FROM knowledge_documents d
@@ -188,6 +192,7 @@ class KnowledgeRepository:
                 SELECT d.document_id, d.source_id, d.owner_user_id, d.title, d.language,
                        d.content, d.content_hash, d.version, d.created_at, d.updated_at,
                        s.canonical_origin, s.trust_classification, s.sensitivity_classification,
+                       s.freshness_status, s.freshness_checked_at,
                        (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.document_id = d.document_id)
                            AS chunk_count
                 FROM knowledge_documents d
@@ -200,6 +205,44 @@ class KnowledgeRepository:
         if row is None:
             return None
         return {**self._summary(row), "content": row["content"]}
+
+    def update_source_freshness(
+        self, owner_user_id: str, source_id: UUID, status: str
+    ) -> dict[str, object] | None:
+        """Store an owner-declared freshness review; never fetches or verifies a URL."""
+        if status not in {"unknown", "owner_reviewed_current", "stale"}:
+            raise ValueError("Unsupported source freshness status")
+        now = self._now()
+        checked_at = now if status != "unknown" else None
+        checked_by = owner_user_id if status != "unknown" else None
+        with self.tasks._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE knowledge_sources
+                SET freshness_status = ?, freshness_checked_at = ?,
+                    freshness_checked_by = ?, updated_at = ?
+                WHERE source_id = ? AND owner_user_id = ? AND scope = 'private'
+                """,
+                (status, checked_at, checked_by, now, str(source_id), owner_user_id),
+            )
+            if cursor.rowcount != 1:
+                return None
+            row = connection.execute(
+                """
+                SELECT source_id, freshness_status, freshness_checked_at
+                FROM knowledge_sources
+                WHERE source_id = ? AND owner_user_id = ?
+                """,
+                (str(source_id), owner_user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "source_id": row["source_id"],
+            "freshness_status": row["freshness_status"],
+            "freshness_checked_at": row["freshness_checked_at"],
+            "automatic_verification": False,
+        }
 
     def delete_document(self, owner_user_id: str, document_id: UUID) -> bool:
         with self.tasks._connection() as connection:
@@ -231,7 +274,8 @@ class KnowledgeRepository:
                        c.start_offset, c.end_offset, c.content, c.content_hash AS chunk_hash,
                        d.title, d.language, d.content_hash AS document_hash,
                        s.canonical_origin, s.trust_classification,
-                       s.sensitivity_classification
+                       s.sensitivity_classification, s.freshness_status,
+                       s.freshness_checked_at
                 FROM knowledge_chunks_fts
                 JOIN knowledge_chunks c
                   ON c.chunk_id = knowledge_chunks_fts.chunk_id
@@ -256,6 +300,8 @@ class KnowledgeRepository:
                 "source_ref": row["canonical_origin"],
                 "trust_classification": row["trust_classification"],
                 "sensitivity_classification": row["sensitivity_classification"],
+                "freshness_status": row["freshness_status"],
+                "freshness_checked_at": row["freshness_checked_at"],
                 "content": row["content"],
                 "start_offset": row["start_offset"],
                 "end_offset": row["end_offset"],
@@ -276,6 +322,7 @@ class KnowledgeRepository:
                 SELECT d.document_id, d.source_id, d.owner_user_id, d.title, d.language,
                        d.content, d.content_hash, d.version, d.created_at, d.updated_at,
                        s.canonical_origin, s.trust_classification, s.sensitivity_classification,
+                       s.freshness_status, s.freshness_checked_at,
                        (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.document_id = d.document_id)
                            AS chunk_count
                 FROM knowledge_documents d

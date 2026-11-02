@@ -41,6 +41,11 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         )
     }
+    source_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
+    }
+    assert {"freshness_status", "freshness_checked_at", "freshness_checked_by"} <= source_columns
+
     workflow_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(workflow_runs)")
     }

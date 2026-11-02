@@ -32,3 +32,8 @@ All retrieved content is explicitly marked as untrusted evidence. Documents can 
 ## Current limitation — important
 
 This is the context assembly contract and authenticated preview endpoint. The current `AgentCore` remains a deterministic planner/tool runner and does not yet send model-facing prompts, so this change does **not** claim that memory/knowledge is automatically injected into local or remote model inference. A subsequent integration must pass the structured evidence as a separate untrusted-data field to a real inference call and pass prompt-injection, citation-attribution, size-bound, and tool-boundary regression tests before enabling automatic injection.
+
+
+## Source freshness signal
+
+Knowledge passages now carry `freshness_status` and `freshness_checked_at`. The default is `unknown`; an owner can manually mark a source `owner_reviewed_current` or `stale` through the Knowledge API. The context marks this metadata as not automatically verified and keeps every passage untrusted regardless of freshness status. No URL fetch or external freshness probe occurs.

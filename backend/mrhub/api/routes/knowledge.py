@@ -71,6 +71,10 @@ class KnowledgeSearch(BaseModel):
     limit: int = Field(default=10, ge=1, le=25)
 
 
+class SourceFreshnessUpdate(BaseModel):
+    status: Literal["unknown", "owner_reviewed_current", "stale"]
+
+
 def _repository() -> KnowledgeRepository:
     return KnowledgeRepository(get_settings().database_path)
 
@@ -144,6 +148,37 @@ def delete_document(
         raise HTTPException(status_code=404, detail="Knowledge document not found")
     _audit(repository, user, "knowledge.document_deleted", str(document_id), "document_deleted")
 
+
+
+@router.patch("/sources/{source_id}/freshness")
+def update_source_freshness(
+    source_id: UUID,
+    payload: SourceFreshnessUpdate,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Record an owner's manual freshness assessment; never fetches the source URL."""
+    repository = _repository()
+    try:
+        result = repository.update_source_freshness(
+            user.user_id, source_id, payload.status
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid source freshness status") from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Knowledge source not found")
+    AuditLogger(repository.tasks).record(
+        event_type="knowledge.source_freshness_updated",
+        outcome="success",
+        subject_type="knowledge_source",
+        subject_id=str(source_id),
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={
+            "freshness_status": payload.status,
+            "automatic_verification": False,
+        },
+    )
+    return result
 
 @router.post("/search")
 def search_knowledge(
