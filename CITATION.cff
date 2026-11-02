@@ -1,0 +1,7 @@
+cff-version: 1.2.0
+message: "If you use or refer to this project, please cite it and preserve the author attribution."
+title: "MR_SIAVASH_HUB_AI"
+type: software
+authors:
+  - name: "MR_SIAVASH_IR_BOT"
+repository-code: "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI"
