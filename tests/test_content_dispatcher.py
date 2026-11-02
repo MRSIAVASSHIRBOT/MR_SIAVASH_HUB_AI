@@ -1,7 +1,12 @@
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
+from pydantic import SecretStr
+
+from mrhub.config import Settings
+from mrhub.api.routes import public_media
 from mrhub.content.dispatcher import (
     ContentScheduleDispatcher,
     PublishReceipt,
@@ -21,15 +26,16 @@ class AmbiguousAdapter:
         raise UnknownPublishOutcome("network response lost")
 
 
-def _scheduled_due_post(client) -> dict[str, object]:
+def _scheduled_due_post(client, *, platform: str = "telegram", media_asset_id: str | None = None) -> dict[str, object]:
     draft_response = client.post(
         "/content/drafts",
         json={
-            "platform": "telegram",
-            "content_type": "post_text",
+            "platform": platform,
+            "content_type": "caption" if platform == "instagram" else "post_text",
             "title": "Dispatcher test",
             "body": "A test post about safe publishing.",
             "hashtags": ["#Testing"],
+            "media_asset_id": media_asset_id,
         },
     )
     assert draft_response.status_code == 201
@@ -126,3 +132,46 @@ def test_dispatcher_rejects_stale_draft_approval() -> None:
         "status": "failed",
         "reason_code": "draft_approval_stale",
     }
+
+
+
+class InspectingInstagramAdapter:
+    def __init__(self):
+        self.draft = None
+
+    def publish(self, draft: dict[str, object], *, idempotency_key: str) -> PublishReceipt:
+        self.draft = draft
+        assert idempotency_key
+        return PublishReceipt(provider_post_id="instagram-post-456")
+
+
+def test_instagram_dispatcher_passes_short_lived_signed_media_url(monkeypatch):
+    monkeypatch.setenv("MRH_PUBLIC_MEDIA_BASE_URL", "https://media.example.com")
+    monkeypatch.setenv("MRH_PUBLIC_MEDIA_SIGNING_KEY", "test-only-signing-key-0123456789abcdef")
+    client = authenticated_client()
+    uploaded = client.post(
+        "/content/assets",
+        content=b"\\x89PNG\\r\\n\\x1a\\n" + b"test-image-data",
+        headers={"Content-Type": "image/png", "X-File-Name": "approved.png"},
+    )
+    assert uploaded.status_code == 201
+    asset_id = uploaded.json()["asset_id"]
+    schedule = _scheduled_due_post(client, platform="instagram", media_asset_id=asset_id)
+    adapter = InspectingInstagramAdapter()
+    dispatcher = ContentScheduleDispatcher(
+        get_settings().database_path, adapters={"instagram": adapter}
+    )
+
+    result = dispatcher.run_once()
+
+    assert result == {"schedule_id": schedule["schedule_id"], "status": "published"}
+    assert adapter.draft is not None
+    media_url = adapter.draft["media_url"]
+    assert isinstance(media_url, str)
+    parsed = urlsplit(media_url)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "media.example.com"
+    query = parse_qs(parsed.query)
+    assert int(query["expires"][0]) > int(datetime.now(UTC).timestamp())
+    assert len(query["signature"][0]) == 64
+    assert "media_asset" not in adapter.draft
