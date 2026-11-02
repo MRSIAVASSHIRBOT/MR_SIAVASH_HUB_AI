@@ -118,6 +118,14 @@ class ContentScheduleRepository:
     def cancel(self, owner_user_id: str, schedule_id: UUID) -> dict[str, object] | None:
         now = self._now()
         with self.tasks._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM content_publish_schedules WHERE schedule_id = ? AND owner_user_id = ?",
+                (str(schedule_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["status"] != "scheduled":
+                raise ScheduleConflict("Only a pending schedule can be cancelled")
             connection.execute(
                 """
                 UPDATE content_publish_schedules
@@ -126,13 +134,8 @@ class ContentScheduleRepository:
                 """,
                 (now, str(schedule_id), owner_user_id),
             )
-            row = connection.execute(
+            updated = connection.execute(
                 "SELECT * FROM content_publish_schedules WHERE schedule_id = ? AND owner_user_id = ?",
                 (str(schedule_id), owner_user_id),
             ).fetchone()
-        if row is None:
-            return None
-        record = self._record(row)
-        if record["status"] != "cancelled":
-            raise ScheduleConflict("Only a pending schedule can be cancelled")
-        return record
+        return self._record(updated) if updated is not None else None
