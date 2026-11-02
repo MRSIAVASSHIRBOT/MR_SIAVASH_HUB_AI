@@ -37,7 +37,7 @@ def _syntax_status(source: str) -> dict[str, Any]:
     except (SyntaxError, ValueError) as exc:
         return {
             "status": "syntax_error",
-            "line": max(1, exc.lineno or 1),
+            "line": max(1, getattr(exc, "lineno", None) or 1),
             "message": "Python syntax could not be parsed; source was not executed.",
         }
     return {"status": "ok", "line": None, "message": None}
