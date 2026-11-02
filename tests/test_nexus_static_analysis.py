@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from mrhub.nexus.static_analysis import (
+    MAX_FILES,
     StaticAnalysisError,
     analyze_python_repository,
 )
@@ -54,10 +55,10 @@ def test_static_analysis_reports_multiple_defensive_patterns(tmp_path: Path):
 def test_static_analysis_rejects_invalid_root_and_limits(tmp_path: Path):
     with pytest.raises(StaticAnalysisError):
         analyze_python_repository(tmp_path / "missing")
+    not_a_dir = tmp_path / "not-a-dir.txt"
+    not_a_dir.write_text("x", encoding="utf-8")
     with pytest.raises(StaticAnalysisError):
-        analyze_python_repository(tmp_path / "not-a-dir.txt") if (tmp_path / "not-a-dir.txt").write_text("x") else None
+        analyze_python_repository(not_a_dir)
     with pytest.raises(ValueError):
         analyze_python_repository(tmp_path, max_files=MAX_FILES + 1)
 
-
-MAX_FILES = 2_000
