@@ -161,26 +161,32 @@ class InstagramGraphImageAdapter:
     def _validate_public_media_url(value: object) -> str:
         if not isinstance(value, str) or len(value) > 2_000:
             raise PermanentPublishError("Instagram image URL is missing or invalid")
-        parsed = urlsplit(value)
+        try:
+            parsed = urlsplit(value)
+            hostname = parsed.hostname
+            port = parsed.port
+        except ValueError as exc:
+            raise PermanentPublishError("Instagram image URL is invalid") from exc
         if (
             parsed.scheme != "https"
-            or not parsed.hostname
+            or not hostname
             or parsed.username is not None
             or parsed.password is not None
             or parsed.fragment
+            or port not in (None, 443)
         ):
             raise PermanentPublishError("Instagram requires a public HTTPS media URL")
-        hostname = parsed.hostname.rstrip(".").lower()
-        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
+        hostname = hostname.rstrip(".").lower()
+        if (
+            hostname in {"localhost", "localhost.localdomain"}
+            or hostname.endswith((".local", ".internal", ".test", ".invalid", ".example"))
+        ):
             raise PermanentPublishError("Instagram media URL must use a public hostname")
         try:
             address = ipaddress.ip_address(hostname)
         except ValueError:
             address = None
-        if address is not None and (
-            address.is_private or address.is_loopback or address.is_link_local
-            or address.is_multicast or address.is_reserved or address.is_unspecified
-        ):
+        if address is not None and not address.is_global:
             raise PermanentPublishError("Instagram media URL must use a public address")
         return value
 
