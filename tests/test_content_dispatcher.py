@@ -183,3 +183,11 @@ def test_instagram_dispatcher_passes_short_lived_signed_media_url(monkeypatch):
     assert int(query["expires"][0]) > int(datetime.now(UTC).timestamp())
     assert len(query["signature"][0]) == 64
     assert "media_asset" not in adapter.draft
+
+    # Exercise the actual public route through ASGI, not just its helper function.
+    response = client.get(f"{parsed.path}?{parsed.query}")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.content.startswith(bytes([137, 80, 78, 71, 13, 10, 26, 10]))
