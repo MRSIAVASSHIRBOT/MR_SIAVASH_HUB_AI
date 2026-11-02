@@ -505,6 +505,14 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_content_publish_schedules_owner ON content_publish_schedules(owner_user_id, scheduled_at)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_publish_schedules_active_draft ON content_publish_schedules(owner_user_id, draft_id) WHERE status IN ('scheduled', 'publishing', 'unknown_outcome')",
         ),
+    ),
+    Migration.build(
+        15,
+        "content_schedule_retry_timing",
+        (
+            "ALTER TABLE content_publish_schedules ADD COLUMN next_attempt_at TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_content_publish_schedules_retry_due ON content_publish_schedules(status, next_attempt_at, scheduled_at)",
+        ),
     )
 )
 
