@@ -61,3 +61,16 @@ def test_operator_ui_exposes_local_media_upload_and_draft_attachment_controls():
     assert 'id="draft-media-select"' in response.text
     assert "media_asset_id" in client.get("/ui/app.js").text
     assert "/content/assets" in client.get("/ui/app.js").text
+
+
+
+def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
+    client = TestClient(create_app())
+    response = client.get("/ui/")
+    assert response.status_code == 200
+    assert 'id="agent-run-form"' in response.text
+    assert 'name="provider_mode"' in response.text
+    assert 'id="agent-run-result"' in response.text
+    script = client.get("/ui/app.js").text
+    assert 'api("/agent/run"' in script
+    assert "context_sources" in script
