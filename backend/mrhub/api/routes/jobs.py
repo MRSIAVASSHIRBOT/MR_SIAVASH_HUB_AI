@@ -1,5 +1,6 @@
 """Job lifecycle API."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +13,6 @@ from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.security.auth import AuthenticatedUser
-from typing import Annotated
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_user)])
 
