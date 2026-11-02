@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import HTTPException
@@ -37,9 +38,10 @@ def test_sign_asset_url_generates_expiring_hmac_url(monkeypatch):
 def test_sign_asset_url_rejects_missing_signing_key(monkeypatch):
     settings = Settings(public_media_base_url="https://media.example.com")
     monkeypatch.setattr(public_media, "get_settings", lambda: settings)
-    with pytest.raises(Exception, match="public_media_not_configured"):
+    with pytest.raises(HTTPException) as exc:
         public_media.sign_asset_url("123e4567-e89b-12d3-a456-426614174000", now=1_800_000_000)
-
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "public_media_not_configured"
 
 
 def test_signed_route_serves_only_valid_unexpired_image(monkeypatch, tmp_path: Path):
@@ -56,11 +58,9 @@ def test_signed_route_serves_only_valid_unexpired_image(monkeypatch, tmp_path: P
         "owner-1",
         "sample.png",
         "image/png",
-        b"\\x89PNG\\r\\n\\x1a\\n" + b"test-image-data",
+        b"\x89PNG\r\n\x1a\n" + b"test-image-data",
     )
     url = public_media.sign_asset_url(str(asset["asset_id"]), now=now)
-    from urllib.parse import parse_qs, urlsplit
-
     query = parse_qs(urlsplit(url).query)
     response = public_media.serve_signed_media(
         asset["asset_id"],
