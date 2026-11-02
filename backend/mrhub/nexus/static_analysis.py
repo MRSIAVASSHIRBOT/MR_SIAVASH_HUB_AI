@@ -33,6 +33,7 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
     inventory: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     scanned = 0
+    examined = 0
     skipped_large = 0
     truncated = False
 
@@ -45,9 +46,10 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
             path = Path(current) / filename
             if path.suffix != ".py" or path.is_symlink():
                 continue
-            if scanned >= max_files:
+            if examined >= max_files:
                 truncated = True
                 break
+            examined += 1
             try:
                 relative = path.relative_to(resolved_root).as_posix()
                 size = path.stat().st_size
@@ -105,6 +107,7 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
         "mode": "read_only_static_analysis",
         "root_label": resolved_root.name or ".",
         "files_scanned": scanned,
+        "files_examined": examined,
         "files_skipped_large": skipped_large,
         "truncated": truncated,
         "inventory": inventory,
