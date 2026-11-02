@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from mrhub.infrastructure.migrations import MigrationError, SchemaMigrator
+from mrhub.infrastructure.migrations import MIGRATIONS, MigrationError, SchemaMigrator
 
 
 def connect(path):
@@ -16,12 +16,12 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     connection = connect(tmp_path / "fresh.sqlite3")
     migrator = SchemaMigrator(connection)
 
-    assert migrator.migrate() == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    assert migrator.migrate() == [migration.version for migration in MIGRATIONS]
     assert migrator.migrate() == []
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    assert [row["version"] for row in versions] == [migration.version for migration in MIGRATIONS]
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
@@ -69,7 +69,7 @@ def test_legacy_schema_is_upgraded_without_losing_rows(tmp_path):
     )
     connection.commit()
 
-    assert SchemaMigrator(connection).migrate() == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    assert SchemaMigrator(connection).migrate() == [migration.version for migration in MIGRATIONS]
     row = connection.execute(
         "SELECT event_id, actor_id FROM audit_events WHERE event_id = 'event-1'"
     ).fetchone()
@@ -185,7 +185,7 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     versions = connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    assert [row["version"] for row in versions] == [migration.version for migration in MIGRATIONS]
     tables = {
         row["name"]
         for row in connection.execute(
