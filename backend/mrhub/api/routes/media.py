@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import sqlite3
 import subprocess
 import threading
 from typing import Annotated
@@ -291,7 +292,13 @@ def delete_asset(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> Response:
     repository = _repository()
-    keys = repository.delete(user.user_id, asset_id)
+    try:
+        keys = repository.delete(user.user_id, asset_id)
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Media asset is attached to a content draft",
+        ) from exc
     if keys is None:
         raise HTTPException(status_code=404, detail="Media asset not found")
     cleanup_failed = False
