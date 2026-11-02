@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "mr-siavash-hub-ai"
 version = "0.1.0"
 description = "Local-first modular AI workspace"
+authors = [{ name = "MR_SIAVASH_IR_BOT" }]
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1.0",

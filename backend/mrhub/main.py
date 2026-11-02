@@ -1,4 +1,4 @@
-""""FastAPI application entry point."""
+"""FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -43,7 +43,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
-        description="Local-first modular AI workspace API",
+        description="Local-first modular AI workspace API. Project attribution: MR_SIAVASH_IR_BOT.",
         lifespan=lifespan,
     )
 
