@@ -6,7 +6,6 @@ import pytest
 
 from mrhub.config import Settings
 from mrhub.api.routes import public_media
-from mrhub.infrastructure.database import TaskRepository
 from mrhub.media.repository import MediaAssetRepository
 
 
