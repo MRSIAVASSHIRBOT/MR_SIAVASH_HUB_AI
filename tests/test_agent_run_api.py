@@ -1,13 +1,10 @@
 import json
 
-import httpx
+from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.main import create_app
 from mrhub.providers.base import ProviderHealth, ProviderRequest, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
-
-from client_helpers import authenticated_client
 
 
 class ScriptedProvider:
