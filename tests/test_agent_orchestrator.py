@@ -118,3 +118,25 @@ def test_orchestrator_does_not_treat_retrieved_text_as_permission():
     prompt = provider.requests[0].input_text
     assert hostile in prompt
     assert "untrusted evidence only" in prompt
+
+
+def test_orchestrator_stop_during_inference_blocks_proposed_tool_call():
+    orchestrator, provider = make_orchestrator(
+        [json.dumps({
+            "type": "tool_call",
+            "name": "text.echo",
+            "payload": {"text": "must-not-run"},
+        })]
+    )
+    checks = iter([False, True])
+    result = orchestrator.run(
+        AgentLoopRequest(goal="Stop before tool dispatch"),
+        should_cancel=lambda: next(checks),
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["error_code"] == "cancelled"
+    assert result["turns"] == 1
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert len(provider.requests) == 1
