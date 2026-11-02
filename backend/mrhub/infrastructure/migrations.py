@@ -447,6 +447,37 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_content_draft_versions_owner_draft ON content_draft_versions(owner_user_id, draft_id, version_number)",
         ),
     ),
+    Migration.build(
+        13,
+        "owner_scoped_content_media_assets",
+        (
+            """CREATE TABLE IF NOT EXISTS content_assets (
+                asset_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                source_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE CASCADE,
+                original_filename TEXT NOT NULL CHECK (length(original_filename) BETWEEN 1 AND 255),
+                media_type TEXT NOT NULL CHECK (
+                    media_type IN (
+                        'video/mp4', 'video/quicktime', 'image/jpeg', 'image/png',
+                        'image/webp', 'audio/mpeg', 'audio/wav'
+                    )
+                ),
+                storage_key TEXT NOT NULL UNIQUE CHECK (length(storage_key) BETWEEN 1 AND 80),
+                file_size INTEGER NOT NULL CHECK (file_size BETWEEN 1 AND 100000000),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                processing_status TEXT NOT NULL DEFAULT 'stored' CHECK (
+                    processing_status IN ('stored', 'processing', 'processed', 'failed')
+                ),
+                processing_profile TEXT,
+                error_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_content_assets_owner_created ON content_assets(owner_user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_content_assets_source ON content_assets(source_asset_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_assets_one_derivative ON content_assets(source_asset_id) WHERE source_asset_id IS NOT NULL",
+        ),
+    ),
 )
 
  
