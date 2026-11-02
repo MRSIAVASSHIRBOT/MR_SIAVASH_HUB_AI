@@ -88,6 +88,13 @@
     return button;
   }
 
+  function actionButton(label, onAction) {
+    const button = element("button", label, "button button-secondary");
+    button.type = "button";
+    button.addEventListener("click", onAction);
+    return button;
+  }
+
   async function loadOverview() {
     message("#workspace-message", "در حال به‌روزرسانی…");
     const [health, ready, providers, tasks] = await Promise.allSettled([
@@ -131,6 +138,49 @@
     message("#workspace-message", failures ? `به‌روزرسانی انجام شد؛ ${failures} بخش در دسترس نبود.` : "وضعیت به‌روز شد.", failures ? "error" : "success");
   }
 
+  async function loadContentDrafts() {
+    const response = await api("/content/drafts?limit=100");
+    renderRecords("#content-draft-list", response.drafts, (draft) => {
+      const card = recordCard(
+        draft.title,
+        draft.body,
+        `${draft.platform} · ${draft.content_type} · ${draft.status} · نسخه ${draft.version}`
+      );
+      const actions = element("div", undefined, "button-row");
+      if (draft.status === "draft") {
+        actions.append(actionButton("تأیید پیش‌نویس", async () => {
+          try { await api(`/content/drafts/${encodeURIComponent(draft.draft_id)}/approve`, { method: "POST" }); await loadContentDrafts(); }
+          catch (error) { message("#workspace-message", error.message, "error"); }
+        }));
+        actions.append(actionButton("بایگانی", async () => {
+          try { await api(`/content/drafts/${encodeURIComponent(draft.draft_id)}/archive`, { method: "POST" }); await loadContentDrafts(); }
+          catch (error) { message("#workspace-message", error.message, "error"); }
+        }));
+      } else if (draft.status === "approved") {
+        actions.append(actionButton("لغو تأیید", async () => {
+          try { await api(`/content/drafts/${encodeURIComponent(draft.draft_id)}/revoke-approval`, { method: "POST" }); await loadContentDrafts(); }
+          catch (error) { message("#workspace-message", error.message, "error"); }
+        }));
+        actions.append(actionButton("بایگانی", async () => {
+          try { await api(`/content/drafts/${encodeURIComponent(draft.draft_id)}/archive`, { method: "POST" }); await loadContentDrafts(); }
+          catch (error) { message("#workspace-message", error.message, "error"); }
+        }));
+      } else {
+        actions.append(actionButton("بازگردانی", async () => {
+          try { await api(`/content/drafts/${encodeURIComponent(draft.draft_id)}/restore`, { method: "POST" }); await loadContentDrafts(); }
+          catch (error) { message("#workspace-message", error.message, "error"); }
+        }));
+      }
+      actions.append(deleteButton("حذف", async () => {
+        if (!window.confirm("این پیش‌نویس و تاریخچهٔ آن حذف شوند؟")) return;
+        try { await api(`/content/drafts/${encodeURIComponent(draft.draft_id)}`, { method: "DELETE" }); await loadContentDrafts(); }
+        catch (error) { message("#workspace-message", error.message, "error"); }
+      }));
+      card.append(actions);
+      return card;
+    }, "هنوز پیش‌نویسی ثبت نشده است.");
+  }
+
   async function loadMemory() {
     const response = await api("/memory?limit=100");
     renderRecords("#memory-results", response.entries, (item) => {
@@ -159,7 +209,7 @@
 
   async function refreshAll() {
     try {
-      await Promise.all([loadOverview(), loadMemory(), loadKnowledge()]);
+      await Promise.all([loadOverview(), loadContentDrafts(), loadMemory(), loadKnowledge()]);
     } catch (error) {
       message("#workspace-message", error.message, "error");
     }
@@ -213,6 +263,30 @@
     endSession();
   });
   $("#refresh-button").addEventListener("click", refreshAll);
+
+  $("#content-draft-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const hashtags = String(form.get("hashtags") || "")
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    try {
+      await api("/content/drafts", {
+        method: "POST",
+        body: {
+          title: form.get("title"),
+          platform: form.get("platform"),
+          content_type: form.get("content_type"),
+          body: form.get("body"),
+          hashtags,
+        },
+      });
+      event.currentTarget.reset();
+      await loadContentDrafts();
+      message("#workspace-message", "پیش‌نویس ذخیره شد؛ انتشار خودکار انجام نشده است.", "success");
+    } catch (error) { message("#workspace-message", error.message, "error"); }
+  });
 
   $("#memory-form").addEventListener("submit", async (event) => {
     event.preventDefault();
