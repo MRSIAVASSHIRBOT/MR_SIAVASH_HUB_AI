@@ -133,6 +133,6 @@ The content draft API provides owner-scoped draft/version management, deduplicat
 - External reachability, edge rate limiting, and a controlled live-account acceptance test remain deployment gates. Production publishing must not be described as end-to-end verified until those gates pass.
 
 
-## Automated code security analysis
+## Defensive Python static analysis
 
-Python source is additionally analyzed with GitHub CodeQL using the `security-extended` query suite on pull requests, pushes to `main`, and a weekly schedule. Results are uploaded to GitHub Code Scanning. This complements (and does not replace) local static checks, Ruff, tests, and dependency auditing. See `docs/security/code-scanning.md` for permissions, scope, and operational guidance.
+Bandit runs a report-only scan of the application package on pull requests, pushes to `main`, and a weekly schedule. It complements (and does not replace) NEXUS static checks, Ruff, tests, and dependency auditing. See `docs/security/bandit.md` for scope and operational guidance.
