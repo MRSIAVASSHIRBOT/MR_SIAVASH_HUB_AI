@@ -99,7 +99,7 @@ def test_static_analysis_marks_inventory_incomplete_when_directory_walk_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    import mrhub.nexus.static_analysis as static_analysis
+    from mrhub.nexus import static_analysis
 
     blocked_directory = tmp_path / "restricted"
 
