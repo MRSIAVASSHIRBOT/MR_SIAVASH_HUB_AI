@@ -17,6 +17,9 @@ dependencies = [
   "cryptography>=50.0.0,<51.0.0",
 ]
 
+[project.scripts]
+mrhub-hardware-diagnostics = "mrhub.diagnostics.hardware:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=9.0.3,<10.0",
