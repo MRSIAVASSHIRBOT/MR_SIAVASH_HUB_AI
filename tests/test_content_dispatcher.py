@@ -229,3 +229,34 @@ def test_signed_media_rejects_expired_and_overlong_expiry_before_asset_lookup(mo
     assert expired.json()["detail"] == "media_url_expired"
     assert too_far.status_code == 403
     assert too_far.json()["detail"] == "media_url_expired"
+
+
+def test_dispatcher_rechecks_emergency_stop_before_provider_side_effect(monkeypatch):
+    client = authenticated_client()
+    schedule = _scheduled_due_post(client)
+    adapter = ConfirmingAdapter()
+    dispatcher = ContentScheduleDispatcher(
+        get_settings().database_path, adapters={"telegram": adapter}
+    )
+    checks = 0
+
+    def stop_on_final_gate(connection=None):
+        nonlocal checks
+        checks += 1
+        # First check is before claiming; second is inside the claim transaction.
+        # The third is the last gate immediately before calling the provider.
+        return checks >= 3
+
+    monkeypatch.setattr(dispatcher._control, "is_stopped", stop_on_final_gate)
+    result = dispatcher.run_once()
+
+    assert result == {
+        "schedule_id": schedule["schedule_id"],
+        "status": "scheduled",
+        "reason_code": "emergency_stop",
+    }
+    assert checks == 3
+    listed = client.get("/content/schedules?status=scheduled")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["schedules"][0]["attempt_count"] == 1
