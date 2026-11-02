@@ -147,3 +147,36 @@ This snapshot supersedes earlier roadmap/status statements that conflict with th
 5. Extend NEXUS and defensive review with reviewable patch proposals, dependency/configuration coverage, and stronger scope/evidence tests.
 
 A green CI result is not equivalent to target-machine validation or production readiness.
+
+
+## Superseding integration snapshot — 2026-11-02 UTC
+
+This snapshot supersedes the earlier snapshot above where it describes the Agent API or Telegram media publishing as incomplete. Baseline immediately before this documentation update: `efee3a5ac0f6adec5a869f4550ab2339d879cf5e`.
+
+### Newly merged milestones
+
+- **PR #50 — owner-declared source freshness**: merged. Knowledge sources default to `unknown`; an authenticated owner can mark them `owner_reviewed_current` or `stale`. Search results and Agent context preserve the label and review timestamp. This is not automatic URL verification.
+- **PR #51 — authenticated bounded Agent run**: merged. `POST /agent/run` assembles owner-scoped memory/knowledge context, passes passages as untrusted evidence, and returns source references separately from the answer. It requires explicit local or remote provider mode, excludes the stub provider, and audits metadata without logging the goal/context/answer.
+- **PR #52 — Agent provider timeout cap**: merged. The synchronous endpoint caps each provider call at 30 seconds and allows at most three turns. Worst-case provider wait is roughly 90 seconds plus local processing overhead; this is not a durable long-running workflow.
+- **PR #53 — approved Telegram media publishing**: merged. Draft revisions bind owner-scoped JPEG/PNG/MP4 assets; attachment changes reset approval. The worker resolves and validates the local file immediately before dispatch. The adapter uploads via Telegram `sendPhoto`/`sendVideo`, checks caption/file bounds, and preserves ambiguous-outcome handling.
+- **PR #54 — operator media library**: merged. The authenticated local dashboard can upload/list/delete media and attach assets to Telegram drafts. Deletion conflicts are surfaced rather than bypassed.
+- **PR #55 — Agent run UI**: merged. The dashboard exposes the bounded Agent endpoint, explicit local/remote mode, memory/knowledge inclusion, turn/output caps, and source trust/freshness metadata.
+
+### Current implementation boundaries
+
+- The Agent endpoint is synchronous and exposes only the deterministic `text.echo` tool. It is not yet a durable worker-owned Agent job or multi-agent delegation system.
+- Telegram media publishing requires an approved draft, configured Bot API credentials, a functioning worker cycle, and an available local asset. The code/tests use mocked HTTP; no real Telegram post was performed here.
+- Instagram Graph API publishing is still incomplete. It requires professional-account/app credentials and a publicly reachable media delivery path; local file paths alone are insufficient. Do not put tokens in source code or chat.
+- Freshness status is owner-declared, not independently verified. Retrieval-quality evaluation and stronger freshness checks remain open.
+- Backup/restore helpers exist, but a target-machine restore drill and protected backup for media/encryption-key material remain open.
+- NEXUS static analysis and offline configuration review are advisory foundations. Patch proposals, dependency auditing, and target-machine install/upgrade/rollback validation remain open.
+
+### Next priorities
+
+1. Add repeatable retrieval-quality and stale-source handling evaluation before broadening Agent tools.
+2. Move longer Agent work to durable worker-owned jobs with persisted state, cancellation, and recovery.
+3. Finish Instagram's external integration only after public media hosting and credentials are configured outside the repository.
+4. Perform a real target-machine backup/restore and clean install/rollback drill.
+5. Expand NEXUS findings and defensive configuration coverage with evidence-backed tests.
+
+A green CI result is not a substitute for live provider or target-machine validation.
