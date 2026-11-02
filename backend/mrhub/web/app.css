@@ -125,3 +125,26 @@ summary { color: var(--green); cursor: pointer; }
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.7rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--panel);
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: auto;
+  min-width: 1rem;
+  accent-color: var(--green);
+}
