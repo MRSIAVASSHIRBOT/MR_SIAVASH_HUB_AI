@@ -274,7 +274,8 @@ class KnowledgeRepository:
                        c.start_offset, c.end_offset, c.content, c.content_hash AS chunk_hash,
                        d.title, d.language, d.content_hash AS document_hash,
                        s.canonical_origin, s.trust_classification,
-                       s.sensitivity_classification
+                       s.sensitivity_classification, s.freshness_status,
+                       s.freshness_checked_at
                 FROM knowledge_chunks_fts
                 JOIN knowledge_chunks c
                   ON c.chunk_id = knowledge_chunks_fts.chunk_id
