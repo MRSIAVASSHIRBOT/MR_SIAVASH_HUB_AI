@@ -200,3 +200,15 @@ This section supersedes earlier statements above where they conflict with the fo
 ### Release decision
 
 **Do not label the entire project production-complete yet.** The signed-media code and relevant automated CI checks are merged, but live Instagram acceptance and target-device operational drills cannot be inferred from CI. The remaining work should proceed by closing each code-level regression with tests first, then recording external acceptance evidence without storing credentials or private media in the repository.
+
+
+## Follow-up verification — 2026-11-02 UTC
+
+The following hardening changes were merged after the release-readiness update above:
+
+- **PR #79 — signed-media route integration test:** merged as `60e70badd453516b858e78c13624cb7897a63898`. CI passed on Python 3.11 and 3.12; the dispatcher test now requests the signed image through the actual ASGI route and checks content type, `nosniff`, `no-store`, and image signature bytes.
+- **PR #80 — bounded NEXUS inventory:** merged as `0c253865807e7ab8125c4b6452ea0301b15a91fa`. CI passed after fixing the import-order lint finding. The analyzer now counts eligible Python candidates against the budget even when files are skipped for size, and reports `files_examined` separately from `files_scanned`.
+- **PR #81 — offline cookie configuration checks:** merged as `d493728a7acfe223e3a9b3aa3b90b59b4232d811`. CI passed on Python 3.11 and 3.12 after correcting the test fixture's line separators. The defensive lab detects disabled Secure/HttpOnly cookie flags and does not echo configuration values.
+- **PR #82 — distributable wheel asset verification:** merged as `f3fc765d54673bf551bb0cac2363f61275501b1c`. CI passed on Python 3.11 and 3.12; the pipeline builds a wheel and checks that `index.html`, `app.css`, and `app.js` are packaged.
+
+These changes improve automated evidence for media delivery, bounded static analysis, defensive configuration review, and packaging. They do **not** close external deployment gates: public HTTPS reachability and edge controls still need deployment verification, live Instagram publishing needs a controlled authorized account test, and clean install/upgrade/restore drills still need to run on the intended target device. Do not store access tokens, signing keys, or private media in this repository.
