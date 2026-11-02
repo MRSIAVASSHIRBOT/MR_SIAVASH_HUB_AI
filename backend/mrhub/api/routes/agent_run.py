@@ -45,6 +45,7 @@ def run_agent(
     model_router = build_model_router(
         provider_mode=payload.provider_mode,
         include_stub=False,
+        max_timeout_seconds=30.0,
     )
     try:
         model_router.select(

@@ -24,8 +24,11 @@ def build_model_router(
     *,
     provider_mode: Literal["all", "local", "remote"] = "all",
     include_stub: bool = True,
+    max_timeout_seconds: float | None = None,
 ) -> ModelRouter:
     """Build an explicit provider set; constrained modes never silently fall back."""
+    if max_timeout_seconds is not None and not 1 <= max_timeout_seconds <= 300:
+        raise ValueError("Provider timeout cap must be between 1 and 300 seconds")
     settings = get_settings()
     model_router = ModelRouter()
     if include_stub and provider_mode == "all":
@@ -35,7 +38,11 @@ def build_model_router(
             OllamaProvider(
                 model=settings.local_inference_model,
                 base_url=settings.local_inference_base_url,
-                timeout_seconds=settings.local_inference_timeout_seconds,
+                timeout_seconds=(
+                    min(settings.local_inference_timeout_seconds, max_timeout_seconds)
+                    if max_timeout_seconds is not None
+                    else settings.local_inference_timeout_seconds
+                ),
             )
         )
     if (
@@ -49,7 +56,11 @@ def build_model_router(
                 model=settings.remote_inference_model,
                 api_key=settings.remote_inference_api_key.get_secret_value(),
                 base_url=settings.remote_inference_base_url,
-                timeout_seconds=settings.remote_inference_timeout_seconds,
+                timeout_seconds=(
+                    min(settings.remote_inference_timeout_seconds, max_timeout_seconds)
+                    if max_timeout_seconds is not None
+                    else settings.remote_inference_timeout_seconds
+                ),
             )
         )
     return model_router

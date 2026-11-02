@@ -58,6 +58,6 @@ Example request:
 
 - `provider_mode=local` requires an explicitly enabled local provider. `provider_mode=remote` requires an explicitly enabled remote provider. The endpoint does not use the stub provider or silently fall back between local and remote.
 - The current tool catalog exposes only the deterministic `text.echo` tool; the model cannot add tools or grant itself permissions.
-- The synchronous request is deliberately bounded and intended as an initial integration slice, not a replacement for durable worker-owned long-running workflows.
+- The synchronous request is deliberately bounded: at most three model turns, with each provider request capped at 30 seconds (roughly 90 seconds of maximum provider wait, plus local processing overhead). It is an initial integration slice, not a replacement for durable worker-owned long-running workflows.
 - The endpoint audits status/provider/turn/tool-count metadata, not the goal, retrieved text, or answer. It does not publish content or perform external side effects.
 - Context sources remain untrusted. `owner_reviewed_current` is a manual owner assertion, not automatic source verification.
