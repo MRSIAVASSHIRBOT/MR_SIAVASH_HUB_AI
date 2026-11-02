@@ -116,7 +116,7 @@ class AgentContextAssembler:
         for passage in candidates:
             fitted = self._fit_passage(bounded_passages, passage)
             if fitted is None:
-                break
+                continue
             bounded_passages.append(fitted)
 
         context_block = self._serialized_context(bounded_passages)
