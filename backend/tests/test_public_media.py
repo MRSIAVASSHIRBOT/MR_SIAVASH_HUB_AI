@@ -1,11 +1,11 @@
 from pathlib import Path
 
+import pytest
 from fastapi import HTTPException
 from pydantic import SecretStr
-import pytest
 
-from mrhub.config import Settings
 from mrhub.api.routes import public_media
+from mrhub.config import Settings
 from mrhub.media.repository import MediaAssetRepository
 
 
