@@ -1,8 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
+from uuid import UUID
 
 from client_helpers import authenticated_client
+from mrhub.api.routes import public_media
 from mrhub.config import get_settings
+from mrhub.media.repository import MediaAssetRepository
 from mrhub.content.dispatcher import (
     ContentScheduleDispatcher,
     PublishReceipt,
@@ -152,6 +155,15 @@ def test_instagram_dispatcher_passes_short_lived_signed_media_url(monkeypatch):
     )
     assert uploaded.status_code == 201
     asset_id = uploaded.json()["asset_id"]
+    owner_id = uploaded.json()["owner_user_id"]
+    media_repository = MediaAssetRepository(get_settings().database_path)
+    stored_asset = media_repository.get(owner_id, UUID(asset_id))
+    assert stored_asset is not None
+    media_path = media_repository.file_path(str(stored_asset["storage_key"]))
+    assert media_path.is_file()
+    assert media_path.stat().st_size == stored_asset["file_size"]
+    signed_url = public_media.sign_asset_url(asset_id)
+    assert signed_url.startswith("https://media.example.com/public/media/")
     schedule = _scheduled_due_post(client, platform="instagram", media_asset_id=asset_id)
     adapter = InspectingInstagramAdapter()
     dispatcher = ContentScheduleDispatcher(
