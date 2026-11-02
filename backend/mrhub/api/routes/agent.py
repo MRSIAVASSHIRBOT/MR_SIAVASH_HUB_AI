@@ -346,7 +346,7 @@ def resume_agent_workflow(
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
         plan = core.plan(request.request)
-        return AgentWorkflowRunner(tasks, core).resume(
+        return AgentWorkflowRunner(tasks, core).queue_resume(
             workflow_id,
             request.request,
             plan,
