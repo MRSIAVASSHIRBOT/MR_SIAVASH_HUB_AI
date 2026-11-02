@@ -66,8 +66,8 @@ def test_configuration_audit_enforces_input_limit():
 
 def test_configuration_audit_flags_insecure_cookie_settings_without_echoing_values():
     result = audit_configuration_text(
-        "SESSION_COOKIE_SECURE = false\\n"
-        "SESSION_COOKIE_HTTPONLY = false\\n",
+        "SESSION_COOKIE_SECURE = false\n"
+        "SESSION_COOKIE_HTTPONLY = false\n",
         filename="app.env",
     )
 
