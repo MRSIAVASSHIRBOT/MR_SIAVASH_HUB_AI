@@ -180,3 +180,23 @@ This snapshot supersedes the earlier snapshot above where it describes the Agent
 5. Expand NEXUS findings and defensive configuration coverage with evidence-backed tests.
 
 A green CI result is not a substitute for live provider or target-machine validation.
+
+
+## Release-readiness update — 2026-11-02 UTC
+
+This section supersedes earlier statements above where they conflict with the following merged changes. Latest relevant merged heads:
+- PR #74 merged as `294329da3afb043350b22f9e4b3214456c7bf67a`; CI and Backend CI passed on PR head `78fe761f8b7c7790a99b3d1fbb07d6d0ff15d223` (Python 3.11 and 3.12 for CI). It replaces a broad exception assertion with exact HTTP 503 and stable error-detail checks for missing signed-media configuration.
+- PR #75 merged as `4d83a4c59a4a688caff5fcd2fb42a34909edf14c`; CI and Backend CI passed on PR head `1b4ca24f4b4df5d1b1355add8f558c8d67dd77d8`. Public signed media delivery now verifies JPEG/PNG file signatures against stored media types before serving bytes and has mismatch regression coverage.
+
+### Six workstreams — implementation vs. release gates
+
+1. **Instagram/media delivery — code foundation integrated.** The dispatcher generates short-lived signed HTTPS media URLs for approved JPEG/PNG Instagram schedules. The public route binds asset UUID and expiry with HMAC, limits URLs to 15 minutes, validates media type and bytes, and fails closed when configuration is absent. Still blocked on externally verified HTTPS reachability, edge rate limiting/query-string log hygiene, authorized professional-account credentials, and a controlled end-to-end publish/reconciliation test. No live Instagram post has been performed by CI.
+2. **Workflow operations/emergency stop — core behavior and regression coverage exist.** The durable stop flag blocks new worker claims and remains latched until an explicit resume. Tests cover an in-flight synchronous handler, preventing the next claim, and resuming after the stop. The stop does not magically cancel an already-running external side effect; multi-process deployment behavior and operator procedures still require target-environment validation.
+3. **Retrieval and Agent context safety — bounded integration exists.** Memory and knowledge evidence are owner-scoped, carry provenance/trust/freshness labels, are bounded by per-item and total character limits, and are explicitly marked untrusted. The authenticated bounded Agent run consumes context and preserves source references. Freshness remains owner-declared rather than automatically verified; retrieval-quality evaluation and provider-backed prompt-injection acceptance remain incomplete.
+4. **NEXUS developer agent — read-only foundation exists.** Python inventory/static analysis is bounded, emits file/line/rule evidence, and does not import or execute analyzed targets or modify files. Patch proposals are review-only. Coverage is intentionally narrow; broader language support, dependency analysis, and repository-scale performance validation remain open.
+5. **Defensive cybersecurity lab — offline foundation exists.** Scoped, expiring authorization records and selected read-only configuration checks are implemented. This is not a comprehensive scanner or an active penetration-testing engine. Further checks must remain explicitly scoped, authorized, evidence-backed, and non-destructive.
+6. **Packaging, backup/restore, release readiness — partial.** SQLite backup/restore verifies integrity and checksum, refuses destination overwrite, and has CI tests. SQLite backup does not include media assets, provider tokens, or encryption keys. A clean install/upgrade/rollback and restore drill on the intended target device, plus separately protected backup procedures for media and secret/key material, remain open.
+
+### Release decision
+
+**Do not label the entire project production-complete yet.** The signed-media code and relevant automated CI checks are merged, but live Instagram acceptance and target-device operational drills cannot be inferred from CI. The remaining work should proceed by closing each code-level regression with tests first, then recording external acceptance evidence without storing credentials or private media in the repository.
