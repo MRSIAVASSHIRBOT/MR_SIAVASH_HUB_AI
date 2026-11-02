@@ -1,4 +1,4 @@
-import json
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -48,9 +48,11 @@ def test_instagram_image_publish_uses_container_then_publish_and_returns_id():
     assert len(requests) == 2
     assert requests[0].url.path.endswith("/17841400000000000/media")
     assert requests[1].url.path.endswith("/17841400000000000/media_publish")
-    assert "access_token=test-token-never-log" in requests[0].content.decode()
-    assert "caption=A%20useful%20caption" in requests[0].content.decode()
-    assert "creation_id=container-123" in requests[1].content.decode()
+    first_form = parse_qs(requests[0].content.decode())
+    second_form = parse_qs(requests[1].content.decode())
+    assert first_form["access_token"] == ["test-token-never-log"]
+    assert first_form["caption"] == ["A useful caption\n\n#AI #Security"]
+    assert second_form["creation_id"] == ["container-123"]
 
 
 @pytest.mark.parametrize(
