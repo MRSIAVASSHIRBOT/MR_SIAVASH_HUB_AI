@@ -78,10 +78,19 @@ def discover_agent_capabilities() -> dict[str, object]:
             }
             for item in approved_sources
         ],
-        "assistant_gateway": {
-            "enabled": settings.assistant_gateway_enabled,
-            "configured": bool(settings.assistant_gateway_base_url),
-            "health_status": "not_checked",
+        "integrations": {
+            "assistant_gateway": {
+                "enabled": settings.assistant_gateway_enabled,
+                "configured": bool(settings.assistant_gateway_base_url),
+                "health_status": "not_checked",
+                "status_endpoint": "/integrations/assistant-gateway/status",
+            },
+            "code_engine": {
+                "enabled": settings.code_engine_enabled,
+                "configured": bool(settings.code_engine_base_url),
+                "health_status": "not_checked",
+                "status_endpoint": "/integrations/code-engine/status",
+            },
         },
         "execution_started": False,
         "network_probes_performed": False,
