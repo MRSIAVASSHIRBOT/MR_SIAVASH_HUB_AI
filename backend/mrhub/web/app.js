@@ -668,6 +668,66 @@
   });
   $("#knowledge-list-button").addEventListener("click", () => loadKnowledge().catch((error) => message("#workspace-message", error.message, "error")));
 
+  $("#agent-run-form").addEventListener("submit", runAgent);
+
+  async function runAgent(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const output = $("#agent-run-result");
+    output.textContent = "در حال اجرای عامل با محدودیت زمان و نوبت…";
+    $("#agent-run-sources").replaceChildren();
+    const providerMode = String(values.get("provider_mode") || "local");
+    try {
+      const result = await api("/agent/run", {
+        method: "POST",
+        body: {
+          goal: String(values.get("goal") || ""),
+          context_query: String(values.get("context_query") || "").trim() || null,
+          provider_mode: providerMode,
+          include_memory: form.elements.include_memory.checked,
+          include_knowledge: form.elements.include_knowledge.checked,
+          max_turns: Number(values.get("max_turns") || 3),
+          max_output_tokens: Number(values.get("max_output_tokens") || 512),
+        },
+      });
+      const execution = result.execution || {};
+      const selected = execution.selected_provider || {};
+      output.textContent = [
+        "وضعیت: " + (execution.status || "نامشخص"),
+        "حالت ارائه‌دهنده: " + result.provider_mode,
+        "Provider: " + (selected.provider || "—"),
+        "Model: " + (selected.model || "—"),
+        "نوبت‌ها: " + (execution.turns ?? 0),
+        "فراخوانی ابزارها: " + (execution.tool_calls ?? 0),
+        "",
+        execution.answer || execution.error || "پاسخی تولید نشد.",
+      ].join("\n");
+      renderRecords(
+        "#agent-run-sources",
+        result.context_sources,
+        (source) => recordCard(
+          source.reference || "منبع بدون شناسه",
+          source.source_ref || "",
+          [
+            source.trust_classification || "trust نامشخص",
+            source.freshness_status || "freshness نامشخص",
+            source.freshness_checked_at || "",
+          ].filter(Boolean).join(" · ")
+        ),
+        "برای این درخواست منبعی بازیابی نشد."
+      );
+      message(
+        "#workspace-message",
+        execution.status === "completed" ? "اجرای عامل پایان یافت؛ هیچ انتشار یا اثر خارجی انجام نشد." : "اجرای عامل با وضعیت " + (execution.status || "نامشخص") + " پایان یافت.",
+        execution.status === "completed" ? "success" : "error"
+      );
+    } catch (error) {
+      output.textContent = error.message;
+      message("#workspace-message", error.message, "error");
+    }
+  }
+
   $("#inference-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const submitter = event.submitter;
