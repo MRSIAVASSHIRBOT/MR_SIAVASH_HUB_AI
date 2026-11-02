@@ -147,7 +147,7 @@ def test_instagram_dispatcher_passes_short_lived_signed_media_url(monkeypatch):
     client = authenticated_client()
     uploaded = client.post(
         "/content/assets",
-        content=b"\\x89PNG\\r\\n\\x1a\\n" + b"test-image-data",
+        content=b"\x89PNG\r\n\x1a\n" + b"test-image-data",
         headers={"Content-Type": "image/png", "X-File-Name": "approved.png"},
     )
     assert uploaded.status_code == 201
