@@ -73,3 +73,15 @@ def test_authenticated_patch_proposal_api_returns_diff_without_applying_it():
     assert result["files_modified"] is False
     assert result["code_executed"] is False
     assert result["proposal_persisted"] is False
+
+
+
+def test_patch_proposal_handles_null_byte_source_as_syntax_error():
+    result = create_patch_proposal(
+        "module.py",
+        "x = 1\n",
+        "x = \\x00\n",
+    )
+
+    assert result["proposed_syntax"]["status"] == "syntax_error"
+    assert result["proposed_syntax"]["line"] == 1
