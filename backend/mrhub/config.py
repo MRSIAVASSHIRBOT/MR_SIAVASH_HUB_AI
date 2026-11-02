@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     worker_heartbeat_timeout_seconds: int = Field(default=15, ge=3, le=300)
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
+    instagram_access_token: SecretStr | None = None
+    instagram_user_id: str | None = None
+    instagram_graph_api_version: str | None = None
 
 
 @lru_cache
