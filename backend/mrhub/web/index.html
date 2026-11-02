@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>MR SIAVASH AI HUB</title>
+  <link rel="stylesheet" href="/ui/app.css">
+  <script src="/ui/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">LOCAL-FIRST AI WORKSPACE</p>
+      <h1>MR SIAVASH <span>AI HUB</span></h1>
+      <p class="subtitle">کنترل‌پنل محلی، خصوصی و قابل‌ردیابی</p>
+    </div>
+    <div class="header-actions">
+      <span id="session-state" class="status-pill">بدون نشست</span>
+      <button id="refresh-button" class="button button-quiet" type="button" hidden>به‌روزرسانی</button>
+      <button id="logout-button" class="button button-quiet" type="button" hidden>خروج</button>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section id="auth-panel" class="panel auth-panel">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">AUTHENTICATED ACCESS</p>
+          <h2>ورود به فضای کاری</h2>
+        </div>
+        <span class="status-pill status-muted">توکن فقط در این نشست مرورگر</span>
+      </div>
+      <form id="login-form" class="form-grid">
+        <label>نام کاربری
+          <input name="username" autocomplete="username" value="owner" required maxlength="40">
+        </label>
+        <label>گذرواژه
+          <input name="password" type="password" autocomplete="current-password" required maxlength="256">
+        </label>
+        <button class="button button-primary" type="submit">ورود امن</button>
+      </form>
+      <details class="setup-details">
+        <summary>راه‌اندازی اولیه (فقط اولین اجرا)</summary>
+        <p class="muted">این کار فقط از اتصال محلی پذیرفته می‌شود و پس از ایجاد مالک، دیگر قابل تکرار نیست.</p>
+        <form id="setup-form" class="form-grid">
+          <label>گذرواژهٔ اولیهٔ مالک
+            <input name="password" type="password" autocomplete="new-password" minlength="14" required maxlength="256">
+          </label>
+          <button class="button button-secondary" type="submit">ایجاد حساب مالک</button>
+        </form>
+      </details>
+      <p id="auth-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="workspace" hidden>
+      <div class="section-heading section-heading-spaced">
+        <div>
+          <p class="eyebrow">LIVE OVERVIEW</p>
+          <h2>وضعیت سامانه</h2>
+        </div>
+        <p class="muted">فهرست مدل‌ها بدون اجرای inference یا بررسی شبکه بارگذاری می‌شود.</p>
+      </div>
+      <div id="system-cards" class="status-grid"></div>
+      <section class="panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">PROVIDER REGISTRY</p><h2>مدل‌ها و ارائه‌دهنده‌ها</h2></div>
+        </div>
+        <div id="provider-list" class="provider-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">MODEL INFERENCE</p><h2>آزمایش مدل</h2></div>
+          <span class="status-pill status-warning">ارسال ابری فقط با انتخاب صریح</span>
+        </div>
+        <form id="inference-form" class="stack-form">
+          <label>متن ورودی
+            <textarea name="input_text" rows="3" maxlength="32000" required placeholder="متن آزمایشی خود را وارد کنید…"></textarea>
+          </label>
+          <div class="button-row">
+            <button class="button button-secondary" type="submit" data-mode="local">اجرای مدل محلی</button>
+            <button class="button button-primary" type="submit" data-mode="remote">ارسال صریح به OpenRouter</button>
+          </div>
+        </form>
+        <p class="muted">درخواست ابری متن ورودی را به سرویس ثالث می‌فرستد و ممکن است هزینه داشته باشد. این دکمه هیچ‌گاه به‌صورت خودکار اجرا نمی‌شود.</p>
+        <pre id="inference-result" class="output-box" aria-live="polite">هنوز درخواستی اجرا نشده است.</pre>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">TASK QUEUE</p><h2>آخرین کارها</h2></div>
+        </div>
+        <div id="task-list" class="record-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">PRIVATE MEMORY</p><h2>حافظهٔ شخصی</h2></div>
+        </div>
+        <form id="memory-form" class="form-grid">
+          <label>دسته‌بندی<input name="category" required maxlength="80" placeholder="مثلاً project"></label>
+          <label class="field-wide">یادداشت<textarea name="content" rows="2" required maxlength="2000"></textarea></label>
+          <button class="button button-primary" type="submit">ذخیرهٔ یادداشت</button>
+        </form>
+        <form id="memory-search-form" class="search-form">
+          <label>جست‌وجوی حافظه<input name="query" required maxlength="200" placeholder="عبارت جست‌وجو"></label>
+          <button class="button button-secondary" type="submit">جست‌وجو</button>
+          <button id="memory-list-button" class="button button-quiet" type="button">نمایش همه</button>
+        </form>
+        <div id="memory-results" class="record-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">SOURCE-BACKED KNOWLEDGE</p><h2>اسناد دانشی</h2></div>
+        </div>
+        <form id="knowledge-form" class="form-grid">
+          <label>عنوان سند<input name="title" required maxlength="200"></label>
+          <label>ارجاع منبع (اختیاری)<input name="source_ref" maxlength="500" placeholder="نام فایل یا نشانی مرجع"></label>
+          <label class="field-wide">متن یا Markdown<textarea name="content" rows="4" required maxlength="100000"></textarea></label>
+          <button class="button button-primary" type="submit">ثبت و قطعه‌بندی سند</button>
+        </form>
+        <form id="knowledge-search-form" class="search-form">
+          <label>جست‌وجوی اسناد<input name="query" required maxlength="200"></label>
+          <button class="button button-secondary" type="submit">جست‌وجو</button>
+          <button id="knowledge-list-button" class="button button-quiet" type="button">نمایش اسناد</button>
+        </form>
+        <p class="muted">محتوای بازیابی‌شده، مدرک متنیِ غیرقابل‌اعتماد است؛ به‌تنهایی مجوز اجرای ابزار یا تغییر سیاست نیست.</p>
+        <div id="knowledge-results" class="record-list"></div>
+      </section>
+      <p id="workspace-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+  <footer class="footer">MR_SIAVASH_HUB_AI · محلی‌محور · بدون CDN · بدون ارسال خودکار داده</footer>
+</body>
+</html>

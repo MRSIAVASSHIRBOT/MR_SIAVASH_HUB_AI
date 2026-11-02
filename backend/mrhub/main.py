@@ -2,8 +2,10 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.approvals import router as approvals_router
@@ -51,6 +53,12 @@ def create_app() -> FastAPI:
             "camera=(), microphone=(), geolocation=()",
         )
         response.headers.setdefault("Cache-Control", "no-store")
+        if request.url.path == "/ui" or request.url.path.startswith("/ui/"):
+            response.headers.setdefault(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+                "img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+            )
         return response
 
     app.include_router(health_router)
@@ -65,6 +73,11 @@ def create_app() -> FastAPI:
     app.include_router(memory_router)
     app.include_router(tools_router)
     app.include_router(agent_router)
+    app.mount(
+        "/ui",
+        StaticFiles(directory=Path(__file__).resolve().parent / "web", html=True),
+        name="operator-ui",
+    )
     return app
 
 
