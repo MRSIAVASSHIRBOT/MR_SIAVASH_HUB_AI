@@ -254,14 +254,23 @@ class InstagramGraphImageAdapter:
             self._client.close()
 
 
-def configured_publish_adapters(settings: Settings | None = None) -> dict[str, TelegramBotApiAdapter]:
-    """Return only adapters whose credentials are explicitly configured."""
+def configured_publish_adapters(settings: Settings | None = None) -> dict[str, Any]:
+    """Return only adapters whose complete credentials are explicitly configured."""
     config = settings or get_settings()
-    if config.telegram_bot_token is None or not config.telegram_chat_id:
-        return {}
-    return {
-        "telegram": TelegramBotApiAdapter(
+    adapters: dict[str, Any] = {}
+    if config.telegram_bot_token is not None and config.telegram_chat_id:
+        adapters["telegram"] = TelegramBotApiAdapter(
             config.telegram_bot_token.get_secret_value(),
             config.telegram_chat_id,
         )
-    }
+    if (
+        config.instagram_access_token is not None
+        and config.instagram_user_id
+        and config.instagram_graph_api_version
+    ):
+        adapters["instagram"] = InstagramGraphImageAdapter(
+            config.instagram_access_token.get_secret_value(),
+            config.instagram_user_id,
+            config.instagram_graph_api_version,
+        )
+    return adapters
