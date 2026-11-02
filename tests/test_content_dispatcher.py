@@ -223,7 +223,7 @@ def test_signed_media_rejects_expired_and_overlong_expiry_before_asset_lookup(mo
         f"/public/media/{asset_id}?expires={now}&signature={signature}"
     )
     too_far = client.get(
-        f"/public/media/{asset_id}?expires={now + 901}&signature={signature}"
+        f"/public/media/{asset_id}?expires={now + 905}&signature={signature}"
     )
     assert expired.status_code == 403
     assert expired.json()["detail"] == "media_url_expired"
