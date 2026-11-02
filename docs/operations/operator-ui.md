@@ -12,6 +12,11 @@ The operator dashboard is served by the same FastAPI process at `/ui/`. It has n
 ## Dashboard functions
 
 - Read liveness/readiness and worker status.
+- View live Job Engine counters: task states, retry schedule, recovery-required workflows, expired leases, oldest queued age, and pull-driven execution mode.
+- View bounded, owner-scoped workflow history and inspect step status, attempt count, and sanitized error codes.
+- Cancel eligible queued/running tasks and queued/running/paused workflows.
+- Check a paused workflow's resume decision and enqueue a resume. The original request JSON must be supplied again; the UI never receives stored payloads or executes workflow steps.
+- Reconcile an unknown external outcome only after independently verifying the remote result. The UI records a user-supplied outcome and digest; it does not call the external service.
 - View the configured provider catalog without triggering health checks or inference.
 - View recent tasks.
 - Create, search, and delete private memory notes.
@@ -19,7 +24,7 @@ The operator dashboard is served by the same FastAPI process at `/ui/`. It has n
 - Invoke the local model endpoint explicitly.
 - Invoke OpenRouter only by pressing the separate remote button. This sends the submitted text to a third party and may incur cost; remote inference remains disabled unless explicitly configured.
 
-The UI does not expose arbitrary shell execution, arbitrary file paths, or automatic publishing.
+The UI does not expose arbitrary shell execution, arbitrary file paths, or automatic publishing. Workflow resume is queued for the pull worker; no workflow tool is executed in the browser or API request handler.
 
 ## Browser security
 
