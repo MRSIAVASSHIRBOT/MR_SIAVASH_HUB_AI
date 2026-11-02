@@ -16,7 +16,6 @@ from mrhub.api.routes.capabilities import router as capabilities_router
 from mrhub.api.routes.content import router as content_router
 from mrhub.api.routes.content_schedules import router as content_schedules_router
 from mrhub.api.routes.health import router as health_router
-from mrhub.integrations.assistant_gateway import router as assistant_gateway_router
 from mrhub.api.routes.jobs import router as jobs_router
 from mrhub.api.routes.knowledge import router as knowledge_router
 from mrhub.api.routes.media import router as media_router
@@ -29,6 +28,7 @@ from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.tools import router as tools_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.integrations.assistant_gateway import router as assistant_gateway_router
 from mrhub.security.auth import LoginAttemptLimiter
 
 
