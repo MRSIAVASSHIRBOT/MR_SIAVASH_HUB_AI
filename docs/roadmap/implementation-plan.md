@@ -50,9 +50,10 @@ Architecture proposal: [ADR-0042 — Local-first Knowledge and Memory](../archit
 - [x] Implement owner-scoped memory CRUD, export, expiry, and deletion.
 - [x] Ingest bounded user-supplied Markdown/plain-text documents with source hashes and provenance; supplied URLs are labels only.
 - [x] Add SQLite FTS5 indexing and index-consistency/deletion tests.
-- [ ] Implement scoped retrieval with citations, source freshness, and bounded context assembly.
-- [ ] Add prompt-injection, cross-owner isolation, stale-source, and retrieval-quality tests.
-- [ ] Integrate retrieval into Agent context only after standalone retrieval gates pass.
+- [x] Implement owner-scoped FTS5 retrieval with citations and bounded context assembly.
+- [x] Add initial prompt-injection and trust-boundary regression coverage.
+- [ ] Add source freshness/staleness metadata and repeatable retrieval-quality evaluation.
+- [ ] Integrate retrieved context into the model-driven Agent path only after freshness, citation, size-budget, and tool-boundary gates pass.
 - [ ] Evaluate embeddings/vector retrieval only if measured FTS5 quality is insufficient.
 - [ ] Continue one provider adapter at a time and enforce model/context budget limits.
 
@@ -60,8 +61,9 @@ Exit criteria: a conversation task can retrieve only authorized, in-scope contex
 
 ## Phase 3 — Content and media vertical
 - [x] Content brief, draft, review, and approval lifecycle
-- Social channel adapters behind the publishing service
-- Scheduled publishing jobs with explicit approval policy
+- [x] Durable scheduled publishing jobs with explicit approval policy and worker-driven dispatch
+- [x] Opt-in Telegram text publishing adapter
+- [ ] Media-aware Telegram upload and Instagram Graph API publishing adapters
 - [x] Owner-scoped local media asset registry and metadata
 - [x] Bounded local FFmpeg video-transcoding adapter
 - Optional external generation providers
@@ -70,17 +72,19 @@ Exit criteria: a conversation task can retrieve only authorized, in-scope contex
 Exit criteria: produce a draft and media asset locally; external publishing remains gated and auditable.
 
 ## Phase 4 — Agents, workflows, and plugins
-- Agent registry and bounded delegation
+- [x] Bounded model-driven orchestration primitive (not yet wired to public API, durable jobs, or context retrieval)
+- [ ] Agent registry and bounded delegation
 - [x] Durable workflow definitions and step history\n- [ ] Scheduled workflow triggers
 - [x] Built-in tool manifests, validation, policy grants, and audit events
 - Plugin compatibility and integrity checks
-- [x] Durable pause/resume, safe retry, cancellation, checkpoint recovery, and lease fencing\n- [ ] Explicit emergency-stop control
+- [x] Durable pause/resume, safe retry, cancellation, checkpoint recovery, and lease fencing\n- [x] Durable owner-authenticated worker emergency-stop and schedule-dispatch pause controls
+- [ ] Define and test stop behavior for already-running synchronous and external operations
 
 Exit criteria: a multi-step workflow runs with bounded tools and traceable state transitions. Verified by worker-owned submit/resume paths, separate-process smoke tests, crash-injection recovery, and cancellation regressions.
 
 ## Phase 5 — NEXUS and Discovery
-- Repository-aware read-only analysis first
-- Patch proposal and diff review
+- [x] Bounded read-only Python repository inventory and AST analysis foundation
+- [ ] Patch proposal and diff review
 - Tests executed in an isolated, bounded environment
 - Research connectors with source attribution
 - Untrusted-content handling and source provenance
@@ -88,8 +92,9 @@ Exit criteria: a multi-step workflow runs with bounded tools and traceable state
 Exit criteria: developer/research tasks return reproducible evidence and reviewable changes.
 
 ## Phase 6 — Defensive Cybersecurity Lab
-- Static analysis
-- Dependency and configuration auditing
+- [x] Initial read-only Python static-analysis foundation
+- [x] Offline defensive configuration review foundation
+- [ ] Broader dependency and configuration auditing
 - Authorized asset inventory with explicit scope
 - Findings, severity, evidence, and remediation reports
 - Safe educational lab mode
@@ -100,7 +105,8 @@ Exit criteria: no capability can exceed its declared authorization scope.
 - Desktop packaging
 - Optional Docker deployment
 - PostgreSQL migration only if justified
-- Backup/restore verification
+- [x] Local SQLite backup/restore helpers with checksum and integrity verification
+- [ ] Target-machine restore drill and protected media/encryption-key backup procedure
 - Update health checks and rollback
 - Multi-user isolation only after single-user security is established
 
@@ -131,3 +137,14 @@ The first implementation slice should be deliberately small: configuration -> AP
 - [x] Add static model-profile registry with stable IDs and explicit unverified/source labels
 - [x] Expose authenticated profile listing and lookup endpoints
 - [ ] Replace illustrative estimates with reviewed requirements for exact model/version and quantization before recommending specific models
+
+
+## Verified implementation snapshot — 2026-11-02 (supersedes earlier snapshot)
+
+- PR #44 made migration version assertions registry-driven.
+- PR #45 added local SQLite backup/restore helpers and release-readiness guidance; the actual target-machine restore drill remains unchecked.
+- PR #46 added a bounded model-driven orchestration primitive, but not the authenticated public API/worker integration or automatic retrieval-context assembly.
+- PR #47 added read-only Python AST analysis; it does not execute source or apply fixes.
+- PR #48 added an offline defensive configuration review foundation; it is not a network scanner.
+- PR #40 (already merged earlier) added durable worker stop state and authenticated controls. Tests cover preventing new claims while stopped; in-flight external-operation semantics remain an operational gate.
+- Next critical gate: integrate retrieval safely into the model-driven Agent path only after source freshness and citation-preserving context-budget evaluation are added.
