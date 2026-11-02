@@ -7,12 +7,18 @@ from mrhub.knowledge.evaluation import (
     evaluate_retrieval,
     run_reference_evaluation,
 )
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.knowledge.repository import KnowledgeRepository
+from mrhub.security.auth import AuthService
 
 
 def test_retrieval_evaluation_reports_precision_recall_and_mrr(tmp_path: Path):
-    repository = KnowledgeRepository(tmp_path / "knowledge.sqlite3")
-    owner = "evaluation-owner"
+    database_path = tmp_path / "knowledge.sqlite3"
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    AuthService(tasks).initialize_owner("retrieval-evaluation-test-password")
+    owner = str(tasks.get_auth_user("owner")["user_id"])
+    repository = KnowledgeRepository(database_path)
     dns = repository.create_document(
         owner,
         title="DNS",
@@ -44,14 +50,19 @@ def test_retrieval_evaluation_reports_precision_recall_and_mrr(tmp_path: Path):
 
 
 def test_retrieval_evaluation_validates_case_and_k_bounds(tmp_path: Path):
-    repository = KnowledgeRepository(tmp_path / "knowledge.sqlite3")
+    database_path = tmp_path / "knowledge.sqlite3"
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    AuthService(tasks).initialize_owner("retrieval-evaluation-test-password")
+    owner = str(tasks.get_auth_user("owner")["user_id"])
+    repository = KnowledgeRepository(database_path)
 
     with pytest.raises(ValueError, match="k must be between"):
-        evaluate_retrieval(repository, "owner", [RetrievalCase("query", ("doc",))], k=0)
+        evaluate_retrieval(repository, owner, [RetrievalCase("query", ("doc",))], k=0)
     with pytest.raises(ValueError, match="cases must contain"):
-        evaluate_retrieval(repository, "owner", [], k=1)
+        evaluate_retrieval(repository, owner, [], k=1)
     with pytest.raises(ValueError, match="needs a query"):
-        evaluate_retrieval(repository, "owner", [RetrievalCase(" ", ("doc",))], k=1)
+        evaluate_retrieval(repository, owner, [RetrievalCase(" ", ("doc",))], k=1)
 
 
 def test_reference_evaluation_is_synthetic_and_repeatable():
