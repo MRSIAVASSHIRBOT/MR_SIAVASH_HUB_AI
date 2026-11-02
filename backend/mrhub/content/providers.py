@@ -16,10 +16,10 @@ from mrhub.content.dispatcher import (
 
 
 class TelegramBotApiAdapter:
-    """Publish text posts to a Telegram chat/channel using the Bot API.
+    """Publish text or approved local photo/video assets through the Telegram Bot API.
 
-    Telegram does not offer an idempotency key for sendMessage. The key is accepted
-    by the adapter contract but cannot be used to guarantee exactly-once delivery.
+    Telegram does not offer an idempotency key for these operations. The key is
+    accepted by the adapter contract but cannot guarantee exactly-once delivery.
     """
 
     def __init__(
