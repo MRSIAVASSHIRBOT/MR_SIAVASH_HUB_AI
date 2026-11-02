@@ -2,12 +2,11 @@
 
 import json
 
+import anyio
 import pytest
+from mcp import Client
 from pydantic import BaseModel
 
-mcp = pytest.importorskip("mcp")
-
-from mcp import Client
 from mrhub.domain.tasks import RiskClass
 from mrhub.integrations.mcp_server import create_mcp_server
 from mrhub.tools.builtins import build_tool_registry
@@ -63,8 +62,6 @@ def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
                 "hub.invoke_tool",
                 {"name": "custom.external", "payload": {}},
             )
-
-    import anyio
 
     result = anyio.run(invoke)
     assert not result.isError
