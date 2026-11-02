@@ -147,8 +147,11 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                     )
                     if not safe_loader:
                         add("PY103", node, "medium", "YAML load call lacks an explicit SafeLoader.")
-            if node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}:
-                if isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess":
+            if (
+                node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "subprocess"
+            ):
                     shell_enabled = any(
                         keyword.arg == "shell"
                         and isinstance(keyword.value, ast.Constant)
