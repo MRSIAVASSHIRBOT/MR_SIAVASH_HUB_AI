@@ -20,6 +20,10 @@ from mrhub.media.repository import MediaAssetRepository
 
 router = APIRouter(tags=["public-media"])
 _ALLOWED_TYPES = {"image/jpeg", "image/png"}
+_IMAGE_SIGNATURES = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+}
 _MAX_TTL_SECONDS = 900
 
 
@@ -90,12 +94,13 @@ def serve_signed_media(
         raise HTTPException(status_code=404, detail="media_asset_not_found")
     record = repository._record(row)
     path = repository.file_path(str(record["storage_key"]))
-    if (
-        not path.is_file()
-        or path.stat().st_size != int(record["file_size"])
-        or not 1 <= path.stat().st_size <= 25_000_000
-    ):
+    size = path.stat().st_size if path.is_file() else 0
+    if size != int(record["file_size"]) or not 1 <= size <= 25_000_000:
         raise HTTPException(status_code=404, detail="media_asset_unavailable")
+    with path.open("rb") as image_file:
+        header = image_file.read(8)
+    if not any(header.startswith(prefix) for prefix in _IMAGE_SIGNATURES[str(record["media_type"])]):
+        raise HTTPException(status_code=404, detail="media_asset_type_mismatch")
     return FileResponse(
         path,
         media_type=str(record["media_type"]),
