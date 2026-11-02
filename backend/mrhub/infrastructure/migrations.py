@@ -416,7 +416,7 @@ MIGRATIONS = (
                 ),
                 content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
                 version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
-                approved_by TEXT REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                approved_by TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL,
                 approved_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
