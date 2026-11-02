@@ -86,16 +86,21 @@ class WorkflowWorkerHandler:
         runner = AgentWorkflowRunner(self.repository, core)
         request_digest = AgentWorkflowRunner._digest(request.model_dump(mode="json"))
         if row["status"] == "paused" and row["last_error_code"] == "resume_queued":
-            result = runner.resume(
-                workflow_id,
-                request,
-                plan,
-                request_digest,
-                owner_user_id,
-                task=task,
-                lease=lease,
-                lease_lost=lease_lost,
-            )
+            try:
+                result = runner.resume(
+                    workflow_id,
+                    request,
+                    plan,
+                    request_digest,
+                    owner_user_id,
+                    task=task,
+                    lease=lease,
+                    lease_lost=lease_lost,
+                )
+            except (LookupError, ValueError):
+                return self._fail_closed(
+                    task, lease, workflow_id, "workflow_resume_validation_failed"
+                )
         elif row["status"] == "queued":
             result = runner.execute(
                 request,
