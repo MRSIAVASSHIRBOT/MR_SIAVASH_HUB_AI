@@ -20,7 +20,10 @@ Unrelated repositories (Gshop, the game, Telegram bot, and others) must remain o
 - **PR #19 — real external-side-effect crash injection**: merged via squash commit `603b5b141b711cbfbfdaf04bba00969e0078464e`. The test injects an abrupt process crash after the simulated remote action is accepted and before the step result/checkpoint is persisted, then verifies `unknown_outcome` recovery and no automatic replay. Backend CI and CI passed on exact head `6e8b76de633c9776ac7b98022435ffa5d37394ec` (Python 3.11 and 3.12).
 - PR #21 is merged via `05cfe315059bbf947278c6c844b75ebbc78caf8a`: a real-process smoke test launches FastAPI and the pull worker separately, enqueues a deterministic workflow over HTTP, and verifies durable success. CI and Backend CI passed on exact head `374295a2441768e9d1b54664990145a1b25f9188`.
 - PR #22 is merged via `6cfe5dae7107ebe8754764b6f917fbf848f80e05`: migration 10 adds owner-scoped private memory entries and SQLite FTS5 indexing; authenticated CRUD, lexical search, export, expiry filtering/purge, and metadata-only audit events are implemented. CI and Backend CI passed on exact head `fbccb475e33f94323f27317ba4e547c804f9d8a5`.
-- Local inference remains disabled by default. The operator UI, real remote provider adapters, source-backed document ingestion/citation retrieval, agent-context integration for memory, and content/media vertical remain roadmap work.
+- PR #24 is merged via `d879be8a6cf8fc9ed87be2b092a64195dd7c402f`: migration 11 adds owner-scoped source/document/chunk records, bounded text ingestion, SHA-256 provenance, FTS5 retrieval with citation references, export/delete, and a synthetic retrieval evaluation corpus. User-supplied URLs are labels only; no fetching or crawling occurs. CI and Backend CI passed on exact head `2fbc441836afe12f0798b840598a2496cd82823c`.
+- PR #25 is merged via `bb7623e1a8da5f848b8a947524e8cc69d8fe6b70`: the optional OpenRouter text adapter is restricted to its approved HTTPS origin, uses bounded requests and sanitized errors, is disabled by default, and has an explicit generation endpoint with no silent fallback. CI and Backend CI passed on exact head `8866bb117e448c6f6a22f6732d2e0eb955d15d41`.
+- PR #26 is merged via `6efdab80677338a2fcdae8847f39c5fc6521b337`: a self-hosted RTL operator UI exposes status, tasks, provider catalog, memory and knowledge controls, and separate local/remote inference buttons. It uses sessionStorage, a restrictive CSP, no third-party assets, and textContent rendering. CI and Backend CI passed on exact head `cf4c1b726389500c317e20ca48afe28ef396b73f`.
+- Local and remote inference remain disabled by default unless explicitly configured. Agent-context integration for retrieved memory/knowledge and the content/media vertical remain roadmap work.
 
 ## Live pull-request snapshot
 
@@ -37,6 +40,9 @@ Checked 2026-11-02 (UTC). Re-check live GitHub metadata before making a new merg
 - **PR #16 — worker crash after external side effect regression test**: merged via `e91c9d51c258292cf995e2b4fbb6b24469d91718`. Backend CI and CI passed on `81bf8868e3869468c00a95988db81cdeb6428e39`.
 - **PR #21 — separate-process workflow runtime smoke test**: merged via `05cfe315059bbf947278c6c844b75ebbc78caf8a`. Both CI workflows passed on the exact PR head.
 - **PR #22 — owner-scoped memory and FTS5 search**: merged via `6cfe5dae7107ebe8754764b6f917fbf848f80e05`. Both CI workflows passed on the exact PR head.
+- **PR #24 — source-backed knowledge ingestion and citation search**: merged via `d879be8a6cf8fc9ed87be2b092a64195dd7c402f`. Both CI workflows passed on the exact PR head.
+- **PR #25 — explicit OpenRouter remote text inference**: merged via `bb7623e1a8da5f848b8a947524e8cc69d8fe6b70`. Both CI workflows passed on the exact PR head.
+- **PR #26 — self-hosted operator UI**: merged via `6efdab80677338a2fcdae8847f39c5fc6521b337`. Both CI workflows passed on the exact PR head.
 
 ## Integration outcomes and remaining risks
 
@@ -44,16 +50,17 @@ Checked 2026-11-02 (UTC). Re-check live GitHub metadata before making a new merg
 - Lease fencing and interrupted external-step recovery are covered by existing regression tests. PR #19 provides the stronger fault-injection case: the worker crashes at the dispatch boundary after a simulated external effect is accepted, then a fresh worker marks the step `unknown_outcome` and does not replay it.
 - Capability discovery is metadata-only: it queries public GitHub repository metadata, does not download or execute source code, and never auto-approves candidates. Approval requires explicit license, security, compatibility, and test-plan evidence.
 - The original PR #6 worker-dispatch changes were not merged wholesale because they duplicate the current `jobs/workflow_dispatch.py`, `jobs/payload_envelope.py`, and `jobs/idempotency.py` architecture and also conflict on ADR numbering. Any unique improvement needs a fresh, focused PR based on current `main`.
-- The explicit memory-entry slice is implemented, but the broader knowledge subsystem is not complete: Markdown/plain-text ingestion, source/chunk provenance, citation-bearing retrieval, evaluation fixtures, and agent-context integration remain unimplemented. Memory is not automatically inserted into prompts. The operator UI, real remote provider adapters, and content/media vertical remain roadmap work.
+- The memory and source-backed knowledge APIs now support private owner-scoped records, bounded text ingestion, source/chunk provenance, citation-bearing FTS5 retrieval, export/delete, and a synthetic retrieval evaluation corpus. Retrieved content is not automatically inserted into agent prompts; prompt-injection resistance, context assembly, and context-size policy must be evaluated before integration.
+- The initial OpenRouter adapter is opt-in and text-only; it is not a general tool-calling or publishing adapter. The self-hosted operator UI is implemented, but deployment hardening is still required before any non-loopback exposure.
+- The content/media vertical remains unimplemented.
 
 ## Recommended next steps
 
-1. Continue reviewing production-readiness of worker heartbeat thresholds and the operational runbook against the intended deployment.
-2. Add real external-tool adapters only behind explicit policy/approval gates, with reconciliation semantics for uncertain remote outcomes.
-3. Extend the memory slice with bounded Markdown/plain-text document ingestion, source/chunk provenance, citation-bearing FTS5 retrieval, and a synthetic evaluation corpus. Add prompt-injection and owner/scope isolation regressions before any agent-context integration.
-4. Implement the operator UI only after the memory, workflow, policy, and provider API contracts stabilize.
-5. Implement real remote model adapters as explicit opt-ins with no silent cloud fallback, safe timeout/error handling, and verified cost/provider configuration.
-6. Build the content/media vertical with drafts, approval, deduplication, auditability, and local FFmpeg processing before optional external generators. Continue with NEXUS read-only analysis and reviewable patches, defensive security, and packaging afterward.
+1. Continue operational readiness work: deployment runbook, backup/restore, worker heartbeat thresholds, and a documented loopback-only default. Do not claim production readiness until a deployment smoke test is performed in the intended environment.
+2. Add a synthetic prompt-injection corpus and bounded context assembler for retrieved knowledge. Preserve citations and source trust labels; keep context injection disabled until the evaluation and tool-boundary regressions pass.
+3. Build the content/media vertical as local-first drafts with explicit approval, deduplication, auditability, and local FFmpeg processing before optional external generators or publishing.
+4. Add additional remote providers only when a concrete requirement exists; each must remain opt-in, bounded, cost-aware, and free of silent fallback.
+5. Continue with NEXUS read-only analysis and reviewable patches, defensive security, and packaging after these core verticals stabilize.
 
 ## Definition of done for each code change
 
