@@ -42,3 +42,14 @@ This slice supports text submitted through the authenticated API, not arbitrary 
 Every source starts with `freshness_status=unknown`. An authenticated owner can update `PATCH /knowledge/sources/{source_id}/freshness` with `owner_reviewed_current`, `stale`, or `unknown`. The service records the review time and owner identity for non-unknown states, and search results/context passages preserve that metadata.
 
 This is an owner-declared review label, not automatic verification. Source URLs remain labels only: the application does not fetch them, crawl them, or independently verify that a document is current. Unknown or stale evidence must not be presented as freshly verified.
+
+
+## Repeatable retrieval evaluation
+
+A local synthetic benchmark is available through
+`python -m mrhub.knowledge.evaluation`. It measures document-level Precision@k,
+Recall@k, mean reciprocal rank, and hit rate using a temporary SQLite database.
+The evaluator deduplicates chunk hits by document and bounds queries, case counts,
+and relevance identifiers. It does not read production user data or claim that
+synthetic fixture scores represent real retrieval quality. See
+[knowledge-evaluation.md](knowledge-evaluation.md).
