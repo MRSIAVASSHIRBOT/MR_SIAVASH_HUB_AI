@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     instagram_graph_api_version: str | None = None
     public_media_base_url: str | None = None
     public_media_signing_key: SecretStr | None = None
+    # SiaCode is an optional, externally managed local health probe only.
+    siacode_enabled: bool = False
+    siacode_base_url: str | None = None
+    siacode_timeout_seconds: float = Field(default=2.0, ge=0.2, le=10.0)
+    siacode_max_response_bytes: int = Field(default=8192, ge=256, le=16384)
 
 
 @lru_cache
