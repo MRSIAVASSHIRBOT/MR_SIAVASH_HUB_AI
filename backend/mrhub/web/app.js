@@ -95,13 +95,199 @@
     return button;
   }
 
+  function renderJobSummary(summary) {
+    const counts = summary.status_counts || {};
+    const workflowCounts = summary.workflow_status_counts || {};
+    const entries = [
+      ["کل وظایف", summary.total_tasks ?? 0],
+      ["در صف", counts.queued ?? 0],
+      ["در حال اجرا", counts.running ?? 0],
+      ["نیازمند تأیید", counts.waiting_approval ?? 0],
+      ["موفق", counts.succeeded ?? 0],
+      ["ناموفق", counts.failed ?? 0],
+      ["تلاش مجدد", summary.retry_scheduled ?? 0],
+      ["نیازمند بازیابی", summary.recovery_required_workflows ?? 0],
+      ["Lease منقضی", summary.expired_running_leases ?? 0],
+      ["قدیمی‌ترین صف (ثانیه)", summary.oldest_queued_age_seconds ?? "—"],
+      ["حالت اجرا", summary.execution_mode === "pull_driven" ? "Pull-driven" : "نامشخص"],
+      ["اجرای خودکار", summary.automatic_execution ? "فعال" : "غیرفعال"],
+    ];
+    const container = $("#job-summary");
+    container.replaceChildren();
+    for (const [label, value] of entries) {
+      const card = element("article", undefined, "status-card");
+      card.append(element("small", label), element("strong", value));
+      container.append(card);
+    }
+    const workflowTotal = Object.values(workflowCounts).reduce(
+      (total, value) => total + Number(value || 0), 0
+    );
+    const card = element("article", undefined, "status-card");
+    card.append(element("small", "کل Workflowها"), element("strong", workflowTotal));
+    container.append(card);
+  }
+
+  function selectWorkflowForResume(workflowId) {
+    $("#workflow-resume-form").elements.workflow_id.value = workflowId;
+    $("#workflow-resume-form").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("#workflow-resume-form").elements.request_json.focus();
+    message("#workflow-resume-message", "شناسه وارد شد؛ ورودی اصلی را دقیقاً وارد کنید.");
+  }
+
+  function selectWorkflowForReconciliation(workflow) {
+    const step = workflow.steps.find((item) => item.status === "unknown_outcome");
+    if (!step) return;
+    const form = $("#workflow-reconciliation-form");
+    form.elements.workflow_id.value = workflow.workflow_id;
+    form.elements.step_number.value = String(step.step_number);
+    form.scrollIntoView({ behavior: "smooth", block: "center" });
+    message("#workflow-reconciliation-message", "مرحلهٔ دارای نتیجهٔ نامشخص انتخاب شد. ابتدا نتیجه را در سرویس مقصد مستقلاً بررسی کنید.");
+  }
+
+  function renderWorkflowCard(workflow) {
+    const title = "Workflow · " + workflow.workflow_id.slice(0, 8);
+    const metadata = [
+      workflow.status,
+      "مرحله " + workflow.current_step,
+      workflow.last_error_code || "بدون خطای ثبت‌شده",
+    ].join(" · ");
+    const card = recordCard(title, workflow.workflow_id, metadata);
+    const actions = element("div", undefined, "workflow-actions");
+    actions.append(actionButton("جزئیات مراحل", async () => {
+      try {
+        const detail = await api("/agent/workflows/" + encodeURIComponent(workflow.workflow_id));
+        const list = element("div", undefined, "workflow-step-list");
+        for (const step of detail.steps || []) {
+          const item = element("div", undefined, "workflow-step");
+          item.append(
+            element("strong", "مرحله " + step.step_number + " · " + step.step_name),
+            element("span", step.status),
+            element("small", "تلاش: " + step.attempt_count + " · " + (step.error_code || "بدون خطا"))
+          );
+          list.append(item);
+        }
+        const previous = card.querySelector(".workflow-step-list");
+        if (previous) previous.remove();
+        card.append(list);
+      } catch (error) {
+        message("#workspace-message", error.message, "error");
+      }
+    }));
+    if (workflow.status === "paused") {
+      actions.append(actionButton("آماده‌سازی ادامه", () => selectWorkflowForResume(workflow.workflow_id)));
+    }
+    if (workflow.status === "recovery_required") {
+      actions.append(actionButton("تطبیق نتیجه", () => selectWorkflowForReconciliation(workflow)));
+    }
+    if (["queued", "running", "paused"].includes(workflow.status)) {
+      actions.append(actionButton("لغو", async () => {
+        if (!window.confirm("درخواست لغو این Workflow ثبت شود؟")) return;
+        try {
+          await api("/agent/workflows/" + encodeURIComponent(workflow.workflow_id) + "/cancel", { method: "POST" });
+          await loadOverview();
+        } catch (error) {
+          message("#workspace-message", error.message, "error");
+        }
+      }));
+    }
+    card.append(actions);
+    return card;
+  }
+
+  function readResumeInput() {
+    const form = $("#workflow-resume-form");
+    const workflowId = String(form.elements.workflow_id.value || "").trim();
+    let request;
+    try {
+      request = JSON.parse(String(form.elements.request_json.value || ""));
+    } catch {
+      throw new Error("ورودی اصلی باید JSON معتبر باشد.");
+    }
+    if (!workflowId || !request || typeof request !== "object" || Array.isArray(request)) {
+      throw new Error("شناسهٔ Workflow و یک شیء JSON معتبر لازم است.");
+    }
+    return { workflowId, request };
+  }
+
+  async function checkWorkflowResume() {
+    try {
+      const { workflowId, request } = readResumeInput();
+      const result = await api(
+        "/agent/workflows/" + encodeURIComponent(workflowId) + "/resume-check",
+        { method: "POST", body: { request } }
+      );
+      message(
+        "#workflow-resume-message",
+        "تصمیم: " + result.decision + " · مرحلهٔ بعدی: " + (result.next_step ?? "—") + " · " + (result.reason_code || "بدون مانع"),
+        result.decision === "resume" || result.decision === "finish" ? "success" : "error"
+      );
+    } catch (error) {
+      message("#workflow-resume-message", error.message, "error");
+    }
+  }
+
+  async function queueWorkflowResume(event) {
+    event.preventDefault();
+    try {
+      const { workflowId, request } = readResumeInput();
+      const result = await api(
+        "/agent/workflows/" + encodeURIComponent(workflowId) + "/resume",
+        { method: "POST", body: { request } }
+      );
+      message(
+        "#workflow-resume-message",
+        result.queued ? "درخواست ادامه در صف Worker قرار گرفت؛ اجرای مرحله‌ها در HTTP انجام نمی‌شود." : "درخواست ادامه ثبت شد.",
+        "success"
+      );
+      await loadOverview();
+    } catch (error) {
+      message("#workflow-resume-message", error.message, "error");
+    }
+  }
+
+  async function reconcileWorkflowOutcome(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const workflowId = String(form.get("workflow_id") || "").trim();
+    const stepNumber = Number(form.get("step_number"));
+    const outcome = String(form.get("outcome") || "");
+    const digest = String(form.get("output_digest") || "").trim();
+    if (outcome === "succeeded" && !/^[0-9a-f]{64}$/.test(digest)) {
+      message("#workflow-reconciliation-message", "برای ثبت موفقیت، SHA-256 معتبر ۶۴ نویسه‌ای لازم است.", "error");
+      return;
+    }
+    try {
+      const result = await api(
+        "/agent/workflows/" + encodeURIComponent(workflowId) + "/reconciliation",
+        {
+          method: "POST",
+          body: {
+            step_number: stepNumber,
+            outcome,
+            output_digest: outcome === "succeeded" ? digest : null,
+          },
+        }
+      );
+      message(
+        "#workflow-reconciliation-message",
+        "نتیجه ثبت شد؛ وضعیت Workflow: " + result.workflow.status + ". برای ادامه، ورودی اصلی را دوباره بررسی و ارسال کنید.",
+        "success"
+      );
+      await loadOverview();
+    } catch (error) {
+      message("#workflow-reconciliation-message", error.message, "error");
+    }
+  }
+
   async function loadOverview() {
     message("#workspace-message", "در حال به‌روزرسانی…");
-    const [health, ready, providers, tasks] = await Promise.allSettled([
+    const [health, ready, providers, tasks, jobs, workflows] = await Promise.allSettled([
       api("/health", { auth: false }),
       api("/ready", { auth: false }),
       api("/models/providers"),
       api("/tasks?limit=12"),
+      api("/jobs/summary"),
+      api("/agent/workflows?limit=50"),
     ]);
     const cards = $("#system-cards");
     cards.replaceChildren();
@@ -128,13 +314,35 @@
       renderEmpty($("#provider-list"), "دریافت فهرست مدل‌ها ناموفق بود.");
     }
     if (tasks.status === "fulfilled") {
-      renderRecords("#task-list", tasks.value, (task) =>
-        recordCard(task.task_type, task.description, `${task.status} · ${task.task_id}`),
-      "هنوز کاری ثبت نشده است.");
+      renderRecords("#task-list", tasks.value, (task) => {
+        const card = recordCard(task.task_type, task.description, task.status + " · " + task.task_id);
+        if (["queued", "running"].includes(task.status)) {
+          card.append(actionButton("لغو وظیفه", async () => {
+            if (!window.confirm("این وظیفه لغو شود؟")) return;
+            try {
+              await api("/jobs/" + encodeURIComponent(task.task_id) + "/cancel", { method: "POST" });
+              await loadOverview();
+            } catch (error) {
+              message("#workspace-message", error.message, "error");
+            }
+          }));
+        }
+        return card;
+      }, "هنوز کاری ثبت نشده است.");
     } else {
       renderEmpty($("#task-list"), "دریافت صف کارها ناموفق بود.");
     }
-    const failures = [health, ready, providers, tasks].filter((item) => item.status === "rejected").length;
+    if (jobs.status === "fulfilled") {
+      renderJobSummary(jobs.value);
+    } else {
+      renderEmpty($("#job-summary"), "دریافت آمار Job Engine ناموفق بود.");
+    }
+    if (workflows.status === "fulfilled") {
+      renderRecords("#workflow-list", workflows.value.workflows, renderWorkflowCard, "هنوز Workflowای ثبت نشده است.");
+    } else {
+      renderEmpty($("#workflow-list"), "دریافت گردش‌کارها ناموفق بود.");
+    }
+    const failures = [health, ready, providers, tasks, jobs, workflows].filter((item) => item.status === "rejected").length;
     message("#workspace-message", failures ? `به‌روزرسانی انجام شد؛ ${failures} بخش در دسترس نبود.` : "وضعیت به‌روز شد.", failures ? "error" : "success");
   }
 
@@ -257,6 +465,13 @@
       message("#auth-message", error.message, "error");
     }
   });
+
+  $("#workflow-refresh-button").addEventListener("click", () =>
+    loadOverview().catch((error) => message("#workspace-message", error.message, "error"))
+  );
+  $("#workflow-resume-check").addEventListener("click", checkWorkflowResume);
+  $("#workflow-resume-form").addEventListener("submit", queueWorkflowResume);
+  $("#workflow-reconciliation-form").addEventListener("submit", reconcileWorkflowOutcome);
 
   $("#logout-button").addEventListener("click", async () => {
     try { await api("/auth/logout", { method: "POST" }); } catch { /* Clear the browser token even if the API is unavailable. */ }
