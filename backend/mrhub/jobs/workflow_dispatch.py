@@ -37,7 +37,7 @@ class WorkflowWorkerHandler:
         with self.repository._connection() as connection:
             row = connection.execute(
                 """
-                SELECT workflow_id, owner_user_id
+                SELECT workflow_id, owner_user_id, status, last_error_code
                 FROM workflow_runs WHERE task_id = ?
                 """,
                 (str(task.task_id),),
@@ -83,16 +83,34 @@ class WorkflowWorkerHandler:
             return self._fail_closed(
                 task, lease, workflow_id, "workflow_plan_not_executable"
             )
-        result = AgentWorkflowRunner(self.repository, core).execute(
-            request,
-            plan,
-            AgentWorkflowRunner._digest(request.model_dump(mode="json")),
-            owner_user_id,
-            workflow_id=workflow_id,
-            task=task,
-            lease=lease,
-            lease_lost=lease_lost,
-        )
+        runner = AgentWorkflowRunner(self.repository, core)
+        request_digest = AgentWorkflowRunner._digest(request.model_dump(mode="json"))
+        if row["status"] == "paused" and row["last_error_code"] == "resume_queued":
+            result = runner.resume(
+                workflow_id,
+                request,
+                plan,
+                request_digest,
+                owner_user_id,
+                task=task,
+                lease=lease,
+                lease_lost=lease_lost,
+            )
+        elif row["status"] == "queued":
+            result = runner.execute(
+                request,
+                plan,
+                request_digest,
+                owner_user_id,
+                workflow_id=workflow_id,
+                task=task,
+                lease=lease,
+                lease_lost=lease_lost,
+            )
+        else:
+            return self._fail_closed(
+                task, lease, workflow_id, "workflow_state_not_dispatchable"
+            )
         current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if current is not None and current["status"] in {"succeeded", "failed", "cancelled"}:
             self.recovery.delete_encrypted_payload(
@@ -120,7 +138,7 @@ class WorkflowWorkerHandler:
         """Persist a sanitized failure without exposing payload or key material."""
         if workflow_id is not None and self.recovery.get_run(workflow_id) is not None:
             current = self.recovery.get_run(workflow_id)
-            if current is not None and current["status"] == "queued":
+            if current is not None and current["status"] in {"queued", "paused"}:
                 self.recovery.start_run(workflow_id, lease=lease)
                 self.recovery.finish_run(workflow_id, "failed", lease=lease)
         current_task = self.jobs.get(task.task_id)
