@@ -109,3 +109,5 @@ The initial owner-scoped memory API supports explicit private notes, SQLite FTS5
 The source-backed knowledge API accepts bounded user-submitted text, stores source provenance, chunks documents for SQLite FTS5 retrieval, and returns citation references. It never fetches supplied URLs and is not automatically injected into agent context. See `docs/operations/knowledge.md`.
 
 An optional OpenRouter text adapter can be enabled explicitly through environment configuration and invoked with `POST /models/generate-remote`. It is disabled by default, restricted to the approved HTTPS origin, and never silently falls back to another provider. See `docs/operations/remote-models.md`.
+
+The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task, provider, memory, knowledge, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
