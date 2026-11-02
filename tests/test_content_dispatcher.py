@@ -3,10 +3,6 @@ from urllib.parse import parse_qs, urlsplit
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
-from pydantic import SecretStr
-
-from mrhub.config import Settings
-from mrhub.api.routes import public_media
 from mrhub.content.dispatcher import (
     ContentScheduleDispatcher,
     PublishReceipt,
