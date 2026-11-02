@@ -29,6 +29,7 @@ from mrhub.api.routes.tools import router as tools_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.assistant_gateway import router as assistant_gateway_router
+from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
 
 
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(assistant_gateway_router)
+    app.include_router(code_engine_router)
     app.include_router(auth_router)
     app.include_router(approvals_router)
     app.include_router(capabilities_router)
