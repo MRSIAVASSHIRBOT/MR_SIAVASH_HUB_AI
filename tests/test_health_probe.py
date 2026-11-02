@@ -47,7 +47,7 @@ def test_probe_rejects_invalid_targets_without_constructing_client(monkeypatch):
             "https://example.com", "/health", timeout_seconds=1, max_response_bytes=1024
         )
     )
-    assert result == {"status": "invalid_configuration", "configured": False}
+    assert result == {"contract_version": "1.0", "status": "invalid_configuration", "configured": False}
 
 
 def test_probe_disables_redirects_and_environment_proxy_inheritance(monkeypatch):
@@ -65,7 +65,7 @@ def test_probe_disables_redirects_and_environment_proxy_inheritance(monkeypatch)
             "http://127.0.0.1:18789", "/health", timeout_seconds=1.5, max_response_bytes=1024
         )
     )
-    assert result == {"status": "rejected_redirect", "configured": True}
+    assert result == {"contract_version": "1.0", "status": "rejected_redirect", "configured": True}
     assert clients[0].kwargs["follow_redirects"] is False
     assert clients[0].kwargs["trust_env"] is False
     assert clients[0].request_args[0:2] == ("GET", "http://127.0.0.1:18789/health")
@@ -83,7 +83,7 @@ def test_probe_enforces_response_byte_limit(monkeypatch):
             "http://127.0.0.1:18789", "/health", timeout_seconds=1, max_response_bytes=1024
         )
     )
-    assert result == {"status": "response_too_large", "configured": True}
+    assert result == {"contract_version": "1.0", "status": "response_too_large", "configured": True}
 
 
 def test_probe_returns_only_sanitized_reachability_metadata(monkeypatch):
@@ -99,6 +99,7 @@ def test_probe_returns_only_sanitized_reachability_metadata(monkeypatch):
         )
     )
     assert result == {
+        "contract_version": "1.0",
         "status": "reachable",
         "configured": True,
         "http_status": 200,
