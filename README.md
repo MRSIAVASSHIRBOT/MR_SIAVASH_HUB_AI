@@ -1,5 +1,9 @@
 # MR_SIAVASH_HUB_AI
 
+> **Original project and author attribution: `MR_SIAVASH_IR_BOT`**  
+> Copyright © 2026 MR_SIAVASH_IR_BOT. See [COPYRIGHT.md](COPYRIGHT.md) for attribution and license status. Preserve this attribution and do not misrepresent the original authorship when redistributing modified copies.
+
+
 An integrated, modular AI workspace designed for local-first and hybrid execution.
 
 ## Product direction
