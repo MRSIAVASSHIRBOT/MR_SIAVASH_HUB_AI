@@ -15,6 +15,7 @@ from mrhub.providers.base import ProviderError, ProviderRequest
 from mrhub.providers.ollama import OllamaProvider
 from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
+from mrhub.providers.siacode_preflight import SiaCodePreflight
 from mrhub.providers.stub import StubProvider
 
 router = APIRouter(prefix="/models", tags=["models"], dependencies=[Depends(require_user)])
@@ -136,6 +137,17 @@ def list_providers() -> dict[str, object]:
         "count": len(providers),
         "health_probes_performed": False,
         "inference_started": False,
+    }
+
+
+@router.post("/providers/siacode/preflight")
+def check_siacode_preflight() -> dict[str, object]:
+    """Explicitly probe the optional loopback SiaCode health endpoint only."""
+    result = SiaCodePreflight().check()
+    return {
+        **result,
+        "coding_requests_enabled": False,
+        "external_actions_started": False,
     }
 
 
