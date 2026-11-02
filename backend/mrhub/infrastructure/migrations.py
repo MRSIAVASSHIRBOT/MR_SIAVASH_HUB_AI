@@ -528,6 +528,19 @@ MIGRATIONS = (
             "INSERT OR IGNORE INTO worker_control (control_id, stopped, reason, changed_by, changed_at) VALUES (1, 0, NULL, NULL, CURRENT_TIMESTAMP)",
         ),
     ),
+    Migration.build(
+        17,
+        "knowledge_source_freshness_metadata",
+        (
+            """ALTER TABLE knowledge_sources ADD COLUMN freshness_status TEXT NOT NULL
+                DEFAULT 'unknown' CHECK (
+                    freshness_status IN ('unknown', 'owner_reviewed_current', 'stale')
+                )""",
+            "ALTER TABLE knowledge_sources ADD COLUMN freshness_checked_at TEXT",
+            "ALTER TABLE knowledge_sources ADD COLUMN freshness_checked_by TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_sources_freshness ON knowledge_sources(owner_user_id, freshness_status, updated_at)",
+        ),
+    ),
 )
 
  
