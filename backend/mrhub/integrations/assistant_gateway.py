@@ -67,12 +67,14 @@ async def assistant_gateway_status() -> dict[str, object]:
 
     url = f"{base_url}{health_path}"
     try:
-        async with httpx.AsyncClient(
-            timeout=settings.assistant_gateway_timeout_seconds,
-            follow_redirects=False,
-            trust_env=False,
-        ) as client:
-            async with client.stream("GET", url, headers={"Accept": "application/json"}) as response:
+        async with (
+            httpx.AsyncClient(
+                timeout=settings.assistant_gateway_timeout_seconds,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client,
+            client.stream("GET", url, headers={"Accept": "application/json"}) as response,
+        ):
                 if response.is_redirect:
                     return {"status": "rejected_redirect", "configured": True}
                 if response.status_code < 200 or response.status_code >= 300:
