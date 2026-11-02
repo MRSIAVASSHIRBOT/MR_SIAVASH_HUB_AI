@@ -13,7 +13,7 @@ from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import LeaseManager, WorkerLease
-from mrhub.jobs.recovery import StepAttempt, WorkflowRecoveryRepository
+from mrhub.jobs.recovery import ResumeDecision, StepAttempt, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
 
 
@@ -290,15 +290,17 @@ class AgentWorkflowRunner:
         }
 
 
-    def resume(
+    def _validate_resume(
         self,
         workflow_id: UUID,
         request: AgentPlanRequest,
         plan: dict[str, object],
         request_digest: str,
         owner_user_id: str,
-    ) -> dict[str, object]:
-        """Resume only a matching, owner-scoped workflow from a validated safe boundary."""
+        *,
+        task: TaskRecord | None = None,
+    ) -> tuple[dict[str, object], ResumeDecision, UUID]:
+        """Validate owner, request, plan, and job state without executing work."""
         workflow = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if workflow is None or workflow["task_id"] is None:
             raise LookupError("Workflow not found")
@@ -332,43 +334,127 @@ class AgentWorkflowRunner:
         if expected != stored:
             raise ValueError("Current workflow plan differs from the stored definition")
 
-        provider_step = next((step for step in workflow["steps"] if step["step_number"] == 1), None)
+        provider_step = next(
+            (step for step in workflow["steps"] if step["step_number"] == 1), None
+        )
         if (
             provider_step is not None
             and provider_step["status"] == "succeeded"
-            and provider_step["output_digest"] != self._digest(plan.get("selected_provider", {}))
+            and provider_step["output_digest"]
+            != self._digest(plan.get("selected_provider", {}))
         ):
             raise ValueError("Selected provider changed; workflow must be replanned")
 
         task_id = UUID(str(workflow["task_id"]))
         task_state = self.jobs.get(task_id)
-        if task_state is None or task_state.status is not TaskStatus.WAITING_APPROVAL:
-            raise ValueError("Linked job is not awaiting an explicit recovery resume")
-        self.jobs.transition(task_id, TaskStatus.QUEUED)
-        self.jobs.transition(task_id, TaskStatus.RUNNING)
-        lease = self.lease_manager.acquire(str(task_id), self.worker_id)
-        if lease is None:
-            self.jobs.transition(task_id, TaskStatus.WAITING_APPROVAL)
-            raise RuntimeError("Workflow task could not acquire its execution lease")
+        expected_status = TaskStatus.RUNNING if task is not None else TaskStatus.WAITING_APPROVAL
+        if (
+            task_state is None
+            or task_state.status is not expected_status
+            or (task is not None and task.task_id != task_id)
+        ):
+            raise ValueError("Linked job is not in the expected resume state")
+        return workflow, decision, task_id
 
-        stop_heartbeat = Event()
-        lease_lost = Event()
-        heartbeat = Thread(
-            target=self._heartbeat_loop,
-            args=(lease, stop_heartbeat, lease_lost),
-            name=f"agent-workflow-resume-{workflow_id}",
-            daemon=True,
+    def queue_resume(
+        self,
+        workflow_id: UUID,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+        request_digest: str,
+        owner_user_id: str,
+    ) -> dict[str, object]:
+        """Validate and enqueue a resume without running workflow steps in the API."""
+        _workflow, _decision, task_id = self._validate_resume(
+            workflow_id, request, plan, request_digest, owner_user_id
         )
-        heartbeat.start()
+        self.recovery.queue_resume(
+            workflow_id,
+            owner_user_id=owner_user_id,
+            request_digest=request_digest,
+        )
+        AuditLogger(self.repository).record(
+            event_type="workflow.resume_queued",
+            outcome="queued",
+            subject_id=str(task_id),
+            metadata={"workflow_id": str(workflow_id), "task_type": "agent.workflow"},
+        )
+        return {
+            "workflow": self.recovery.get_run(
+                workflow_id, owner_user_id=owner_user_id
+            ),
+            "execution": None,
+            "queued": True,
+        }
+
+    def resume(
+        self,
+        workflow_id: UUID,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+        request_digest: str,
+        owner_user_id: str,
+        *,
+        task: TaskRecord | None = None,
+        lease: WorkerLease | None = None,
+        lease_lost: Event | None = None,
+    ) -> dict[str, object]:
+        """Resume a workflow under the pull worker's lease, or a local lease for tests."""
+        worker_owned_lease = lease is not None
+        workflow, decision, task_id = self._validate_resume(
+            workflow_id,
+            request,
+            plan,
+            request_digest,
+            owner_user_id,
+            task=task if worker_owned_lease else None,
+        )
+        if worker_owned_lease:
+            if task is None or lease_lost is None or lease.task_id != str(task_id):
+                raise ValueError("Worker-owned resume requires its task and lease-loss signal")
+            if lease_lost.is_set():
+                raise RuntimeError("Workflow worker lease was lost")
+            stop_heartbeat = None
+            heartbeat = None
+        else:
+            if task is not None or lease_lost is not None:
+                raise ValueError("A task or lease-loss signal requires a worker-owned lease")
+            self.jobs.transition(task_id, TaskStatus.QUEUED)
+            self.jobs.transition(task_id, TaskStatus.RUNNING)
+            lease = self.lease_manager.acquire(str(task_id), self.worker_id)
+            if lease is None:
+                self.jobs.transition(task_id, TaskStatus.WAITING_APPROVAL)
+                raise RuntimeError("Workflow task could not acquire its execution lease")
+            stop_heartbeat = Event()
+            lease_lost = Event()
+            heartbeat = Thread(
+                target=self._heartbeat_loop,
+                args=(lease, stop_heartbeat, lease_lost),
+                name=f"agent-workflow-resume-{workflow_id}",
+                daemon=True,
+            )
+            heartbeat.start()
+
+        assert lease is not None and lease_lost is not None
         attempts: dict[int, StepAttempt] = {}
         try:
-            self._record_execution_start(lease)
+            self._record_execution_start(lease, increment_attempt=not worker_owned_lease)
             self.recovery.start_run(workflow_id, lease=lease)
+
+            def should_cancel() -> bool:
+                if lease_lost.is_set():
+                    raise RuntimeError("Workflow worker lease was lost")
+                current_task = self.jobs.get(task_id)
+                if current_task is None or current_task.status is TaskStatus.CANCELLED:
+                    return True
+                with self.repository._connection() as connection:
+                    row = connection.execute(
+                        "SELECT error_code FROM worker_executions WHERE task_id = ?",
+                        (str(task_id),),
+                    ).fetchone()
+                return row is not None and row["error_code"] == "cancellation_requested"
+
             if decision.decision == "finish":
-                # All steps already have durable success checkpoints. Finalize the
-                # workflow/job pair without invoking any tool a second time.
-                self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
-                self.jobs.transition(task_id, TaskStatus.SUCCEEDED, lease=lease)
                 execution = {
                     "execution_completed": True,
                     "model_inference_started": False,
@@ -379,7 +465,9 @@ class AgentWorkflowRunner:
             else:
                 start_step = decision.next_step
                 if start_step == 1:
-                    provider_attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
+                    provider_attempt = self.recovery.start_step(
+                        workflow_id, 1, lease=lease
+                    )
                     self.recovery.complete_step(
                         workflow_id,
                         provider_attempt,
@@ -388,7 +476,9 @@ class AgentWorkflowRunner:
                     )
                     start_step = 2
 
-                def on_step(number: int, status: str, error_code: str | None) -> None:
+                def on_step(
+                    number: int, status: str, error_code: str | None
+                ) -> None:
                     if lease_lost.is_set():
                         raise RuntimeError("Workflow worker lease was lost")
                     if status == "running":
@@ -398,7 +488,9 @@ class AgentWorkflowRunner:
                     elif status == "failed":
                         attempt = attempts.get(number)
                         if attempt is not None:
-                            definition = self.core.tool_registry.get(request.tools[number - 2].name)
+                            definition = self.core.tool_registry.get(
+                                request.tools[number - 2].name
+                            )
                             self.recovery.fail_step(
                                 workflow_id,
                                 attempt,
@@ -423,44 +515,74 @@ class AgentWorkflowRunner:
                     on_step=on_step,
                     on_step_result=on_step_result,
                     start_step=start_step,
+                    should_cancel=should_cancel,
                 )
-                current = self.recovery.get_run(workflow_id)
-                if execution["execution_completed"]:
-                    self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
-                    self.jobs.transition(task_id, TaskStatus.SUCCEEDED, lease=lease)
-                else:
-                    if current is not None and current["status"] == "running":
-                        self.recovery.finish_run(workflow_id, "failed", lease=lease)
-                    current = self.recovery.get_run(workflow_id)
-                    target = (
-                        TaskStatus.WAITING_APPROVAL
-                        if current is not None and current["status"] in {"recovery_required", "paused"}
-                        else TaskStatus.FAILED
-                    )
-                    self.jobs.transition(task_id, target, lease=lease)
+
+            if not execution.get("cancelled") and should_cancel():
+                execution = {
+                    **execution,
+                    "cancelled": True,
+                    "execution_completed": False,
+                    "error_code": "cancelled",
+                }
+
+            current = self.recovery.get_run(
+                workflow_id, owner_user_id=owner_user_id
+            )
+            if execution.get("cancelled"):
+                if current is not None and current["status"] == "running":
+                    self.recovery.finish_run(workflow_id, "cancelled", lease=lease)
+                current_task = self.jobs.get(task_id)
+                if current_task is not None and current_task.status is TaskStatus.RUNNING:
+                    self.jobs.transition(task_id, TaskStatus.CANCELLED, lease=lease)
+            elif execution["execution_completed"]:
+                self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
+                self.jobs.transition(task_id, TaskStatus.SUCCEEDED, lease=lease)
+            else:
+                if current is not None and current["status"] == "running":
+                    self.recovery.finish_run(workflow_id, "failed", lease=lease)
+                current = self.recovery.get_run(
+                    workflow_id, owner_user_id=owner_user_id
+                )
+                target = (
+                    TaskStatus.WAITING_APPROVAL
+                    if current is not None
+                    and current["status"] in {"recovery_required", "paused"}
+                    else TaskStatus.FAILED
+                )
+                self.jobs.transition(task_id, target, lease=lease)
         except Exception as exc:
             if self.lease_manager.is_current(lease):
                 self.recovery.mark_interrupted(workflow_id, lease=lease)
-                current = self.recovery.get_run(workflow_id)
+                current = self.recovery.get_run(
+                    workflow_id, owner_user_id=owner_user_id
+                )
                 if current is not None and current["status"] == "running":
                     self.recovery.finish_run(workflow_id, "failed", lease=lease)
-                    current = self.recovery.get_run(workflow_id)
+                    current = self.recovery.get_run(
+                        workflow_id, owner_user_id=owner_user_id
+                    )
                 state = self.jobs.get(task_id)
                 if state is not None and state.status is TaskStatus.RUNNING:
                     target = (
                         TaskStatus.WAITING_APPROVAL
-                        if current is not None and current["status"] in {"recovery_required", "paused"}
+                        if current is not None
+                        and current["status"] in {"recovery_required", "paused"}
                         else TaskStatus.FAILED
                     )
                     self.jobs.transition(task_id, target, lease=lease)
             raise RuntimeError("Workflow resume stopped; inspect its recovery state") from exc
         finally:
-            stop_heartbeat.set()
-            heartbeat.join(timeout=max(1.0, self.lease_seconds))
-            self.lease_manager.release(lease)
+            if not worker_owned_lease:
+                assert stop_heartbeat is not None and heartbeat is not None
+                stop_heartbeat.set()
+                heartbeat.join(timeout=max(1.0, self.lease_seconds))
+                self.lease_manager.release(lease)
 
         return {
-            "workflow": self.recovery.get_run(workflow_id, owner_user_id=owner_user_id),
+            "workflow": self.recovery.get_run(
+                workflow_id, owner_user_id=owner_user_id
+            ),
             "execution": {
                 "execution_completed": execution["execution_completed"],
                 "model_inference_started": execution["model_inference_started"],
