@@ -477,7 +477,7 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_content_assets_source ON content_assets(source_asset_id)",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_assets_one_derivative ON content_assets(source_asset_id) WHERE source_asset_id IS NOT NULL",
         ),
-    ),,
+    ),
     Migration.build(
         14,
         "durable_content_publish_schedules",
