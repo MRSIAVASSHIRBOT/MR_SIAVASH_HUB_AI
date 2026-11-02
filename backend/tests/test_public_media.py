@@ -131,3 +131,32 @@ def test_signed_route_rejects_mismatched_image_signature(monkeypatch, tmp_path: 
         )
     assert exc.value.status_code == 404
     assert exc.value.detail == "media_asset_type_mismatch"
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://media.example.com",
+        "https://localhost",
+        "https://127.0.0.1",
+        "https://10.0.0.8",
+        "https://media.local",
+        "https://media.internal",
+        "https://media.example.com:8443",
+        "https://user:password@media.example.com",
+        "https://media.example.com?token=unexpected",
+        "https://media.example.com#fragment",
+    ],
+)
+def test_sign_asset_url_rejects_non_public_or_ambiguous_origins(monkeypatch, base_url: str):
+    settings = Settings(
+        public_media_base_url=base_url,
+        public_media_signing_key=SecretStr("s" * 40),
+    )
+    monkeypatch.setattr(public_media, "get_settings", lambda: settings)
+
+    with pytest.raises(ValueError, match="public HTTPS"):
+        public_media.sign_asset_url(
+            "123e4567-e89b-12d3-a456-426614174000",
+            now=1_800_000_000,
+        )
+
