@@ -241,11 +241,12 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
 
 
 def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step(monkeypatch):
+    from uuid import UUID
+
     from client_helpers import run_worker_once
     from mrhub.agents.core import AgentCore
     from mrhub.infrastructure.database import TaskRepository
     from mrhub.jobs.worker import WorkerEngine
-    from uuid import UUID
 
     client = authenticated_client()
     original = {
@@ -402,11 +403,12 @@ def test_agent_workflow_resume_rejects_changed_original_request_without_executio
 
 
 def test_agent_workflow_duplicate_resume_does_not_replay_completed_work(monkeypatch):
+    from uuid import UUID
+
     from client_helpers import run_worker_once
     from mrhub.agents.core import AgentCore
     from mrhub.jobs.recovery import WorkflowRecoveryRepository
     from mrhub.jobs.worker import WorkerEngine
-    from uuid import UUID
 
     client = authenticated_client()
     original = {
