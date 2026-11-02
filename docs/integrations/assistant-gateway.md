@@ -62,3 +62,14 @@ Do not place credentials in source control. If the chosen runtime requires authe
 5. Consider channel actions only after destination allowlists, duplicate-send protection, audit records, and approval gates are in place.
 
 This initial change is not a claim that full assistant-runtime integration is complete.
+
+## HUB capability discovery
+
+The authenticated endpoint `GET /agent/capabilities` returns a versioned, read-only inventory for the HUB's current orchestration layer:
+
+- `models`: configured model descriptors and declared text, vision, audio, and tool-calling capabilities.
+- `tools`: registered tool names, descriptions, input/output JSON schemas, risk classes, required permissions, and external-side-effect flags.
+- `capability_sources`: reviewed catalog entries whose status is `approved`; approval in this catalog does not install or activate code.
+- `assistant_gateway`: whether the optional gateway is enabled/configured; health remains `not_checked` until a separate explicit health request.
+
+The response includes `schema_version`, `discovery_mode=read_only`, and explicit false flags for execution, network probes, and downloads. This endpoint does not contact the external gateway, run model inference, invoke tools, or activate capability sources. Consumers should ignore unknown fields and require a supported schema version before relying on the contract.
