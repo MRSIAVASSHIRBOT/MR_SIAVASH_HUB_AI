@@ -234,7 +234,15 @@ def test_signed_media_rejects_expired_and_overlong_expiry_before_asset_lookup(mo
 def test_dispatcher_rechecks_emergency_stop_before_provider_side_effect(monkeypatch):
     client = authenticated_client()
     schedule = _scheduled_due_post(client)
-    adapter = ConfirmingAdapter()
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def publish(self, draft: dict[str, object], *, idempotency_key: str) -> PublishReceipt:
+            self.calls += 1
+            return PublishReceipt(provider_post_id="should-not-be-created")
+
+    adapter = CountingAdapter()
     dispatcher = ContentScheduleDispatcher(
         get_settings().database_path, adapters={"telegram": adapter}
     )
@@ -256,6 +264,7 @@ def test_dispatcher_rechecks_emergency_stop_before_provider_side_effect(monkeypa
         "reason_code": "emergency_stop",
     }
     assert checks == 3
+    assert adapter.calls == 0
     listed = client.get("/content/schedules?status=scheduled")
     assert listed.status_code == 200
     assert listed.json()["count"] == 1
