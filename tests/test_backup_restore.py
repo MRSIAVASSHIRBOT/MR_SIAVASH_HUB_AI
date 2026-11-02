@@ -68,3 +68,43 @@ def test_restore_requires_valid_manifest(tmp_path):
 
     with pytest.raises(BackupError, match="checksum"):
         restore_database(backup, tmp_path / "restored.sqlite3")
+
+
+
+def test_application_database_backup_restores_owner_login(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from client_helpers import authenticated_client
+    from mrhub.config import get_settings
+    from mrhub.main import create_app
+
+    original_client = authenticated_client()
+    source = get_settings().database_path
+    backup = tmp_path / "mrhub-backup.sqlite3"
+    restored = tmp_path / "mrhub-restored.sqlite3"
+
+    manifest = backup_database(source, backup)
+    assert manifest["sqlite_integrity"] == "ok"
+    result = restore_database(backup, restored)
+    assert result["restored"] is True
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(restored))
+    get_settings.cache_clear()
+    with TestClient(create_app()) as restored_client:
+        login = restored_client.post(
+            "/auth/login",
+            json={
+                "username": "owner",
+                "password": "test-only-strong-password-2026",
+            },
+        )
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+        protected = restored_client.get(
+            "/tasks",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert protected.status_code == 200
+
+    original_client.close()
+    get_settings.cache_clear()
