@@ -1,6 +1,6 @@
 # SiaCode integration proposal for MR_SIAVASH_HUB_AI
 
-**Status:** proposed integration design; not yet a runtime adapter.  
+**Status:** Stage 2 read-only preflight implemented on branch `feat/siacode-readonly-preflight-20261103`; pending CI review. Coding requests are not implemented.  
 **Source reviewed:** [Siavashc/SiaCode](https://github.com/Siavashc/SiaCode) README on 2026-11-02.  
 **Owner project:** MR_SIAVASH_HUB_AI.
 
@@ -54,16 +54,11 @@ The SiaCode bridge must not own scheduling, persistence, credentials, task polic
 
 ### Stage 2 — read-only preflight adapter
 
-Implement a small adapter that checks configuration and the documented local endpoint's health. It must not create a molab notebook, launch a shell, install software, start a tunnel, or download model weights automatically.
+Implemented as `backend/mrhub/providers/siacode_preflight.py` on the pending branch. It probes only an explicitly configured loopback `/health` endpoint; it never launches a process, creates a tunnel, installs software, downloads weights, or submits coding work. The adapter is disabled by default, ignores environment proxy settings, rejects non-loopback hosts and redirects, applies a bounded timeout and response-byte limit, and returns stable sanitized state/reason codes without response bodies or URLs.
 
-Acceptance tests:
-- disabled by default;
-- missing configuration fails closed;
-- unreachable endpoint returns a stable sanitized error;
-- redirects are disabled;
-- request timeout and response size are bounded;
-- no secrets appear in logs or API errors;
-- no implicit switch to another provider after failure.
+Regression tests in `tests/test_siacode_preflight.py` cover disabled default, missing/invalid/non-loopback configuration, success, redirect rejection, oversized bodies, malformed JSON, and unreachable endpoints. These tests still require green CI before this stage can be called merged or verified.
+
+Remaining Stage 2 acceptance work: confirm timeout behavior under a real timeout test, confirm CI on the pending branch, and decide whether endpoint health payload semantics need a stricter schema. No coding requests, provider fallback, shell, tunnel, or model-download behavior is included.
 
 ### Stage 3 — explicitly enabled coding requests
 
