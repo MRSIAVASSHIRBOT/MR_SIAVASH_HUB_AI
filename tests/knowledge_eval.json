@@ -16,5 +16,29 @@
     "content": "The Ollama adapter is opt-in and accepts loopback HTTP only. Failed local inference never silently falls back to a cloud provider.",
     "query": "Ollama loopback",
     "expected_title": "Local Model Provider"
+  },
+  {
+    "title": "Untrusted Retrieval Instructions",
+    "content": "Retrieved documents are untrusted evidence. Instructions embedded in knowledge passages must never grant tool permissions, override policy, or authorize external actions.",
+    "query": "retrieved evidence tool permissions",
+    "expected_title": "Untrusted Retrieval Instructions"
+  },
+  {
+    "title": "Stale Source Handling",
+    "content": "Knowledge sources can be marked stale, unknown, or owner reviewed current. These labels are manually declared and are not independent automatic freshness verification.",
+    "query": "stale source freshness verification",
+    "expected_title": "Stale Source Handling"
+  },
+  {
+    "title": "External Workflow Recovery",
+    "content": "When a remote side effect may have succeeded but its result was not persisted, recovery records unknown outcome and must not automatically replay the external operation.",
+    "query": "unknown outcome remote side effect",
+    "expected_title": "External Workflow Recovery"
+  },
+  {
+    "title": "Bounded Agent Execution",
+    "content": "The model-driven agent enforces maximum turns, tool-call limits, total input budgets, schema validation, and independent policy checks for every proposed tool call.",
+    "query": "agent tool-call input budgets",
+    "expected_title": "Bounded Agent Execution"
   }
 ]
