@@ -58,7 +58,9 @@ Implemented as `backend/mrhub/providers/siacode_preflight.py` on the pending bra
 
 Regression tests in `tests/test_siacode_preflight.py` cover disabled default, missing/invalid/non-loopback configuration, success, redirect rejection, oversized bodies, malformed JSON, and unreachable endpoints. These tests still require green CI before this stage can be called merged or verified.
 
-Remaining Stage 2 acceptance work: confirm timeout behavior under a real timeout test, confirm CI on the pending branch, and decide whether endpoint health payload semantics need a stricter schema. No coding requests, provider fallback, shell, tunnel, or model-download behavior is included.
+Remaining Stage 2 acceptance work: confirm CI on the pending branch and validate the health payload semantics against a controlled SiaCode setup. No coding requests, provider fallback, shell, tunnel, or model-download behavior is included.
+
+**Upstream compatibility note (2026-11-03):** the reviewed `Siavashc/SiaCode` `molab_proxy.py` does not define a dedicated local health handler; its `GET` handler forwards requests to the configured upstream. Therefore this probe only confirms the configured `/health` response through that chain, not that a standalone local proxy is healthy in isolation. Validate the actual upstream response contract in a controlled local setup before relying on `ready=true` for any workflow. The endpoint remains diagnostic-only and is not wired to task selection.
 
 ### Stage 3 — explicitly enabled coding requests
 
