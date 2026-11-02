@@ -241,6 +241,19 @@ class ContentScheduleDispatcher:
                 "reason_code": "provider_not_configured",
             }
 
+        # Re-check the durable stop switch immediately before the external side effect.
+        # This narrows the claim-to-dispatch race; it cannot cancel a provider call already
+        # in flight, so operators must still treat in-flight outcomes as potentially unknown.
+        if self._control.is_stopped():
+            self._finish(
+                schedule_id, "scheduled", "emergency_stop", now=self._now()
+            )
+            return {
+                "schedule_id": schedule_id,
+                "status": "scheduled",
+                "reason_code": "emergency_stop",
+            }
+
         try:
             receipt = adapter.publish(draft, idempotency_key=idempotency_key)
         except PermanentPublishError:
