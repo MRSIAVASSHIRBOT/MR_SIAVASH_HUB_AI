@@ -397,6 +397,56 @@ MIGRATIONS = (
             END""",
         ),
     ),
+    Migration.build(
+        12,
+        "owner_scoped_content_drafts_and_versions",
+        (
+            """CREATE TABLE IF NOT EXISTS content_drafts (
+                draft_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                platform TEXT NOT NULL CHECK (platform IN ('instagram', 'telegram', 'generic')),
+                content_type TEXT NOT NULL CHECK (
+                    content_type IN ('caption', 'script', 'reel_script', 'post_text', 'video_brief')
+                ),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 20000),
+                hashtags_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK (
+                    status IN ('draft', 'approved', 'archived')
+                ),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+                approved_by TEXT REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                approved_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (
+                    (status = 'approved' AND approved_by IS NOT NULL AND approved_at IS NOT NULL)
+                    OR (status <> 'approved' AND approved_by IS NULL AND approved_at IS NULL)
+                )
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_content_drafts_owner_hash ON content_drafts(owner_user_id, content_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_content_drafts_owner_updated ON content_drafts(owner_user_id, updated_at)",
+            """CREATE TABLE IF NOT EXISTS content_draft_versions (
+                version_id TEXT PRIMARY KEY,
+                draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                version_number INTEGER NOT NULL CHECK (version_number > 0),
+                platform TEXT NOT NULL CHECK (platform IN ('instagram', 'telegram', 'generic')),
+                content_type TEXT NOT NULL CHECK (
+                    content_type IN ('caption', 'script', 'reel_script', 'post_text', 'video_brief')
+                ),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 20000),
+                hashtags_json TEXT NOT NULL,
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                changed_by TEXT NOT NULL REFERENCES auth_users(user_id),
+                created_at TEXT NOT NULL,
+                UNIQUE(draft_id, version_number)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_content_draft_versions_owner_draft ON content_draft_versions(owner_user_id, draft_id, version_number)",
+        ),
+    ),
 )
 
  
