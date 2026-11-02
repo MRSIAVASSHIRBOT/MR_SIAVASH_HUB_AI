@@ -82,7 +82,8 @@ Exit criteria: produce a draft and media asset locally; external publishing rema
 - Plugin compatibility and integrity checks
 - [x] Durable pause/resume, safe retry, cancellation, checkpoint recovery, and lease fencing
 - [x] Durable owner-authenticated worker emergency-stop and schedule-dispatch pause controls
-- [ ] Define and test stop behavior for already-running synchronous and external operations
+- [x] Define and test dispatch-quiesce behavior for in-flight synchronous handlers (active handlers are not force-killed)
+- [ ] Add provider-specific cooperative cancellation/timeouts and external-operation reconciliation tests
 
 Exit criteria: a multi-step workflow runs with bounded tools and traceable state transitions. Verified by worker-owned submit/resume paths, separate-process smoke tests, crash-injection recovery, and cancellation regressions.
 
@@ -169,5 +170,6 @@ The first implementation slice should be deliberately small: configuration -> AP
 - PR #59 added the opt-in signed public-media route. It serves only stored JPEG/PNG assets, binds signatures to asset UUID and expiry, caps URL lifetime at 15 minutes, and fails closed when configuration is absent.
 - PR #60 connected Instagram draft media attachments to scheduled dispatch, fixed DNS-hostname validation, and added a dispatcher integration test. Backend CI and CI passed on the exact PR head; the full test suite passed on Python 3.11 and 3.12.
 - Instagram publishing is **not production-verified**: public origin reachability, edge rate limiting, real Graph API credentials/scopes, and a controlled real-account post remain external acceptance gates.
-- Worker-owned durable Agent workflow submission/resume is implemented; this is distinct from the still-open scheduled-workflow-trigger and in-flight external-operation stop semantics.
+- Worker-owned durable Agent workflow submission/resume is implemented; this is distinct from the still-open scheduled-workflow-trigger work.
+- The durable stop switch is explicitly a dispatch-quiesce control: active handlers are allowed to finish, new claims are blocked, and ambiguous external outcomes require reconciliation. See docs/operations/worker-stop-contract.md; provider-specific cancellation/timeouts remain open.
 - Remaining release gates include the target-device backup/restore drill and protected media/key backup procedure, repeatable retrieval-quality and source-freshness evaluation, NEXUS patch-proposal review plus isolated tests, broader defensive dependency/configuration auditing, and packaging/rollback checks.
