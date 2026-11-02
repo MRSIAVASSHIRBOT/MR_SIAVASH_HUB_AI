@@ -61,3 +61,8 @@ Example request:
 - The synchronous request is deliberately bounded: at most three model turns, with each provider request capped at 30 seconds (roughly 90 seconds of maximum provider wait, plus local processing overhead). It is an initial integration slice, not a replacement for durable worker-owned long-running workflows.
 - The endpoint audits status/provider/turn/tool-count metadata, not the goal, retrieved text, or answer. It does not publish content or perform external side effects.
 - Context sources remain untrusted. `owner_reviewed_current` is a manual owner assertion, not automatic source verification.
+
+
+## Operator UI
+
+The local dashboard exposes the bounded Agent endpoint with explicit local/remote provider mode, optional memory/knowledge context, a maximum of three turns, and a maximum of 512 output tokens. It displays the answer and source metadata separately, including freshness labels. Remote mode requires deliberate selection; the UI does not fall back between provider modes. The endpoint remains synchronous and is not a durable workflow runner.
