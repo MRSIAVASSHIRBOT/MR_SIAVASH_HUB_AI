@@ -24,6 +24,7 @@ from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepositor
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.tools.builtins import build_tool_registry
+from mrhub.capabilities.registry import CapabilityRegistry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
 
@@ -36,6 +37,51 @@ class WorkflowReconciliationRequest(BaseModel):
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+@router.get("/capabilities")
+def discover_agent_capabilities() -> dict[str, object]:
+    """Return a read-only inventory of configured models, tools, and reviewed sources."""
+    settings = get_settings()
+    models = build_model_router().catalog()
+    tools = build_tool_registry().catalog()
+    approved_sources = CapabilityRegistry(settings.database_path).list_candidates(
+        status="approved", limit=100
+    )
+    return {
+        "schema_version": "1.0",
+        "discovery_mode": "read_only",
+        "models": [
+            {
+                "provider": item.provider,
+                "model": item.model,
+                "local": item.local,
+                "priority": item.priority,
+                "capabilities": item.capability.model_dump(),
+            }
+            for item in models
+        ],
+        "tools": tools,
+        "capability_sources": [
+            {
+                "candidate_id": item.candidate_id,
+                "display_name": item.display_name,
+                "integration_type": item.integration_type,
+                "capabilities": list(item.capabilities),
+                "license_id": item.license_id,
+                "status": item.status,
+            }
+            for item in approved_sources
+        ],
+        "assistant_gateway": {
+            "enabled": settings.assistant_gateway_enabled,
+            "configured": bool(settings.assistant_gateway_base_url),
+            "health_status": "not_checked",
+        },
+        "execution_started": False,
+        "network_probes_performed": False,
+        "downloads_started": False,
+    }
 
 
 @router.post("/plan")
