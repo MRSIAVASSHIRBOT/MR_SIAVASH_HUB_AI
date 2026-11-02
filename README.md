@@ -118,3 +118,12 @@ An optional OpenRouter text adapter can be enabled explicitly through environmen
 The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task and Job Engine metrics, owner-scoped Workflow history, step inspection, cancellation, safe-resume enqueueing, external-outcome reconciliation, provider, memory, knowledge, content-draft, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
 
 The content draft API provides owner-scoped draft/version management, deduplication, explicit approval/revocation, archive/restore, and audit events. It does not publish externally. See `docs/operations/content-drafts.md`.
+
+
+## Verified integration status — 2026-11-02
+
+- Instagram Graph API image publishing is implemented as an explicit opt-in adapter.
+- Approved Instagram drafts can reference owner-scoped JPEG/PNG assets. The pull-driven dispatcher generates a short-lived HMAC-signed HTTPS media URL instead of passing a local filesystem path.
+- Public media delivery is disabled until `MRH_PUBLIC_MEDIA_BASE_URL` and `MRH_PUBLIC_MEDIA_SIGNING_KEY` are configured. Instagram publishing additionally requires valid professional-account credentials and permissions.
+- CI verifies the signed URL generation, expiry/signature handling, and scheduled dispatcher handoff using test doubles. It does not verify public network reachability or publish to a real Instagram account.
+- External reachability, edge rate limiting, and a controlled live-account acceptance test remain deployment gates. Production publishing must not be described as end-to-end verified until those gates pass.
