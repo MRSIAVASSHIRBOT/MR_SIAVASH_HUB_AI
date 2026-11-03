@@ -87,6 +87,14 @@ def test_render_submission_is_owner_scoped_and_idempotent(tmp_path, monkeypatch)
     accepted, created = jobs.submit("owner-a", analysis_id, "render-key")
     assert created is True
     assert accepted["status"] == "accepted"
+    with jobs.tasks._connection() as connection:
+        reserved = connection.execute(
+            "SELECT output_storage_key FROM video_render_runs WHERE render_id = ?",
+            (accepted["render_id"],),
+        ).fetchone()
+    assert reserved is not None
+    assert reserved["output_storage_key"].endswith(".mp4")
+    assert UUID(reserved["output_storage_key"][:-4])
 
     replay, replay_created = jobs.submit("owner-a", analysis_id, "render-key")
     assert replay_created is False
