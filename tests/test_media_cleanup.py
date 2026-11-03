@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from mrhub.domain.tasks import RiskClass, TaskRecord
+from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import (
     MediaAssetBusy,
     MediaAssetOwnershipConflict,
@@ -289,9 +291,6 @@ def test_failed_cleanup_items_do_not_starve_unattempted_entries(
 
 
 def _active_worker_lease(repository: MediaAssetRepository, token: int = 1):
-    from mrhub.domain.tasks import RiskClass, TaskRecord
-    from mrhub.jobs.leases import WorkerLease
-
     task = TaskRecord(
         task_type="video.analysis",
         risk_class=RiskClass.LOW,
@@ -491,8 +490,6 @@ def test_old_fencing_token_cannot_release_a_new_analysis_use_lock(tmp_path: Path
             "UPDATE worker_executions SET execution_token = 2 WHERE task_id = ?",
             (first_lease.task_id,),
         )
-    from mrhub.jobs.leases import WorkerLease
-
     second_lease = WorkerLease(
         task_id=first_lease.task_id,
         owner=first_lease.owner,
