@@ -34,9 +34,9 @@ from mrhub.video_intelligence.schemas import (
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.timeline_drafts import (
+    TimelineBeat,
     TimelineConflict,
     TimelineDraftUpdate,
-    TimelineBeat,
     VideoTimelineDraftRepository,
 )
 from mrhub.video_intelligence.service import (
