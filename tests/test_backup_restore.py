@@ -274,3 +274,50 @@ def test_verify_media_assets_rejects_implausible_metadata_before_hashing(tmp_pat
     assert result["ok"] is False
     assert result["invalid_entries"] == 1
     assert result["verified_assets"] == 0
+
+
+def test_verify_media_assets_bounds_unregistered_directory_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mrhub.operations import backup
+
+    database = tmp_path / "hub.sqlite3"
+    media_root = tmp_path / "content_assets"
+    media_root.mkdir()
+    (media_root / "orphan-one").write_bytes(b"x")
+    (media_root / "orphan-two").write_bytes(b"x")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+    monkeypatch.setattr(backup, "MAX_MEDIA_ASSETS_TO_VERIFY", 1)
+
+    result = backup.verify_media_assets(database)
+
+    assert result["ok"] is False
+    assert result["verification_truncated"] is True
+
+
+def test_verify_media_assets_does_not_hash_files_over_per_asset_limit(tmp_path, monkeypatch):
+    from mrhub.operations import backup
+
+    database = tmp_path / "hub.sqlite3"
+    media_root = tmp_path / "content_assets"
+    media_root.mkdir()
+    storage_key = "12345678-1234-1234-1234-123456789abc.mp4"
+    (media_root / storage_key).write_bytes(b"payload-too-large")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO content_assets VALUES (?, ?, ?)",
+            (storage_key, 7, "0" * 64),
+        )
+    monkeypatch.setattr(backup, "MAX_MEDIA_ASSET_BYTES", 4)
+
+    result = backup.verify_media_assets(database)
+
+    assert result["ok"] is False
+    assert result["invalid_entries"] == 1
+    assert result["hash_mismatched_assets"] == 0
