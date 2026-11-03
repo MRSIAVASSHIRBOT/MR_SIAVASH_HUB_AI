@@ -154,3 +154,8 @@ All four post-merge push workflows passed on the exact main commit `a5a1002907b3
 ### Release decision
 
 The project remains **not release-ready**. Outstanding gates include the actual target Windows device acceptance, coordinated restore drill (including protected key material and media), clean install/upgrade/rollback, dependency lock and license decisions, external provider/social integration acceptance, and a complete product-level operator workflow. No public release, tag or package publication is implied by the PR #223 merge.
+
+
+### Post-merge verification update — 2026-11-04 UTC
+
+All push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan and Video Render Integration. This confirms the merged baseline remains green after integration; it does not replace target-device acceptance or the coordinated restore drill.
