@@ -21,6 +21,7 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.providers.base import ProviderError
 from mrhub.tools.builtins import build_tool_registry
 
 
@@ -103,7 +104,7 @@ class ModelRunWorkerHandler:
                 max_timeout_seconds=30.0,
             )
             orchestrator = AgentOrchestrator(model_router, build_tool_registry())
-        except Exception:
+        except (ValueError, TypeError, LookupError, ProviderError, OSError):
             self.recovery.fail_step(
                 workflow_id, attempt, "model_setup_failed", lease=lease
             )
@@ -136,7 +137,10 @@ class ModelRunWorkerHandler:
             result = orchestrator.run(request, should_cancel=should_cancel)
             if should_cancel() and result.get("status") != "cancelled":
                 result = {**result, "status": "cancelled", "error_code": "cancelled"}
-        except Exception:
+        except (
+            ProviderError, LookupError, ValueError, TypeError, KeyError,
+            RuntimeError, OSError, sqlite3.Error,
+        ):
             # The inference/tool loop may have partially completed. Never replay it.
             self.recovery.mark_interrupted(workflow_id, lease=lease)
             with self.repository._connection() as connection:
@@ -182,7 +186,10 @@ class ModelRunWorkerHandler:
             )
             if not replaced:
                 raise PayloadEnvelopeError("Encrypted model-run result could not be stored")
-        except Exception:
+        except (
+            PayloadEnvelopeError, sqlite3.Error, OSError, TypeError, ValueError,
+            WorkflowRecoveryError,
+        ):
             # A completed model/tool loop whose result cannot be durably stored
             # is ambiguous to callers and must never be replayed automatically.
             self.recovery.mark_interrupted(workflow_id, lease=lease)
