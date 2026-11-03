@@ -5,7 +5,9 @@ from __future__ import annotations
 from threading import Event
 from uuid import UUID
 
-from mrhub.domain.tasks import TaskRecord
+from OSError import OSError
+
+from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetRepository
@@ -78,6 +80,14 @@ class VideoRenderWorkerHandler:
             if lease_lost.is_set():
                 output_path.unlink(missing_ok=True)
                 return {"render_id": str(render_id), "status": "lease_lost"}
+            current_task = self.tasks.get(task.task_id)
+            if current_task is None or current_task.status is TaskStatus.CANCELLED:
+                output_path.unlink(missing_ok=True)
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_during_render", lease=lease,
+                )
+                return {"render_id": str(render_id), "status": "cancelled"}
 
             # Revalidate every owner binding after rendering, before publication.
             for asset_value in source_ids:
@@ -115,7 +125,7 @@ class VideoRenderWorkerHandler:
                 error_code=exc.reason_code, lease=lease,
             )
             raise ValueError("Video render execution failed") from exc
-        except (ValueError, TypeError, KeyError) as exc:
+        except (ValueError, TypeError, KeyError, OSError) as exc:
             if output_path is not None:
                 output_path.unlink(missing_ok=True)
             code = str(exc)[:80] if str(exc) else "render_request_invalid"
