@@ -6,7 +6,7 @@ import json
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.context import AgentContextAssembler
@@ -142,3 +142,29 @@ def run_agent(
         "execution": result,
         "external_side_effects_performed": False,
     }
+
+
+@router.get("/model-runs")
+def list_model_runs(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, object]:
+    """List recent metadata-only model runs for the authenticated owner."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    runs = tasks.list_agent_model_runs(user.user_id, limit=limit)
+    return {"runs": runs, "count": len(runs)}
+
+
+@router.get("/model-runs/{run_id}")
+def get_model_run(
+    run_id: str,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Retrieve one model-run record without exposing prompts or generated content."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    run = tasks.get_agent_model_run(user.user_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Agent model run not found")
+    return run
