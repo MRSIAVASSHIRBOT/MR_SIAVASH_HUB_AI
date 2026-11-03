@@ -97,8 +97,11 @@ Exit criteria: developer/research tasks return reproducible evidence and reviewa
 
 ## Phase 6 — Defensive Cybersecurity Lab
 - [x] Initial read-only Python static-analysis foundation
-- [x] Offline defensive configuration review foundation
-- [ ] Broader dependency and configuration auditing
+- [x] Offline defensive configuration review with exact asset scope, expiry, confidence, and remediation.
+- [x] Offline requirements-manifest inventory for unpinned/direct/VCS dependencies and unexpanded includes; no network or installation.
+- [x] Authenticated review API with metadata-only audit events and explicit no-network/no-modification guarantees.
+- [ ] Vulnerability-database/CVE review using an explicitly approved advisory snapshot.
+- [ ] Log analysis and authorized asset inventory with separate scope and evidence tests.
 - Authorized asset inventory with explicit scope
 - Findings, severity, evidence, and remediation reports
 - Safe educational lab mode
