@@ -159,6 +159,7 @@ def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(
 
 def test_generation_payload_key_is_required(tmp_path, monkeypatch):
     from types import SimpleNamespace
+
     from mrhub.jobs import payload_envelope
 
     monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
