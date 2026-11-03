@@ -117,7 +117,7 @@ def test_scene_job_source_deletion_nulls_reference_without_leaking_owner_data(tm
 def test_worker_executes_scene_job_using_only_owner_resolved_media(
     tmp_path, monkeypatch
 ):
-    database_path, tasks, _media, jobs, asset = _setup(tmp_path)
+    _database_path, tasks, _media, jobs, asset = _setup(tmp_path)
     accepted = jobs.create("owner-a", UUID(str(asset["asset_id"])))
     calls = {}
 
@@ -154,8 +154,8 @@ def test_worker_executes_scene_job_using_only_owner_resolved_media(
 
 
 def test_worker_fails_safely_when_scene_job_source_is_deleted(tmp_path):
-    database_path, tasks, media, jobs, asset = _setup(tmp_path)
-    accepted = jobs.create("owner-a", UUID(str(asset["asset_id"])))
+    _database_path, tasks, media, _jobs, asset = _setup(tmp_path)
+    accepted = _jobs.create("owner-a", UUID(str(asset["asset_id"])))
     media.delete("owner-a", UUID(str(asset["asset_id"])))
 
     completed = WorkerEngine(tasks).run_once()
