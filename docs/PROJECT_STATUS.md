@@ -349,3 +349,8 @@ This section supersedes older repository and PR snapshots above. The detailed cu
 2. Close duplicate/superseded PRs and refresh the canonical audit branch.
 3. Continue scheduled-trigger/recovery semantics, Discovery source connectors, Memory/Knowledge integrity, Operator UI end-to-end coverage and controlled Content integration.
 4. Keep target-device acceptance for the final integrated candidate; do not request device access before the complete product test package is ready.
+
+
+### Post-merge verification update — 2026-11-04 UTC
+
+All four push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan, and Video Render Integration. This is post-merge evidence on the exact main commit; target-device and whole-product acceptance gates remain open.
