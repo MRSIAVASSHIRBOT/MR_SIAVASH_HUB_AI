@@ -24,8 +24,7 @@ def test_bounded_sink_commit(tmp_path):
 def test_bounded_sink_rejects_limit_and_cleans_partial_file(tmp_path):
     repository = _repository(tmp_path)
     _asset_id, storage_key, target = repository.new_output_target()
-    with pytest.raises(ValueError, match="byte limit"):
-        with repository.create_output_sink(storage_key, max_bytes=5) as sink:
+    with pytest.raises(ValueError, match="byte limit"), repository.create_output_sink(storage_key, max_bytes=5) as sink:
             sink.write(b"12345")
             sink.write(b"6")
     assert target.exists() is False
@@ -35,8 +34,7 @@ def test_bounded_sink_rejects_limit_and_cleans_partial_file(tmp_path):
 def test_bounded_sink_rejects_empty_commit_and_existing_target(tmp_path):
     repository = _repository(tmp_path)
     _asset_id, storage_key, target = repository.new_output_target()
-    with pytest.raises(ValueError, match="empty"):
-        with repository.create_output_sink(storage_key, max_bytes=10) as sink:
+    with pytest.raises(ValueError, match="empty"), repository.create_output_sink(storage_key, max_bytes=10) as sink:
             sink.commit()
     target.write_bytes(b"existing")
     with pytest.raises(FileExistsError):
