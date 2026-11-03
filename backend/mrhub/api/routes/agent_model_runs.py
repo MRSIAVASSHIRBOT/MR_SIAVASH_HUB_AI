@@ -98,7 +98,6 @@ def submit_model_run(
         query=query,
         include_memory=payload.include_memory,
         include_knowledge=payload.include_knowledge,
-        knowledge_freshness_policy=payload.knowledge_freshness_policy,
     )
     evidence = json.dumps(
         context["passages"], ensure_ascii=False, separators=(",", ":")
