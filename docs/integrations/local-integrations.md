@@ -52,3 +52,13 @@ Authenticated `GET /agent/capabilities` provides a versioned, read-only inventor
 - **Adapters:** configuration validation and bounded, sanitized health checks only.
 
 The services must not share a database or bypass HUB authorization. A future execution bridge requires a separately reviewed typed API contract, explicit permission mapping, approval gates, audit records, idempotency, and safe recovery. No arbitrary shell or code execution is exposed by these adapters.
+
+## Reviewed product mapping: OpenClaw
+
+OpenClaw is a compatible candidate for the HUB-owned `assistant_gateway` slot; it is not a new internal integration ID and its product name is not renamed. The documented local Gateway default is port `18789`. Its unauthenticated `GET /health` (also `/healthz`) is a **liveness-only** check: a successful probe proves that the HTTP listener answered, not that an agent, model provider, or channel is ready. Configure the adapter explicitly with `MRH_ASSISTANT_GATEWAY_ENABLED=true`, `MRH_ASSISTANT_GATEWAY_BASE_URL=http://127.0.0.1:18789`, and `MRH_ASSISTANT_GATEWAY_HEALTH_PATH=/health`; keep it disabled until OpenClaw is installed and configured separately.
+
+Do not put `OPENCLAW_GATEWAY_TOKEN`, `OPENCLAW_GATEWAY_PASSWORD`, or any other Gateway secret into HUB health-probe settings. OpenClaw documents its bearer-authenticated HTTP tool invocation surface as trusted operator access to the Gateway, not as a narrow per-tool identity. Therefore this health-only adapter deliberately sends no OpenClaw credential and does not call `/tools/invoke`, agent/chat endpoints, WebSocket RPC, or admin RPC. A future inference or task bridge requires a separate security design, explicit credential custody, least-privilege authorization, user approval, auditability, bounded execution, and cancellation/reconciliation tests.
+
+OpenClaw compatibility is not claimed as end-to-end integration by this mapping. The current adapter only checks liveness. Deep readiness and actual assistant requests remain separate acceptance gates.
+
+**Upstream references (reviewed 2026-11-03):** [OpenClaw health checks](https://docs.openclaw.ai/gateway/health), [Gateway web interfaces and authentication](https://docs.openclaw.ai/web), [Tools invoke API and its operator-access boundary](https://docs.openclaw.ai/gateway/tools-invoke-http-api).
