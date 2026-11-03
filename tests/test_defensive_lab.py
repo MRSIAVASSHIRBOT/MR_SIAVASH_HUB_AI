@@ -470,3 +470,22 @@ def test_authenticated_structured_log_review_api_returns_safe_findings_and_audit
     assert len(completed) == 1
     assert completed[0]["metadata"]["reason_code"] == "offline_structured_security_log_review"
     assert "private-login-id" not in str(completed[0])
+
+
+
+def test_structured_log_review_counts_json_parser_resource_edge_cases_as_unparsed():
+    oversized_integer = '{"event_type":"unknown.event","value":' + ("9" * 5_000) + '}'
+    deeply_nested = '{"event_type":"unknown.event","value":' + ("[" * 10_000) + "0" + ("]" * 10_000) + "}"
+    text = "\n".join((oversized_integer, deeply_nested))
+
+    result = audit_structured_log_text(
+        text,
+        scope=_scope(),
+        asset="repo:owned-project",
+    )
+
+    assert result["structured_records"] == 0
+    assert result["unparsed_lines"] == 2
+    assert result["findings"] == []
+    assert oversized_integer not in str(result)
+    assert deeply_nested not in str(result)
