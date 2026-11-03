@@ -1,6 +1,7 @@
 import json
 
 from client_helpers import authenticated_client, run_worker_once
+from uuid import UUID
 from mrhub.config import get_settings
 from mrhub.jobs.idempotency import IdempotencyRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
@@ -78,7 +79,7 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
 
     recovery = WorkflowRecoveryRepository(get_settings().database_path)
     stored = recovery.get_encrypted_payload(
-        __import__("uuid").UUID(accepted["workflow_id"]),
+        UUID(accepted["workflow_id"]),
         owner_user_id="owner",
     )
     assert stored is not None
@@ -90,7 +91,7 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert worker_result.status.value == "succeeded"
     assert provider.calls == 1
 
-    completed = client.get(f"/agent/model-runs/{accepted['workflow_id']}")
+    completed = client.get(f"/agent/model-run-workflows/{accepted['workflow_id']}")
     assert completed.status_code == 200
     body = completed.json()
     assert body["status"] == "succeeded"
@@ -138,7 +139,7 @@ def test_interrupted_model_run_is_unknown_outcome_and_not_replayed(monkeypatch):
     assert provider.calls == 1
 
     run = WorkflowRecoveryRepository(get_settings().database_path).get_run(
-        __import__("uuid").UUID(workflow_id), owner_user_id="owner"
+        UUID(workflow_id), owner_user_id="owner"
     )
     assert run is not None
     assert run["status"] == "recovery_required"
