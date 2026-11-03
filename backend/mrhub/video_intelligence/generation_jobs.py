@@ -297,6 +297,34 @@ class VideoGenerationJobRepository:
         return self.get(owner_user_id, generation_id)
 
 
+    def fail_unapproved_task(self, task_id: UUID) -> bool:
+        """Fail a queued generation task that lacks a valid owner approval."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT l.generation_id, l.owner_user_id
+                   FROM video_generation_task_links AS l
+                   WHERE l.task_id = ?""",
+                (str(task_id),),
+            ).fetchone()
+            if row is None:
+                return False
+            cursor = connection.execute(
+                """UPDATE video_generation_jobs
+                   SET status = 'failed', error_code = 'approval_missing_or_stale',
+                       updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = 'queued'""",
+                (now, row["generation_id"], row["owner_user_id"]),
+            )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """DELETE FROM video_generation_payloads
+                       WHERE generation_id = ? AND owner_user_id = ?""",
+                    (row["generation_id"], row["owner_user_id"]),
+                )
+        return cursor.rowcount == 1
+
     def reject_pending_task(self, task_id: UUID, owner_user_id: str) -> bool:
         """Purge an owner-rejected generation payload before any provider dispatch."""
         now = self._now()
