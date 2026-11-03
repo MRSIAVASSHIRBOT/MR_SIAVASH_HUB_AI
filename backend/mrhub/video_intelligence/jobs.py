@@ -336,10 +336,6 @@ class VideoAnalysisJobRepository:
                        SELECT 1 FROM worker_executions AS e
                        WHERE e.task_id = ? AND e.lease_owner = ?
                          AND e.execution_token = ? AND e.lease_expires_at > ?
-                     )
-                     AND EXISTS (
-                       SELECT 1 FROM tasks AS t
-                       WHERE t.task_id = ? AND t.status = ?
                      )""",
                 (
                     now, str(task_id), owner_user_id, str(task_id),
@@ -375,6 +371,10 @@ class VideoAnalysisJobRepository:
                        SELECT 1 FROM worker_executions AS e
                        WHERE e.task_id = ? AND e.lease_owner = ?
                          AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )
+                     AND EXISTS (
+                       SELECT 1 FROM tasks AS t
+                       WHERE t.task_id = ? AND t.status = ?
                      )""",
                 (
                     status,
