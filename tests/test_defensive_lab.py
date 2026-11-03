@@ -6,7 +6,21 @@ from mrhub.security.defensive_lab import (
     DefensiveReviewScope,
     ScopeValidationError,
     audit_configuration_text,
+    audit_requirements_text,
 )
+
+
+
+def _scope(
+    asset: str = "repo:owned-project",
+    *,
+    expires_at: datetime | None = None,
+) -> DefensiveReviewScope:
+    return DefensiveReviewScope(
+        authorization_reference="ticket-123",
+        authorized_assets=(asset,),
+        expires_at=expires_at or datetime.now(UTC) + timedelta(days=1),
+    )
 
 
 def test_scope_requires_explicit_assets_and_current_authorization():
@@ -45,7 +59,12 @@ def test_configuration_audit_reports_line_evidence_without_values():
         "verify = false\n"
         "allow_origins = ['*']\n"
     )
-    result = audit_configuration_text(text, filename="settings.env")
+    result = audit_configuration_text(
+        text,
+        scope=_scope(),
+        asset="repo:owned-project",
+        filename="settings.env",
+    )
 
     assert result["mode"] == "offline_defensive_configuration_review"
     assert result["network_requests_made"] is False
@@ -61,13 +80,19 @@ def test_configuration_audit_reports_line_evidence_without_values():
 
 def test_configuration_audit_enforces_input_limit():
     with pytest.raises(ValueError, match="1 MB"):
-        audit_configuration_text("x" * 1_000_001)
+        audit_configuration_text(
+            "x" * 1_000_001,
+            scope=_scope(),
+            asset="repo:owned-project",
+        )
 
 
 def test_configuration_audit_flags_insecure_cookie_settings_without_echoing_values():
     result = audit_configuration_text(
         "SESSION_COOKIE_SECURE = false\n"
         "SESSION_COOKIE_HTTPONLY = false\n",
+        scope=_scope(),
+        asset="repo:owned-project",
         filename="app.env",
     )
 
@@ -79,3 +104,106 @@ def test_configuration_audit_flags_insecure_cookie_settings_without_echoing_valu
     assert result["configuration_values_included"] is False
     assert result["network_requests_made"] is False
     assert result["targets_modified"] is False
+
+
+
+def test_configuration_audit_requires_current_exact_asset_scope():
+    scope = _scope("repo:owned-project")
+
+    with pytest.raises(ScopeValidationError, match="outside"):
+        audit_configuration_text(
+            "debug = true",
+            scope=scope,
+            asset="repo:another-project",
+        )
+
+    expired_scope = _scope(
+        expires_at=datetime.now(UTC) - timedelta(seconds=1)
+    )
+    with pytest.raises(ScopeValidationError, match="expired"):
+        audit_configuration_text(
+            "debug = true",
+            scope=expired_scope,
+            asset="repo:owned-project",
+        )
+
+
+def test_configuration_findings_include_confidence_and_remediation_without_values():
+    result = audit_configuration_text(
+        "debug = true",
+        scope=_scope(),
+        asset="repo:owned-project",
+        filename="settings.env",
+    )
+
+    finding = result["findings"][0]
+    assert finding["rule_id"] == "CFG001"
+    assert finding["confidence"] == "high"
+    assert "Disable debug mode" in finding["remediation"]
+    assert result["scope_validated"] is True
+    assert result["asset"] == "repo:owned-project"
+    assert result["configuration_values_included"] is False
+
+
+def test_dependency_manifest_review_is_offline_scoped_and_never_installs_packages():
+    manifest = (
+        "# project dependencies\n"
+        "fastapi==0.115.0\n"
+        "uvicorn>=0.30\n"
+        "sample-lib @ https://packages.invalid/sample.whl\n"
+        "-r nested-requirements.txt\n"
+        "--index-url https://packages.invalid/simple\n"
+    )
+    result = audit_requirements_text(
+        manifest,
+        scope=_scope(),
+        asset="repo:owned-project",
+        filename="requirements.txt",
+    )
+
+    assert result["mode"] == "offline_dependency_manifest_review"
+    assert result["packages_reviewed"] == 3
+    assert result["unsupported_directives"] == 2
+    assert result["review_complete"] is False
+    assert {item["rule_id"] for item in result["findings"]} == {
+        "DEP001",
+        "DEP002",
+        "DEP004",
+        "DEP005",
+    }
+    assert result["vulnerability_database_consulted"] is False
+    assert result["network_requests_made"] is False
+    assert result["packages_installed"] is False
+    assert result["targets_modified"] is False
+    assert "packages.invalid" not in str(result)
+
+
+def test_dependency_manifest_review_rejects_out_of_scope_asset_and_bounds_input():
+    scope = _scope()
+    with pytest.raises(ScopeValidationError, match="outside"):
+        audit_requirements_text(
+            "fastapi==0.115.0",
+            scope=scope,
+            asset="repo:other",
+        )
+
+    with pytest.raises(ValueError, match="1 MB"):
+        audit_requirements_text(
+            "x" * 1_000_001,
+            scope=scope,
+            asset="repo:owned-project",
+        )
+
+
+def test_dependency_manifest_exact_pin_is_not_flagged_but_ranges_are():
+    result = audit_requirements_text(
+        "fastapi==0.115.0\n"
+        "uvicorn>=0.30\n"
+        "example==1.2,>=1.1\n",
+        scope=_scope(),
+        asset="repo:owned-project",
+    )
+
+    assert result["packages_reviewed"] == 3
+    assert [item["line"] for item in result["findings"]] == [2, 3]
+    assert all(item["rule_id"] == "DEP001" for item in result["findings"])
