@@ -73,6 +73,10 @@ def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
     assert 'name="knowledge_freshness_policy"' in response.text
     assert 'value="owner_reviewed_current_only"' in response.text
     assert 'id="agent-run-result"' in response.text
+    assert 'id="agent-queue-button"' in response.text
+    assert 'id="agent-queued-workflow-id"' in response.text
+    assert 'id="agent-queued-refresh-button"' in response.text
+    assert 'id="agent-queued-cancel-button"' in response.text
     script = client.get("/ui/app.js").text
     assert 'api("/agent/run"' in script
     assert "context_sources" in script
