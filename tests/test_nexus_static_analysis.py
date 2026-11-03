@@ -139,3 +139,35 @@ def test_source_analysis_reports_confidence_and_remediation_without_execution():
     assert finding["line"] == 2
     assert finding["confidence"] == "high"
     assert "typed parser" in finding["remediation"]
+
+
+def test_static_analysis_detects_common_import_aliases_and_os_shell_apis():
+    source = """import pickle as serializer
+from subprocess import run as run_command
+import os as operating_system
+from yaml import load as parse_yaml
+from yaml import SafeLoader as SafeYamlLoader
+serializer.loads(payload)
+run_command(command, shell=True)
+operating_system.system(command)
+parse_yaml(document)
+parse_yaml(document, Loader=SafeYamlLoader)
+"""
+    result = analyze_python_source(source, path="src/aliased_imports.py")
+
+    rules = [item["rule_id"] for item in result["findings"]]
+    assert rules.count("PY102") == 1
+    assert rules.count("PY103") == 1
+    assert rules.count("PY104") == 1
+    assert rules.count("PY105") == 1
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
+
+
+def test_static_analysis_detects_os_system_and_os_popen_without_aliases():
+    result = analyze_python_source(
+        "import os\nos.system(command)\nos.popen(command)\n",
+        path="src/os_shell.py",
+    )
+
+    assert [item["rule_id"] for item in result["findings"]] == ["PY105", "PY105"]

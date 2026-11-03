@@ -21,9 +21,10 @@ The response contains:
   `files_modified=false` indicators.
 
 The current AST rules are intentionally narrow and advisory: dynamic
-`eval/exec`, pickle deserialization, YAML loading without `SafeLoader`, and
-`subprocess` calls with `shell=True`. A clean report is not proof that a
-change is secure, correct, or compatible.
+`eval/exec`, pickle deserialization, YAML loading without `SafeLoader`,
+`subprocess` calls with `shell=True`, and `os.system`/`os.popen`. Straightforward
+module and imported-function aliases are recognized. A clean report is not proof
+that a change is secure, correct, or compatible.
 
 ## Review policy
 
