@@ -25,22 +25,27 @@ def test_deleted_media_file_cleanup_is_durable_and_retryable(
     stored_path = real_file_path(storage_key)
     assert stored_path.is_file()
 
+    deleted_keys = repository.delete("owner-1", asset_id)
+    assert deleted_keys == [storage_key]
+    assert repository.get("owner-1", asset_id) is None
+
+    # A fresh repository instance sees the cleanup intent committed by the delete.
+    restarted = MediaAssetRepository(repository.database_path)
+    restarted_path = restarted.file_path(storage_key)
+    assert restarted_path.is_file()
+
     def fail_cleanup(key: str) -> Path:
         if key == storage_key:
             raise PermissionError("simulated filesystem denial")
-        return real_file_path(key)
+        return restarted.file_path(key)
 
-    monkeypatch.setattr(repository, "file_path", fail_cleanup)
-    deleted_keys = repository.delete("owner-1", asset_id)
+    monkeypatch.setattr(restarted, "file_path", fail_cleanup)
+    assert restarted.cleanup_pending_files("owner-1") == 1
+    assert restarted_path.is_file()
 
-    assert deleted_keys == [storage_key]
-    assert repository.get("owner-1", asset_id) is None
-    assert stored_path.is_file()
-    assert repository.cleanup_pending_files("owner-1") == 1
-
-    monkeypatch.setattr(repository, "file_path", real_file_path)
-    assert repository.cleanup_pending_files("owner-1") == 0
-    assert not stored_path.exists()
+    monkeypatch.setattr(restarted, "file_path", real_file_path)
+    assert restarted.cleanup_pending_files("owner-1") == 0
+    assert not restarted_path.exists()
 
 
 def test_asset_cannot_be_deleted_while_transcode_is_in_progress(tmp_path: Path) -> None:
