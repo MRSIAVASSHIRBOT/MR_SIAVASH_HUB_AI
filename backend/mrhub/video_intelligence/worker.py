@@ -102,6 +102,16 @@ class VideoAnalysisWorkerHandler:
 
         if lease_lost.is_set():
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+        # Close the cancellation race between the final per-asset check and
+        # terminal persistence. The task state is the authoritative signal.
+        current = self.tasks.get(task.task_id)
+        if current is None or current.status is TaskStatus.CANCELLED:
+            if current is not None:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_by_owner", lease=lease,
+                )
+            return {"analysis_id": str(analysis_id), "status": "cancelled"}
         result = {
             "analysis_id": str(analysis_id),
             "mode": request.mode.value,
