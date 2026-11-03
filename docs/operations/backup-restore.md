@@ -18,3 +18,20 @@ Call `restore_database(backup_path, new_destination_path)`. Restore verifies the
 - Checksums detect accidental or unauthorized modification only when the manifest is protected separately. They are not a signature or encryption.
 - Keep an offline or otherwise isolated copy and periodically test restoration on the target machine.
 - A successful SQLite integrity check does not prove the whole application can start or that external integrations work after restore.
+
+
+## Read-only media integrity verification
+
+Before copying the media directory for a coordinated recovery point, run
+`verify_media_assets(database_path)` from `mrhub.operations.backup` while API
+and worker writers are stopped. It compares every registered asset's generated
+storage key, file size, and SHA-256 digest with the sibling `content_assets/`
+file. It also reports missing files, mismatched size/hash, invalid or symlinked
+entries, and unregistered directory entries as aggregate counts only; it never
+returns storage keys or file contents and never copies or deletes files.
+
+A backup set should not be accepted while the verifier reports `ok: false`.
+This verifier is a local consistency gate, not a media backup/copy utility and
+not a substitute for an actual restore drill. The API and worker must remain
+quiescent while the database and media directory are checked and copied, so the
+two components represent the same recovery point.
