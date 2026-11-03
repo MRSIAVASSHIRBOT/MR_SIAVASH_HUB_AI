@@ -137,10 +137,9 @@ async def upload_asset(
             # using the upload buffer.
             record = await asyncio.shield(storage_task)
         except asyncio.CancelledError:
-            try:
-                await asyncio.shield(storage_task)
-            except Exception:
-                pass
+            await asyncio.shield(
+                asyncio.gather(storage_task, return_exceptions=True)
+            )
             raise
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid media upload") from exc
