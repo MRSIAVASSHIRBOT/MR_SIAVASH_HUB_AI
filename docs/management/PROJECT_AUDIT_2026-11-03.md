@@ -352,3 +352,41 @@ This addendum supersedes the queue counts and baseline observations in earlier s
 
 ### Status boundary
 This addendum is a live GitHub inventory and recovery log, not a source-level audit of every file, a real-device acceptance, or production-readiness declaration. No branches were deleted, no PR was merged or closed, no secret/provider settings were changed, and no release was published.
+
+
+
+## 11. Live integration addendum — 2026-11-03 18:45 UTC
+
+This addendum supersedes the 18:36 recovery snapshot where observations differ. It records the exact repository state observed during the integration pass.
+
+### Mainline and PR #196
+- Current `main`: `c073f55637a36c4c4f5897d19d77d1da46bc7ce6`.
+- PR #196 was merged by an external/concurrent repository action at `2026-11-03T18:11:49Z`; merge commit on main is `d9edc30cf7bab141283488230472128ce3430391`.
+- Migration 24 is now part of current main: `global_media_file_cleanup_retry_index`.
+- The exact PR #196 head `f57a0d49b959c1e337cee494d37f1a3ea145c95d` passed Backend CI (`41690750810`), Python 3.11/3.12 CI (`41690750865`), and Defensive Python Scan (`41690750852`).
+
+### PR #198 — current integration state
+- The generation-task handoff migration is reserved as migration 25, `durable_video_generation_task_handoff`; migration 24 remains unchanged.
+- The generation PR was rebuilt against current `main` with head `7b39173eb5c525ec5f309f57576f145e8f8142ef`. The new commit has current main as its first parent and retains the prior reviewed branch history as its second parent.
+- The PR now reports `mergeable=true`, targets `main`, and its diff contains only the nine intended video-generation files. The prior media-cleanup files are no longer part of the PR diff.
+- The integrated migration test starts from schema v18, applies versions 19–25, and verifies both the global cleanup index and `video_generation_task_links`.
+- Fresh exact-head workflows are running for head `7b39173eb5c525ec5f309f57576f145e8f8142ef`: Backend CI `41696695359`, CI `41696695339`, Defensive Python Scan `41696695329`, and push CI `41696685323`. These are pending; earlier green runs on head `6238a52...` do not substitute for the new-head checks.
+- PR #198 remains open and unmerged. No merge or release was performed by this integration pass.
+
+### Remaining migration conflicts in draft video PRs
+- PR #197 still defines migration 22 as `owner_scoped_editable_video_timeline_drafts`; current main already uses 22 for video-generation schema. It remains Draft and stacked on #178/#173.
+- PR #186 still defines migration 22 as `durable_owner_scoped_video_render_jobs`; current main already uses 22–24, and PR #198 proposes 25. It remains Draft and stacked on the older #177 base.
+- Do not merge either draft as-is. After their dependency chains are refreshed onto current main, allocate unique migration numbers after the accepted generation handoff (currently proposed as 25), preserve historical migrations, update upgrade tests, and rerun exact-head CI. No migration number is assigned to #197 or #186 in this addendum.
+
+### Operational and governance issues
+- The scheduled Continuous Development workflow run `41688726463` failed because OpenRouter returned `free-models-per-day` rate limiting. This is a provider quota blocker, not evidence of a code-test failure. No credentials or provider settings were changed.
+- Main branch protection is disabled. Enabling required checks and review protection is recommended, but remains PENDING APPROVAL because it changes repository governance.
+- Windows installation/upgrade/rollback/backup/restore, live provider generation, and release acceptance remain NOT RUN until evidenced on the target runtime.
+
+### Status boundary
+- PASS: PR #196 exact-head checks; PR #198 ancestry integration and clean nine-file diff; migration numbering 1–25 is monotonic on the proposed PR #198 tree.
+- PENDING: fresh CI on PR #198 head `7b39173...`.
+- BLOCKED: scheduled model-driven development by the external OpenRouter free-tier daily quota.
+- BLOCKED: PR #197 and #186 migration collisions and stale dependency bases.
+- PENDING APPROVAL: main branch protection and required-review policy.
+- NOT RUN: target-device acceptance and production/release validation.
