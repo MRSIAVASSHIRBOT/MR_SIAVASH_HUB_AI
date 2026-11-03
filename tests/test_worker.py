@@ -649,6 +649,7 @@ def test_worker_fails_closed_when_heartbeat_raises_database_error(tmp_path, monk
         expires_at="2026-11-03T00:01:00+00:00",
     )
     lease_lost = Event()
+    worker._lease_seconds = 1
 
     class FailingLeaseManager:
         def heartbeat(self, _lease):
