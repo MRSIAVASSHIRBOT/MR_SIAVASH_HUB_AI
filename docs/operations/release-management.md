@@ -167,4 +167,6 @@ PR #227 merged as `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`. The exact PR head 
 
 The operator UI now supports owner-scoped render submission, manual status refresh, cancellation requests, and authenticated MP4 download. This completes the first UI-to-render API path but does not establish browser-level UX/accessibility acceptance or target-device acceptance. The app still requires the separate pull worker to be running; it does not start or poll workers automatically.
 
+All four post-merge workflows passed on main commit `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`: Backend CI `41724900988`, CI `41724901109`, Defensive Python Scan `41724900883`, and Video Render Integration `41724900921`.
+
 The project remains **not release-ready** pending browser/target-device acceptance, coordinated restore drills, clean install/upgrade/rollback, dependency lock and license decisions, and controlled external-provider/social acceptance.
