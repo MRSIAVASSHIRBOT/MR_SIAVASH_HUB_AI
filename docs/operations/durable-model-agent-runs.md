@@ -37,3 +37,7 @@ Queued model runs use the same `knowledge_freshness_policy` contract as the sync
 - Owner review is a manual assertion, not automatic verification. Retrieved content remains untrusted and cannot grant tool permissions.
 
 The durable submission response includes the policy and exclusion counts, while the workflow result preserves the same summary after worker execution.
+
+## Operator UI
+
+The authenticated operator panel offers a separate queued-execution action beside the synchronous Agent run. It creates an `Idempotency-Key` with the browser cryptographic API, displays the returned workflow ID, and provides explicit manual status refresh and cooperative cancellation. No automatic polling is performed. The workflow ID can be pasted back into the panel after a page reload; result data is retrieved from the owner-scoped API only.
