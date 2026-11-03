@@ -11,13 +11,13 @@ A modular, owner-scoped video analysis and prompt-generation capability.
 
 - Pydantic request contracts with bounded input sizes.
 - A local-file-only FFprobe metadata probe with a timeout and output cap.
-- A deterministic prompt composer that accepts structured analysis facts.
+- A deterministic prompt composer that accepts structured analysis facts.\n- Authenticated brand-profile CRUD with per-user ownership, uniqueness, and image-asset ownership validation.
 
 ## Not implemented yet
 
-- Authenticated API routes and persistence for brand profiles / analysis jobs.
+- Persistence and queue-backed processing for video analysis jobs.
 - Frame extraction, scene detection, visual understanding, motion analysis, OCR, and audio transcription.
-- Queue-backed processing, UI, model-provider adapters, and end-to-end rendering.
+- Queue-backed analysis execution, UI, model-provider adapters, and end-to-end rendering.
 
 ## Security boundaries
 
