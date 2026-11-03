@@ -230,7 +230,7 @@ def transcode_video(
         "-t",
         "60",
         "-vf",
-        "scale='min(1280,iw)':-2",
+        "scale=w='min(1280,iw)':h='min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
         "-map",
         "0:v:0",
         "-map",
