@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 
 from mrhub.providers.base import ProviderHealth, ProviderResponse
@@ -149,7 +150,7 @@ def test_analysis_request_remote_vision_consent_defaults_to_false():
 
 
 def test_visual_result_bounds_each_tag_not_only_list_length():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         vision.VisualBatchResult(
             visual_summary="A scene",
             visual_style=["x" * 121],
