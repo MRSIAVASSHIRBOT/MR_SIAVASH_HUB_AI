@@ -148,6 +148,14 @@ def test_render_output_registration_completes_job_atomically(tmp_path, monkeypat
     assert record["processing_status"] == "processed"
     assert jobs.get("owner-a", render_id)["status"] == "completed"
     assert jobs.get("owner-a", render_id)["output_asset_id"] == output_id
+    assert analysis_repository.tasks.get(task_id).status.value == "succeeded"
+    with analysis_repository.tasks._connection() as connection:
+        execution = connection.execute(
+            "SELECT result_json, finished_at FROM worker_executions WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()
+    assert execution["finished_at"] is not None
+    assert '"output_asset_id"' in execution["result_json"]
     assert media.get("owner-b", UUID(output_id)) is None
 
 
