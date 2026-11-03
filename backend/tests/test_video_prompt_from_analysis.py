@@ -100,4 +100,4 @@ def test_prompt_composition_supports_legacy_analysis_without_scene_boundaries():
 
     assert prompts[0]["scene_cut_count"] == 0
     assert prompts[0]["scene_boundaries_truncated"] is False
-    assert all(not item["scene_cut_timestamps"] for item in prompts[0]["timeline"])
+    assert all("scene_cut_timestamps" not in item for item in prompts[0]["timeline"])
