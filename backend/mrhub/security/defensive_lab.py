@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime
 from typing import Literal
@@ -50,6 +51,13 @@ class DefensiveReviewScope(BaseModel):
         if self.expires_at.astimezone(UTC) <= current.astimezone(UTC):
             raise ScopeValidationError("Defensive review authorization has expired")
 
+    def assert_asset(self, asset: str, now: datetime | None = None) -> str:
+        self.assert_current(now)
+        normalized = asset.strip()
+        if not normalized or normalized not in self.authorized_assets:
+            raise ScopeValidationError("Asset is outside the declared authorization scope")
+        return normalized
+
 
 _RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
@@ -79,27 +87,243 @@ _RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
 )
 
 
-def audit_configuration_text(text: str, *, filename: str = "config") -> dict[str, object]:
-    """Report risky configuration patterns by line without echoing configuration values."""
-    if len(text) > 1_000_000:
+def _validate_filename(filename: str) -> str:
+    if (
+        not filename
+        or len(filename) > 255
+        or "/" in filename
+        or "\\" in filename
+        or filename in {".", ".."}
+    ):
+        raise ValueError("filename_must_be_a_basename")
+    return filename
+
+
+def _finding(
+    rule_id: str,
+    severity: str,
+    confidence: str,
+    filename: str,
+    line: int,
+    message: str,
+    remediation: str,
+) -> dict[str, object]:
+    return {
+        "rule_id": rule_id,
+        "severity": severity,
+        "confidence": confidence,
+        "file": filename,
+        "line": line,
+        "message": message,
+        "remediation": remediation,
+    }
+
+
+def _validated_scope(
+    scope: DefensiveReviewScope,
+    asset: str,
+    now: datetime | None,
+) -> str:
+    if not isinstance(scope, DefensiveReviewScope):
+        raise ScopeValidationError("An explicit defensive review scope is required")
+    return scope.assert_asset(asset, now)
+
+
+def audit_configuration_text(
+    text: str,
+    *,
+    scope: DefensiveReviewScope,
+    asset: str,
+    filename: str = "config",
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Review caller-supplied config text under a current, exact asset authorization."""
+    authorized_asset = _validated_scope(scope, asset, now)
+    safe_filename = _validate_filename(filename)
+    if not isinstance(text, str) or len(text) > 1_000_000:
         raise ValueError("Configuration text exceeds the 1 MB review limit")
     findings: list[dict[str, object]] = []
     lines = text.splitlines()
     for line_number, line in enumerate(lines, start=1):
         for rule_id, severity, message, pattern in _RULES:
             if pattern.search(line):
-                findings.append({
-                    "rule_id": rule_id,
-                    "severity": severity,
-                    "file": filename[:255],
-                    "line": line_number,
-                    "message": message,
-                })
+                confidence, remediation = {
+                    "CFG001": (
+                        "high",
+                        "Disable debug mode outside local development and verify deployment settings.",
+                    ),
+                    "CFG002": (
+                        "high",
+                        "Bind to loopback or an explicitly approved interface; do not expose all interfaces by default.",
+                    ),
+                    "CFG003": (
+                        "high",
+                        "Enable certificate verification and configure a trusted CA bundle.",
+                    ),
+                    "CFG004": (
+                        "medium",
+                        "Replace wildcard CORS origins with the exact trusted application origins.",
+                    ),
+                    "CFG005": (
+                        "medium",
+                        "Enable Secure cookies and serve session cookies only over HTTPS.",
+                    ),
+                    "CFG006": (
+                        "medium",
+                        "Enable HttpOnly on session cookies to reduce script access to session tokens.",
+                    ),
+                }[rule_id]
+                findings.append(_finding(
+                    rule_id,
+                    severity,
+                    confidence,
+                    safe_filename,
+                    line_number,
+                    message,
+                    remediation,
+                ))
     return {
         "mode": "offline_defensive_configuration_review",
+        "asset": authorized_asset,
+        "authorization_reference": scope.authorization_reference,
+        "authorization_expires_at": scope.expires_at.astimezone(UTC).isoformat(),
+        "scope_validated": True,
         "lines_reviewed": len(lines),
         "findings": findings,
         "configuration_values_included": False,
         "network_requests_made": False,
+        "targets_modified": False,
+    }
+
+
+_REQUIREMENT_RE = re.compile(
+    r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\\[[^\\]]+\\])?\\s*(.*)$"
+)
+
+
+def audit_requirements_text(
+    text: str,
+    *,
+    scope: DefensiveReviewScope,
+    asset: str,
+    filename: str = "requirements.txt",
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Inventory a requirements-style manifest offline; never installs or resolves packages."""
+    authorized_asset = _validated_scope(scope, asset, now)
+    safe_filename = _validate_filename(filename)
+    if not isinstance(text, str) or len(text) > 1_000_000:
+        raise ValueError("Dependency manifest exceeds the 1 MB review limit")
+
+    findings: list[dict[str, object]] = []
+    packages_reviewed = 0
+    unsupported_directives = 0
+
+    def add(
+        rule_id: str,
+        severity: str,
+        confidence: str,
+        line_number: int,
+        message: str,
+        remediation: str,
+    ) -> None:
+        findings.append(_finding(
+            rule_id,
+            severity,
+            confidence,
+            safe_filename,
+            line_number,
+            message,
+            remediation,
+        ))
+
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith(("-r ", "--requirement ", "-c ", "--constraint ")):
+            unsupported_directives += 1
+            add(
+                "DEP004",
+                "medium",
+                "high",
+                line_number,
+                "Nested requirement or constraint file was not expanded.",
+                "Review the referenced file separately under the same explicit scope.",
+            )
+            continue
+        if line.startswith(("-e ", "--editable ")) or line.startswith(
+            ("git+", "http://", "https://")
+        ):
+            packages_reviewed += 1
+            add(
+                "DEP002",
+                "high",
+                "high",
+                line_number,
+                "Direct URL, VCS, or editable dependency requires provenance review.",
+                "Prefer a trusted package index and an immutable, reviewed release; do not install this entry during review.",
+            )
+            continue
+        if line.startswith(("--index-url", "--extra-index-url", "--find-links", "--trusted-host")):
+            unsupported_directives += 1
+            add(
+                "DEP005",
+                "medium",
+                "high",
+                line_number,
+                "Custom package source or host directive requires manual trust review.",
+                "Verify the package source independently; this offline review does not contact it.",
+            )
+            continue
+
+        match = _REQUIREMENT_RE.match(line)
+        if match is None:
+            unsupported_directives += 1
+            add(
+                "DEP006",
+                "info",
+                "medium",
+                line_number,
+                "Requirement line uses unsupported syntax and was not interpreted.",
+                "Review this line manually; the analyzer deliberately does not evaluate pip options.",
+            )
+            continue
+
+        packages_reviewed += 1
+        specifier = match.group(2).split(";", 1)[0].strip()
+        if "@" in specifier:
+            add(
+                "DEP002",
+                "high",
+                "high",
+                line_number,
+                "Direct URL dependency requires provenance review.",
+                "Prefer a trusted package index and an immutable, reviewed release.",
+            )
+        elif not specifier.startswith("==") or specifier.startswith("===") or "*" in specifier:
+            add(
+                "DEP001",
+                "medium",
+                "high",
+                line_number,
+                "Dependency is not pinned to one exact version.",
+                "Pin a reviewed exact version and maintain hashes in the deployment lock file.",
+            )
+
+    return {
+        "mode": "offline_dependency_manifest_review",
+        "asset": authorized_asset,
+        "authorization_reference": scope.authorization_reference,
+        "authorization_expires_at": scope.expires_at.astimezone(UTC).isoformat(),
+        "scope_validated": True,
+        "manifest_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "packages_reviewed": packages_reviewed,
+        "unsupported_directives": unsupported_directives,
+        "review_complete": unsupported_directives == 0,
+        "findings": findings,
+        "vulnerability_database_consulted": False,
+        "network_requests_made": False,
+        "packages_installed": False,
         "targets_modified": False,
     }
