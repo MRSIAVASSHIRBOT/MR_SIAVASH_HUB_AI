@@ -174,11 +174,19 @@ def transcode_video(
         raise HTTPException(status_code=404, detail="Media file is missing")
     if not _FFMPEG_SEMAPHORE.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="ffmpeg_busy")
-    output_asset_id, output_key, output_path = repository.new_output_target()
-    started = repository.begin_processing(user.user_id, asset_id)
-    if started is None:
+    try:
+        output_asset_id, output_key, output_path = repository.new_output_target()
+        started = repository.begin_processing(user.user_id, asset_id)
+        if started is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Media asset is already processed or processing",
+            )
+    except Exception:
+        # The FFmpeg slot is already reserved; release it if setup fails before
+        # the subprocess lifecycle's finally block is entered.
         _FFMPEG_SEMAPHORE.release()
-        raise HTTPException(status_code=409, detail="Media asset is already processed or processing")
+        raise
     command = [
         binary,
         "-nostdin",
