@@ -26,11 +26,11 @@ from mrhub.video_intelligence.jobs import (
     VideoAnalysisConflict,
     VideoAnalysisJobRepository,
 )
-from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.render_jobs import (
     VideoRenderConflict,
     VideoRenderJobRepository,
 )
+from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
     BrandIdentity,
