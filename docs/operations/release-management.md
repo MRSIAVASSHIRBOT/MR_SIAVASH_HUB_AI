@@ -159,3 +159,12 @@ The project remains **not release-ready**. Outstanding gates include the actual 
 ### Post-merge verification update — 2026-11-04 UTC
 
 All push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan and Video Render Integration. This confirms the merged baseline remains green after integration; it does not replace target-device acceptance or the coordinated restore drill.
+
+
+## Operator UI render integration — 2026-11-04 UTC
+
+PR #227 merged as `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`. The exact PR head `643ddfaf141004f19a90067f0992d60cebce564a` passed Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows hosted runners.
+
+The operator UI now supports owner-scoped render submission, manual status refresh, cancellation requests, and authenticated MP4 download. This completes the first UI-to-render API path but does not establish browser-level UX/accessibility acceptance or target-device acceptance. The app still requires the separate pull worker to be running; it does not start or poll workers automatically.
+
+The project remains **not release-ready** pending browser/target-device acceptance, coordinated restore drills, clean install/upgrade/rollback, dependency lock and license decisions, and controlled external-provider/social acceptance.
