@@ -162,25 +162,49 @@ class ModelRunWorkerHandler:
             "context_summary": payload.get("context_summary", {}),
             "execution": result,
         }
-        encrypted = encrypt_payload(
-            output,
-            workflow_id=str(workflow_id),
-            task_id=str(task.task_id),
-            owner_user_id=owner_user_id,
-            key=load_payload_key(),
-        )
-        replaced = self.recovery.replace_encrypted_payload(
-            workflow_id,
-            owner_user_id=owner_user_id,
-            task_id=str(task.task_id),
-            payload_envelope={
-                "version": encrypted.version,
-                "nonce_b64": encrypted.nonce_b64,
-                "ciphertext_b64": encrypted.ciphertext_b64,
-            },
-        )
-        if not replaced:
-            raise PayloadEnvelopeError("Encrypted model-run result could not be stored")
+        try:
+            encrypted = encrypt_payload(
+                output,
+                workflow_id=str(workflow_id),
+                task_id=str(task.task_id),
+                owner_user_id=owner_user_id,
+                key=load_payload_key(),
+            )
+            replaced = self.recovery.replace_encrypted_payload(
+                workflow_id,
+                owner_user_id=owner_user_id,
+                task_id=str(task.task_id),
+                payload_envelope={
+                    "version": encrypted.version,
+                    "nonce_b64": encrypted.nonce_b64,
+                    "ciphertext_b64": encrypted.ciphertext_b64,
+                },
+            )
+            if not replaced:
+                raise PayloadEnvelopeError("Encrypted model-run result could not be stored")
+        except Exception:
+            # A completed model/tool loop whose result cannot be durably stored
+            # is ambiguous to callers and must never be replayed automatically.
+            try:
+                self.recovery.mark_interrupted(workflow_id, lease=lease)
+                with self.repository._connection() as connection:
+                    connection.execute(
+                        """UPDATE idempotency_records SET status = 'unknown_outcome'
+                           WHERE task_id = ? AND status = 'running'""",
+                        (str(task.task_id),),
+                    )
+                current = self.jobs.get(task.task_id)
+                if current is not None and current.status is TaskStatus.RUNNING:
+                    self.jobs.transition(
+                        task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease
+                    )
+            except Exception:
+                pass
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "model_run_result_persistence_unknown",
+            }
         output_digest = hashlib.sha256(
             json.dumps(output, ensure_ascii=False, sort_keys=True,
                        separators=(",", ":")).encode("utf-8")
