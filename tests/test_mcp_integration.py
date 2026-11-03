@@ -1,4 +1,4 @@
-"""Optional MCP bridge contract and policy tests."""
+""""Optional MCP bridge contract and policy tests."""
 
 import json
 
@@ -25,7 +25,7 @@ async def test_mcp_bridge_lists_and_invokes_registered_safe_hub_tool():
             "hub.invoke_tool",
             {"name": "text.echo", "payload": {"text": "hello"}},
         )
-        assert not result.isError
+        assert not result.is_error
         response = json.loads(result.content[0].text)
         assert response == {
             "ok": True,
@@ -64,6 +64,6 @@ def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
             )
 
     result = anyio.run(invoke)
-    assert not result.isError
+    assert not result.is_error
     response = json.loads(result.content[0].text)
     assert response == {"ok": False, "error_code": "policy_denied"}
