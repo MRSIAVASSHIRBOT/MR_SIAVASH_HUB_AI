@@ -623,7 +623,7 @@
     }
     $("#video-render-refresh").disabled = !activeVideoRenderId;
     $("#video-render-cancel").disabled = !["accepted", "running"].includes(render.status);
-    $("#video-render-submit").disabled = activeVideoAnalysisStatus !== "completed"
+    $("#video-render-submit").disabled = !activeVideoAnalysisCanRender
       || ["accepted", "running"].includes(render.status);
   }
 
@@ -704,7 +704,7 @@
         "error"
       );
     } finally {
-      button.disabled = activeVideoAnalysisStatus !== "completed"
+      button.disabled = !activeVideoAnalysisCanRender
         || ["accepted", "running"].includes(activeVideoRenderStatus);
     }
   }
