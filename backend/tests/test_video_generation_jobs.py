@@ -491,3 +491,47 @@ def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch):
 
     assert worker.run_once() is None
     assert calls == ["submit"]
+
+
+def test_worker_rejects_queued_generation_without_approval_before_provider_lookup(
+    tmp_path, monkeypatch
+):
+    from mrhub.domain.tasks import TaskStatus
+    from mrhub.jobs.worker import WorkerEngine
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"y" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("missing-approval-key")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'queued' WHERE task_id = ?",
+            (str(task_id),),
+        )
+
+    provider_lookups = []
+    monkeypatch.setattr(
+        video_generation_registry,
+        "get",
+        lambda provider, model: provider_lookups.append((provider, model)),
+    )
+    worker = WorkerEngine(repository.tasks)
+    worker.run_once()
+
+    assert provider_lookups == []
+    assert repository.tasks.get(task_id).status is TaskStatus.FAILED
+    assert repository.get("owner-a", generation_id)["status"] == "failed"
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert payload is None
