@@ -31,6 +31,23 @@ class RetryableWorkerError(WorkerError):
     """A handler may raise this only for a known transient, safe-to-retry condition."""
 
 
+class TerminalWorkerError(WorkerError):
+    """A handler reports a stable, sanitized terminal failure code."""
+
+    def __init__(self, error_code: str) -> None:
+        valid = (
+            bool(error_code)
+            and len(error_code) <= 80
+            and error_code[0].isalpha()
+            and error_code.isascii()
+            and all(char.islower() or char.isdigit() or char == "_" for char in error_code)
+        )
+        if not valid:
+            raise ValueError("Invalid terminal worker error code")
+        super().__init__(error_code)
+        self.error_code = error_code
+
+
 def action_fingerprint(task: TaskRecord) -> str:
     canonical = json.dumps(
         {
@@ -86,6 +103,7 @@ class WorkerEngine:
         }
         self.handlers["agent.workflow"] = self._run_agent_workflow
         self.handlers["agent.model_run"] = self._run_agent_model_run
+        self.handlers["video.scene_detection"] = self._run_video_scene_detection
         self._initialize()
 
     def _now(self) -> datetime:
@@ -120,6 +138,92 @@ class WorkerEngine:
     @staticmethod
     def _echo(task: TaskRecord) -> dict[str, object]:
         return {"message": task.description, "task_type": task.task_type}
+
+    def _run_video_scene_detection(self, task: TaskRecord) -> dict[str, object]:
+        """Analyze an owner-owned video only after resolving it from durable job state."""
+        import math
+
+        from mrhub.media.repository import MediaAssetRepository
+        from mrhub.video_intelligence.scene_jobs import VideoSceneJobRepository
+        from mrhub.video_intelligence.scenes import (
+            SceneDetectionError,
+            detect_scene_boundaries,
+        )
+        from mrhub.video_intelligence.service import probe_video
+
+        jobs = VideoSceneJobRepository(self.database_path)
+        job = jobs.get_for_worker(task.task_id)
+        if job is None:
+            raise TerminalWorkerError("video_scene_job_missing")
+        source_asset_id = job["source_asset_id"]
+        if not isinstance(source_asset_id, str):
+            raise TerminalWorkerError("video_scene_source_removed")
+        try:
+            asset_id = UUID(source_asset_id)
+        except ValueError as exc:
+            raise TerminalWorkerError("video_scene_source_unavailable") from exc
+
+        media = MediaAssetRepository(self.database_path)
+        asset = media.get(str(job["owner_user_id"]), asset_id)
+        if asset is None:
+            raise TerminalWorkerError("video_scene_source_unavailable")
+        if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
+            raise TerminalWorkerError("video_scene_unsupported_media")
+        if asset["processing_status"] not in {"stored", "processed"}:
+            raise TerminalWorkerError("video_scene_source_not_ready")
+        try:
+            source_path = media.file_path(str(asset["storage_key"]))
+        except ValueError as exc:
+            raise TerminalWorkerError("video_scene_source_unavailable") from exc
+
+        metadata = probe_video(source_path)
+        if metadata.metadata_status == "ffprobe_unavailable":
+            raise TerminalWorkerError("ffprobe_unavailable")
+        duration = metadata.duration_seconds
+        if (
+            metadata.metadata_status != "available"
+            or duration is None
+            or not math.isfinite(duration)
+        ):
+            raise TerminalWorkerError("video_probe_failed")
+        if not 0.1 <= duration <= 60.0:
+            raise TerminalWorkerError("video_duration_out_of_range")
+
+        try:
+            detected = detect_scene_boundaries(
+                source_path,
+                duration_seconds=duration,
+                threshold=float(job["threshold"]),
+                max_scene_changes=int(job["max_scene_changes"]),
+            )
+        except SceneDetectionError as exc:
+            known_reasons = {
+                "source_missing",
+                "source_size_out_of_range",
+                "source_unavailable",
+                "ffmpeg_unavailable",
+                "detection_timeout",
+                "ffmpeg_execution_failed",
+                "detection_failed",
+                "scene_output_too_large",
+                "scene_output_invalid",
+                "scene_time_base_invalid",
+                "scene_timestamp_invalid",
+                "scene_timestamp_out_of_range",
+                "scene_timestamps_not_monotonic",
+            }
+            code = (
+                f"video_scene_{exc.reason_code}"
+                if exc.reason_code in known_reasons
+                else "video_scene_detection_failed"
+            )
+            raise TerminalWorkerError(code) from exc
+
+        return {
+            "scene_start_times": list(detected.scene_start_times),
+            "scene_count": detected.scene_count,
+            "truncated": detected.truncated,
+        }
 
     def _run_agent_workflow(
         self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
@@ -549,6 +653,8 @@ class WorkerEngine:
                 result = handler(task)
         except RetryableWorkerError:
             return self._schedule_retry_or_fail(task, lease=lease)
+        except TerminalWorkerError as exc:
+            return self._finish_failure(task, exc.error_code, lease=lease)
         except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
             return self._finish_failure(task, "handler_failed", lease=lease)
