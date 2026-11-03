@@ -190,7 +190,7 @@ Live queue refresh: PR #213 was opened from current main for the coordinated med
 
 Source review found a mismatch between the root Agent run input budget (up to 64,000 characters across a run) and the typed per-request provider contract (32,000 characters per provider call). A serialized prompt can include the registered tool catalog and accumulated observations, so one prompt can exceed the provider schema even while remaining inside the total-run budget. Before this correction, Pydantic validation could escape the orchestrator's sanitized provider-error handling.
 
-PR #215 centralizes the provider input limit and adds a pre-dispatch check that returns `budget_exhausted/provider_input_budget_exceeded` without calling the provider. It includes a regression test and operator documentation. The first exact-head Backend CI run exposed a Ruff import-spacing issue; that was corrected. Current head is `6c2aedaecd9195913507369568dcf99207dbc222`, with Backend CI, CI, and Defensive Python Scan queued/pending. This is not yet integrated or runtime-verified.
+PR #215 centralizes the provider input limit and adds a pre-dispatch check that returns `budget_exhausted/provider_input_budget_exceeded` without calling the provider. It includes a regression test and operator documentation. The first exact-head Backend CI run exposed a Ruff import-spacing issue; that was corrected. All three required workflows passed on current exact head `6c2aedaecd9195913507369568dcf99207dbc222`. This is tested on CI but not yet integrated or runtime-verified.
 
 PR #214 adds process-level emergency-stop/resume coverage to the separate-process API/worker smoke test. All three workflows (Backend CI, CI, Defensive Python Scan) passed on exact head `413164eb2b1021d8da1eb0c845a99e2422d49bd4`.
 
@@ -199,4 +199,14 @@ PR #214 adds process-level emergency-stop/resume coverage to the separate-proces
 
 PR #216 adds a read-only `verify_media_assets(database_path)` consistency gate for the sibling `content_assets/` directory. It compares each registered storage key, file size, and SHA-256 digest; rejects unsafe/symlinked paths; and counts unregistered entries without exposing asset identifiers or contents. It does not copy or delete media and requires API/worker writers to be stopped for a meaningful backup-point check.
 
-PR #216 exact head: `33f75abf6e1a1b015153f8223ea0bff9af3d6d28`. Backend CI and Defensive Python Scan are in progress; CI is pending. It is not yet tested or integrated.
+PR #216 exact head: `601166b5a931a18468f2bc055963af9ba2c9cd47`. A final review added a regression for a symlinked media root even when the registry is empty. Backend CI and Defensive Python Scan are in progress; CI is pending. It is not yet tested or integrated.
+
+
+### 8.10 Exact-head validation refresh
+
+- PR #215: Backend CI, CI, and Defensive Python Scan all passed on `6c2aedaecd9195913507369568dcf99207dbc222` after the Ruff import-order correction.
+- PR #216: latest head `601166b5a931a18468f2bc055963af9ba2c9cd47`; checks were queued/running at the latest observation. The previous head is superseded and must not be used for acceptance.
+- PR #212: all three required workflows passed on `c164847a84c11269643831752f344ca2183d536a`.
+- PR #213: all three required workflows passed on `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6`.
+- PR #214: all three required workflows passed on `413164eb2b1021d8da1eb0c845a99e2422d49bd4`.
+- Main remains `067177554ac923864981c11f80628e92aea0aa70`; no merge has been performed.
