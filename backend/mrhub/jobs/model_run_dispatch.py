@@ -110,6 +110,12 @@ class ModelRunWorkerHandler:
         except Exception:
             # The inference/tool loop may have partially completed. Never replay it.
             self.recovery.mark_interrupted(workflow_id, lease=lease)
+            with self.repository._connection() as connection:
+                connection.execute(
+                    """UPDATE idempotency_records SET status = 'unknown_outcome'
+                       WHERE task_id = ? AND status = 'running'""",
+                    (str(task.task_id),),
+                )
             current = self.jobs.get(task.task_id)
             if current is not None and current.status is TaskStatus.RUNNING:
                 self.jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
@@ -133,7 +139,7 @@ class ModelRunWorkerHandler:
             owner_user_id=owner_user_id,
             key=load_payload_key(),
         )
-        self.recovery.replace_encrypted_payload(
+        replaced = self.recovery.replace_encrypted_payload(
             workflow_id,
             owner_user_id=owner_user_id,
             task_id=str(task.task_id),
@@ -143,6 +149,8 @@ class ModelRunWorkerHandler:
                 "ciphertext_b64": encrypted.ciphertext_b64,
             },
         )
+        if not replaced:
+            raise PayloadEnvelopeError("Encrypted model-run result could not be stored")
         output_digest = hashlib.sha256(
             json.dumps(output, ensure_ascii=False, sort_keys=True,
                        separators=(",", ":")).encode("utf-8")
@@ -167,6 +175,21 @@ class ModelRunWorkerHandler:
         }
 
     def _fail_closed(self, task: TaskRecord, lease: WorkerLease) -> None:
+        with self.repository._connection() as connection:
+            row = connection.execute(
+                "SELECT workflow_id, status FROM workflow_runs WHERE task_id = ?",
+                (str(task.task_id),),
+            ).fetchone()
+        if row is not None and row["status"] in {"queued", "paused"}:
+            workflow_id = UUID(row["workflow_id"])
+            self.recovery.start_run(workflow_id, lease=lease)
+            self.recovery.finish_run(workflow_id, "failed", lease=lease)
         current = self.jobs.get(task.task_id)
         if current is not None and current.status is TaskStatus.RUNNING:
             self.jobs.transition(task.task_id, TaskStatus.FAILED, lease=lease)
+        with self.repository._connection() as connection:
+            connection.execute(
+                """UPDATE idempotency_records SET status = 'failed'
+                   WHERE task_id = ? AND status IN ('accepted', 'running')""",
+                (str(task.task_id),),
+            )
