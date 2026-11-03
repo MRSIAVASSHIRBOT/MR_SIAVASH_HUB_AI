@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Literal
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Annotated, Literal
 
 
 ShortText = Annotated[str, Field(max_length=40)]
