@@ -1,10 +1,17 @@
 import json
 import subprocess
+from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
-from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compose_prompt
+from mrhub.api.routes.video_intelligence import (
+    AnalysisPromptSynthesisRequest,
+    PromptCompositionRequest,
+    compose_prompt,
+    synthesize_video_prompt,
+)
 from mrhub.config import get_settings
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.repository import VideoBrandRepository
@@ -14,7 +21,12 @@ from mrhub.video_intelligence.schemas import (
     BrandIdentity,
     VideoAnalysisRequest,
 )
-from mrhub.video_intelligence.service import build_generation_prompt, probe_video
+from mrhub.video_intelligence.service import (
+    build_generation_prompt,
+    build_prompt_from_visual_analysis,
+    probe_video,
+)
+from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 
 
 def test_video_analysis_request_bounds_sources_and_duration():
@@ -313,3 +325,165 @@ def test_probe_video_accepts_valid_core_metadata(tmp_path, monkeypatch):
     assert result.height == 1080
     assert result.frame_rate == 29.97
     assert result.has_audio is True
+
+
+
+def _visual_analysis_fixture():
+    return VisualAnalysisResult.model_validate({
+        "style_summary": "Measured cinematic movement with controlled contrast",
+        "observations": [
+            {
+                "timestamp_seconds": 0.0,
+                "description": "A wide establishing composition with a single geometric subject",
+                "shot_scale": "wide",
+                "camera_movement": "slow_push",
+                "composition": "centered with generous negative space",
+                "lighting": "soft directional key light",
+                "color_notes": ["deep green", "warm neutral"],
+                "confidence": 0.91,
+            },
+            {
+                "timestamp_seconds": 5.0,
+                "description": "A close detail view with shallow depth of field",
+                "shot_scale": "close_up",
+                "camera_movement": "static",
+                "composition": "off-center detail framing",
+                "lighting": "soft rim light",
+                "color_notes": ["emerald"],
+                "confidence": 0.86,
+            },
+        ],
+    })
+
+
+def test_prompt_synthesis_maps_observations_to_bounded_output_timeline():
+    prompt = build_prompt_from_visual_analysis(
+        visual_analysis=_visual_analysis_fixture(),
+        source_duration_seconds=10.0,
+        duration_seconds=20,
+        aspect_ratio="9:16",
+        brand=BrandIdentity(
+            brand_name="MR_SIAVASH_IR_BOT",
+            colors=["#071A12", "#00C878"],
+            font_preferences=["Vazirmatn"],
+            tone="precise and educational",
+        ),
+        custom_changes={"visual_direction": "Use original abstract forms"},
+    )
+
+    assert "Create an original 20-second video" in prompt
+    assert "Beat 1 (0.0s–10.0s)" in prompt
+    assert "Beat 2 (10.0s–20.0s)" in prompt
+    assert "#00C878" in prompt
+    assert "Vazirmatn" in prompt
+    assert "Use original abstract forms" in prompt
+    assert "Audio was not analyzed" in prompt
+    assert "do not copy the source subject" in prompt.lower()
+
+
+def test_prompt_synthesis_rejects_invalid_source_duration():
+    with pytest.raises(ValueError):
+        build_prompt_from_visual_analysis(
+            visual_analysis=_visual_analysis_fixture(),
+            source_duration_seconds=0,
+            duration_seconds=10,
+            aspect_ratio="9:16",
+        )
+
+
+def test_analysis_prompt_synthesis_request_rejects_unbounded_custom_changes():
+    with pytest.raises(ValidationError):
+        AnalysisPromptSynthesisRequest(
+            asset_id="2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00",
+            custom_changes={f"key-{index}": "value" for index in range(13)},
+        )
+
+
+def test_owner_scoped_prompt_synthesis_uses_only_selected_analysis_asset(monkeypatch):
+    analysis_id = "8c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"
+    asset_id = "2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"
+    selected_result = {
+        "analysis_id": analysis_id,
+        "mode": "faithful_style_reconstruction",
+        "assets": [{
+            "asset_id": asset_id,
+            "analysis_window_seconds": 10.0,
+            "semantic_visual_analysis": {
+                "status": "completed",
+                "provider": "ollama",
+                "model": "vision-model",
+                **_visual_analysis_fixture().model_dump(mode="json"),
+            },
+        }],
+    }
+
+    class FakeJobs:
+        def get(self, owner_user_id, requested_id):
+            assert owner_user_id == "owner-1"
+            assert str(requested_id) == analysis_id
+            return {"status": "completed", "result": selected_result}
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.video_intelligence._analysis_jobs",
+        FakeJobs,
+    )
+    response = synthesize_video_prompt(
+        UUID(analysis_id),
+        AnalysisPromptSynthesisRequest(asset_id=UUID(asset_id)),
+        AuthenticatedUser(user_id="owner-1", username="owner"),
+    )
+
+    assert response["status"] == "composed"
+    assert response["execution"] == "not_started"
+    assert response["evidence"]["observation_count"] == 2
+    assert "Create an original 10-second video" in response["prompt"]
+
+
+def test_prompt_synthesis_rejects_unavailable_semantic_analysis(monkeypatch):
+    analysis_id = UUID("8c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    asset_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+
+    class FakeJobs:
+        def get(self, _owner_user_id, _requested_id):
+            return {
+                "status": "completed",
+                "result": {"assets": [{
+                    "asset_id": str(asset_id),
+                    "analysis_window_seconds": 10.0,
+                    "semantic_visual_analysis": {"status": "not_configured"},
+                }]},
+            }
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.video_intelligence._analysis_jobs",
+        FakeJobs,
+    )
+    with pytest.raises(HTTPException) as error:
+        synthesize_video_prompt(
+            analysis_id,
+            AnalysisPromptSynthesisRequest(asset_id=asset_id),
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+        )
+    assert error.value.status_code == 409
+
+
+def test_prompt_synthesis_hides_assets_not_in_analysis(monkeypatch):
+    analysis_id = UUID("8c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+
+    class FakeJobs:
+        def get(self, _owner_user_id, _requested_id):
+            return {"status": "completed", "result": {"assets": []}}
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.video_intelligence._analysis_jobs",
+        FakeJobs,
+    )
+    with pytest.raises(HTTPException) as error:
+        synthesize_video_prompt(
+            analysis_id,
+            AnalysisPromptSynthesisRequest(
+                asset_id=UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+            ),
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+        )
+    assert error.value.status_code == 404
