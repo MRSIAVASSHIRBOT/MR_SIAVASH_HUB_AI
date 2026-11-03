@@ -3,14 +3,12 @@ name: Continuous Development
 on:
   workflow_dispatch:
   schedule:
-    # Run every two hours; minute 23 avoids the busiest top-of-hour window.
     - cron: "23 */2 * * *"
 
 permissions:
   contents: write
   pull-requests: write
   issues: read
-  id-token: write
 
 concurrency:
   group: continuous-development
@@ -19,7 +17,7 @@ concurrency:
 jobs:
   develop:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -27,22 +25,68 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Run scheduled development cycle
-        uses: anomalyco/opencode/github@77fc88c8ade8e5a620ebbe1197f3a572d29ae91a
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
-        with:
-          model: openrouter/cohere/north-mini-code:free
-          prompt: |
-            You are the scheduled engineering agent for MR_SIAVASH_HUB_AI.
-            This run is an autonomous maintenance and incremental-development cycle, not a response to a user comment.
+      - name: Set up development branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "automation/continuous-development-${GITHUB_RUN_ID}"
 
-            1. Read AGENTS.md and the project documentation before editing.
-            2. Inspect recent commits, open issues and pull requests, existing CI, tests, and the current architecture.
-            3. Select exactly one highest-value, well-scoped improvement that is not already implemented or in progress. Prefer fixing a verified defect or completing a clearly documented incomplete capability; otherwise add one small, useful capability consistent with the architecture.
-            4. Make focused changes only on a dedicated branch named automation/continuous-development-<run-id>. Never commit to or push to the default branch.
-            5. Add or update tests for behavior changed. Run the most relevant tests, lint, and security checks available. Do not claim checks passed unless they actually ran and passed.
-            6. Open or update a pull request for review with a concise explanation, evidence, test results, risks, and remaining work. Do not merge the pull request.
-            7. If no safe, useful change can be justified, do not manufacture work; report the evidence and the next concrete priority.
-            8. Never expose secrets, weaken security controls, perform destructive operations, or make unrelated broad refactors.
-            Report only verified actions and exact blockers.
+      - name: Install OpenCode CLI
+        run: npm install --global opencode-ai@1.19.4
+
+      - name: Run one focused development cycle
+        shell: bash
+        env:
+          MODEL: openrouter/cohere/north-mini-code:free
+          OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::Repository secret MR_SIAVASH_HUB_AI is missing or empty."
+            exit 1
+          fi
+          opencode run --model "$MODEL" --title "Scheduled MR HUB development" "$(cat <<'PROMPT'
+          You are the scheduled engineering agent for MR_SIAVASH_HUB_AI.
+
+          Read AGENTS.md and project documentation first. Inspect the repository,
+          recent commits, open issues and pull requests, architecture, existing tests,
+          and CI. Select exactly one highest-value, small, verifiable improvement
+          that is not already implemented or in progress. Prefer fixing a verified
+          defect or completing a documented incomplete capability. Otherwise add
+          one small capability consistent with existing architecture.
+
+          Work only in the current automation branch. Do not change workflow
+          permissions, secrets, deployment settings, or security controls. Never
+          expose credentials, weaken security, perform destructive operations, or
+          make unrelated refactors. Add/update tests. Run relevant tests and lint
+          commands discovered from the project documentation. Do not claim checks
+          passed unless they actually pass. If no safe useful change is justified,
+          leave the tree unchanged and explain why. Summarize exact files changed,
+          tests and results, risks, and next priority.
+          PROMPT
+          )"
+
+      - name: Validate changed files
+        id: changes
+        shell: bash
+        run: |
+          git status --short
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push reviewed changes
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add -A
+          git commit -m "chore: scheduled incremental development"
+          git push --set-upstream origin "automation/continuous-development-${GITHUB_RUN_ID}"
+          gh pr create \
+            --title "Scheduled development: run ${GITHUB_RUN_ID}" \
+            --body "Automated, focused development change. Review the diff and CI results before merging. This PR was not merged automatically." \
+            --base "${GITHUB_REF_NAME}" \
+            --head "automation/continuous-development-${GITHUB_RUN_ID}"
