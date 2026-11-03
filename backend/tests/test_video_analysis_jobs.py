@@ -1,6 +1,8 @@
 import base64
 from uuid import UUID
 
+from mrhub.jobs.leases import WorkerLease
+
 import pytest
 
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
@@ -79,9 +81,21 @@ def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(
     assert str(analysis_id) == accepted["analysis_id"]
     assert payload["source_asset_ids"] == ["2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"]
 
+    lease_expiry = "2099-01-01T00:00:00+00:00"
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, lease_owner, lease_expires_at, execution_token
+            ) VALUES (?, ?, ?, ?)""",
+            (str(task_id), "worker-a", lease_expiry, 1),
+        )
+    lease = WorkerLease(
+        task_id=str(task_id), owner="worker-a",
+        fencing_token=1, expires_at=lease_expiry,
+    )
     repository.finish(
         task_id, owner, status="completed",
-        result={"semantic_visual_analysis": False},
+        result={"semantic_visual_analysis": False}, lease=lease,
     )
     record = repository.get(owner, analysis_id)
     assert record["status"] == "completed"
