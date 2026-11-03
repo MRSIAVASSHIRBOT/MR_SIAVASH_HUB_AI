@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from mrhub.domain.tasks import RiskClass, TaskRecord
+from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import (
@@ -20,9 +20,16 @@ from mrhub.jobs.payload_envelope import (
 )
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
 
+MAX_ACTIVE_VIDEO_ANALYSES_PER_OWNER = 2
+MAX_ACTIVE_VIDEO_ANALYSES_GLOBAL = 25
+
 
 class VideoAnalysisConflict(ValueError):
     """Raised when an idempotency key is reused for another analysis."""
+
+
+class VideoAnalysisCapacityExceeded(ValueError):
+    """Raised when bounded video-analysis admission capacity is exhausted."""
 
 
 class VideoAnalysisJobRepository:
@@ -58,13 +65,6 @@ class VideoAnalysisJobRepository:
             risk_class=RiskClass.LOW,
             description="Owner-requested bounded video analysis",
         )
-        envelope = encrypt_payload(
-            request_data,
-            workflow_id=str(analysis_id),
-            task_id=str(task.task_id),
-            owner_user_id=owner_user_id,
-            key=load_payload_key(),
-        )
         now = self._now()
         scope = self._scope(owner_user_id)
 
@@ -88,6 +88,46 @@ class VideoAnalysisJobRepository:
                 if row is None:
                     raise VideoAnalysisConflict("Existing analysis is unavailable")
                 return self._record(row), False
+
+            active_owner = connection.execute(
+                """SELECT COUNT(*) AS total
+                   FROM video_analysis_runs AS r
+                   JOIN tasks AS t ON t.task_id = r.task_id
+                   WHERE r.owner_user_id = ?
+                     AND r.status IN ('accepted', 'running')
+                     AND t.status IN (?, ?, ?)""",
+                (
+                    owner_user_id,
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.RUNNING.value,
+                    TaskStatus.WAITING_APPROVAL.value,
+                ),
+            ).fetchone()
+            if int(active_owner["total"]) >= MAX_ACTIVE_VIDEO_ANALYSES_PER_OWNER:
+                raise VideoAnalysisCapacityExceeded("Owner video-analysis capacity reached")
+
+            active_global = connection.execute(
+                """SELECT COUNT(*) AS total
+                   FROM video_analysis_runs AS r
+                   JOIN tasks AS t ON t.task_id = r.task_id
+                   WHERE r.status IN ('accepted', 'running')
+                     AND t.status IN (?, ?, ?)""",
+                (
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.RUNNING.value,
+                    TaskStatus.WAITING_APPROVAL.value,
+                ),
+            ).fetchone()
+            if int(active_global["total"]) >= MAX_ACTIVE_VIDEO_ANALYSES_GLOBAL:
+                raise VideoAnalysisCapacityExceeded("Global video-analysis capacity reached")
+
+            envelope = encrypt_payload(
+                request_data,
+                workflow_id=str(analysis_id),
+                task_id=str(task.task_id),
+                owner_user_id=owner_user_id,
+                key=load_payload_key(),
+            )
 
             connection.execute(
                 """INSERT INTO tasks (
