@@ -88,22 +88,9 @@ jobs:
           $ErrorActionPreference = "Stop"
           $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-launcher-failure.sqlite3"
           $env:MRH_REQUIRE_WORKER_FOR_READINESS = "true"
-          $listenerError = Join-Path $env:RUNNER_TEMP "port-listener.err.log"
-          $listenerCode = "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',8000)); s.listen(); time.sleep(90)"
-          $listenerArguments = '-c "' + $listenerCode + '"'
-          $listener = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList $listenerArguments -PassThru -WindowStyle Hidden -RedirectStandardError $listenerError
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 8000)
+          $listener.Start()
           try {
-            Start-Sleep -Seconds 2
-            $listener.Refresh()
-            if ($listener.HasExited) {
-              $listenerOutput = if (Test-Path $listenerError) { Get-Content $listenerError -Raw } else { "No listener stderr was captured." }
-              throw "Port-occupying listener exited before the launcher test began. $listenerOutput"
-            }
-            $portOwner = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-            if (-not $portOwner -or $portOwner.OwningProcess -ne $listener.Id) {
-              throw "Test listener does not own the API port; refusing an invalid failure test."
-            }
             & pwsh -NoProfile -File .\scripts\start-local.ps1 -SkipInstall
             $launcherExit = $LASTEXITCODE
             if ($launcherExit -eq 0) {
@@ -122,7 +109,5 @@ jobs:
             Write-Host "Failed-startup cleanup smoke test passed."
           }
           finally {
-            if (-not $listener.HasExited) {
-              Stop-Process -Id $listener.Id -Force -ErrorAction SilentlyContinue
-            }
+            $listener.Stop()
           }
