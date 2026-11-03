@@ -5,7 +5,7 @@ from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compos
 from mrhub.config import get_settings
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.repository import VideoBrandRepository
-from mrhub.video_intelligence.schemas import AnalysisMode, BeatInstruction, BrandIdentity, VideoAnalysisRequest
+from mrhub.video_intelligence.schemas import (\n    AnalysisMode,\n    BeatInstruction,\n    BrandIdentity,\n    VideoAnalysisRequest,\n)
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 
