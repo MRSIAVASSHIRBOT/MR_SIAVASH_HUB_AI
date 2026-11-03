@@ -14,8 +14,8 @@ from mrhub.config import get_settings
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.repository import VideoBrandRepository
-from mrhub.video_intelligence.schemas import BeatInstruction, BrandIdentity
-from mrhub.video_intelligence.service import build_generation_prompt
+from mrhub.video_intelligence.schemas import BeatInstruction, BrandIdentity, VideoTechnicalMetadata
+from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 router = APIRouter(
     prefix="/video-intelligence",
@@ -125,3 +125,23 @@ def delete_brand(
 ) -> None:
     if not _brands().delete(user.user_id, profile_id):
         raise HTTPException(status_code=404, detail="Brand profile not found")
+
+
+
+@router.get("/assets/{asset_id}/metadata", response_model=VideoTechnicalMetadata)
+def inspect_video_asset(
+    asset_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> VideoTechnicalMetadata:
+    """Probe technical metadata for a video asset owned by the authenticated user."""
+    repository = MediaAssetRepository(get_settings().database_path)
+    asset = repository.get(user.user_id, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Media asset not found")
+    if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
+        raise HTTPException(status_code=415, detail="Asset is not a supported video")
+    try:
+        path = repository.file_path(str(asset["storage_key"]))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Media asset not found") from exc
+    return probe_video(path)
