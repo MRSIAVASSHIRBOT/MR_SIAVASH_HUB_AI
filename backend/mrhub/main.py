@@ -9,8 +9,8 @@ from fastapi.staticfiles import StaticFiles
 
 from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.agent_context import router as agent_context_router
-from mrhub.api.routes.agent_run import router as agent_run_router
 from mrhub.api.routes.agent_model_runs import router as agent_model_runs_router
+from mrhub.api.routes.agent_run import router as agent_run_router
 from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.capabilities import router as capabilities_router
