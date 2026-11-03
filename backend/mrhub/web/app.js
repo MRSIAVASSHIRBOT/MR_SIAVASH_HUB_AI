@@ -673,6 +673,9 @@
   $("#agent-queue-button").addEventListener("click", queueAgentRun);
   $("#agent-queued-refresh-button").addEventListener("click", refreshQueuedAgentRun);
   $("#agent-queued-cancel-button").addEventListener("click", cancelQueuedAgentRun);
+  $("#agent-queued-workflow-id").addEventListener("input", (event) => {
+    $("#agent-queued-refresh-button").disabled = !event.currentTarget.value.trim();
+  });
 
   function readAgentRunPayload(form) {
     const values = new FormData(form);
