@@ -111,14 +111,12 @@ class VideoAnalysisWorkerHandler:
     def _fail(
         self, task: TaskRecord, owner_user_id: str | None,
         lease: WorkerLease, error_code: str
-    ) -> dict[str, object]:
+    ) -> None:
         if owner_user_id is not None:
             self.jobs.finish(
                 task.task_id, owner_user_id, status="failed",
                 error_code=error_code, lease=lease
             )
-        return {
-            "analysis_id": None,
-            "status": "failed",
-            "error_code": error_code[:80],
-        }
+        # Let WorkerEngine persist the matching terminal task failure. Exception
+        # text is deliberately generic; the analysis row stores only the code.
+        raise ValueError("Video analysis execution failed")
