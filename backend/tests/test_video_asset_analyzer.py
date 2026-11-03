@@ -2,7 +2,6 @@ import uuid
 
 import pytest
 
-from mrhub.video_intelligence import analyzer as analyzer_module
 from mrhub.video_intelligence.analyzer import (
     VideoAssetAnalysisError,
     VideoAssetAnalyzer,
@@ -74,9 +73,9 @@ def test_analyzer_composes_owned_probe_frames_and_scenes_with_one_bounded_durati
         calls["scenes"] = (duration_seconds, threshold, max_scene_changes)
         return scenes
 
-    monkeypatch.setattr(analyzer_module, "probe_video", fake_probe)
-    monkeypatch.setattr(analyzer_module, "extract_video_frames", fake_frames)
-    monkeypatch.setattr(analyzer_module, "detect_scene_boundaries", fake_scenes)
+    monkeypatch.setattr("mrhub.video_intelligence.analyzer.probe_video", fake_probe)
+    monkeypatch.setattr("mrhub.video_intelligence.analyzer.extract_video_frames", fake_frames)
+    monkeypatch.setattr("mrhub.video_intelligence.analyzer.detect_scene_boundaries", fake_scenes)
 
     result = analyzer.analyze(
         "owner-a",
@@ -105,8 +104,7 @@ def test_analyzer_does_not_probe_an_asset_outside_owner_scope(tmp_path, monkeypa
     analyzer, repository, _ = make_analyzer(tmp_path, record=None)
     repository.get = lambda _owner, _asset: None
     monkeypatch.setattr(
-        analyzer_module,
-        "probe_video",
+        "mrhub.video_intelligence.analyzer.probe_video",
         lambda _path: pytest.fail("must not probe an asset not returned to this owner"),
     )
 
@@ -117,8 +115,7 @@ def test_analyzer_does_not_probe_an_asset_outside_owner_scope(tmp_path, monkeypa
 def test_analyzer_rejects_non_video_asset_before_running_media_tools(tmp_path, monkeypatch):
     analyzer, _, _ = make_analyzer(tmp_path, {"media_type": "image/png"})
     monkeypatch.setattr(
-        analyzer_module,
-        "probe_video",
+        "mrhub.video_intelligence.analyzer.probe_video",
         lambda _path: pytest.fail("must not probe an image asset"),
     )
 
@@ -129,13 +126,11 @@ def test_analyzer_rejects_non_video_asset_before_running_media_tools(tmp_path, m
 def test_analyzer_fails_closed_when_technical_metadata_is_unavailable(tmp_path, monkeypatch):
     analyzer, _, _ = make_analyzer(tmp_path)
     monkeypatch.setattr(
-        analyzer_module,
-        "probe_video",
+        "mrhub.video_intelligence.analyzer.probe_video",
         lambda _path: VideoTechnicalMetadata(metadata_status="ffprobe_unavailable"),
     )
     monkeypatch.setattr(
-        analyzer_module,
-        "extract_video_frames",
+        "mrhub.video_intelligence.analyzer.extract_video_frames",
         lambda *args, **kwargs: pytest.fail("frame extraction must not run"),
     )
 
@@ -168,8 +163,7 @@ def test_analyzer_translates_frame_extraction_failures_to_sanitized_codes(
 ):
     analyzer, _, _ = make_analyzer(tmp_path)
     monkeypatch.setattr(
-        analyzer_module,
-        "probe_video",
+        "mrhub.video_intelligence.analyzer.probe_video",
         lambda _path: VideoTechnicalMetadata(
             duration_seconds=5,
             width=640,
@@ -179,8 +173,7 @@ def test_analyzer_translates_frame_extraction_failures_to_sanitized_codes(
         ),
     )
     monkeypatch.setattr(
-        analyzer_module,
-        "extract_video_frames",
+        "mrhub.video_intelligence.analyzer.extract_video_frames",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             FrameExtractionError("extraction_timeout")
         ),
@@ -195,8 +188,7 @@ def test_analyzer_translates_scene_detection_failures_to_sanitized_codes(
 ):
     analyzer, _, _ = make_analyzer(tmp_path)
     monkeypatch.setattr(
-        analyzer_module,
-        "probe_video",
+        "mrhub.video_intelligence.analyzer.probe_video",
         lambda _path: VideoTechnicalMetadata(
             duration_seconds=5,
             width=640,
@@ -206,13 +198,11 @@ def test_analyzer_translates_scene_detection_failures_to_sanitized_codes(
         ),
     )
     monkeypatch.setattr(
-        analyzer_module,
-        "extract_video_frames",
+        "mrhub.video_intelligence.analyzer.extract_video_frames",
         lambda *args, **kwargs: [],
     )
     monkeypatch.setattr(
-        analyzer_module,
-        "detect_scene_boundaries",
+        "mrhub.video_intelligence.analyzer.detect_scene_boundaries",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             SceneDetectionError("detection_timeout")
         ),
