@@ -128,8 +128,8 @@ This backlog converts the audit into ordered work packages. It is a plan and evi
 |---|---|---|---|---|---|
 | WP-00 | Mainline and change control | None | Current audit, branch/PR inventory, one status vocabulary, exact-SHA evidence | Every integration starts from current main; no stale branch or unreviewed migration is replayed | IN_PROGRESS |
 | WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | IN_PROGRESS (source review + runbook PR #213) |
-| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | IN_PROGRESS (runtime test PR #214) |
-| WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | PLANNED |
+| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | IN_PROGRESS (runtime test PR #214; exact-head CI pending) |
+| WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | IN_PROGRESS (provider prompt budget fix PR #215) |
 | WP-04 | Memory and knowledge integrity | WP-03 | Source-content verification, provenance checks, bounded context assembly and retrieval evaluation | Owner isolation, deletion/export, provenance, stale-source behavior and prompt-injection boundaries pass tests | PLANNED |
 | WP-05 | Tools and MCP governance | WP-02, WP-03 | Compatibility/integrity checks, least-privilege grants, tool lifecycle and audit coverage | Invalid schemas, denied grants, timeout, oversized output and untrusted tool results fail closed | PLANNED |
 | WP-06 | NEXUS and Discovery | WP-02, WP-03, WP-05 | Evidence-backed repository analysis; source-attributed research records; read-only default | No unapproved execution or network access; provenance, bounded resource use and untrusted-content handling are tested | PLANNED |
@@ -184,3 +184,12 @@ Live queue refresh: PR #213 was opened from current main for the coordinated med
 - PR #213 now has successful exact-head Backend CI, CI, and Defensive Python Scan on `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6`; the runbook itself remains unexercised on the target Windows device.
 - PR #214 exact head is `413164eb2b1021d8da1eb0c845a99e2422d49bd4`; its workflows have not yet been returned by the Actions API at this observation.
 - Main remains `067177554ac923864981c11f80628e92aea0aa70`. No PR in this delivery batch has been merged.
+
+
+### 8.8 AI Core/provider budget review
+
+Source review found a mismatch between the root Agent run input budget (up to 64,000 characters across a run) and the typed per-request provider contract (32,000 characters per provider call). A serialized prompt can include the registered tool catalog and accumulated observations, so one prompt can exceed the provider schema even while remaining inside the total-run budget. Before this correction, Pydantic validation could escape the orchestrator's sanitized provider-error handling.
+
+PR #215 centralizes the provider input limit and adds a pre-dispatch check that returns `budget_exhausted/provider_input_budget_exceeded` without calling the provider. It includes a regression test and operator documentation. Exact-head CI is pending; this is not yet integrated or runtime-verified.
+
+PR #214 adds process-level emergency-stop/resume coverage to the separate-process API/worker smoke test. Exact-head Backend CI and CI remain in progress at this observation; Defensive Python Scan has passed.
