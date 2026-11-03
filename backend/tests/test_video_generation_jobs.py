@@ -301,3 +301,62 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
         )
     assert repository.get("owner-a", generation_id)["status"] == "running"
     assert media.get("owner-a", UUID(asset_id)) is None
+
+
+def test_generation_task_waits_for_action_bound_owner_approval(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from mrhub.domain.tasks import RiskClass, TaskStatus
+    from mrhub.jobs.worker import WorkerEngine, action_fingerprint
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"v" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("approval-key")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    task = repository.tasks.get(task_id)
+
+    assert linked["created"] is True
+    assert task.task_type == "video.generation"
+    assert task.risk_class is RiskClass.HIGH
+    assert task.status is TaskStatus.WAITING_APPROVAL
+
+    provider_lookups = []
+    monkeypatch.setattr(
+        video_generation_registry,
+        "get",
+        lambda provider, model: provider_lookups.append((provider, model))
+        or (_ for _ in ()).throw(LookupError("provider unavailable")),
+    )
+    worker = WorkerEngine(repository.tasks)
+    assert worker.run_once() is None
+    assert provider_lookups == []
+    assert repository.tasks.get(task_id).status is TaskStatus.WAITING_APPROVAL
+
+    now = datetime.now(UTC).isoformat()
+    repository.tasks.record_task_approval(
+        {
+            "approval_id": str(uuid4()),
+            "task_id": str(task_id),
+            "decision": "approved",
+            "approver_id": "owner-a",
+            "action_fingerprint": action_fingerprint(task),
+            "reason": "Owner approved this exact generation request",
+            "created_at": now,
+        },
+        expected_status=TaskStatus.WAITING_APPROVAL,
+        target_status=TaskStatus.QUEUED,
+    )
+    assert repository.tasks.get(task_id).status is TaskStatus.QUEUED
+
+    worker.run_once()
+    assert provider_lookups == [("local", "renderer-v1")]
+    assert repository.get("owner-a", generation_id)["status"] == "failed"
