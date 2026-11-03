@@ -59,6 +59,7 @@
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem("mrh_video_analysis_id");
     activeVideoAnalysisId = null;
+    canSubmitVideoRender = false;
     clearVideoRenderState();
     pendingVideoAnalysisKey = null;
     pendingVideoAnalysisFingerprint = null;
@@ -668,14 +669,14 @@
         { method: "DELETE" }
       );
       renderVideoRender(result);
-      message(
-        "#video-render-message",
-        result.cancellation_requested
-          ? "درخواست لغو ثبت شد؛ Worker پس از مشاهدهٔ آن عملیات را نهایی می‌کند."
-          : "رندر لغو یا قبلاً نهایی شده است.",
-        "success"
-      );
       await refreshVideoRender();
+      if (result.cancellation_requested) {
+        message(
+          "#video-render-message",
+          "درخواست لغو ثبت شد؛ Worker پس از مشاهدهٔ آن عملیات را نهایی می‌کند.",
+          "success"
+        );
+      }
     } catch (error) {
       message("#video-render-message", error.message, "error");
       button.disabled = false;
@@ -782,6 +783,7 @@
       });
       activeVideoAnalysisId = accepted.analysis_id;
       sessionStorage.setItem("mrh_video_analysis_id", activeVideoAnalysisId);
+      canSubmitVideoRender = false;
       clearVideoRenderState();
       pendingVideoAnalysisKey = null;
       pendingVideoAnalysisFingerprint = null;
@@ -1015,6 +1017,7 @@
         $("#video-analysis-refresh").disabled = false;
         await refreshVideoAnalysis();
       } else {
+        canSubmitVideoRender = false;
         clearVideoRenderState();
       }
     } catch (error) {
