@@ -1,17 +1,18 @@
 # Defensive Python Static Analysis
 
-The repository includes Bandit in its development toolchain and runs a bounded scan of the application package on pull requests, pushes to `main`, manual dispatch, and a weekly schedule.
+The repository runs Bandit as a **blocking CI gate** for the application package on pull requests targeting `main`, pushes to `main`, manual dispatch, and a weekly schedule.
 
-## Scope
+## Scope and enforcement
 
-- Target: `backend/mrhub` only; tests and generated files are excluded from this scan.
-- Minimum reported severity: medium.
-- Minimum reported confidence: medium.
+- Target: `backend/mrhub` only; tests and generated files are excluded.
+- Minimum reported severity: medium (`--severity-level medium`).
+- Minimum reported confidence: medium (`--confidence-level medium`).
+- Enforcement: the workflow does **not** use `--exit-zero`; actionable findings at or above both thresholds fail the job.
 - Execution: static AST-based checks; application modules are not imported or executed by the scanner.
 - Permissions: GitHub Actions receives `contents: read` only.
-- Reporting: findings appear in the workflow log.
+- Reporting: findings and their locations appear in the workflow log.
 
-The initial workflow uses Bandit's report-only mode (`--exit-zero`). This intentionally establishes a baseline without unexpectedly blocking development on pre-existing findings. A finding is not automatically a confirmed vulnerability; validate its context and add a regression test when fixing it. Once the baseline has been reviewed, selected high-confidence rules can be promoted to a blocking gate.
+A Bandit finding is a static-analysis signal, not automatically a confirmed vulnerability. Review the surrounding code and data flow before changing behavior. Suppressions must remain narrow, local to the relevant finding, and include a concise explanation of why the specific use is safe. Do not suppress a finding merely to make CI green; prefer a safer implementation and a regression test where practical.
 
 ## Relationship to existing checks
 
