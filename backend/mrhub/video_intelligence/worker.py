@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from threading import Event
 from uuid import UUID
 
