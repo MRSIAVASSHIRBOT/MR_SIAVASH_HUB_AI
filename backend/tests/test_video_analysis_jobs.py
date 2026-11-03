@@ -83,6 +83,10 @@ def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(
     lease_expiry = "2099-01-01T00:00:00+00:00"
     with repository.tasks._connection() as connection:
         connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
             """INSERT INTO worker_executions (
                 task_id, lease_owner, lease_expires_at, execution_token
             ) VALUES (?, ?, ?, ?)""",
