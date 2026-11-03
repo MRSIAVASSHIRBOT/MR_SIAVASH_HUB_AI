@@ -177,3 +177,69 @@ def test_detect_scene_boundaries_rejects_timestamp_beyond_clip_duration(
     with pytest.raises(scenes.SceneDetectionError) as error:
         scenes.detect_scene_boundaries(source, duration_seconds=4)
     assert error.value.reason_code == "scene_timestamp_out_of_range"
+
+
+
+def test_detect_scene_boundaries_rejects_oversized_framehash_output(
+    monkeypatch, tmp_path
+):
+    source = _source(tmp_path)
+    monkeypatch.setattr(scenes.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(
+        scenes.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, b"x" * (scenes._MAX_FRAMEHASH_OUTPUT_BYTES + 1), b""
+        ),
+    )
+
+    with pytest.raises(scenes.SceneDetectionError) as error:
+        scenes.detect_scene_boundaries(source, duration_seconds=5)
+    assert error.value.reason_code == "scene_output_too_large"
+
+
+def test_detect_scene_boundaries_rejects_missing_or_oversized_source(
+    monkeypatch, tmp_path
+):
+    missing = tmp_path / "missing.mp4"
+    with pytest.raises(scenes.SceneDetectionError) as error:
+        scenes.detect_scene_boundaries(missing, duration_seconds=5)
+    assert error.value.reason_code == "source_missing"
+
+    source = _source(tmp_path)
+    monkeypatch.setattr(scenes, "_MAX_SOURCE_BYTES", 4)
+    monkeypatch.setattr(
+        scenes.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("FFmpeg must not run"),
+    )
+    with pytest.raises(scenes.SceneDetectionError) as error:
+        scenes.detect_scene_boundaries(source, duration_seconds=5)
+    assert error.value.reason_code == "source_size_out_of_range"
+
+
+def test_detect_scene_boundaries_rejects_missing_ffmpeg(monkeypatch, tmp_path):
+    source = _source(tmp_path)
+    monkeypatch.setattr(scenes.shutil, "which", lambda _name: None)
+
+    with pytest.raises(scenes.SceneDetectionError) as error:
+        scenes.detect_scene_boundaries(source, duration_seconds=5)
+    assert error.value.reason_code == "ffmpeg_unavailable"
+
+
+def test_detect_scene_boundaries_rejects_non_monotonic_timestamps(
+    monkeypatch, tmp_path
+):
+    source = _source(tmp_path)
+    monkeypatch.setattr(scenes.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(
+        scenes.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, _framehash(72, 48), b""
+        ),
+    )
+
+    with pytest.raises(scenes.SceneDetectionError) as error:
+        scenes.detect_scene_boundaries(source, duration_seconds=4)
+    assert error.value.reason_code == "scene_timestamps_not_monotonic"
