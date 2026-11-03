@@ -164,7 +164,7 @@ def test_render_output_registration_completes_job_atomically(tmp_path, monkeypat
 
 
 def test_render_output_registration_rejects_stale_worker_lease(tmp_path, monkeypatch):
-    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    _analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
     jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
     media = MediaAssetRepository(tmp_path / "render.sqlite")
     accepted, _ = jobs.submit("owner-a", analysis_id, "render-stale-key")
