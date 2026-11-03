@@ -4,6 +4,8 @@ import sqlite3
 
 import pytest
 
+import pytest
+
 from mrhub.operations.backup import BackupError, backup_database, restore_database
 
 
