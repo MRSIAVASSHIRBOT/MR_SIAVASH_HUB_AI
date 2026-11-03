@@ -33,6 +33,7 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
+- `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. Requires an owned analysis and does not start video generation.
 
 ## Analysis scope and remaining work
 
@@ -42,7 +43,7 @@ Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-mo
 
 The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
-Audio transcription, OCR, dedicated motion analysis, prompt synthesis from semantic results, operator UI, production generation handoff, and end-to-end rendering remain unimplemented. Windows/Ollama execution still requires validation on the target machine.
+Audio transcription, OCR, dedicated motion analysis, automatic brand-profile application, operator UI, production generation handoff, and end-to-end rendering remain unimplemented. Prompt composition returns text and timeline metadata only; it never invokes a generator. Windows/Ollama execution still requires validation on the target machine.
 
 ## Security boundaries
 
