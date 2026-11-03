@@ -156,16 +156,11 @@ class VideoGenerationJobRepository:
 
     def enqueue(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         """Atomically bind a prepared generation to one durable worker task."""
-        task = TaskRecord(
-            task_type="video.generation",
-            risk_class=RiskClass.HIGH,
-            description="Owner-requested video generation provider handoff",
-        )
         now = self._now()
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             job = connection.execute(
-                """SELECT status FROM video_generation_jobs
+                """SELECT status, provider, model FROM video_generation_jobs
                    WHERE generation_id = ? AND owner_user_id = ?""",
                 (str(generation_id), owner_user_id),
             ).fetchone()
@@ -180,6 +175,14 @@ class VideoGenerationJobRepository:
                 return {"generation_id": str(generation_id), "task_id": existing["task_id"], "status": str(job["status"]), "created": False}
             if job["status"] != "prepared":
                 raise ValueError("Only prepared generation jobs can be enqueued")
+            task = TaskRecord(
+                task_type="video.generation",
+                risk_class=RiskClass.HIGH,
+                description=(
+                    f"Owner-requested generation {generation_id} "
+                    f"via {job['provider']}/{job['model']}"
+                ),
+            )
             connection.execute(
                 """INSERT INTO tasks (
                     task_id, task_type, status, risk_class, created_at, updated_at, description
