@@ -14,7 +14,12 @@ from fastapi.responses import FileResponse
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.media.repository import MAX_OUTPUT_BYTES, MAX_UPLOAD_BYTES, MediaAssetRepository
+from mrhub.media.repository import (
+    MAX_OUTPUT_BYTES,
+    MAX_UPLOAD_BYTES,
+    MediaAssetBusy,
+    MediaAssetRepository,
+)
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 
@@ -302,6 +307,11 @@ def delete_asset(
     repository = _repository()
     try:
         keys = repository.delete(user.user_id, asset_id)
+    except MediaAssetBusy as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Media asset is currently being processed",
+        ) from exc
     except sqlite3.IntegrityError as exc:
         raise HTTPException(
             status_code=409,
@@ -309,12 +319,9 @@ def delete_asset(
         ) from exc
     if keys is None:
         raise HTTPException(status_code=404, detail="Media asset not found")
-    cleanup_failed = False
-    for key in keys:
-        try:
-            repository.file_path(key).unlink(missing_ok=True)
-        except OSError:
-            cleanup_failed = True
+    # Retry both this deletion and any previously interrupted cleanup for this owner.
+    pending_cleanup = repository.cleanup_pending_files(user.user_id)
+    cleanup_failed = pending_cleanup > 0
     _audit(
         repository,
         user,
