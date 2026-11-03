@@ -128,9 +128,13 @@ def submit_model_run(
             "context_sources": context_sources,
             "context_summary": {
                 "passage_count": context.get("passage_count", 0),
-                "knowledge_freshness_policy": context.get("knowledge_freshness_policy", "include_all"),
+                "knowledge_freshness_policy": context.get(
+                    "knowledge_freshness_policy", "include_all"
+                ),
                 "excluded_stale_knowledge_count": context.get("excluded_stale_knowledge_count", 0),
-                "excluded_unreviewed_knowledge_count": context.get("excluded_unreviewed_knowledge_count", 0),
+                "excluded_unreviewed_knowledge_count": context.get(
+                    "excluded_unreviewed_knowledge_count", 0
+                ),
             },
         },
         workflow_id=str(workflow_id),
@@ -175,7 +179,9 @@ def submit_model_run(
         "context_passage_count": context.get("passage_count", 0),
         "knowledge_freshness_policy": context.get("knowledge_freshness_policy", "include_all"),
         "excluded_stale_knowledge_count": context.get("excluded_stale_knowledge_count", 0),
-        "excluded_unreviewed_knowledge_count": context.get("excluded_unreviewed_knowledge_count", 0),
+        "excluded_unreviewed_knowledge_count": context.get(
+            "excluded_unreviewed_knowledge_count", 0
+        ),
     }
 
 
