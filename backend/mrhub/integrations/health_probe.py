@@ -1,6 +1,6 @@
 """Shared bounded health probing for optional local integrations."""
 
-import ipaddress
+import ipaddress  # noqa: I001
 import re
 from urllib.parse import urlsplit, urlunsplit
 
