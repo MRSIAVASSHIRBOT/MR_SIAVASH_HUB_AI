@@ -87,7 +87,7 @@ class VideoAnalysisWorkerHandler:
             except FrameExtractionError as exc:
                 return self._fail(task, owner_user_id, lease, exc.reason_code)
             except SceneDetectionError as exc:
-                return self._fail(task, owner_user_id, exc.reason_code)
+                return self._fail(task, owner_user_id, lease, exc.reason_code)
 
             semantic = analyze_sampled_frames(
                 frames,
