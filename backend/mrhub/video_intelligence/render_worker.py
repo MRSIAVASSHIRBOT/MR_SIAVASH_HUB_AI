@@ -173,7 +173,7 @@ class VideoRenderWorkerHandler:
                 error_code=code, lease=lease,
             )
             raise ValueError("Video render execution failed") from exc
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - sanitize unexpected worker-boundary failures
             if output_path is not None:
                 output_path.unlink(missing_ok=True)
             self.jobs.finish(
