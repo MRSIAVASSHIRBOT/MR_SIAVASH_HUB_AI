@@ -93,6 +93,12 @@ class AgentContextAssembler:
             if include_knowledge
             else []
         )
+        knowledge_candidates_scanned = len(knowledge_results)
+        knowledge_candidate_limit = knowledge_search_limit if include_knowledge else 0
+        knowledge_candidates_may_be_truncated = (
+            include_knowledge
+            and knowledge_candidates_scanned >= knowledge_candidate_limit
+        )
         excluded_stale_knowledge_count = 0
         excluded_unreviewed_knowledge_count = 0
         if knowledge_freshness_policy == "owner_reviewed_current_only":
@@ -155,6 +161,9 @@ class AgentContextAssembler:
             "retrieval_method": "sqlite_fts5",
             "context_enabled": True,
             "knowledge_freshness_policy": knowledge_freshness_policy,
+            "knowledge_candidates_scanned": knowledge_candidates_scanned,
+            "knowledge_candidate_limit": knowledge_candidate_limit,
+            "knowledge_candidates_may_be_truncated": knowledge_candidates_may_be_truncated,
             "excluded_stale_knowledge_count": excluded_stale_knowledge_count,
             "excluded_unreviewed_knowledge_count": excluded_unreviewed_knowledge_count,
             "limits": {
