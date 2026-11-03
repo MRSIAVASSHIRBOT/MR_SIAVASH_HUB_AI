@@ -29,6 +29,10 @@ class MediaAssetBusy(RuntimeError):
     """Raised when an asset is currently being modified by a media operation."""
 
 
+class MediaAssetOwnershipConflict(RuntimeError):
+    """Raised when deleting an asset could cascade into another owner's media."""
+
+
 class MediaAssetRepository:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -254,6 +258,16 @@ class MediaAssetRepository:
                 return None
             if row["processing_status"] == "processing":
                 raise MediaAssetBusy("Media asset is currently being processed")
+            if row["source_asset_id"] is None:
+                foreign_child = connection.execute(
+                    "SELECT 1 FROM content_assets "
+                    "WHERE source_asset_id = ? AND owner_user_id <> ? LIMIT 1",
+                    (str(asset_id), owner_user_id),
+                ).fetchone()
+                if foreign_child is not None:
+                    raise MediaAssetOwnershipConflict(
+                        "Media asset has a derivative owned by another user"
+                    )
             if row["source_asset_id"] is not None:
                 rows = connection.execute(
                     "SELECT storage_key FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
