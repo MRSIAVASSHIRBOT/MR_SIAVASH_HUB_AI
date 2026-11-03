@@ -15,9 +15,11 @@ from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
+from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
@@ -36,6 +38,66 @@ class WorkflowReconciliationRequest(BaseModel):
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+@router.get("/capabilities")
+def discover_agent_capabilities() -> dict[str, object]:
+    """Return a read-only inventory of configured models, tools, and reviewed sources."""
+    settings = get_settings()
+    models = build_model_router().catalog()
+    tools = build_tool_registry().catalog()
+    approved_sources = CapabilityRegistry(settings.database_path).list_candidates(
+        status="approved", limit=100
+    )
+    return {
+        "schema_version": "1.0",
+        "integration_contract_version": INTEGRATION_CONTRACT_VERSION,
+        "discovery_mode": "read_only",
+        "models": [
+            {
+                "provider": item.provider,
+                "model": item.model,
+                "local": item.local,
+                "priority": item.priority,
+                "capabilities": {
+                    "text": item.capability.text,
+                    "vision": item.capability.vision,
+                    "audio": item.capability.audio,
+                    "tool_calling": item.capability.tool_calling,
+                },
+            }
+            for item in models
+        ],
+        "tools": tools,
+        "capability_sources": [
+            {
+                "candidate_id": item.candidate_id,
+                "display_name": item.display_name,
+                "integration_type": item.integration_type,
+                "capabilities": list(item.capabilities),
+                "license_id": item.license_id,
+                "status": item.status,
+            }
+            for item in approved_sources
+        ],
+        "integrations": {
+            "assistant_gateway": {
+                "enabled": settings.assistant_gateway_enabled,
+                "configured": bool(settings.assistant_gateway_base_url),
+                "health_status": "not_checked",
+                "status_endpoint": "/integrations/assistant-gateway/status",
+            },
+            "code_engine": {
+                "enabled": settings.code_engine_enabled,
+                "configured": bool(settings.code_engine_base_url),
+                "health_status": "not_checked",
+                "status_endpoint": "/integrations/code-engine/status",
+            },
+        },
+        "execution_started": False,
+        "network_probes_performed": False,
+        "downloads_started": False,
+    }
 
 
 @router.post("/plan")
