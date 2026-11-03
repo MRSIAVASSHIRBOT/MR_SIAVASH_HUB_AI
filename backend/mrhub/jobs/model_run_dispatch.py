@@ -22,6 +22,7 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.tools.builtins import build_tool_registry
 
 
 class ModelRunWorkerHandler:
@@ -92,9 +93,7 @@ class ModelRunWorkerHandler:
             include_stub=False,
             max_timeout_seconds=30.0,
         )
-        orchestrator = AgentOrchestrator(model_router, __import__(
-            "mrhub.tools.builtins", fromlist=["build_tool_registry"]
-        ).build_tool_registry())
+        orchestrator = AgentOrchestrator(model_router, build_tool_registry())
 
         def should_cancel() -> bool:
             if lease_lost.is_set():
@@ -148,11 +147,17 @@ class ModelRunWorkerHandler:
             json.dumps(output, ensure_ascii=False, sort_keys=True,
                        separators=(",", ":")).encode("utf-8")
         ).hexdigest()
-        self.recovery.complete_step(workflow_id, attempt, output_digest, lease=lease)
-        self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
-        current = self.jobs.get(task.task_id)
-        if current is not None and current.status is TaskStatus.RUNNING:
-            self.jobs.transition(task.task_id, TaskStatus.SUCCEEDED, lease=lease)
+        if result.get("status") == "cancelled":
+            self.recovery.finish_run(workflow_id, "cancelled", lease=lease)
+            current = self.jobs.get(task.task_id)
+            if current is not None and current.status is TaskStatus.RUNNING:
+                self.jobs.transition(task.task_id, TaskStatus.CANCELLED, lease=lease)
+        else:
+            self.recovery.complete_step(workflow_id, attempt, output_digest, lease=lease)
+            self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
+            current = self.jobs.get(task.task_id)
+            if current is not None and current.status is TaskStatus.RUNNING:
+                self.jobs.transition(task.task_id, TaskStatus.SUCCEEDED, lease=lease)
         return {
             "workflow_id": str(workflow_id),
             "execution_completed": result.get("status") == "completed",
