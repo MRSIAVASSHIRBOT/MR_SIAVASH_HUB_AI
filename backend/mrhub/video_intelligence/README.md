@@ -65,3 +65,10 @@ worker handoff must verify an explicitly registered provider before moving a job
 `queued`. The `unknown_outcome` state retains its encrypted payload for reconciliation;
 it must never trigger a blind second submission. The API and worker dispatch are not
 yet wired to this repository.
+
+
+## Generated output asset finalization
+
+A successful provider result is not proof that a valid video file exists. Before finalization, the output must match an internal media storage key, remain within the 100 MB budget, and pass an independent local FFprobe check. Measured duration and dimensions must agree with provider metadata. The selected provider, model, and provider job ID are checked.
+
+The MP4 is registered as a new private media asset, while the job success state, asset reference, and measured metadata are committed in one SQLite transaction. Repeated finalization for the same successful job and asset is idempotent. This is a finalization primitive only; no provider adapter, download worker, or public generation endpoint is enabled.
