@@ -23,9 +23,11 @@ class ScriptedProvider:
         self.output = output or json.dumps({"type": "final", "answer": "Durable answer"})
         self.error = error
         self.calls = 0
+        self.requests: list[ProviderRequest] = []
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         self.calls += 1
+        self.requests.append(request)
         if self.error is not None:
             raise self.error
         return ProviderResponse(
@@ -219,3 +221,70 @@ def test_interrupted_model_run_is_unknown_outcome_and_not_replayed(monkeypatch):
     assert reservation is not None
     assert reservation.status == "unknown_outcome"
     assert provider.calls == 1
+
+
+def test_durable_model_run_applies_owner_reviewed_knowledge_freshness_policy(monkeypatch):
+    client = authenticated_client()
+    document = client.post(
+        "/knowledge/documents",
+        json={
+            "title": "Durable stale context fixture",
+            "content": "durable stale evidence must not reach the model",
+            "source_ref": "local-note:durable-stale-context",
+        },
+    )
+    assert document.status_code == 201
+    marked = client.patch(
+        f"/knowledge/sources/{document.json()['source_id']}/freshness",
+        json={"status": "stale"},
+    )
+    assert marked.status_code == 200
+
+    provider = ScriptedProvider()
+    router = _router(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-run-freshness-001"},
+        json={
+            "goal": "Use only manually reviewed current evidence.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": True,
+            "knowledge_freshness_policy": "owner_reviewed_current_only",
+            "max_turns": 1,
+            "max_output_tokens": 64,
+        },
+    )
+    assert submitted.status_code == 202
+    accepted = submitted.json()
+    assert accepted["knowledge_freshness_policy"] == "owner_reviewed_current_only"
+    assert accepted["context_passage_count"] == 0
+    assert accepted["excluded_stale_knowledge_count"] == 1
+    assert provider.calls == 0
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider.calls == 1
+    assert "durable stale evidence must not reach the model" not in (
+        provider.requests[0].input_text
+    )
+
+    completed = client.get(
+        f"/agent/model-run-workflows/{accepted['workflow_id']}"
+    )
+    assert completed.status_code == 200
+    summary = completed.json()["result"]["context_summary"]
+    assert summary["knowledge_freshness_policy"] == "owner_reviewed_current_only"
+    assert summary["excluded_stale_knowledge_count"] == 1
+    assert summary["excluded_unreviewed_knowledge_count"] == 0
+    assert completed.json()["result"]["context_sources"] == []
