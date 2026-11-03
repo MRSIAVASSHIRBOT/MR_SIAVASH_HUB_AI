@@ -5,6 +5,7 @@
   const tokenKey = "mrh_session_token";
   let token = sessionStorage.getItem(tokenKey);
   let mediaAssetsCache = [];
+  let activeModelRunWorkflowId = null;
 
   function message(target, text, kind = "") {
     const node = $(target);
@@ -669,6 +670,109 @@
   $("#knowledge-list-button").addEventListener("click", () => loadKnowledge().catch((error) => message("#workspace-message", error.message, "error")));
 
   $("#agent-run-form").addEventListener("submit", runAgent);
+  $("#agent-queue-button").addEventListener("click", queueAgentRun);
+  $("#agent-queued-refresh-button").addEventListener("click", refreshQueuedAgentRun);
+  $("#agent-queued-cancel-button").addEventListener("click", cancelQueuedAgentRun);
+
+  function readAgentRunPayload(form) {
+    const values = new FormData(form);
+    return {
+      goal: String(values.get("goal") || ""),
+      context_query: String(values.get("context_query") || "").trim() || null,
+      provider_mode: String(values.get("provider_mode") || "local"),
+      include_memory: form.elements.include_memory.checked,
+      include_knowledge: form.elements.include_knowledge.checked,
+      max_turns: Number(values.get("max_turns") || 3),
+      max_output_tokens: Number(values.get("max_output_tokens") || 512),
+    };
+  }
+
+  async function queueAgentRun() {
+    const form = $("#agent-run-form");
+    if (!form.reportValidity()) return;
+    const button = $("#agent-queue-button");
+    const output = $("#agent-queued-result");
+    button.disabled = true;
+    output.textContent = "در حال ثبت درخواست در صف…";
+    try {
+      const result = await api("/agent/model-runs", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: readAgentRunPayload(form),
+      });
+      activeModelRunWorkflowId = result.workflow_id;
+      $("#agent-queued-refresh-button").disabled = false;
+      output.textContent = [
+        "وضعیت: " + (result.status || "queued"),
+        "Workflow: " + result.workflow_id,
+        "Task: " + result.task_id,
+        "شناسهٔ درخواست تکرارناپذیر ثبت شد.",
+        "برای مشاهدهٔ نتیجه، وضعیت را دستی به‌روزرسانی کنید.",
+      ].join("\n");
+      await refreshQueuedAgentRun();
+    } catch (error) {
+      output.textContent = error.message;
+      message("#workspace-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function refreshQueuedAgentRun() {
+    if (!activeModelRunWorkflowId) return;
+    const output = $("#agent-queued-result");
+    try {
+      const result = await api(
+        "/agent/model-run-workflows/" + encodeURIComponent(activeModelRunWorkflowId)
+      );
+      const execution = result.result && result.result.execution
+        ? result.result.execution
+        : {};
+      const step = (result.steps || [])[0] || {};
+      output.textContent = [
+        "وضعیت Workflow: " + result.status,
+        "وضعیت مرحله: " + (step.status || "—"),
+        "کد وضعیت: " + (result.last_error_code || "—"),
+        "شناسه: " + result.workflow_id,
+        execution.status ? "وضعیت اجرای مدل: " + execution.status : "",
+        execution.selected_provider
+          ? "ارائه‌دهنده: " + (execution.selected_provider.provider || "—")
+          : "",
+        execution.turns !== undefined ? "نوبت‌ها: " + execution.turns : "",
+        execution.tool_calls !== undefined ? "فراخوانی ابزارها: " + execution.tool_calls : "",
+        "",
+        execution.answer || execution.error || (
+          result.status === "recovery_required"
+            ? "نتیجهٔ اجرا نامشخص است؛ سیستم آن را خودکار تکرار نمی‌کند."
+            : "هنوز نتیجه‌ای ثبت نشده است."
+        ),
+      ].filter((line) => line !== "").join("\n");
+      $("#agent-queued-cancel-button").hidden = !["queued", "running"].includes(result.status);
+      message(
+        "#workspace-message",
+        "وضعیت اجرای صف‌شده به‌روزرسانی شد.",
+        ["succeeded", "cancelled"].includes(result.status) ? "success" : ""
+      );
+    } catch (error) {
+      output.textContent = error.message;
+      message("#workspace-message", error.message, "error");
+    }
+  }
+
+  async function cancelQueuedAgentRun() {
+    if (!activeModelRunWorkflowId) return;
+    if (!window.confirm("درخواست لغو اجرای صف‌شده ثبت شود؟")) return;
+    try {
+      const result = await api(
+        "/agent/model-run-workflows/" + encodeURIComponent(activeModelRunWorkflowId) + "/cancel",
+        { method: "POST" }
+      );
+      $("#agent-queued-result").textContent = "نتیجهٔ درخواست لغو: " + result.status;
+      await refreshQueuedAgentRun();
+    } catch (error) {
+      message("#workspace-message", error.message, "error");
+    }
+  }
 
   async function runAgent(event) {
     event.preventDefault();
