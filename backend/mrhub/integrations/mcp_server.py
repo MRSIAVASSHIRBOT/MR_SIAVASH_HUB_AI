@@ -27,7 +27,7 @@ def create_mcp_server(registry: ToolRegistry | None = None):
             "MCP support is optional; install the project with the [mcp] extra"
         ) from exc
 
-    tool_registry = registry or build_tool_registry()
+    tool_registry = registry if registry is not None else build_tool_registry()
     server = MCPServer(
         "MR_SIAVASH_HUB_AI",
         version="0.1.0",
