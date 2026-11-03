@@ -205,23 +205,27 @@ def compose_prompts_from_analysis(
             sound_design=options.sound_design,
             final_frame=options.final_frame,
         )
+        timeline: list[dict[str, object]] = []
+        for beat in beats:
+            timeline_item: dict[str, object] = {
+                "start_seconds": beat.start_seconds,
+                "end_seconds": beat.end_seconds,
+                "source_timestamp_seconds": beat.start_seconds,
+            }
+            beat_cuts = [
+                cut for cut in scene_cut_timestamps
+                if beat.start_seconds <= cut < beat.end_seconds
+            ]
+            if beat_cuts:
+                timeline_item["scene_cut_timestamps"] = beat_cuts
+            timeline.append(timeline_item)
+
         prompts.append({
             "asset_id": asset_id,
             "prompt": prompt,
             "duration_seconds": duration_seconds,
             "beat_count": len(beats),
-            "timeline": [
-                {
-                    "start_seconds": beat.start_seconds,
-                    "end_seconds": beat.end_seconds,
-                    "source_timestamp_seconds": beat.start_seconds,
-                    "scene_cut_timestamps": [
-                        cut for cut in scene_cut_timestamps
-                        if beat.start_seconds <= cut < beat.end_seconds
-                    ],
-                }
-                for beat in beats
-            ],
+            "timeline": timeline,
             "scene_cut_count": len(scene_cut_timestamps),
             "scene_boundaries_truncated": boundaries_truncated,
             "semantic_summary": visual.style_summary,
