@@ -9,11 +9,11 @@ from mrhub.video_intelligence.generation import (
     VideoGenerationRequest,
     VideoGenerationResult,
 )
-from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
     VideoGenerationJobRepository,
 )
+from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
 
 def _repository(tmp_path):
