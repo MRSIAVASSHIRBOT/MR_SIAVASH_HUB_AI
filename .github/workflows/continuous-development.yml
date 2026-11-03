@@ -5,10 +5,9 @@ on:
   schedule:
     - cron: "23 */2 * * *"
 
+# Default and model-agent token permissions are read-only.
 permissions:
-  contents: write
-  pull-requests: write
-  issues: read
+  contents: read
 
 concurrency:
   group: continuous-development
@@ -18,19 +17,16 @@ jobs:
   develop:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
-      - name: Check out repository
+      - name: Check out repository without persisted credentials
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Set up development branch
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "automation/continuous-development-${GITHUB_RUN_ID}"
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Install OpenCode CLI
         run: npm install --global opencode-ai@1.19.4
@@ -55,7 +51,7 @@ jobs:
           defect or completing a documented incomplete capability. Otherwise add
           one small capability consistent with existing architecture.
 
-          Work only in the current automation branch. Do not change workflow
+          Work only in the current automation workspace. Do not change workflow
           permissions, secrets, deployment settings, or security controls. Never
           expose credentials, weaken security, perform destructive operations, or
           make unrelated refactors. Add/update tests. Run relevant tests and lint
@@ -66,27 +62,87 @@ jobs:
           PROMPT
           )"
 
-      - name: Validate changed files
+      - name: Detect and package changes
         id: changes
         shell: bash
         run: |
-          git status --short
           if [ -z "$(git status --porcelain)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          # Include untracked files in a patch; never pass an agent-controlled
+          # archive to the privileged publisher job.
+          git add -N -A
+          git diff --binary HEAD > "$RUNNER_TEMP/agent.patch"
 
-      - name: Commit and push reviewed changes
+      - name: Upload proposed patch
         if: steps.changes.outputs.changed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-proposal
+          path: ${{ runner.temp }}/agent.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: develop
+    if: needs.develop.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out trusted main base without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download proposed patch
+        id: proposal
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v4.1.8
+        continue-on-error: true
+        with:
+          name: agent-proposal
+          path: ${{ runner.temp }}/agent-proposal
+
+      - name: Validate proposal
+        if: steps.proposal.outcome == 'success'
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$RUNNER_TEMP/agent-proposal/agent.patch"
+          [ -f "$PATCH" ] || { echo "::error::Missing agent patch"; exit 1; }
+          SIZE=$(wc -c < "$PATCH")
+          [ "$SIZE" -le 1048576 ] || { echo "::error::Patch exceeds 1 MiB"; exit 1; }
+          if grep -E '^(\+\+\+ b/|--- a/)(\.github(/|$)|AGENTS\.md$|SECURITY(/|$)|\.git(/|$))' "$PATCH"; then
+            echo "::error::Agent proposal touches protected workflow/policy paths"; exit 1
+          fi
+          git apply --check --index --binary "$PATCH"
+          echo "valid=true" >> "$GITHUB_OUTPUT"
+
+      - name: Apply proposal and create review PR
+        if: steps.validate.outputs.valid == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          git add -A
+          set -euo pipefail
+          BRANCH="automation/continuous-development-${GITHUB_RUN_ID}"
+          git switch -c "$BRANCH"
+          git apply --index --binary "$RUNNER_TEMP/agent-proposal/agent.patch"
+          if git diff --cached --quiet; then
+            echo "No applicable changes; nothing to publish."
+            exit 0
+          fi
           git commit -m "chore: scheduled incremental development"
-          git push --set-upstream origin "automation/continuous-development-${GITHUB_RUN_ID}"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push --set-upstream origin "$BRANCH"
           gh pr create \
             --title "Scheduled development: run ${GITHUB_RUN_ID}" \
-            --body "Automated, focused development change. Review the diff and CI results before merging. This PR was not merged automatically." \
-            --base "${GITHUB_REF_NAME}" \
-            --head "automation/continuous-development-${GITHUB_RUN_ID}"
+            --body "Automated, focused development proposal. Review the diff and CI results before merging. This PR was not merged automatically." \
+            --base "main" \
+            --head "$BRANCH"
