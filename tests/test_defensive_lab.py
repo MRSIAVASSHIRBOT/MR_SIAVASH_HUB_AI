@@ -476,7 +476,7 @@ def test_authenticated_structured_log_review_api_returns_safe_findings_and_audit
 def test_structured_log_review_counts_json_parser_resource_edge_cases_as_unparsed():
     oversized_integer = '{"event_type":"unknown.event","value":' + ("9" * 5_000) + '}'
     deeply_nested = '{"event_type":"unknown.event","value":' + ("[" * 10_000) + "0" + ("]" * 10_000) + "}"
-    text = "\n".join((oversized_integer, deeply_nested))
+    text = f"{oversized_integer}\n{deeply_nested}"
 
     result = audit_structured_log_text(
         text,
