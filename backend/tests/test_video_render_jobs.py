@@ -385,6 +385,11 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
 
     orphan_path = media.file_path(reserved)
     orphan_path.write_bytes(b"orphaned-render-output")
+    output_asset_id = reserved.removesuffix(".mp4")
+    partial_path = media.storage_root / f".{output_asset_id}.{'a' * 32}.partial.mp4"
+    partial_path.write_bytes(b"interrupted-ffmpeg-output")
+    unrelated_partial = media.storage_root / f".{UUID('4c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00')}.{'b' * 32}.partial.mp4"
+    unrelated_partial.write_bytes(b"belongs-to-another-render")
     worker = WorkerEngine(
         analysis_repository.tasks,
         clock=lambda: datetime(2026, 11, 4, tzinfo=UTC),
@@ -394,6 +399,8 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
     assert analysis_repository.tasks.get(task_id).status.value == "failed"
     assert jobs.get("owner-a", render_id)["status"] == "failed"
     assert orphan_path.exists() is False
+    assert partial_path.exists() is False
+    assert unrelated_partial.exists() is True
     with analysis_repository.tasks._connection() as connection:
         remaining_locks = connection.execute(
             "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
