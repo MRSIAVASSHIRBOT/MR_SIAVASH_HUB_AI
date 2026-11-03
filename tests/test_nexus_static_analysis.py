@@ -168,7 +168,7 @@ def test_static_analysis_detects_common_import_aliases_and_os_shell_apis():
 
 def test_static_analysis_detects_os_system_and_os_popen_without_aliases():
     result = analyze_python_source(
-        "import os\\nos.system(command)\\nos.popen(command)\\n",
+        "import os\nos.system(command)\nos.popen(command)\n",
         path="src/os_shell.py",
     )
 
