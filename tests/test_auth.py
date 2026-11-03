@@ -1,3 +1,6 @@
+import sqlite3
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
@@ -128,3 +131,38 @@ def test_login_response_is_not_cacheable(tmp_path, monkeypatch) -> None:
     assert response.status_code == 200
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Pragma"] == "no-cache"
+
+
+def test_login_prunes_expired_sessions(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "expired-sessions.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    password = "test-only-strong-password-2026"
+    assert client.post("/auth/setup", json={"password": password}).status_code == 201
+
+    expired_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO auth_sessions (session_id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "expired-session",
+                "local-owner",
+                "f" * 64,
+                expired_at,
+                expired_at,
+            ),
+        )
+
+    login = client.post("/auth/login", json={"username": "owner", "password": password})
+    assert login.status_code == 200
+
+    with sqlite3.connect(database_path) as connection:
+        remaining = connection.execute(
+            "SELECT session_id FROM auth_sessions"
+        ).fetchall()
+    assert len(remaining) == 1
+    assert remaining[0][0] != "expired-session"

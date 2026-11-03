@@ -266,11 +266,18 @@ class TaskRepository:
     ) -> None:
         from datetime import UTC, datetime
 
+        now = datetime.now(UTC).isoformat()
         with self._connection() as connection:
+            # Expired bearer-token hashes are no longer useful; prune them on
+            # session creation so abandoned sessions cannot accumulate forever.
+            connection.execute(
+                "DELETE FROM auth_sessions WHERE expires_at <= ?",
+                (now,),
+            )
             connection.execute(
                 "INSERT INTO auth_sessions (session_id, user_id, token_hash, expires_at, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (session_id, user_id, token_hash, expires_at, datetime.now(UTC).isoformat()),
+                (session_id, user_id, token_hash, expires_at, now),
             )
 
     def get_auth_session(self, token_hash: str) -> dict[str, str] | None:
