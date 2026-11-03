@@ -116,7 +116,7 @@ jobs:
           [ -f "$PATCH" ] || { echo "::error::Missing agent patch"; exit 1; }
           SIZE=$(wc -c < "$PATCH")
           [ "$SIZE" -le 1048576 ] || { echo "::error::Patch exceeds 1 MiB"; exit 1; }
-          if grep -E '^\+\+\+ b/\.github(/|$)|^\+\+\+ b/AGENTS\.md$|^\+\+\+ b/SECURITY(/|$)' "$PATCH"; then
+          if grep -E '^(\+\+\+ b/|--- a/)(\.github(/|$)|AGENTS\.md$|SECURITY(/|$)|\.git(/|$))' "$PATCH"; then
             echo "::error::Agent proposal touches protected workflow/policy paths"; exit 1
           fi
           git apply --check --binary "$PATCH"
