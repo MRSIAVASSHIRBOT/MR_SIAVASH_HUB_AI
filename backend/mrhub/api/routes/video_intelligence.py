@@ -6,17 +6,33 @@ import sqlite3
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.media.repository import MediaAssetRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
-from mrhub.video_intelligence.jobs import VideoAnalysisConflict, VideoAnalysisJobRepository
+from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.jobs import (
+    VideoAnalysisConflict,
+    VideoAnalysisJobRepository,
+)
 from mrhub.video_intelligence.repository import VideoBrandRepository
-from mrhub.video_intelligence.schemas import BeatInstruction, BrandIdentity, VideoAnalysisRequest, VideoTechnicalMetadata
+from mrhub.video_intelligence.schemas import (
+    BeatInstruction,
+    BrandIdentity,
+    VideoAnalysisRequest,
+    VideoTechnicalMetadata,
+)
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 router = APIRouter(
