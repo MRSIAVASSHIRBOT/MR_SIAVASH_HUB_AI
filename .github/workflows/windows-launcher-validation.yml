@@ -32,3 +32,39 @@ jobs:
             }
             Write-Host "PowerShell syntax OK: $file"
           }
+  runtime-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install project into a clean Python 3.11 environment
+        shell: pwsh
+        run: |
+          py -3.11 -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw "Virtual environment creation failed." }
+          & .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -e .
+          if ($LASTEXITCODE -ne 0) { throw "Project installation failed." }
+      - name: Start, verify, and stop API plus worker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-launcher-smoke.sqlite3"
+          $env:MRH_REQUIRE_WORKER_FOR_READINESS = "true"
+          try {
+            & .\scripts\start-local.ps1 -SkipInstall
+            if ($LASTEXITCODE -ne 0) { throw "Local launcher failed." }
+            $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 5
+            $ready = Invoke-RestMethod -Uri "http://127.0.0.1:8000/ready" -TimeoutSec 5
+            if ($ready.status -ne "ready" -or $ready.worker -ne "running") {
+              throw "API and worker did not reach ready state."
+            }
+            $ui = Invoke-WebRequest -Uri "http://127.0.0.1:8000/ui/" -UseBasicParsing -TimeoutSec 5
+            if ($ui.StatusCode -ne 200) { throw "Operator UI did not return HTTP 200." }
+            Write-Host "Health, readiness, and operator UI smoke checks passed."
+          }
+          finally {
+            if (Test-Path ".mrhub-runtime.json") {
+              & .\scripts\stop-local.ps1
+            }
+          }
