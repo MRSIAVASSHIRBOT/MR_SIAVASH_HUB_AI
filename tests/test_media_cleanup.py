@@ -425,6 +425,7 @@ def test_stale_worker_token_cannot_release_newer_analysis_lock(tmp_path: Path) -
     with pytest.raises(MediaAssetBusy, match="video analysis"):
         repository.delete("owner-1", asset_id)
 
+    # Only the current fenced execution can release the transferred record.
     assert repository.release_analysis_use("owner-1", asset_id, lease=second_lease) is True
     assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
     assert repository.cleanup_pending_files("owner-1") == 0
