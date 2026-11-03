@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -158,7 +159,10 @@ def test_renderer_rejects_missing_owner_resolved_source_before_process(tmp_path,
 def test_real_ffmpeg_render_produces_probeable_mp4_when_available(tmp_path):
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")
+    require_ffmpeg = os.environ.get("MRH_REQUIRE_FFMPEG") == "1"
     if ffmpeg is None or ffprobe is None:
+        if require_ffmpeg:
+            pytest.fail("MRH_REQUIRE_FFMPEG=1 but FFmpeg/FFprobe are unavailable")
         pytest.skip("FFmpeg and FFprobe are required for the real-render smoke test")
 
     source = tmp_path / "generated-source.mp4"
@@ -190,6 +194,8 @@ def test_real_ffmpeg_render_produces_probeable_mp4_when_available(tmp_path):
         timeout=30,
     )
     if generated.returncode != 0:
+        if require_ffmpeg:
+            pytest.fail("Installed FFmpeg could not generate the synthetic test source")
         pytest.skip("The installed FFmpeg build cannot generate the synthetic test source")
 
     result = render_video_timeline(
