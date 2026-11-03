@@ -28,7 +28,7 @@ class TimelineBeat(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
-    def validate_interval(self) -> "TimelineBeat":
+    def validate_interval(self) -> TimelineBeat:
         if self.end_seconds <= self.start_seconds:
             raise ValueError("Timeline beat end must be after its start")
         return self
@@ -43,7 +43,7 @@ class TimelineDraftUpdate(BaseModel):
     beats: list[TimelineBeat] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="after")
-    def validate_timeline(self) -> "TimelineDraftUpdate":
+    def validate_timeline(self) -> TimelineDraftUpdate:
         previous_end = 0.0
         for beat in self.beats:
             if beat.end_seconds > self.duration_seconds:
