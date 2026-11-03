@@ -25,3 +25,15 @@ A configured `MRH_WORKFLOW_PAYLOAD_KEY` is mandatory. It must be a URL-safe Base
 - A cancellation request cannot forcibly interrupt a provider call already in progress. The worker observes the request at safe boundaries and records the resulting execution state.
 
 The API never returns ciphertext, encryption keys, prompts from another owner, or internal worker exception text.
+
+## Knowledge freshness policy
+
+Queued model runs use the same `knowledge_freshness_policy` contract as the synchronous Agent endpoint:
+
+- `include_all` remains the default and preserves existing retrieval behavior.
+- `owner_reviewed_current_only` includes only knowledge sources with an owner-reviewed-current status and a review timestamp.
+- Stale, unknown, and incomplete review records are filtered before evidence is encrypted and queued.
+- The encrypted workflow result retains the policy and bounded excluded-source counts in `context_summary`; prompts and evidence remain encrypted.
+- Owner review is a manual assertion, not automatic verification. Retrieved content remains untrusted and cannot grant tool permissions.
+
+The durable submission response includes the policy and exclusion counts, while the workflow result preserves the same summary after worker execution.
