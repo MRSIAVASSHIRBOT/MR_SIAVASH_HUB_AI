@@ -301,3 +301,31 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
         )
     assert repository.get("owner-a", generation_id)["status"] == "running"
     assert media.get("owner-a", UUID(asset_id)) is None
+
+
+
+def test_generation_enqueue_creates_one_owner_scoped_worker_task(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+
+    queued = repository.enqueue("owner-a", generation_id)
+    replay = repository.enqueue("owner-a", generation_id)
+
+    assert queued["created"] is True
+    assert replay["created"] is False
+    assert replay["task_id"] == queued["task_id"]
+    assert repository.get("owner-a", generation_id)["status"] == "queued"
+    task = repository.tasks.get(UUID(queued["task_id"]))
+    assert task.task_type == "video.generation"
+    assert task.status.value == "queued"
+    assert repository.load_for_worker(task.task_id)["request"]["prompt"].startswith(
+        "An original"
+    )
+    assert repository.load_for_worker(task.task_id)["owner_user_id"] == "owner-a"
