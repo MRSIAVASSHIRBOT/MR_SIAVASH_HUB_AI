@@ -1,8 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from client_helpers import authenticated_client
 
+from client_helpers import authenticated_client
 from mrhub.security.defensive_lab import (
     DefensiveReviewScope,
     ScopeValidationError,
@@ -237,6 +237,15 @@ def test_authenticated_config_review_api_enforces_scope_and_returns_safe_evidenc
     assert result["network_requests_made"] is False
     assert result["targets_modified"] is False
 
+    from mrhub.config import get_settings
+    from mrhub.infrastructure.database import TaskRepository
+
+    audit = TaskRepository(get_settings().database_path).list_audit()
+    assert len(audit) == 1
+    assert audit[0]["event_type"] == "security_lab.review_completed"
+    assert "ticket-123" not in str(audit[0])
+    assert "debug = true" not in str(audit[0])
+
 
 def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
     client = authenticated_client()
@@ -257,6 +266,15 @@ def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
 
     assert response.status_code == 403
     assert response.json()["detail"]["reason_code"] == "authorization_scope_denied"
+
+    from mrhub.config import get_settings
+    from mrhub.infrastructure.database import TaskRepository
+
+    audit = TaskRepository(get_settings().database_path).list_audit()
+    assert len(audit) == 1
+    assert audit[0]["event_type"] == "security_lab.review_denied"
+    assert audit[0]["outcome"] == "denied"
+    assert audit[0]["metadata"]["reason_code"] == "authorization_scope_denied"
 
 
 def test_authenticated_dependency_review_api_is_offline_and_reports_unpinned_packages():
