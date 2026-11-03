@@ -291,7 +291,6 @@ def test_durable_model_run_applies_owner_reviewed_knowledge_freshness_policy(mon
     assert completed.json()["result"]["context_sources"] == []
 
 
-
 def test_durable_model_run_cannot_execute_tool_requested_by_hostile_retrieval(monkeypatch):
     client = authenticated_client()
     hostile = (
