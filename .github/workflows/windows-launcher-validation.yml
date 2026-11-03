@@ -88,12 +88,21 @@ jobs:
           $ErrorActionPreference = "Stop"
           $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-launcher-failure.sqlite3"
           $env:MRH_REQUIRE_WORKER_FOR_READINESS = "true"
-          $listener = Start-Process -FilePath "py" -ArgumentList @(
-            "-3.11", "-c",
+          $listener = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList @(
+            "-c",
             "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',8000)); s.listen(); time.sleep(90)"
           ) -PassThru -WindowStyle Hidden
           try {
             Start-Sleep -Seconds 2
+            $listener.Refresh()
+            if ($listener.HasExited) {
+              throw "Port-occupying listener exited before the launcher test began."
+            }
+            $portOwner = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if (-not $portOwner -or $portOwner.OwningProcess -ne $listener.Id) {
+              throw "Test listener does not own the API port; refusing an invalid failure test."
+            }
             & pwsh -NoProfile -File .\scripts\start-local.ps1 -SkipInstall
             $launcherExit = $LASTEXITCODE
             if ($launcherExit -eq 0) {
