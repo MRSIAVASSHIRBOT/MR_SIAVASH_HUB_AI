@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     local_inference_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
     remote_inference_enabled: bool = False
     remote_inference_api_key: SecretStr | None = None
+    # Shared by the API and pull worker to encrypt durable Agent workflow payloads.
+    workflow_payload_key: SecretStr | None = None
     remote_inference_model: str | None = None
     remote_inference_base_url: str = "https://openrouter.ai/api/v1"
     remote_inference_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
