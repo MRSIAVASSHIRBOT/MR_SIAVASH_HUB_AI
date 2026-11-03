@@ -286,10 +286,10 @@ def test_migrations_19_to_23_upgrade_an_existing_v18_database(tmp_path, monkeypa
     ).fetchone() is None
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22, 23]
+    assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22, 23, 24]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 23
+    ).fetchone()[0] == 24
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
@@ -326,6 +326,10 @@ def test_migrations_19_to_23_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_asset_analysis_leases'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_generation_task_links'"
     ).fetchone() is not None
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
