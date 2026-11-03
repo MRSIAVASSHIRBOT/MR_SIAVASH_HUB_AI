@@ -48,7 +48,10 @@ def validate_health_path(value: str) -> str | None:
     """Reject absolute URLs, traversal, encoded separators, and ambiguous paths."""
     if not value:
         return None
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+    except (TypeError, ValueError):
+        return None
     if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment:
         return None
     if not _valid_local_path(parsed.path):
@@ -66,6 +69,12 @@ async def probe_loopback_service(
     """Perform a bounded, redirect-free health check and return sanitized status."""
     base = validate_loopback_base_url(base_url)
     path = validate_health_path(health_path)
+    if not 1 <= max_response_bytes <= 16384:
+        return {
+            "contract_version": INTEGRATION_CONTRACT_VERSION,
+            "status": "invalid_configuration",
+            "configured": False,
+        }
     if base is None or path is None:
         return {
             "contract_version": INTEGRATION_CONTRACT_VERSION,
@@ -90,12 +99,6 @@ async def probe_loopback_service(
                     "status": "unreachable",
                     "configured": True,
                     "http_status": response.status_code,
-                }
-            if not 1 <= max_response_bytes <= 16384:
-                return {
-                    "contract_version": INTEGRATION_CONTRACT_VERSION,
-                    "status": "invalid_configuration",
-                    "configured": False,
                 }
             received = 0
             # One-byte chunks make the configured limit strict: no oversized
