@@ -213,7 +213,7 @@ def render_video_timeline(
         temporary_output=temporary_output,
     )
     environment = {
-        "PATH": str(Path(ffmpeg).resolve().parent),
+        "PATH": os.environ.get("PATH", ""),
         "HOME": str(output_path.parent.resolve()),
         "TMPDIR": str(output_path.parent.resolve()),
         "LANG": "C",
