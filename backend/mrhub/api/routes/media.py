@@ -18,6 +18,7 @@ from mrhub.media.repository import (
     MAX_OUTPUT_BYTES,
     MAX_UPLOAD_BYTES,
     MediaAssetBusy,
+    MediaAssetOwnershipConflict,
     MediaAssetRepository,
 )
 from mrhub.security.audit import AuditLogger
@@ -311,6 +312,11 @@ def delete_asset(
         raise HTTPException(
             status_code=409,
             detail="Media asset is currently being processed",
+        ) from exc
+    except MediaAssetOwnershipConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Media asset ownership conflict prevents deletion",
         ) from exc
     except sqlite3.IntegrityError as exc:
         raise HTTPException(
