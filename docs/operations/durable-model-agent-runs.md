@@ -4,11 +4,11 @@ The synchronous `POST /agent/run` endpoint remains available for short, bounded 
 
 ## Submit a run
 
-`POST /agent/model-runs` accepts the same `AgentRunRequest` body as `POST /agent/run` and requires an `Idempotency-Key` header.
+`POST /agent/model-runs` accepts the same `AgentRunRequest` body as `POST /agent/run` and requires an `Idempotency-Key` header. The synchronous endpoint's owner-reviewed freshness filtering options are honored by the queued path as well.
 
-The endpoint validates that the explicitly selected provider is available, assembles the owner-scoped context, encrypts the request envelope, and atomically creates a queued `agent.model_run` task and workflow. It does not call the model.
+The endpoint validates that the explicitly selected provider is available, assembles the owner-scoped context (including the requested knowledge freshness policy), encrypts the request envelope, and atomically creates a queued `agent.model_run` task and workflow. It does not call the model.
 
-The request uses the standard authenticated JSON API. A repeated key with the same request returns the original workflow identifier. Reusing the key with a different request returns HTTP 409.
+The request uses the standard authenticated JSON API. A repeated key with the same request returns the original workflow identifier and current idempotency status. Reusing the key with a different request returns HTTP 409.
 
 ## Worker execution and recovery
 
