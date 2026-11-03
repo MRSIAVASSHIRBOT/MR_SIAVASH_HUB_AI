@@ -15,6 +15,7 @@ from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
 _PROBE_TIMEOUT_SECONDS = 12
 _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
+_MAX_PROBE_STREAMS = 64
 
 
 def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
@@ -28,6 +29,7 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
     command = [
         binary,
         "-v", "error",
+        "-max_streams", str(_MAX_PROBE_STREAMS),
         "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate",
         "-of", "json",
         str(path),
@@ -37,7 +39,8 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
             command,
             shell=False,
             check=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             timeout=_PROBE_TIMEOUT_SECONDS,
             env={"PATH": str(pathlib.Path(binary).parent), "LANG": "C", "LC_ALL": "C"},
         )
