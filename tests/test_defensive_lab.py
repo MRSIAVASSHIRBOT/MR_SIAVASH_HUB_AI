@@ -10,8 +10,6 @@ from mrhub.security.defensive_lab import (
     audit_requirements_text,
 )
 
-
-
 def _scope(
     asset: str = "repo:owned-project",
     *,
