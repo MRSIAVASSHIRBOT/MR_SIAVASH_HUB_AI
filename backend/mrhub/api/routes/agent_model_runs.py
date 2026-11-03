@@ -165,7 +165,7 @@ def submit_model_run(
     }
 
 
-@router.get("/model-runs/{workflow_id}")
+@router.get("/model-run-workflows/{workflow_id}")
 def get_model_run(
     workflow_id: UUID,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
@@ -210,7 +210,7 @@ def get_model_run(
     return response
 
 
-@router.post("/model-runs/{workflow_id}/cancel")
+@router.post("/model-run-workflows/{workflow_id}/cancel")
 def cancel_model_run(
     workflow_id: UUID,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
