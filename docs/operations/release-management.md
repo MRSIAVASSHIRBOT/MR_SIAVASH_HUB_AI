@@ -141,7 +141,7 @@ The exact PR head `fe153ac1d9a3b57e3a3e836c54e262263b36626c` passed:
 - Defensive Python Scan.
 - Real FFmpeg/FFprobe MP4 integration on Ubuntu and Windows hosted runners.
 
-The merge commit's post-merge push workflows were still running at the time of this update, except Defensive Python Scan, which passed. Do not treat exact PR-head CI as a substitute for post-merge main CI; re-check the push runs on the exact main SHA.
+All four post-merge push workflows passed on the exact main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256`: Backend CI run `41722222701`, CI run `41722222754`, Defensive Python Scan run `41722222735`, and Video Render Integration run `41722222736`. These are hosted CI results, not target-device acceptance.
 
 ### Updated implementation and release implications
 
