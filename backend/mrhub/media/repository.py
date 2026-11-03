@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -255,6 +256,7 @@ class MediaAssetRepository:
         task_id: UUID,
         render_id: UUID,
         lease,
+        task_result: dict[str, object],
     ) -> dict[str, object]:
         """Atomically register a generated render only while its worker lease is current."""
         try:
@@ -273,10 +275,12 @@ class MediaAssetRepository:
                 digest.update(chunk)
         now = self._now()
         with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
-                """SELECT 1 FROM worker_executions
-                   WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
-                     AND lease_expires_at > ?""",
+                """SELECT 1 FROM worker_executions AS e
+                   JOIN tasks AS t ON t.task_id = e.task_id
+                   WHERE e.task_id = ? AND e.lease_owner = ? AND e.execution_token = ?
+                     AND e.lease_expires_at > ? AND t.status = 'running'""",
                 (str(task_id), lease.owner, lease.fencing_token, now),
             ).fetchone()
             if current is None:
@@ -309,6 +313,31 @@ class MediaAssetRepository:
             )
             if completed.rowcount != 1:
                 raise ValueError("Render job is no longer owned by this worker lease")
+            task_updated = connection.execute(
+                """UPDATE tasks SET status = 'succeeded', updated_at = ?
+                   WHERE task_id = ? AND status = 'running'
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )""",
+                (now, str(task_id), lease.owner, lease.fencing_token, now),
+            )
+            if task_updated.rowcount != 1:
+                raise ValueError("Render task was cancelled or its lease expired")
+            execution_updated = connection.execute(
+                """UPDATE worker_executions
+                   SET result_json = ?, error_code = NULL, finished_at = ?,
+                       next_attempt_at = NULL
+                   WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                     AND lease_expires_at > ?""",
+                (
+                    json.dumps(task_result, ensure_ascii=False, sort_keys=True),
+                    now, str(task_id), lease.owner, lease.fencing_token, now,
+                ),
+            )
+            if execution_updated.rowcount != 1:
+                raise ValueError("Render worker lease is no longer current")
             connection.execute(
                 """UPDATE idempotency_records SET status = 'completed'
                    WHERE task_id = ? AND scope = ?""",
