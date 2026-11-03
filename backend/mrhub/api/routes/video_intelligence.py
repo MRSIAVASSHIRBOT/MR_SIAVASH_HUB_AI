@@ -36,6 +36,7 @@ from mrhub.video_intelligence.schemas import (
 from mrhub.video_intelligence.service import (
     build_generation_prompt,
     build_prompt_from_visual_analysis,
+    build_timeline_from_visual_analysis,
     probe_video,
 )
 from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
@@ -322,6 +323,11 @@ def synthesize_video_prompt(
         _validate_logo(user.user_id, brand)
 
     try:
+        timeline = build_timeline_from_visual_analysis(
+            visual_analysis=visual_analysis,
+            source_duration_seconds=source_duration,
+            duration_seconds=payload.duration_seconds,
+        )
         prompt = build_prompt_from_visual_analysis(
             visual_analysis=visual_analysis,
             source_duration_seconds=source_duration,
@@ -344,6 +350,7 @@ def synthesize_video_prompt(
         "duration_seconds": payload.duration_seconds,
         "aspect_ratio": payload.aspect_ratio,
         "prompt": prompt,
+        "timeline": timeline,
         "evidence": {
             "source_duration_seconds": source_duration,
             "observation_count": len(visual_analysis.observations),
