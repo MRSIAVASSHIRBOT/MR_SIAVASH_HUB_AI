@@ -89,10 +89,9 @@ def list_video_generation_providers(
 ) -> dict[str, object]:
     """Return configured generation adapters without probing or starting work."""
     # Intentionally empty until an adapter is explicitly configured and reviewed.
-    from mrhub.video_intelligence.generation_registry import VideoGenerationRegistry
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
 
-    registry = VideoGenerationRegistry()
-    providers = [item.model_dump(mode="json") for item in registry.catalog()]
+    providers = [item.model_dump(mode="json") for item in video_generation_registry.catalog()]
     return {
         "providers": providers,
         "count": len(providers),
