@@ -363,5 +363,6 @@ All four push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2f
 - The RTL operator UI now submits owner-scoped cut-only MP4 render jobs from completed analyses with valid non-empty timelines, persists the per-analysis idempotency key in the current tab session, restores render/analysis association after reload, exposes manual status refresh and cancellation, and provides authenticated MP4 download.
 - Media-library downloads use bearer authorization on the same origin, omit ambient cookies, disable caching, reject redirects, and enforce the 100 MB client-side download bound.
 - Exact-head Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration all passed.
+- All four post-merge workflows also passed on main commit `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`: Backend CI `41724900988`, CI `41724901109`, Defensive Python Scan `41724900883`, and Video Render Integration `41724900921`.
 - UI regression tests verify controls, idempotency/session handling, authenticated downloads, and JavaScript syntax when Node is available.
 - Browser-level interactive acceptance, accessibility review and target-device acceptance remain open. The UI does not start workers or poll automatically.
