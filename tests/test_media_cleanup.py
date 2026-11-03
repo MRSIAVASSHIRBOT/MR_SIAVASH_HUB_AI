@@ -519,3 +519,33 @@ def test_analysis_use_lease_is_exclusive_across_worker_executions(tmp_path: Path
     assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is True
     assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease) is True
     assert repository.release_analysis_use("owner-1", asset_id, lease=second_lease) is True
+
+
+def test_global_cleanup_sweep_is_bounded_across_owners(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    repository.tasks.create_auth_user("owner-2", "other", "test-salt", "test-hash")
+    first = repository.store_upload(
+        "owner-1", "first.png", "image/png", b"first-image"
+    )
+    second = repository.store_upload(
+        "owner-2", "second.png", "image/png", b"second-image"
+    )
+    first_id = UUID(str(first["asset_id"]))
+    second_id = UUID(str(second["asset_id"]))
+    first_path = repository.file_path(str(first["storage_key"]))
+    second_path = repository.file_path(str(second["storage_key"]))
+
+    assert repository.delete("owner-1", first_id) == [str(first["storage_key"])]
+    assert repository.delete("owner-2", second_id) == [str(second["storage_key"])]
+    assert first_path.is_file()
+    assert second_path.is_file()
+
+    # A maintenance pass has one global bound, not one batch per owner.
+    assert repository.cleanup_pending_files_all(limit=1) == 1
+    assert first_path.is_file() != second_path.is_file()
+
+    assert repository.cleanup_pending_files_all(limit=100) == 0
+    assert not first_path.exists()
+    assert not second_path.exists()
