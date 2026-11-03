@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -344,6 +345,112 @@ class MediaAssetRepository:
                 ),
             )
         return cursor.rowcount == 1
+
+    def register_rendered_output(
+        self,
+        owner_user_id: str,
+        output_asset_id: str,
+        storage_key: str,
+        output_path: Path,
+        output_filename: str,
+        *,
+        task_id: UUID,
+        render_id: UUID,
+        lease: WorkerLease,
+        task_result: dict[str, object],
+    ) -> dict[str, object]:
+        """Atomically register a generated render only while its worker lease is current."""
+        try:
+            asset_uuid = UUID(output_asset_id)
+            expected_path = self.file_path(storage_key)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("Invalid rendered output identity") from exc
+        if storage_key != f"{asset_uuid}.mp4" or output_path.resolve() != expected_path:
+            raise ValueError("Rendered output path does not match its generated asset key")
+        size = output_path.stat().st_size
+        if size <= 0 or size > MAX_OUTPUT_BYTES:
+            raise ValueError("Rendered output size is outside the allowed range")
+        digest = hashlib.sha256()
+        with output_path.open("rb") as file:
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                """SELECT 1 FROM worker_executions AS e
+                   JOIN tasks AS t ON t.task_id = e.task_id
+                   WHERE e.task_id = ? AND e.lease_owner = ? AND e.execution_token = ?
+                     AND e.lease_expires_at > ? AND t.status = 'running'""",
+                (str(task_id), lease.owner, lease.fencing_token, now),
+            ).fetchone()
+            if current is None:
+                raise ValueError("Render worker lease is no longer current")
+            connection.execute(
+                """INSERT INTO content_assets (
+                    asset_id, owner_user_id, source_asset_id, original_filename,
+                    media_type, storage_key, file_size, content_hash,
+                    processing_status, processing_profile, error_code, created_at, updated_at
+                ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'processed',
+                          'video_render_cut_v1', NULL, ?, ?)""",
+                (
+                    str(asset_uuid), owner_user_id, output_filename, storage_key,
+                    size, digest.hexdigest(), now, now,
+                ),
+            )
+            completed = connection.execute(
+                """UPDATE video_render_runs
+                   SET status = 'completed', output_asset_id = ?, error_code = NULL, updated_at = ?
+                   WHERE render_id = ? AND task_id = ? AND owner_user_id = ? AND status = 'running'
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = ? AND e.lease_owner = ? AND e.execution_token = ?
+                         AND e.lease_expires_at > ?
+                     )""",
+                (
+                    str(asset_uuid), now, str(render_id), str(task_id), owner_user_id,
+                    str(task_id), lease.owner, lease.fencing_token, now,
+                ),
+            )
+            if completed.rowcount != 1:
+                raise ValueError("Render job is no longer owned by this worker lease")
+            task_updated = connection.execute(
+                """UPDATE tasks SET status = 'succeeded', updated_at = ?
+                   WHERE task_id = ? AND status = 'running'
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = tasks.task_id AND e.lease_owner = ?
+                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )""",
+                (now, str(task_id), lease.owner, lease.fencing_token, now),
+            )
+            if task_updated.rowcount != 1:
+                raise ValueError("Render task was cancelled or its lease expired")
+            execution_updated = connection.execute(
+                """UPDATE worker_executions
+                   SET result_json = ?, error_code = NULL, finished_at = ?,
+                       next_attempt_at = NULL
+                   WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                     AND lease_expires_at > ?""",
+                (
+                    json.dumps(task_result, ensure_ascii=False, sort_keys=True),
+                    now, str(task_id), lease.owner, lease.fencing_token, now,
+                ),
+            )
+            if execution_updated.rowcount != 1:
+                raise ValueError("Render worker lease is no longer current")
+            connection.execute(
+                """UPDATE idempotency_records SET status = 'completed'
+                   WHERE task_id = ? AND scope = ?""",
+                (str(task_id), f"video-render:{owner_user_id}"),
+            )
+            row = connection.execute(
+                "SELECT * FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
+                (str(asset_uuid), owner_user_id),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("Rendered media asset registration failed")
+        return self._record(row)
 
     def delete(self, owner_user_id: str, asset_id: UUID) -> list[str] | None:
         now = self._now()
