@@ -1,10 +1,11 @@
 import base64
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from uuid import UUID
 
 import pytest
 
-from mrhub.domain.tasks import TaskRepository, TaskStatus
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.analyzer import (
@@ -109,7 +110,7 @@ def test_video_analysis_worker_uses_shared_analyzer_and_releases_asset_lease(
         tmp_path, monkeypatch, analyzer
     )
 
-    result = handler(task, lease=lease, lease_lost=__import__("threading").Event())
+    result = handler(task, lease=lease, lease_lost=Event())
 
     record = jobs.get("owner-a", UUID(accepted["analysis_id"]))
     assert result["status"] == "completed"
