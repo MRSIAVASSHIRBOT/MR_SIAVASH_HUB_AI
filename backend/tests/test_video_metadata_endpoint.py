@@ -105,3 +105,57 @@ def test_video_metadata_endpoint_rejects_non_video_assets(monkeypatch, tmp_path)
             AuthenticatedUser(user_id="owner-a", username="owner"),
         )
     assert error.value.status_code == 415
+
+
+
+def test_cancel_video_analysis_endpoint_returns_owner_scoped_result(monkeypatch):
+    analysis_id = uuid4()
+    calls = {}
+
+    class FakeJobs:
+        def cancel(self, owner_user_id, requested_id):
+            calls["owner"] = owner_user_id
+            calls["analysis_id"] = requested_id
+            return {
+                "analysis_id": str(analysis_id),
+                "status": "cancelled",
+                "cancellation_requested": False,
+            }
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeJobs)
+    result = video_intelligence.cancel_video_analysis(
+        analysis_id,
+        AuthenticatedUser(user_id="owner-a", username="owner"),
+    )
+    assert result["status"] == "cancelled"
+    assert calls == {"owner": "owner-a", "analysis_id": analysis_id}
+
+
+def test_cancel_video_analysis_endpoint_hides_non_owned_analysis(monkeypatch):
+    class FakeJobs:
+        def cancel(self, _owner_user_id, _analysis_id):
+            return None
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeJobs)
+    with pytest.raises(HTTPException) as error:
+        video_intelligence.cancel_video_analysis(
+            uuid4(),
+            AuthenticatedUser(user_id="owner-b", username="other"),
+        )
+    assert error.value.status_code == 404
+
+
+def test_cancel_video_analysis_endpoint_maps_conflict_to_409(monkeypatch):
+    from mrhub.video_intelligence.jobs import VideoAnalysisConflict
+
+    class FakeJobs:
+        def cancel(self, _owner_user_id, _analysis_id):
+            raise VideoAnalysisConflict("not cancellable")
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeJobs)
+    with pytest.raises(HTTPException) as error:
+        video_intelligence.cancel_video_analysis(
+            uuid4(),
+            AuthenticatedUser(user_id="owner-a", username="owner"),
+        )
+    assert error.value.status_code == 409
