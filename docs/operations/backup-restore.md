@@ -65,3 +65,19 @@ A recovery drill is **ACCEPTED** only when the operator records:
 - any provider that remains intentionally disabled or requires reauthorization.
 
 This procedure is a runbook design. It has not yet been exercised on the owner's Windows device; do not label it runtime-verified until that drill is performed.
+
+## Read-only media integrity verification
+
+Before copying the media directory for a coordinated recovery point, run
+`verify_media_assets(database_path)` from `mrhub.operations.backup` while API
+and worker writers are stopped. It compares every registered asset's generated
+storage key, file size, and SHA-256 digest with the sibling `content_assets/`
+file. It also reports missing files, mismatched size/hash, invalid or symlinked
+entries, and unregistered directory entries as aggregate counts only; it never
+returns storage keys or file contents and never copies or deletes files.
+
+A backup set should not be accepted while the verifier reports `ok: false`.
+This verifier is a local consistency gate, not a media backup/copy utility and
+not a substitute for an actual restore drill. Verification is bounded to 10,000 registered assets, 10,000 directory entries, and 100 MB per asset; larger registries or implausible metadata fail closed and require an explicitly planned offline verification procedure. The API and worker must remain
+quiescent while the database and media directory are checked and copied, so the
+two components represent the same recovery point.
