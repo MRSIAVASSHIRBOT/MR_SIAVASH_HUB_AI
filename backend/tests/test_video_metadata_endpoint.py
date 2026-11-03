@@ -119,7 +119,6 @@ def test_analysis_brand_logo_must_be_an_owner_scoped_image(monkeypatch, tmp_path
         def get(self, owner_user_id, asset_id):
             calls["owner_user_id"] = owner_user_id
             calls["asset_id"] = asset_id
-            return None
 
     monkeypatch.setattr(
         video_intelligence,
