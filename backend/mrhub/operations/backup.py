@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import tempfile
 from contextlib import closing
@@ -114,6 +115,144 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
                     path.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+
+_MEDIA_STORAGE_KEY_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:mp4|mov|jpg|png|webp|mp3|wav)$"
+)
+
+MAX_MEDIA_ASSETS_TO_VERIFY = 10_000
+MAX_MEDIA_ASSET_BYTES = 100_000_000
+
+
+def verify_media_assets(database: str | Path) -> dict[str, Any]:
+    """Read-only verification of registered media files against SQLite metadata.
+
+    The verifier never copies, deletes, follows symlinks, or returns storage keys.
+    Stop API/worker writers before using it as a backup consistency gate.
+    """
+    database_path = Path(database).expanduser().resolve(strict=True)
+    if not database_path.is_file():
+        raise BackupError("Media verification source must be a regular database file")
+    media_root = database_path.parent / "content_assets"
+    try:
+        with closing(
+            sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
+        ) as connection:
+            count_row = connection.execute(
+                "SELECT COUNT(*) FROM content_assets"
+            ).fetchone()
+            registered_asset_count = int(count_row[0]) if count_row else 0
+            rows = (
+                connection.execute(
+                    "SELECT storage_key, file_size, content_hash FROM content_assets "
+                    "ORDER BY storage_key LIMIT ?",
+                    (MAX_MEDIA_ASSETS_TO_VERIFY + 1,),
+                ).fetchall()
+                if registered_asset_count <= MAX_MEDIA_ASSETS_TO_VERIFY
+                else []
+            )
+    except sqlite3.Error as exc:
+        raise BackupError("Media asset registry could not be read") from exc
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "registered_assets": registered_asset_count,
+        "verified_assets": 0,
+        "missing_assets": 0,
+        "size_mismatched_assets": 0,
+        "hash_mismatched_assets": 0,
+        "invalid_entries": 0,
+        "unregistered_entries": 0,
+        "verification_truncated": registered_asset_count > MAX_MEDIA_ASSETS_TO_VERIFY,
+    }
+    registered_keys: set[str] = set()
+    root_is_safe = not media_root.is_symlink()
+    if not root_is_safe:
+        result["invalid_entries"] += 1
+    try:
+        resolved_root = media_root.resolve(strict=False)
+    except OSError:
+        resolved_root = media_root.absolute()
+        root_is_safe = False
+
+    for storage_key, expected_size, expected_hash in rows:
+        key = storage_key if isinstance(storage_key, str) else ""
+        if not _MEDIA_STORAGE_KEY_PATTERN.fullmatch(key):
+            result["invalid_entries"] += 1
+            continue
+        if not root_is_safe:
+            continue
+        registered_keys.add(key)
+        try:
+            bounded_expected_size = int(expected_size)
+        except (TypeError, ValueError):
+            result["invalid_entries"] += 1
+            continue
+        if (
+            bounded_expected_size < 0
+            or bounded_expected_size > MAX_MEDIA_ASSET_BYTES
+            or not isinstance(expected_hash, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
+        ):
+            result["invalid_entries"] += 1
+            continue
+        candidate = media_root / key
+        try:
+            if candidate.is_symlink():
+                result["invalid_entries"] += 1
+                continue
+            resolved = candidate.resolve(strict=True)
+        except FileNotFoundError:
+            result["missing_assets"] += 1
+            continue
+        except OSError:
+            result["invalid_entries"] += 1
+            continue
+        if resolved.parent != resolved_root or not resolved.is_file():
+            result["invalid_entries"] += 1
+            continue
+
+        valid = True
+        try:
+            actual_size = resolved.stat().st_size
+            if actual_size > MAX_MEDIA_ASSET_BYTES:
+                result["invalid_entries"] += 1
+                continue
+            if actual_size != bounded_expected_size:
+                result["size_mismatched_assets"] += 1
+                valid = False
+            if _sha256(resolved) != expected_hash:
+                result["hash_mismatched_assets"] += 1
+                valid = False
+        except (OSError, TypeError, ValueError):
+            result["invalid_entries"] += 1
+            continue
+        if valid:
+            result["verified_assets"] += 1
+
+    if not result["verification_truncated"] and media_root.exists() and root_is_safe:
+        try:
+            for index, entry in enumerate(media_root.iterdir()):
+                if index >= MAX_MEDIA_ASSETS_TO_VERIFY:
+                    result["verification_truncated"] = True
+                    break
+                if entry.name not in registered_keys:
+                    result["unregistered_entries"] += 1
+        except OSError:
+            result["invalid_entries"] += 1
+
+    result["ok"] = not result["verification_truncated"] and all(
+        result[key] == 0
+        for key in (
+            "missing_assets",
+            "size_mismatched_assets",
+            "hash_mismatched_assets",
+            "invalid_entries",
+            "unregistered_entries",
+        )
+    )
+    return result
 
 
 def restore_database(backup: str | Path, destination: str | Path) -> dict[str, Any]:
