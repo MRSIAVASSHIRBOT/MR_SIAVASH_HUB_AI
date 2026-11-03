@@ -3,12 +3,15 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
 from mrhub.api.routes import media as media_routes
 from mrhub.security.auth import AuthenticatedUser
 
 
-@pytest.mark.parametrize("failure_point", ["output_target", "begin_processing"])
+@pytest.mark.parametrize(
+    "failure_point", ["output_target", "begin_processing", "already_processing"]
+)
 def test_transcode_releases_ffmpeg_slot_when_setup_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -42,6 +45,8 @@ def test_transcode_releases_ffmpeg_slot_when_setup_fails(
         def begin_processing(self, owner_user_id: str, requested_asset_id):
             if failure_point == "begin_processing":
                 raise RuntimeError("database setup failed")
+            if failure_point == "already_processing":
+                return None
             return {"asset_id": str(requested_asset_id)}
 
     monkeypatch.setattr(media_routes, "_repository", FakeRepository)
@@ -49,8 +54,13 @@ def test_transcode_releases_ffmpeg_slot_when_setup_fails(
     monkeypatch.setattr(media_routes, "_FFMPEG_SEMAPHORE", semaphore)
 
     user = AuthenticatedUser(user_id="local-owner", username="owner")
-    with pytest.raises(RuntimeError):
-        media_routes.transcode_video(asset_id, user)
+    if failure_point == "already_processing":
+        with pytest.raises(HTTPException) as exc_info:
+            media_routes.transcode_video(asset_id, user)
+        assert exc_info.value.status_code == 409
+    else:
+        with pytest.raises(RuntimeError):
+            media_routes.transcode_video(asset_id, user)
 
     # A subsequent request must still be able to reserve the single FFmpeg slot.
     assert semaphore.acquire(blocking=False)
