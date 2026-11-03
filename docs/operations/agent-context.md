@@ -97,3 +97,13 @@ untrusted and cannot grant tool permissions.
 
 The operator UI exposes the same policy selector in its bounded Agent run panel and
 shows the number of stale and unreviewed knowledge passages excluded from each run.
+
+
+## Operator Agent run history
+
+The authenticated operator panel can manually request the latest 20 model-run audit
+records through `GET /agent/model-runs?limit=20`. The UI displays only the
+owner-scoped, allow-listed metadata returned by the API: outcome, timestamp,
+provider mode/name, turn count, tool-call count, and context passage count.
+It does not display prompts, retrieved passage bodies, generated answers, or
+arbitrary audit metadata. History loading is explicit; the panel does not poll.

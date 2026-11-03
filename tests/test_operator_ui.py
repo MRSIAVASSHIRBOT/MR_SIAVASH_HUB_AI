@@ -77,8 +77,14 @@ def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
     assert 'id="agent-queued-workflow-id"' in response.text
     assert 'id="agent-queued-refresh-button"' in response.text
     assert 'id="agent-queued-cancel-button"' in response.text
+    assert 'id="agent-history-refresh-button"' in response.text
+    assert 'id="agent-history-result"' in response.text
+    assert 'id="agent-run-history"' in response.text
     script = client.get("/ui/app.js").text
     assert 'api("/agent/run"' in script
     assert "context_sources" in script
     assert "knowledge_freshness_policy" in script
     assert "excluded_stale_knowledge_count" in script
+    assert 'api("/agent/model-runs?limit=20")' in script
+    assert "metadata.selected_provider" in script
+    assert "run.outcome" in script

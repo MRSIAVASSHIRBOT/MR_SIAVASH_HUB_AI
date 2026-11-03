@@ -675,6 +675,7 @@
   $("#agent-queue-button").addEventListener("click", queueAgentRun);
   $("#agent-queued-refresh-button").addEventListener("click", refreshQueuedAgentRun);
   $("#agent-queued-cancel-button").addEventListener("click", cancelQueuedAgentRun);
+  $("#agent-history-refresh-button").addEventListener("click", loadAgentRunHistory);
   $("#agent-queued-workflow-id").addEventListener("input", (event) => {
     $("#agent-queued-refresh-button").disabled = !event.currentTarget.value.trim();
   });
@@ -796,6 +797,38 @@
     }
   }
 
+
+  async function loadAgentRunHistory() {
+    const output = $("#agent-history-result");
+    const container = $("#agent-run-history");
+    output.textContent = "در حال دریافت تاریخچهٔ اجراها…";
+    container.replaceChildren();
+    try {
+      const result = await api("/agent/model-runs?limit=20");
+      const runs = Array.isArray(result.runs) ? result.runs : [];
+      for (const run of runs) {
+        const metadata = run.metadata || {};
+        const details = [
+          "Provider: " + (metadata.selected_provider || "—"),
+          "حالت: " + (metadata.provider_mode || "—"),
+          "نوبت‌ها: " + (metadata.turns ?? "—"),
+          "فراخوانی ابزار: " + (metadata.tool_calls ?? "—"),
+          "تعداد منابع: " + (metadata.context_passage_count ?? "—"),
+        ].join(" · ");
+        container.append(recordCard(
+          (run.outcome || "unknown") + " · " + (run.run_id || "بدون شناسه"),
+          "",
+          (run.created_at || "زمان نامشخص") + " · " + details
+        ));
+      }
+      output.textContent = runs.length
+        ? "تعداد اجراهای ثبت‌شده: " + (result.count ?? runs.length) + " · فقط فرادادهٔ مجاز نمایش داده می‌شود."
+        : "هنوز سابقه‌ای برای نمایش وجود ندارد.";
+    } catch (error) {
+      output.textContent = error.message;
+      message("#workspace-message", error.message, "error");
+    }
+  }
 
   async function runAgent(event) {
     event.preventDefault();
