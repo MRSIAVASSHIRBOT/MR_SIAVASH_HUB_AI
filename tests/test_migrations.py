@@ -272,7 +272,7 @@ def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypa
 
     applied = SchemaMigrator(connection).migrate()
 
-    assert applied == [migration.version for migration in original[:-3]]
+    assert applied == [migration.version for migration in original[:-4]]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
     ).fetchone()[0] == 18
