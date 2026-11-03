@@ -528,3 +528,56 @@ def test_running_render_cancellation_signals_worker_without_publishing(
     assert analysis_repository.tasks.get(task_id).status.value == "cancelled"
     # The worker owns the terminal render transition after it observes cancellation.
     assert jobs.get("owner-a", render_id)["status"] == "running"
+
+
+def test_render_worker_observes_preexisting_cancellation_before_media_access(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    media = MediaAssetRepository(tmp_path / "render.sqlite")
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-cancel-before-worker")
+    render_id = UUID(accepted["render_id"])
+    task_id = UUID(accepted["task_id"])
+    expiry = "2099-01-01T00:00:00+00:00"
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (
+                str(task_id), "2026-11-04T00:00:00+00:00",
+                "render-worker", expiry, 13,
+            ),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'cancelled' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        reserved = connection.execute(
+            "SELECT output_storage_key FROM video_render_runs WHERE render_id = ?",
+            (str(render_id),),
+        ).fetchone()["output_storage_key"]
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=13,
+        expires_at=expiry,
+    )
+
+    result = VideoRenderWorkerHandler(analysis_repository.tasks)(
+        analysis_repository.tasks.get(task_id),
+        lease=lease,
+        lease_lost=Event(),
+    )
+
+    assert result == {"render_id": str(render_id), "status": "cancelled"}
+    assert jobs.get("owner-a", render_id)["status"] == "cancelled"
+    assert media.file_path(reserved).exists() is False
+    with analysis_repository.tasks._connection() as connection:
+        locks = connection.execute(
+            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0]
+    assert locks == 0
