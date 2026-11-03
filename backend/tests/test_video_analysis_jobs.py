@@ -77,6 +77,11 @@ def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(
         "request-2",
     )
     task_id = UUID(accepted["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
     loaded = repository.load_for_worker(task_id)
     assert loaded is not None
     owner, analysis_id, payload = loaded
