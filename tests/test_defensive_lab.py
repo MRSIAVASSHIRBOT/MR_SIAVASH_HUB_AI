@@ -1,5 +1,4 @@
 import datetime as dt
-
 import pytest
 
 from client_helpers import authenticated_client
