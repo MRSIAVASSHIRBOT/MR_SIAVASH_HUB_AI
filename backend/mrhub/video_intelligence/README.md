@@ -21,6 +21,7 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Admission accepts only assets in `stored` or `processed` state and the Worker rechecks readiness before analysis to close a concurrent-transcode race.
 - Inline brand logos must resolve to owner-scoped image assets; missing, foreign-owner, or non-image references are rejected.
 - Worker-side bounded metadata probing, up to 12 transient keyframes, and up to 24 scene-cut timestamps per source asset; extracted JPEG bytes are not persisted.
+- `VideoAssetAnalyzer` composes owner-scoped asset resolution, technical metadata validation, a shared bounded duration, keyframe extraction, scene-cut detection, and source content-hash provenance. The analysis Worker uses this internal service while holding the existing fenced media-use lock; frames remain transient.
 - Optional local Ollama vision analysis over the transient keyframes, with a strict image-byte budget, finite timeout, structured output validation, and observations bound to actual extracted timestamps. It is disabled by default and never falls back to a remote model.
 
 ## API surface
