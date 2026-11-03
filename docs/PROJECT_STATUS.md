@@ -246,3 +246,20 @@ These changes improve automated evidence for media delivery, bounded static anal
 - No SiaCode notebook, tunnel, remote model, or coding request has been launched by this project. Any future code-engine execution stage requires a separately reviewed request contract, authorization gate, isolated workspace, bounded output, and explicit diff review.
 - Scheduled social publishing still has no general provider-side idempotency guarantee. Ambiguous provider results must remain `unknown_outcome`; do not blindly retry or claim exactly-once publication.
 - Public signed-media reachability/edge controls, a live authorized Instagram publish-and-reconciliation test, and clean Windows install/upgrade/rollback/restore drills remain external acceptance gates.
+
+## Follow-up verification — 2026-11-03 UTC (post-PR #122, #126, #127, and #97)
+
+The following changes were merged after the previous status entry:
+
+- **PR #97 — vendor-neutral local integration adapters:** merged as `33861df75fac77f5d04ff3da613ce231d9891a57`. Adds optional, disabled-by-default `assistant_gateway` and `code_engine` health-only adapters, shared loopback URL validation, bounded redirect-free probes, and authenticated read-only capability reporting. It does not launch OpenClaw, SiaCode, tunnels, model downloads, coding requests, or remote execution. CI, Backend CI, and Defensive Python Scan passed on the exact PR head.
+- **PR #126 — Windows local launcher:** merged as `ae87bf0a98f9751995986288de6ab1a82983538f`. Adds the PowerShell start/stop scripts, local API + worker startup, persistent workflow-payload key initialization, readiness check, and Windows quick-start documentation. Windows PowerShell syntax validation, Python 3.11/3.12 CI, Backend CI, and Defensive Python Scan passed on the exact PR head.
+- **PR #127 — failed-startup cleanup:** merged as `6fb131e3b2bdf65feb81e8a4db2ad3c3b497f986`. The launcher now stops the worker if API process creation fails, cleans up only the processes it started when readiness fails, and preserves the runtime record when cleanup cannot be confirmed. Windows Launcher Validation, CI, Backend CI, and Defensive Python Scan passed on the exact PR head.
+- **PR #122 — continuous-agent permission isolation:** merged as `e561da2b7641fc4ba78d6e90710998b8fd78b2d1`. The model-driven development job now has read-only repository permissions and checkout does not persist Git credentials. A separate publisher job validates a bounded patch and creates a review-only PR with write permissions; the model-agent process does not receive the write token. CI, Backend CI, and Defensive Python Scan passed on the exact PR head.
+
+### Current verification boundaries
+
+- These merges establish repository changes and exact-head CI evidence; they do not prove a clean Windows install/start/stop/restore on the owner's laptop.
+- The Windows launcher currently requires Python 3.11 and binds the application to loopback. Do not expose it directly to the public internet.
+- The continuous-development workflow still requires a controlled end-to-end run to verify artifact transfer, patch validation, and PR publication. The OpenRouter inference key is still available to the model-agent process and must be treated as a sensitive credential.
+- OpenRouter inference, Telegram/Instagram publishing, OpenClaw/SiaCode execution, and remote code execution remain opt-in or unavailable until separately configured and accepted.
+- Do not claim production readiness until target-device install/upgrade/rollback/backup/restore drills and required provider acceptance tests are recorded.
