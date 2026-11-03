@@ -112,7 +112,7 @@ class AgentWorkflowRepository:
         with self._connect() as connection:
             placeholders = ",".join("?" for _ in expected)
             cursor = connection.execute(
-                f"UPDATE agent_workflows SET status = ?, updated_at = ? "
+                f"UPDATE agent_workflows SET status = ?, updated_at = ? "  # nosec B608 -- identifiers are fixed; all runtime values use SQLite placeholders.
                 f"WHERE workflow_id = ? AND status IN ({placeholders})",
                 (target, datetime.now(UTC).isoformat(), str(workflow_id), *sorted(expected)),
             )

@@ -129,7 +129,7 @@ class MemoryRepository:
         values.extend((str(memory_id), owner_user_id))
         with self.tasks._connection() as connection:
             cursor = connection.execute(
-                f"UPDATE memory_entries SET {', '.join(assignments)} "
+                f"UPDATE memory_entries SET {', '.join(assignments)} "  # nosec B608 -- identifiers come only from the fixed allowlist; values are bound.
                 "WHERE memory_id = ? AND owner_user_id = ?",
                 tuple(values),
             )

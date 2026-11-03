@@ -40,5 +40,4 @@ jobs:
           bandit -r backend/mrhub \
             --severity-level medium \
             --confidence-level medium \
-            --format screen \
-            --exit-zero
+            --format screen
