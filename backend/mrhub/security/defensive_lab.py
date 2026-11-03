@@ -1,5 +1,4 @@
 """Offline defensive configuration review with explicit authorization scope."""
-
 from __future__ import annotations
 
 import hashlib
@@ -261,9 +260,7 @@ def audit_requirements_text(
                 "Review the referenced file separately under the same explicit scope.",
             )
             continue
-        if line.startswith(("-e ", "--editable ")) or line.startswith(
-            ("git+", "http://", "https://")
-        ):
+        if line.startswith(("-e ", "--editable ", "git+", "http://", "https://")):
             packages_reviewed += 1
             add(
                 "DEP002",
