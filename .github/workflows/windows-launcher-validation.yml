@@ -107,6 +107,7 @@ jobs:
               throw "Worker process $($orphan.ProcessId) remained after failed startup."
             }
             Write-Host "Failed-startup cleanup smoke test passed."
+            $global:LASTEXITCODE = 0
           }
           finally {
             $listener.Stop()
