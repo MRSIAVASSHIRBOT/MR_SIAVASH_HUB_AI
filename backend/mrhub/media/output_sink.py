@@ -11,7 +11,8 @@ class BoundedOutputSink:
     """Write untrusted provider bytes to a private temporary file under a hard cap.
 
     The caller must call commit() only after the provider's reported byte count
-    matches bytes_written. Leaving the context without commit removes the temp file.
+    matches bytes_written. A limit violation aborts and poisons the sink immediately;
+    leaving the context without commit also removes the temporary file.
     """
 
     def __init__(self, target_path: Path, *, max_bytes: int) -> None:
@@ -38,6 +39,7 @@ class BoundedOutputSink:
         if size == 0:
             return 0
         if self.bytes_written + size > self.max_bytes:
+            self.abort()
             raise ValueError("Generated output exceeds the configured byte limit")
         written = self._file.write(content)
         if written != size:
