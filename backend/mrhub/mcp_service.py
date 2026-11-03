@@ -27,8 +27,6 @@ def main() -> None:
         streamable_http_path="/mcp",
         stateless_http=True,
         max_request_body_size=1_048_576,
-        max_sessions=20,
-        session_idle_timeout=300,
     )
 
 
