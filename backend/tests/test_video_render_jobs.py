@@ -141,7 +141,15 @@ def test_render_output_registration_completes_job_atomically(tmp_path, monkeypat
     )
     assert jobs.mark_running(task_id, "owner-a", lease=lease) is True
 
-    output_id, storage_key, output_path = media.new_output_target()
+    with jobs.tasks._connection() as connection:
+        reserved = connection.execute(
+            "SELECT output_storage_key FROM video_render_runs WHERE render_id = ?",
+            (str(render_id),),
+        ).fetchone()
+    assert reserved is not None
+    storage_key = str(reserved["output_storage_key"])
+    output_id = storage_key.removesuffix(".mp4")
+    output_path = media.file_path(storage_key)
     output_path.write_bytes(b"verified-mp4-placeholder")
     record = media.register_rendered_output(
         "owner-a",
@@ -255,9 +263,14 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
             ) VALUES (?, 1, ?, ?, ?, ?)""",
             (str(task_id), now, "render-worker", "2099-01-01T00:00:00+00:00", 7),
         )
+        stale_time = "2000-01-01T00:00:00+00:00"
         connection.execute(
             "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
-            (now, str(task_id)),
+            (stale_time, str(task_id)),
+        )
+        connection.execute(
+            "UPDATE video_render_runs SET updated_at = ? WHERE render_id = ?",
+            (stale_time, str(render_id)),
         )
 
     lease = WorkerLease(
