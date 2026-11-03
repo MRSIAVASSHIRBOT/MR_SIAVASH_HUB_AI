@@ -159,3 +159,106 @@ def test_cancel_video_analysis_endpoint_maps_conflict_to_409(monkeypatch):
             AuthenticatedUser(user_id="owner-a", username="owner"),
         )
     assert error.value.status_code == 409
+
+
+def test_create_timeline_draft_requires_owner_completed_analysis_and_asset(monkeypatch, tmp_path):
+    from mrhub.api.routes.video_intelligence import TimelineDraftCreateRequest
+
+    analysis_id = uuid4()
+    asset_id = uuid4()
+    calls = {}
+
+    class FakeJobs:
+        def get(self, owner_user_id, requested_id):
+            calls["owner"] = owner_user_id
+            calls["analysis_id"] = requested_id
+            return {
+                "status": "completed",
+                "result": {"assets": [{"asset_id": str(asset_id)}]},
+            }
+
+    class FakeDrafts:
+        def create(self, *args):
+            calls["create_args"] = args
+            return {"draft_id": "draft-1", "version": 1}
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeJobs)
+    monkeypatch.setattr(video_intelligence, "_timeline_drafts", FakeDrafts)
+    result = video_intelligence.create_timeline_draft(
+        TimelineDraftCreateRequest(
+            analysis_id=analysis_id,
+            asset_id=asset_id,
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            beats=[{
+                "start_seconds": 0,
+                "end_seconds": 10,
+                "generation_instruction": "Create an original scene",
+            }],
+        ),
+        AuthenticatedUser(user_id="owner-a", username="owner"),
+    )
+
+    assert result["draft_id"] == "draft-1"
+    assert calls["owner"] == "owner-a"
+    assert calls["analysis_id"] == analysis_id
+    assert calls["create_args"][0] == "owner-a"
+
+
+def test_create_timeline_draft_hides_asset_outside_analysis(monkeypatch):
+    from mrhub.api.routes.video_intelligence import TimelineDraftCreateRequest
+
+    class FakeJobs:
+        def get(self, _owner_user_id, _analysis_id):
+            return {"status": "completed", "result": {"assets": []}}
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeJobs)
+    with pytest.raises(HTTPException) as error:
+        video_intelligence.create_timeline_draft(
+            TimelineDraftCreateRequest(
+                analysis_id=uuid4(),
+                asset_id=uuid4(),
+                duration_seconds=10,
+                aspect_ratio="9:16",
+                beats=[{
+                    "start_seconds": 0,
+                    "end_seconds": 10,
+                    "generation_instruction": "Create an original scene",
+                }],
+            ),
+            AuthenticatedUser(user_id="owner-a", username="owner"),
+        )
+    assert error.value.status_code == 404
+
+
+def test_get_and_update_timeline_draft_are_owner_scoped(monkeypatch):
+    from mrhub.video_intelligence.timeline_drafts import TimelineDraftUpdate
+
+    draft_id = uuid4()
+    calls = {}
+
+    class FakeDrafts:
+        def get(self, owner_user_id, requested_id):
+            calls["get"] = (owner_user_id, requested_id)
+            return {"draft_id": str(draft_id), "version": 1} if owner_user_id == "owner-a" else None
+
+        def update(self, owner_user_id, requested_id, payload):
+            calls["update"] = (owner_user_id, requested_id, payload.expected_version)
+            return {"draft_id": str(draft_id), "version": 2} if owner_user_id == "owner-a" else None
+
+    monkeypatch.setattr(video_intelligence, "_timeline_drafts", FakeDrafts)
+    user = AuthenticatedUser(user_id="owner-a", username="owner")
+    assert video_intelligence.get_timeline_draft(draft_id, user)["version"] == 1
+    update = TimelineDraftUpdate(
+        expected_version=1,
+        duration_seconds=10,
+        aspect_ratio="9:16",
+        beats=[{
+            "start_seconds": 0,
+            "end_seconds": 10,
+            "generation_instruction": "Edited original scene",
+        }],
+    )
+    assert video_intelligence.update_timeline_draft(draft_id, update, user)["version"] == 2
+    assert calls["get"] == ("owner-a", draft_id)
+    assert calls["update"] == ("owner-a", draft_id, 1)
