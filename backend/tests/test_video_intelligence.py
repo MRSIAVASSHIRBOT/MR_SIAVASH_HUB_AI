@@ -190,6 +190,7 @@ def test_probe_video_rejects_malformed_ffprobe_json_shapes(
 
     assert result.metadata_status == "probe_failed"
 
+
 @pytest.mark.parametrize(
     "stdout",
     [
