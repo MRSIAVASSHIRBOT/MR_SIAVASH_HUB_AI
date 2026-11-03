@@ -76,7 +76,7 @@ def test_scene_job_creation_hides_non_owned_assets(tmp_path):
 
 
 def test_scene_jobs_reject_images_and_assets_that_are_not_ready(tmp_path):
-    database_path, _tasks, media, jobs, _asset = _setup(tmp_path)
+    _database_path, _tasks, media, jobs, _asset = _setup(tmp_path)
     image = media.store_upload("owner-a", "poster.png", "image/png", b"image")
 
     with pytest.raises(SceneJobUnsupportedMedia):
