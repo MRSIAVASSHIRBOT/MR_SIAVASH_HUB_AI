@@ -65,7 +65,7 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 **Remaining work**
 - Build repository inventory and static read-only analysis over explicitly selected repositories/directories.
 - Produce findings with file/line evidence, confidence, and remediation suggestions.
-- Add patch proposals as reviewable diffs; do not apply them automatically.
+- [x] Add review-only patch proposals with syntax checks, AST risk deltas, confidence, line evidence, and remediation guidance; never apply automatically.
 - Run tests only in an isolated, resource-bounded environment after an explicit user action.
 
 **Depends on:** Agent Orchestrator, capability registry, audit trail, and safe file access.

@@ -54,7 +54,10 @@ Architecture proposal: [ADR-0042 — Local-first Knowledge and Memory](../archit
 - [x] Add initial prompt-injection and trust-boundary regression coverage.
 - [x] Add owner-declared source freshness metadata (default unknown; not automatic URL verification).
 - [x] Integrate bounded retrieved context into authenticated `POST /agent/run`, preserving citations/trust/freshness metadata and treating passages as untrusted.
-- [ ] Add repeatable retrieval-quality evaluation and stronger stale-source verification.
+- [x] Add repeatable retrieval-quality evaluation with a synthetic fixture corpus, document-level Precision@K, Recall@K, MRR, and hit-rate metrics.
+- [x] Expire owner-reviewed-current freshness attestations after 30 days and exclude expired reviews under the current-only context policy.
+- [x] Verify stored chunk/document/source hashes and chunk offsets before returning local knowledge evidence.
+- [ ] Add independent publisher/source-content verification beyond local integrity and owner-declared freshness labels.
 - [ ] Evaluate embeddings/vector retrieval only if measured FTS5 quality is insufficient.
 - [ ] Continue one provider adapter at a time and enforce model/context budget limits.
 
@@ -76,7 +79,9 @@ Exit criteria: produce a draft and media asset locally; external publishing rema
 
 ## Phase 4 — Agents, workflows, and plugins
 - [x] Bounded model-driven orchestration primitive and authenticated Agent API (synchronous; not a durable job)
-- [ ] Agent registry and bounded delegation
+- [x] Enforce a per-run wall-clock budget with cooperative deadline checks before dispatching late model proposals
+- [x] Server-defined specialist registry with scoped tools and one-level bounded delegation
+- [x] Apply specialist registry and request-specific runtime budget consistently to durable worker model runs
 - [x] Durable workflow definitions and step history\n- [ ] Scheduled workflow triggers
 - [x] Built-in tool manifests, validation, policy grants, and audit events
 - Plugin compatibility and integrity checks
@@ -88,7 +93,8 @@ Exit criteria: a multi-step workflow runs with bounded tools and traceable state
 
 ## Phase 5 — NEXUS and Discovery
 - [x] Bounded read-only Python repository inventory and AST analysis foundation
-- [ ] Patch proposal and diff review
+- [x] Review-only patch proposals with bounded diffs, syntax checks, AST risk deltas, confidence, and remediation guidance; never apply automatically.
+- [ ] Run proposed tests only after explicit user action in an isolated, resource-bounded environment.
 - Tests executed in an isolated, bounded environment
 - Research connectors with source attribution
 - Untrusted-content handling and source provenance
