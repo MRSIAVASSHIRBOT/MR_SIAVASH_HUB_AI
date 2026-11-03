@@ -278,6 +278,8 @@ def compare_models(payload: CompareModelsRequest):
 def generate_remote_model(payload: GenerateModelRequest):
     """Send one request to the explicitly configured remote provider; never fall back."""
     settings = get_settings()
+    if payload.images and not settings.remote_inference_vision_enabled:
+        raise HTTPException(status_code=403, detail="Remote image processing is not explicitly enabled")
     if (
         not settings.remote_inference_enabled
         or settings.remote_inference_api_key is None
@@ -294,6 +296,7 @@ def generate_remote_model(payload: GenerateModelRequest):
             ProviderRequest(
                 input_text=payload.input_text,
                 max_output_tokens=payload.max_output_tokens,
+                images=tuple(payload.images),
             )
         )
     except ProviderError as exc:
@@ -305,6 +308,8 @@ def generate_remote_model(payload: GenerateModelRequest):
 @router.post("/generate")
 def generate_local_model(payload: GenerateModelRequest):
     settings = get_settings()
+    if payload.images and not settings.local_inference_vision_enabled:
+        raise HTTPException(status_code=403, detail="Local image processing is not explicitly enabled")
     if not settings.local_inference_enabled or not settings.local_inference_model:
         raise HTTPException(
             status_code=503,
