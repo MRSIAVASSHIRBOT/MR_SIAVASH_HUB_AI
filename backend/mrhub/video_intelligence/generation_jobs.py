@@ -256,7 +256,7 @@ class VideoGenerationJobRepository:
         if lease.task_id == "" or not lease.owner or lease.fencing_token < 1:
             raise ValueError("A valid worker lease is required")
         now = self._now()
-        allowed = {"queued": {"submitting"}, "submitting": {"running", "unknown_outcome", "failed"}}
+        allowed = {"queued": {"submitting", "failed"}, "submitting": {"running", "unknown_outcome", "failed"}}
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             link = connection.execute(
