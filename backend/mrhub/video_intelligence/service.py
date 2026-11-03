@@ -243,9 +243,10 @@ def build_prompt_from_visual_analysis(
     custom_changes: dict[str, str] | None = None,
     sound_design: str | None = None,
     final_frame: str | None = None,
+    timeline: list[dict[str, Any]] | None = None,
 ) -> str:
     """Turn validated frame observations into an original, bounded edit prompt."""
-    beats = build_timeline_from_visual_analysis(
+    beats = timeline if timeline is not None else build_timeline_from_visual_analysis(
         visual_analysis=visual_analysis,
         source_duration_seconds=source_duration_seconds,
         duration_seconds=duration_seconds,
