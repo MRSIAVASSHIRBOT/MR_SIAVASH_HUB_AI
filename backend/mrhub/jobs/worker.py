@@ -289,6 +289,14 @@ class WorkerEngine:
                     recovered_status = TaskStatus.WAITING_APPROVAL
                     audit_outcome = "recovery_required"
                     reason_code = "workflow_recovery_already_required"
+                    if workflow["status"] == "recovery_required":
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
                 else:
                     active_steps = connection.execute(
                         """
