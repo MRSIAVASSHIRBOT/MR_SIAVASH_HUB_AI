@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+
 from mrhub.providers.base import ProviderHealth, ProviderResponse
 from mrhub.providers.types import ModelCapability, ModelDescriptor
 from mrhub.video_intelligence.frames import ExtractedVideoFrame
@@ -134,3 +135,22 @@ def test_semantic_analysis_does_not_fallback_when_local_provider_is_unhealthy(mo
     result = vision.analyze_video_frames(frames(1), allow_remote=True, settings=object())
     assert result["status"] == "not_performed"
     assert result["reason_code"] == "provider_unavailable"
+
+
+
+def test_analysis_request_remote_vision_consent_defaults_to_false():
+    from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
+
+    request = VideoAnalysisRequest(
+        mode=AnalysisMode.FAITHFUL,
+        source_asset_ids=["asset-1"],
+    )
+    assert request.allow_remote_vision is False
+
+
+def test_visual_result_bounds_each_tag_not_only_list_length():
+    with pytest.raises(Exception):
+        vision.VisualBatchResult(
+            visual_summary="A scene",
+            visual_style=["x" * 121],
+        )
