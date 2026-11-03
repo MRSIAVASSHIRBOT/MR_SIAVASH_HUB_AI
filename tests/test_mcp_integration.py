@@ -1,4 +1,4 @@
-""""Optional MCP bridge contract and policy tests."""
+"""Optional MCP bridge contract and policy tests."""
 
 import json
 
