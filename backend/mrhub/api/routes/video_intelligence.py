@@ -551,3 +551,15 @@ def get_video_render(
     if render is None:
         raise HTTPException(status_code=404, detail="Video render not found")
     return render
+
+
+@router.delete("/renders/{render_id}")
+def cancel_video_render(
+    render_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Cancel queued rendering or request cooperative cancellation of running work."""
+    result = _render_jobs().cancel(user.user_id, render_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Video render not found")
+    return result
