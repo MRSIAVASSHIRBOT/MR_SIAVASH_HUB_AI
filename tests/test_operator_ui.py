@@ -71,6 +71,14 @@ def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
     assert 'id="agent-run-form"' in response.text
     assert 'name="provider_mode"' in response.text
     assert 'id="agent-run-result"' in response.text
+    assert 'id="agent-queue-button"' in response.text
+    assert 'id="agent-queued-workflow-id"' in response.text
+    assert 'id="agent-queued-refresh-button"' in response.text
+    assert 'id="agent-queued-cancel-button"' in response.text
     script = client.get("/ui/app.js").text
     assert 'api("/agent/run"' in script
+    assert 'api("/agent/model-runs"' in script
+    assert '"/agent/model-run-workflows/"' in script
+    assert 'headers: { "Idempotency-Key": crypto.randomUUID() }' in script
     assert "context_sources" in script
+    assert "setInterval(" not in script
