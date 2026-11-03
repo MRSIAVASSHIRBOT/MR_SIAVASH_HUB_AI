@@ -392,3 +392,57 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
         ).fetchone()["status"]
     assert remaining_locks == 0
     assert idempotency == "failed"
+
+
+def test_render_output_registration_rejects_unreserved_storage_key(tmp_path, monkeypatch):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    media = MediaAssetRepository(tmp_path / "render.sqlite")
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-reserved-key")
+    render_id = UUID(accepted["render_id"])
+    task_id = UUID(accepted["task_id"])
+    now = "2026-11-04T00:00:00+00:00"
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (
+                str(task_id), now, "render-worker",
+                "2099-01-01T00:00:00+00:00", 9,
+            ),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
+            (now, str(task_id)),
+        )
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=9,
+        expires_at="2099-01-01T00:00:00+00:00",
+    )
+    assert jobs.mark_running(task_id, "owner-a", lease=lease) is True
+
+    output_id, storage_key, output_path = media.new_output_target()
+    output_path.write_bytes(b"unreserved-output")
+    try:
+        media.register_rendered_output(
+            "owner-a",
+            output_id,
+            storage_key,
+            output_path,
+            f"render-{render_id}.mp4",
+            task_id=task_id,
+            render_id=render_id,
+            lease=lease,
+            task_result={"status": "completed"},
+        )
+    except ValueError as exc:
+        assert "no longer owned" in str(exc)
+    else:
+        raise AssertionError("A render cannot publish to a key it did not reserve")
+
+    assert media.get("owner-a", UUID(output_id)) is None
+    assert jobs.get("owner-a", render_id)["status"] == "running"
