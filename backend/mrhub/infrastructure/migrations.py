@@ -678,6 +678,7 @@ MIGRATIONS = (
                 UNIQUE(asset_id, task_id, execution_token)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_media_asset_analysis_leases_asset ON media_asset_analysis_leases(asset_id, owner_user_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_media_asset_analysis_lease_asset ON media_asset_analysis_leases(asset_id)",
             "CREATE INDEX IF NOT EXISTS idx_media_asset_analysis_leases_task ON media_asset_analysis_leases(task_id, execution_token)",
         ),
     ),
