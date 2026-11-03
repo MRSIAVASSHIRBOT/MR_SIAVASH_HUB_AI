@@ -51,7 +51,9 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
         if not isinstance(payload, dict):
             return VideoTechnicalMetadata(metadata_status="probe_failed")
         streams = payload.get("streams", [])
-        if not isinstance(streams, list):
+        if not isinstance(streams, list) or not all(
+            isinstance(item, dict) for item in streams
+        ):
             return VideoTechnicalMetadata(metadata_status="probe_failed")
         video = next(
             (
@@ -69,7 +71,7 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
         fps = float(numerator) / float(denominator) if float(denominator) else None
         format_data = payload.get("format", {})
         if not isinstance(format_data, dict):
-            format_data = {}
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
         duration = format_data.get("duration")
         return VideoTechnicalMetadata(
             duration_seconds=float(duration) if duration is not None else None,
