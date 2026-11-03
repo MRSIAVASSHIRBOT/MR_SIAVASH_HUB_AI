@@ -1,4 +1,6 @@
+import json
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -189,3 +191,63 @@ def test_probe_video_rejects_malformed_ffprobe_json_shapes(
     result = probe_video(source)
 
     assert result.metadata_status == "probe_failed"
+
+
+
+def test_probe_video_bounds_stream_count_and_discards_unneeded_stderr(tmp_path, monkeypatch):
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"fixture")
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.shutil.which",
+        lambda _name: "/usr/bin/ffprobe",
+    )
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({
+                "format": {"duration": "4.5"},
+                "streams": [
+                    {
+                        "codec_type": "video",
+                        "codec_name": "h264",
+                        "width": 1280,
+                        "height": 720,
+                        "avg_frame_rate": "30/1",
+                    },
+                    {"codec_type": "audio", "codec_name": "aac"},
+                ],
+            }).encode(),
+        )
+
+    monkeypatch.setattr("mrhub.video_intelligence.service.subprocess.run", fake_run)
+
+    result = probe_video(source)
+
+    assert result.metadata_status == "available"
+    assert result.duration_seconds == 4.5
+    assert result.has_audio is True
+    assert captured["command"][captured["command"].index("-max_streams") + 1] == "64"
+    assert captured["kwargs"]["stdout"] == subprocess.PIPE
+    assert captured["kwargs"]["stderr"] == subprocess.DEVNULL
+    assert captured["kwargs"]["timeout"] == 12
+    assert captured["kwargs"]["shell"] is False
+
+
+def test_probe_video_fails_closed_when_ffprobe_times_out(tmp_path, monkeypatch):
+    source = tmp_path / "sample.mp4"
+    source.write_bytes(b"fixture")
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.shutil.which",
+        lambda _name: "/usr/bin/ffprobe",
+    )
+
+    def timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired("ffprobe", 12)
+
+    monkeypatch.setattr("mrhub.video_intelligence.service.subprocess.run", timeout)
+
+    assert probe_video(source).metadata_status == "probe_failed"
