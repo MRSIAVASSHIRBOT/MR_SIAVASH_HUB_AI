@@ -183,6 +183,8 @@ def detect_scene_boundaries(
     for timestamp in detected:
         if timestamp > duration_seconds + 0.25:
             raise SceneDetectionError("scene_timestamp_out_of_range")
+        if valid_timestamps and timestamp < valid_timestamps[-1] - 0.001:
+            raise SceneDetectionError("scene_timestamps_not_monotonic")
         if timestamp > 0 and (
             not valid_timestamps or timestamp - valid_timestamps[-1] > 0.001
         ):
