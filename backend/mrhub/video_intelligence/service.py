@@ -1,0 +1,106 @@
+"""Safe, dependency-light primitives for video intelligence workflows.
+
+This first slice deliberately does not download URLs or execute media tools.
+It probes only server-owned asset paths supplied by the authenticated media
+repository in a later integration layer.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
+
+
+_PROBE_TIMEOUT_SECONDS = 12
+_MAX_PROBE_OUTPUT_BYTES = 256 * 1024
+
+
+def probe_video(path: Path) -> VideoTechnicalMetadata:
+    """Return measurable technical metadata using ffprobe when installed."""
+    binary = shutil.which("ffprobe")
+    if binary is None:
+        return VideoTechnicalMetadata(metadata_status="ffprobe_unavailable")
+    if not path.is_file():
+        return VideoTechnicalMetadata(metadata_status="probe_failed")
+
+    command = [
+        binary,
+        "-v", "error",
+        "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate",
+        "-of", "json",
+        str(path),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            shell=False,
+            check=False,
+            capture_output=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+            env={"PATH": str(Path(binary).parent), "LANG": "C", "LC_ALL": "C"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return VideoTechnicalMetadata(metadata_status="probe_failed")
+
+    if result.returncode != 0 or len(result.stdout) > _MAX_PROBE_OUTPUT_BYTES:
+        return VideoTechnicalMetadata(metadata_status="probe_failed")
+    try:
+        payload: dict[str, Any] = json.loads(result.stdout)
+        streams = payload.get("streams", [])
+        video = next((item for item in streams if item.get("codec_type") == "video"), {})
+        has_audio = any(item.get("codec_type") == "audio" for item in streams)
+        numerator, _, denominator = str(video.get("avg_frame_rate", "0/1")).partition("/")
+        fps = float(numerator) / float(denominator) if float(denominator) else None
+        duration = payload.get("format", {}).get("duration")
+        return VideoTechnicalMetadata(
+            duration_seconds=float(duration) if duration is not None else None,
+            width=int(video["width"]) if video.get("width") else None,
+            height=int(video["height"]) if video.get("height") else None,
+            frame_rate=round(fps, 3) if fps is not None else None,
+            codec=str(video["codec_name"]) if video.get("codec_name") else None,
+            has_audio=has_audio,
+            metadata_status="available",
+        )
+    except (TypeError, ValueError, KeyError, ZeroDivisionError, json.JSONDecodeError):
+        return VideoTechnicalMetadata(metadata_status="probe_failed")
+
+
+def build_generation_prompt(
+    *,
+    style_summary: str,
+    beats: list[dict[str, Any]],
+    duration_seconds: int,
+    aspect_ratio: str,
+    brand_name: str | None = None,
+    colors: list[str] | None = None,
+    typography: str | None = None,
+    sound_design: str | None = None,
+    final_frame: str | None = None,
+) -> str:
+    """Build a structured prompt from analysis facts, not source expressions."""
+    palette = ", ".join(colors or []) or "derive a coherent original palette from the analysis"
+    beat_lines = []
+    for index, beat in enumerate(beats, start=1):
+        start = beat.get("start_seconds", "?")
+        end = beat.get("end_seconds", "?")
+        description = str(beat.get("generation_instruction", "Create an original visual beat."))[:1200]
+        transition = str(beat.get("transition_to_next", "clean cinematic cut"))[:240]
+        beat_lines.append(f"Beat {index} ({start}s–{end}s): {description} Transition: {transition}.")
+    beats_text = "\n".join(beat_lines) or "Create a concise original sequence with a clear hook, development, and resolved ending."
+    brand_line = f"Use the brand name {brand_name} only where appropriate; do not invent a logo." if brand_name else "Do not add unprovided brand marks."
+    return (
+        f"Create an original {duration_seconds}-second video in {aspect_ratio} aspect ratio.\n"
+        f"Style: {style_summary[:1000]}\n"
+        f"Palette: {palette}.\n"
+        f"Typography: {typography or 'Use one consistent, legible modern sans-serif family; preserve exact supplied copy.'}\n"
+        f"{brand_line}\n"
+        f"Timeline:\n{beats_text}\n"
+        f"Sound design: {sound_design or 'Use restrained, beat-synchronized original music and subtle transition effects.'}\n"
+        f"Final frame: {final_frame or 'End on a clean, readable frame with a deliberate visual hold.'}\n"
+        "Recreate visual techniques and pacing only. Do not reproduce protected logos, text, characters, footage, or distinctive copyrighted compositions."
+    )
