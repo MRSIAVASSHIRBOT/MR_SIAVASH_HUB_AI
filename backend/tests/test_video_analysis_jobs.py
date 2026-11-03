@@ -3,6 +3,7 @@ from uuid import UUID
 
 import pytest
 
+from mrhub.domain.tasks import TaskStatus
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.video_intelligence.jobs import (
@@ -228,3 +229,37 @@ def test_cancel_analysis_is_idempotent_and_owner_scoped(tmp_path, monkeypatch):
     second = repository.cancel("owner-a", analysis_id)
     assert first == second
     assert second["status"] == "cancelled"
+
+
+
+def test_worker_failure_path_acknowledges_cancelled_task_instead_of_marking_failed():
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from mrhub.video_intelligence.worker import VideoAnalysisWorkerHandler
+
+    calls = {}
+
+    class FakeTasks:
+        def get(self, _task_id):
+            return SimpleNamespace(status=TaskStatus.CANCELLED)
+
+    class FakeJobs:
+        def finish(self, task_id, owner_user_id, **kwargs):
+            calls.update({
+                "task_id": task_id,
+                "owner_user_id": owner_user_id,
+                **kwargs,
+            })
+
+    handler = VideoAnalysisWorkerHandler.__new__(VideoAnalysisWorkerHandler)
+    handler.tasks = FakeTasks()
+    handler.jobs = FakeJobs()
+    task = SimpleNamespace(task_id=uuid4())
+    lease = SimpleNamespace(task_id=str(task.task_id))
+
+    result = handler._fail(task, "owner-a", lease, "ffmpeg_failed")
+
+    assert result == {"status": "cancelled"}
+    assert calls["status"] == "cancelled"
+    assert calls["error_code"] == "cancelled_by_owner"
