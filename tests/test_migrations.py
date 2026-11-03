@@ -71,6 +71,12 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     assert connection.execute(
         "PRAGMA foreign_key_list(media_file_cleanup)"
     ).fetchall() == []
+    cleanup_index = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_media_file_cleanup_owner_retry'"
+    ).fetchone()
+    assert cleanup_index is not None
+    assert "owner_user_id, attempt_count, updated_at, created_at" in cleanup_index["sql"]
     connection.close()
 
 
@@ -283,6 +289,10 @@ def test_migration_19_upgrades_an_existing_v18_database(tmp_path, monkeypatch):
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_media_file_cleanup_owner_retry'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
