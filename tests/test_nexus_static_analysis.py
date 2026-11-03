@@ -163,6 +163,7 @@ parse_yaml(document, Loader=SafeYamlLoader)
     assert result["code_executed"] is False
     assert result["source_code_included"] is False
 
+
 def test_static_analysis_detects_os_system_and_os_popen_without_aliases():
     result = analyze_python_source(
         "import os\nos.system(command)\nos.popen(command)\n",
