@@ -5,8 +5,6 @@ from __future__ import annotations
 from threading import Event
 from uuid import UUID
 
-from OSError import OSError
-
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
