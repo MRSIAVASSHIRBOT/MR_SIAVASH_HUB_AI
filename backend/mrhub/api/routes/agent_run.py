@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.context import AgentContextAssembler
 from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
+from mrhub.agents.registry import build_default_agent_registry
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
@@ -37,6 +38,7 @@ class AgentRunRequest(BaseModel):
     ] = "include_all"
     max_turns: int = Field(default=3, ge=1, le=3)
     max_output_tokens: int = Field(default=512, ge=1, le=512)
+    max_runtime_seconds: int = Field(default=30, ge=1, le=30)
 
 
 @router.post("/run")
@@ -84,12 +86,15 @@ def run_agent(
             prefer_local=payload.provider_mode == "local",
             max_turns=payload.max_turns,
             max_output_tokens=payload.max_output_tokens,
+            max_runtime_seconds=payload.max_runtime_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Agent input exceeds the supported bounds") from exc
 
     worker_control = WorkerControlRepository(settings.database_path)
-    result = AgentOrchestrator(model_router, build_tool_registry()).run(
+    tool_registry = build_tool_registry()
+    agent_registry = build_default_agent_registry(tool_registry)
+    result = AgentOrchestrator(model_router, tool_registry, agent_registry).run(
         request,
         should_cancel=worker_control.is_stopped,
     )
@@ -124,6 +129,9 @@ def run_agent(
                 "trust_classification",
                 "freshness_status",
                 "freshness_checked_at",
+                "freshness_review_expired",
+                "freshness_review_max_age_days",
+                "content_integrity_verified",
                 "document_hash",
                 "chunk_hash",
             )
@@ -138,6 +146,8 @@ def run_agent(
         "knowledge_freshness_policy": context["knowledge_freshness_policy"],
         "excluded_stale_knowledge_count": context["excluded_stale_knowledge_count"],
         "excluded_unreviewed_knowledge_count": context["excluded_unreviewed_knowledge_count"],
+        "excluded_expired_knowledge_count": context["excluded_expired_knowledge_count"],
+        "freshness_review_max_age_days": context["freshness_review_max_age_days"],
         "context_sources": context_sources,
         "execution": result,
         "external_side_effects_performed": False,

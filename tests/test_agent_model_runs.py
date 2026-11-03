@@ -364,3 +364,134 @@ def test_durable_model_run_cannot_execute_tool_requested_by_hostile_retrieval(mo
         source["reference"] == citation
         for source in body["result"]["context_sources"]
     )
+
+
+
+class SequenceProvider(ScriptedProvider):
+    def __init__(self, outputs: list[str]):
+        super().__init__()
+        self.outputs = outputs
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.calls += 1
+        self.requests.append(request)
+        output = self.outputs[min(self.calls - 1, len(self.outputs) - 1)]
+        return ProviderResponse(
+            provider=self.descriptor.provider,
+            model=self.descriptor.model,
+            output_text=output,
+        )
+
+
+def test_durable_model_run_uses_server_defined_specialist_registry(monkeypatch):
+    client = authenticated_client()
+    provider = SequenceProvider([
+        json.dumps({
+            "type": "delegate",
+            "agent": "knowledge_synthesizer",
+            "goal": "Synthesize the supplied evidence and state its limitations.",
+        }),
+        json.dumps({"type": "final", "answer": "Evidence is insufficient."}),
+        json.dumps({"type": "final", "answer": "Specialist review completed."}),
+    ])
+    router = _router(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-run-specialist-001"},
+        json={
+            "goal": "Delegate evidence synthesis, then summarize.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 2,
+            "max_output_tokens": 64,
+        },
+    )
+    assert submitted.status_code == 202
+    assert provider.calls == 0
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider.calls == 3
+    assert "Synthesize only the supplied retrieved evidence" in (
+        provider.requests[1].input_text
+    )
+
+    completed = client.get(
+        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
+    )
+    assert completed.status_code == 200
+    execution = completed.json()["result"]["execution"]
+    assert execution["status"] == "completed"
+    assert execution["answer"] == "Specialist review completed."
+    assert any(
+        item["type"] == "delegation_observation"
+        and item["agent"] == "knowledge_synthesizer"
+        for item in execution["trace"]
+    )
+
+
+def test_durable_model_run_enforces_requested_runtime_budget(monkeypatch):
+    import time
+
+    class SlowProvider(ScriptedProvider):
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            self.calls += 1
+            self.requests.append(request)
+            time.sleep(1.05)
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text=json.dumps({"type": "final", "answer": "Too late"}),
+            )
+
+    client = authenticated_client()
+    provider = SlowProvider()
+    router = _router(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-run-runtime-001"},
+        json={
+            "goal": "Enforce a one-second runtime budget.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 1,
+            "max_output_tokens": 64,
+            "max_runtime_seconds": 1,
+        },
+    )
+    assert submitted.status_code == 202
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider.calls == 1
+
+    completed = client.get(
+        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
+    )
+    assert completed.status_code == 200
+    execution = completed.json()["result"]["execution"]
+    assert execution["status"] == "budget_exhausted"
+    assert execution["error_code"] == "runtime_budget_exceeded"
+    assert "Too late" not in execution.get("answer", "")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -272,7 +273,8 @@ class KnowledgeRepository:
                 """
                 SELECT c.chunk_id, c.document_id, c.source_id, c.chunk_index,
                        c.start_offset, c.end_offset, c.content, c.content_hash AS chunk_hash,
-                       d.title, d.language, d.content_hash AS document_hash,
+                       d.title, d.language, d.content AS document_content,
+                       d.content_hash AS document_hash, s.content_hash AS source_hash,
                        s.canonical_origin, s.trust_classification,
                        s.sensitivity_classification, s.freshness_status,
                        s.freshness_checked_at
@@ -290,30 +292,55 @@ class KnowledgeRepository:
                 """,
                 (expression, owner_user_id, bounded_limit),
             ).fetchall()
-        return [
-            {
-                "chunk_id": row["chunk_id"],
-                "document_id": row["document_id"],
-                "source_id": row["source_id"],
-                "title": row["title"],
-                "language": row["language"],
-                "source_ref": row["canonical_origin"],
-                "trust_classification": row["trust_classification"],
-                "sensitivity_classification": row["sensitivity_classification"],
-                "freshness_status": row["freshness_status"],
-                "freshness_checked_at": row["freshness_checked_at"],
-                "content": row["content"],
-                "start_offset": row["start_offset"],
-                "end_offset": row["end_offset"],
-                "chunk_hash": row["chunk_hash"],
-                "document_hash": row["document_hash"],
-                "chunk_index": row["chunk_index"],
-                "citation_ref": (
-                    f"knowledge://documents/{row['document_id']}#chunk-{row['chunk_index']}"
-                ),
-            }
-            for row in rows
-        ]
+        results: list[dict[str, object]] = []
+        for row in rows:
+            chunk_content = str(row["content"])
+            document_content = str(row["document_content"])
+            chunk_hash = self._digest(chunk_content)
+            document_hash = self._digest(document_content)
+            stored_chunk_hash = str(row["chunk_hash"])
+            stored_document_hash = str(row["document_hash"])
+            stored_source_hash = str(row["source_hash"])
+            start_offset = int(row["start_offset"])
+            end_offset = int(row["end_offset"])
+
+            # Hashes and offsets are checked before a chunk crosses into Agent
+            # context. This detects inconsistent/tampered local records; it is
+            # not an independent check of the original external source.
+            if not (
+                hmac.compare_digest(chunk_hash, stored_chunk_hash)
+                and hmac.compare_digest(document_hash, stored_document_hash)
+                and hmac.compare_digest(document_hash, stored_source_hash)
+                and 0 <= start_offset <= end_offset <= len(document_content)
+                and document_content[start_offset:end_offset] == chunk_content
+            ):
+                continue
+
+            results.append(
+                {
+                    "chunk_id": row["chunk_id"],
+                    "document_id": row["document_id"],
+                    "source_id": row["source_id"],
+                    "title": row["title"],
+                    "language": row["language"],
+                    "source_ref": row["canonical_origin"],
+                    "trust_classification": row["trust_classification"],
+                    "sensitivity_classification": row["sensitivity_classification"],
+                    "freshness_status": row["freshness_status"],
+                    "freshness_checked_at": row["freshness_checked_at"],
+                    "content": chunk_content,
+                    "start_offset": start_offset,
+                    "end_offset": end_offset,
+                    "chunk_hash": stored_chunk_hash,
+                    "document_hash": stored_document_hash,
+                    "content_integrity_verified": True,
+                    "chunk_index": row["chunk_index"],
+                    "citation_ref": (
+                        f"knowledge://documents/{row['document_id']}#chunk-{row['chunk_index']}"
+                    ),
+                }
+            )
+        return results
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         with self.tasks._connection() as connection:

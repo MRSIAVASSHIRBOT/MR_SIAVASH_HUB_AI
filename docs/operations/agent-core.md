@@ -71,3 +71,81 @@ This is a concurrency and audit-integrity safeguard, not automatic crash
 recovery. A process that stops while a step is running leaves that step
 ambiguous; it must not be replayed until the system can prove the operation is
 idempotent or obtain a safe, explicit recovery decision.
+
+
+## Runtime budget
+
+Model-driven runs accept a total wall-clock budget from 1 to 30 seconds (default 30).
+The orchestrator checks the deadline before each turn, immediately after model inference,
+and after each tool returns. A response that arrives after the deadline is discarded before
+any proposed tool call can be dispatched. A tool that itself runs past the deadline cannot
+be forcibly interrupted by the current synchronous tool contract; its completed result is
+recorded and no further turn is started. Provider adapters retain their own finite request
+timeouts. This is a cooperative run budget, not a hard process-level execution limit.
+
+
+## Specialist registry and bounded delegation
+
+The initial model-driven Agent API exposes a server-defined specialist catalog. A model may
+propose one of the registered specialist profiles, but it cannot create or modify profiles.
+The initial profiles are deliberately narrow: evidence synthesis has no tools, while the
+text helper receives only the safe `text.echo` tool. Each child receives the parent's
+remaining runtime and tool-call budgets plus a reserved share of the remaining input-character
+budget; reserved shares prevent multiple children from exceeding the root input cap. Delegation is limited to two
+children per root run and one level deep; children cannot delegate again. Tool scopes are
+built from the parent's registry while preserving the same server-side policy engine.
+Child answers are returned to the parent as explicitly untrusted observations, never as
+policy or authorization. This is an initial extensible registry, not yet a dynamic agent
+marketplace or a production collection of domain specialists.
+
+
+
+## Durable model-run parity
+
+Queued `POST /agent/model-runs` requests preserve the requested runtime budget in
+their encrypted, owner-bound payload. The worker applies that exact budget when it
+constructs the model loop and initializes the same server-defined specialist
+registry used by the synchronous `POST /agent/run` endpoint. Specialist tool
+allow-lists and the shared policy engine therefore apply consistently in both
+execution paths. A durable run still executes under its worker lease and its
+result is encrypted before it is made available to the owner.
+
+
+
+## Retrieval-quality evaluation
+
+The local reference benchmark is implemented in
+`mrhub.knowledge.evaluation.run_reference_evaluation`. Run it with
+`python -m mrhub.knowledge.evaluation` from the backend environment. It creates
+a temporary SQLite database and a synthetic five-document corpus, then reports
+document-level Precision@K, Recall@K, Mean Reciprocal Rank, and hit rate.
+It does not read owner data, include retrieved source text in the report, or
+access the network. This synthetic benchmark is a regression baseline, not a
+claim about retrieval quality on arbitrary production corpora. The API-level
+seven-case fixture in `tests/knowledge_eval.json` separately checks rank-one
+source selection and citation references.
+
+
+
+## Freshness-review expiry
+
+An `owner_reviewed_current` label is an owner attestation, not automatic source
+verification. The Agent treats that attestation as current for at most 30 days.
+Under `owner_reviewed_current_only`, expired reviews, unknown labels, malformed
+or missing review timestamps, and timestamps more than five minutes in the
+future are excluded from model context. Explicitly stale sources are counted
+separately. Under `include_all`, the evidence remains available but carries a
+`freshness_review_expired` marker and the 30-day review-age limit. No URL is
+fetched and no claim of independent source verification is made.
+
+
+
+## Local knowledge integrity
+
+Before a knowledge chunk is returned to an Agent, retrieval recomputes the
+chunk and full-document SHA-256 digests, checks that the source and document
+hashes agree, and verifies that the stored chunk offsets still select the
+same content from the document. Inconsistent records are excluded from search
+results. This protects the local retrieval boundary against accidental or
+unauthorized row-level content changes; it does not authenticate the original
+publisher or prove that an external source is still current.

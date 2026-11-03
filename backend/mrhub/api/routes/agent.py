@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
@@ -45,7 +46,9 @@ def discover_agent_capabilities() -> dict[str, object]:
     """Return a read-only inventory of configured models, tools, and reviewed sources."""
     settings = get_settings()
     models = build_model_router().catalog()
-    tools = build_tool_registry().catalog()
+    tool_registry = build_tool_registry()
+    tools = tool_registry.catalog()
+    agents = build_default_agent_registry(tool_registry).catalog()
     approved_sources = CapabilityRegistry(settings.database_path).list_candidates(
         status="approved", limit=100
     )
@@ -69,6 +72,7 @@ def discover_agent_capabilities() -> dict[str, object]:
             for item in models
         ],
         "tools": tools,
+        "agents": agents,
         "capability_sources": [
             {
                 "candidate_id": item.candidate_id,
