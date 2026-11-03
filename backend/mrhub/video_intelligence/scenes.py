@@ -74,7 +74,7 @@ def _parse_framehash_timestamps(output: bytes) -> list[float]:
         if not math.isfinite(timestamp) or timestamp < 0:
             raise SceneDetectionError("scene_timestamp_invalid")
         timestamps.append(timestamp)
-    if timestamps and time_base is None:
+    if time_base is None:
         raise SceneDetectionError("scene_time_base_invalid")
     return timestamps
 
