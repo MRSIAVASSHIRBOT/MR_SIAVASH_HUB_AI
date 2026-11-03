@@ -47,7 +47,8 @@ class VideoTimeline(BaseModel):
     actual_duration_seconds: float = Field(gt=0, le=60)
     duration_shortfall_seconds: float = Field(ge=0, le=60)
     video_track: list[TimelineClip] = Field(min_length=1, max_length=125)
-    audio_track_status: Literal["not_requested", "requested_not_implemented"]
+    audio_analysis_status: Literal["not_requested", "requested_not_implemented"]
+    audio_render_status: Literal["not_implemented"]
     timeline_status: Literal["validated_cut_only"]
     render_status: Literal["not_implemented"]
 
@@ -150,7 +151,8 @@ def build_video_timeline(specification: EditSpecification) -> VideoTimeline:
             specification.requested_output_duration_seconds - actual_duration, 3
         ),
         video_track=clips,
-        audio_track_status=specification.audio_plan_status,
+        audio_analysis_status=specification.audio_plan_status,
+        audio_render_status="not_implemented",
         timeline_status="validated_cut_only",
         render_status="not_implemented",
     )
