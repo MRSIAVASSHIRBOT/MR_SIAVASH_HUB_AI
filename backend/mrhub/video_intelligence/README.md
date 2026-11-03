@@ -16,6 +16,7 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Deterministic, provider-neutral prompt composition.
 - Authenticated brand-profile CRUD with per-user ownership, unique names per owner, and image-asset ownership validation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
+- Owner-scoped asynchronous scene-analysis jobs executed by the shared pull-driven worker, with per-owner/global queue caps and sanitized timestamp-only results.
 
 ## API surface
 
@@ -28,14 +29,17 @@ All endpoints require an authenticated owner session:
 - `PUT /video-intelligence/brands/{profile_id}` — update an owned profile.
 - `DELETE /video-intelligence/brands/{profile_id}` — delete an owned profile.
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
+- `POST /video-intelligence/assets/{asset_id}/scene-jobs` — queue bounded scene-cut detection for an owned video asset (HTTP 202).
+- `GET /video-intelligence/scene-jobs/{job_id}` — read an owned job's state and sanitized results.
+- `POST /video-intelligence/scene-jobs/{job_id}/cancel` — cancel an owned queued/running job.
 
 ## Not implemented yet
 
-- Persisted video-analysis jobs and queue-backed analysis execution.
-- Public API orchestration for frame extraction and scene detection.
+- Semantic scene understanding, motion analysis, OCR, and audio transcription.
+- Model-provider adapters, operator UI, and end-to-end video rendering.
 - Visual understanding, motion analysis, OCR, and audio transcription.
 - Operator UI, model-provider adapters, and end-to-end video rendering.
 
 ## Security boundaries
 
-The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Frame extraction and scene-boundary detection are internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
+The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Frame extraction and scene-boundary detection are internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Scene detection is submitted to the shared job engine and runs only when a worker explicitly calls `run_once()`; application startup does not execute queued work implicitly. Per-owner and global active-job limits bound queue growth. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
