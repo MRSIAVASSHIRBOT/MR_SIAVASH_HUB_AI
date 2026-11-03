@@ -6,6 +6,7 @@ not silently start background execution; operators opt into this process.
 """
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import sqlite3
@@ -17,6 +18,11 @@ from uuid import uuid4
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker import WorkerEngine, WorkerError
+from mrhub.media.repository import MediaAssetRepository
+
+logger = logging.getLogger(__name__)
+CLEANUP_SWEEP_INTERVAL_SECONDS = 30.0
+CLEANUP_SWEEP_BATCH_SIZE = 100
 
 
 def main() -> None:
@@ -24,8 +30,10 @@ def main() -> None:
     repository = TaskRepository(settings.database_path)
     repository.initialize()
     worker = WorkerEngine(repository)
+    media_repository = MediaAssetRepository(settings.database_path)
     stop = Event()
     heartbeat_stop = Event()
+    cleanup_stop = Event()
     instance_id = str(uuid4())
     stamp = datetime.now(UTC).isoformat()
     with sqlite3.connect(settings.database_path, timeout=5.0) as connection:
@@ -51,6 +59,23 @@ def main() -> None:
     heartbeat_thread = Thread(target=heartbeat_loop, name="mrhub-worker-heartbeat", daemon=True)
     heartbeat_thread.start()
 
+    def cleanup_loop() -> None:
+        while not cleanup_stop.is_set():
+            try:
+                media_repository.cleanup_pending_files_all(
+                    limit=CLEANUP_SWEEP_BATCH_SIZE
+                )
+            except (OSError, sqlite3.Error, ValueError) as exc:
+                # Log only the exception class; never expose storage paths or data.
+                logger.warning("Media cleanup sweep failed (%s)", type(exc).__name__)
+            if cleanup_stop.wait(CLEANUP_SWEEP_INTERVAL_SECONDS):
+                break
+
+    cleanup_thread = Thread(
+        target=cleanup_loop, name="mrhub-media-cleanup", daemon=True
+    )
+    cleanup_thread.start()
+
     def request_stop(_signum: int, _frame: object) -> None:
         stop.set()
 
@@ -69,6 +94,8 @@ def main() -> None:
             if result is None:
                 stop.wait(0.5)
     finally:
+        cleanup_stop.set()
+        cleanup_thread.join(timeout=4.0)
         heartbeat_stop.set()
         heartbeat_thread.join(timeout=4.0)
         stamp = datetime.now(UTC).isoformat()

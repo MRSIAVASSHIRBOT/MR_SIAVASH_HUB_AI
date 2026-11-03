@@ -682,6 +682,16 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_media_asset_analysis_leases_task ON media_asset_analysis_leases(task_id, execution_token)",
         ),
     ),
+    Migration.build(
+        24,
+        "global_media_file_cleanup_retry_index",
+        (
+            (
+                "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_global_retry "
+                "ON media_file_cleanup(attempt_count, updated_at, created_at, cleanup_id)"
+            ),
+        ),
+    ),
 )
 
 

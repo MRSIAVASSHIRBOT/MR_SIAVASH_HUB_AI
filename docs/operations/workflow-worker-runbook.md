@@ -23,6 +23,12 @@ A missing or invalid key is a hard configuration error. Do not replace it with a
 
 **Worker readiness:** `/ready` reports `worker: running` only when a fresh heartbeat exists. By default, API readiness remains database-only so deployments that intentionally run API without a worker still work. Set `MRH_REQUIRE_WORKER_FOR_READINESS=true` when queued jobs require a worker; in that mode `/ready` returns 503 if the heartbeat is absent or older than `MRH_WORKER_HEARTBEAT_TIMEOUT_SECONDS` (default 15). A forced kill may leave a stale `running` row, but its heartbeat ages out and is not considered healthy.
 
+## Durable media cleanup
+
+When the opt-in worker process starts, it also starts a separate maintenance thread that retries the durable media-file cleanup queue every 30 seconds. Each pass is globally bounded to 100 entries across owners. Successful unlink operations remove their queue rows; failures remain durable, have their retry count advanced, and move behind untouched entries so one inaccessible file cannot starve the queue.
+
+This sweeper is not started by the API and is not required for database-only API readiness. If the worker is stopped, cleanup intents remain in SQLite and are retried when the worker starts again. The sweeper processes only storage keys already recorded by the media repository; it does not accept paths or URLs from users.
+
 ## Cancellation and recovery
 
 - Queued workflows can be cancelled before dispatch.
