@@ -81,7 +81,7 @@ and after each tool returns. A response that arrives after the deadline is disca
 any proposed tool call can be dispatched. A tool that itself runs past the deadline cannot
 be forcibly interrupted by the current synchronous tool contract; its completed result is
 recorded and no further turn is started. Provider adapters retain their own finite request
-timeouts. This is a cooperative run budget, not a hard process-level execution limit.
+timeouts. Each individual provider request is also capped at 32,000 input characters; if the serialized prompt (including the tool catalog and observations) exceeds that limit, the run returns a sanitized `provider_input_budget_exceeded` result before provider dispatch. This is a cooperative run budget, not a hard process-level execution limit.
 
 
 ## Specialist registry and bounded delegation
