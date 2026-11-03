@@ -176,3 +176,59 @@ def test_current_only_policy_searches_past_the_default_four_chunk_limit():
     )
     assert result["excluded_stale_knowledge_count"] == 4
     assert result["excluded_unreviewed_knowledge_count"] == 0
+
+
+
+class AtCandidateLimitKnowledge:
+    def search(self, owner_user_id: str, query: str, limit: int):
+        assert limit == 25
+        return [
+            {
+                "citation_ref": f"knowledge://documents/stale-{index}#chunk-0",
+                "source_ref": f"local-note:stale-{index}",
+                "trust_classification": "user_supplied",
+                "freshness_status": "stale",
+                "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+                "document_hash": "a" * 64,
+                "chunk_hash": "b" * 64,
+                "content": "stale candidate",
+            }
+            for index in range(limit)
+        ]
+
+
+def test_current_only_policy_reports_when_candidate_search_reaches_its_bound():
+    assembler = AgentContextAssembler.__new__(AgentContextAssembler)
+    assembler.memory = EmptyMemory()
+    assembler.knowledge = AtCandidateLimitKnowledge()
+
+    result = assembler.assemble(
+        "owner-a",
+        query="review",
+        include_memory=False,
+        include_knowledge=True,
+        knowledge_freshness_policy="owner_reviewed_current_only",
+    )
+
+    assert result["knowledge_candidates_scanned"] == 25
+    assert result["knowledge_candidate_limit"] == 25
+    assert result["knowledge_candidates_may_be_truncated"] is True
+    assert result["excluded_stale_knowledge_count"] == 25
+    assert result["passages"] == []
+
+
+def test_context_reports_disabled_knowledge_retrieval_without_truncation():
+    assembler = AgentContextAssembler.__new__(AgentContextAssembler)
+    assembler.memory = EmptyMemory()
+    assembler.knowledge = EmptyMemory()
+
+    result = assembler.assemble(
+        "owner-a",
+        query="review",
+        include_memory=False,
+        include_knowledge=False,
+    )
+
+    assert result["knowledge_candidates_scanned"] == 0
+    assert result["knowledge_candidate_limit"] == 0
+    assert result["knowledge_candidates_may_be_truncated"] is False
