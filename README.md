@@ -29,7 +29,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\start-local.ps1
 ```
 
-Open the operator UI at `http://127.0.0.1:8000/ui/` or the API docs at `http://127.0.0.1:8000/docs`. Stop the processes with `.scripts\stop-local.ps1`. See [Windows local quick start](docs/operations/windows-quickstart.md) for requirements, security boundaries, and troubleshooting.
+Open the operator UI at `http://127.0.0.1:8000/ui/` or the API docs at `http://127.0.0.1:8000/docs`. Stop the processes with `.\scripts\stop-local.ps1`. See [Windows local quick start](docs/operations/windows-quickstart.md) for requirements, security boundaries, and troubleshooting.
 
 For manual development setup, create and activate a Python 3.11 virtual environment, run `python -m pip install -e ".[dev]"`, then start the API with `uvicorn mrhub.main:app --host 127.0.0.1 --port 8000`. Start the worker separately with `python -m mrhub.worker_service` when processing queued jobs. Durable agent workflows also require the same persistent `MRH_WORKFLOW_PAYLOAD_KEY` in both process environments; see the worker runbook.
 
