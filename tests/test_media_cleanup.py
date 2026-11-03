@@ -491,6 +491,8 @@ def test_old_fencing_token_cannot_release_a_new_analysis_use_lock(tmp_path: Path
             "UPDATE worker_executions SET execution_token = 2 WHERE task_id = ?",
             (first_lease.task_id,),
         )
+    from mrhub.jobs.leases import WorkerLease
+
     second_lease = WorkerLease(
         task_id=first_lease.task_id,
         owner=first_lease.owner,
