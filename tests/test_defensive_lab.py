@@ -1,6 +1,5 @@
-from datetime import UTC, datetime, timedelta
-
 import pytest
+from datetime import UTC, datetime, timedelta
 
 from client_helpers import authenticated_client
 from mrhub.security.defensive_lab import (
