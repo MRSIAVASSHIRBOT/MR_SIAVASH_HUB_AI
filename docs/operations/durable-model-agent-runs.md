@@ -25,3 +25,7 @@ A configured `MRH_WORKFLOW_PAYLOAD_KEY` is mandatory. It must be a URL-safe Base
 - A cancellation request cannot forcibly interrupt a provider call already in progress. The worker observes the request at safe boundaries and records the resulting execution state.
 
 The API never returns ciphertext, encryption keys, prompts from another owner, or internal worker exception text.
+
+## Operator UI
+
+The authenticated operator panel offers a separate queued-execution action beside the synchronous Agent run. It creates an `Idempotency-Key` with the browser cryptographic API, displays the returned workflow ID, and provides explicit manual status refresh and cooperative cancellation. No automatic polling is performed. The workflow ID can be pasted back into the panel after a page reload; result data is retrieved from the owner-scoped API only.
