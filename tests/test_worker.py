@@ -1,9 +1,12 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
+from threading import Event
 
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.idempotency import IdempotencyRepository
+from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
 
@@ -634,3 +637,24 @@ def test_worker_summary_includes_recovery_metrics_without_private_task_data(tmp_
     assert summary["execution_mode"] == "pull_driven"
     assert summary["automatic_execution"] is False
     assert "PRIVATE TASK DESCRIPTION MUST NOT APPEAR" not in str(summary)
+
+
+def test_worker_fails_closed_when_heartbeat_raises_database_error(tmp_path, monkeypatch):
+    _repository, worker = make_worker(tmp_path)
+    lease = WorkerLease(
+        task_id="task-1",
+        owner="worker-1",
+        fencing_token=1,
+        expires_at="2026-11-03T00:01:00+00:00",
+    )
+    lease_lost = Event()
+    worker._lease_seconds = 1
+
+    class FailingLeaseManager:
+        def heartbeat(self, _lease):
+            raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(worker, "_lease_manager", FailingLeaseManager())
+    worker._heartbeat_loop(lease, Event(), lease_lost)
+
+    assert lease_lost.is_set()
