@@ -139,4 +139,6 @@ The RTL operator workspace now exposes the existing owner-scoped video render AP
 
 Exact-head checks passed: Backend CI, CI on Python 3.11 and 3.12, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows hosted runners. UI tests verify control presence, idempotency/session behavior, authenticated download settings, and JavaScript syntax when Node is available.
 
+All four post-merge workflows passed on main commit `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`: Backend CI `41724900988`, CI `41724901109`, Defensive Python Scan `41724900883`, and Video Render Integration `41724900921`.
+
 This is implementation plus CI evidence, not full browser acceptance. Manual interaction, accessibility, failure-state and target-device checks remain open. The UI does not start the pull worker or run background polling. The renderer remains silent and hard-cut-only; no AI video provider is registered.
