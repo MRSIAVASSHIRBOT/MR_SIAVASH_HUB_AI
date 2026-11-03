@@ -11,10 +11,26 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.media.repository import MediaAssetRepository
+from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 from mrhub.video_intelligence.repository import VideoBrandRepository
-from mrhub.video_intelligence.schemas import BeatInstruction, BrandIdentity, VideoTechnicalMetadata
+from mrhub.video_intelligence.scene_jobs import (
+    SceneJobCapacityExceeded,
+    SceneJobSourceNotFound,
+    SceneJobSourceNotReady,
+    SceneJobUnsupportedMedia,
+    VideoSceneJobRepository,
+)
+from mrhub.video_intelligence.schemas import (
+    BeatInstruction,
+    BrandIdentity,
+    VideoSceneAnalysisRequest,
+    VideoTechnicalMetadata,
+)
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 router = APIRouter(
@@ -145,3 +161,89 @@ def inspect_video_asset(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Media asset not found") from exc
     return probe_video(path)
+
+@router.post("/assets/{asset_id}/scene-jobs", status_code=status.HTTP_202_ACCEPTED)
+def submit_scene_job(
+    asset_id: UUID,
+    payload: VideoSceneAnalysisRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Queue bounded scene analysis for a video asset owned by the caller."""
+    policy = PolicyEngine()
+    risk_class = policy.classify_task_type("video.scene_detection")
+    decision = policy.evaluate(
+        ActionRequest(action="video.scene_detection", risk_class=risk_class)
+    )
+    if decision.decision is not PolicyDecision.ALLOW:
+        raise HTTPException(status_code=403, detail="Scene analysis is not permitted")
+
+    database_path = get_settings().database_path
+    jobs = VideoSceneJobRepository(database_path)
+    try:
+        accepted = jobs.create(
+            user.user_id,
+            asset_id,
+            threshold=payload.threshold,
+            max_scene_changes=payload.max_scene_changes,
+        )
+    except SceneJobSourceNotFound as exc:
+        raise HTTPException(status_code=404, detail="Media asset not found") from exc
+    except SceneJobUnsupportedMedia as exc:
+        raise HTTPException(status_code=415, detail="Scene analysis requires a video asset") from exc
+    except SceneJobSourceNotReady as exc:
+        raise HTTPException(status_code=409, detail="Media asset is not ready for analysis") from exc
+    except SceneJobCapacityExceeded as exc:
+        raise HTTPException(status_code=429, detail="Scene analysis capacity is temporarily full") from exc
+
+    audit_repository = TaskRepository(database_path)
+    AuditLogger(audit_repository).record(
+        event_type="video.scene_job.submitted",
+        outcome="queued",
+        subject_type="video_scene_job",
+        subject_id=str(accepted["job_id"]),
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={"task_type": "video.scene_detection", "risk_class": risk_class.value},
+    )
+    return {
+        **accepted,
+        "message": "Scene analysis was added to the shared worker queue",
+    }
+
+
+@router.get("/scene-jobs/{job_id}")
+def get_scene_job(
+    job_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return queue state and sanitized results only to the job owner."""
+    job = VideoSceneJobRepository(get_settings().database_path).get(
+        user.user_id, job_id
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scene job not found")
+    return job
+
+
+@router.post("/scene-jobs/{job_id}/cancel")
+def cancel_scene_job(
+    job_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Cancel a queued/running scene job after verifying ownership."""
+    database_path = get_settings().database_path
+    jobs = VideoSceneJobRepository(database_path)
+    job = jobs.get(user.user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scene job not found")
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    try:
+        JobEngine(repository).cancel(UUID(str(job["task_id"])))
+    except InvalidTaskTransition as exc:
+        raise HTTPException(status_code=409, detail="Scene job is already terminal") from exc
+    updated = jobs.get(user.user_id, job_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Scene job not found")
+    return updated
+
