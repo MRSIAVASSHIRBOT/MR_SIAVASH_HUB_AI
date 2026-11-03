@@ -1,7 +1,7 @@
 from uuid import UUID
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from mrhub.api.routes import video_intelligence as video_route
 from mrhub.security.auth import AuthenticatedUser
