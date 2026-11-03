@@ -179,6 +179,7 @@ class WorkerEngine:
         cutoff = (self._now() - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
         now = self._now().isoformat()
         recovered: list[tuple[TaskRecord, str, str]] = []
+        orphaned_render_keys: list[str] = []
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
@@ -253,11 +254,13 @@ class WorkerEngine:
                         )
                     else:
                         video_render = connection.execute(
-                            """SELECT render_id, owner_user_id, status FROM video_render_runs
-                               WHERE task_id = ?""",
+                            """SELECT render_id, owner_user_id, status, output_storage_key
+                               FROM video_render_runs WHERE task_id = ?""",
                             (str(task.task_id),),
                         ).fetchone()
                         if video_render is not None:
+                            if video_render["status"] != "completed":
+                                orphaned_render_keys.append(str(video_render["output_storage_key"]))
                             # This branch runs only after the worker lease has expired
                             # and the task has crossed the stale-recovery threshold.
                             connection.execute(
@@ -558,6 +561,24 @@ class WorkerEngine:
                         (reason_code, now, now, str(task.task_id)),
                     )
                     recovered.append((task, audit_outcome, reason_code))
+        if orphaned_render_keys:
+            from mrhub.media.repository import MediaAssetRepository
+
+            media = MediaAssetRepository(self.database_path)
+            root = media.storage_root.resolve()
+            for storage_key in set(orphaned_render_keys):
+                try:
+                    if not storage_key.endswith(".mp4"):
+                        continue
+                    UUID(storage_key[:-4])
+                    candidate = root / storage_key
+                    if candidate.parent == root:
+                        # Path.unlink removes a symlink itself rather than following it.
+                        candidate.unlink(missing_ok=True)
+                except (OSError, TypeError, ValueError):
+                    # A failed cleanup remains visible to the read-only media verifier.
+                    continue
+
         for task, outcome, reason_code in recovered:
             self._audit(task, outcome, reason_code)
 
