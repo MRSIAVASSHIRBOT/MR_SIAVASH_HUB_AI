@@ -14,6 +14,9 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Bounded local FFmpeg uniform frame sampling: up to 12 JPEG frames, up to 60 seconds of source duration, 1280-pixel maximum width, 30-second process timeout, and bounded frame output.
 - Bounded FFmpeg scene-cut timestamp detection: up to 24 cut boundaries over 60 seconds, threshold validation, 640-pixel post-selection hash frames, bounded framehash output, and a 30-second timeout. Results are heuristic cut boundaries, not semantic scene descriptions.
 - Deterministic, provider-neutral prompt composition.
+- Validated renderer-neutral cut-only timelines with bounded scene allocation and contiguous clip validation.
+- Bounded FFmpeg MP4 rendering for silent video tracks, with fixed aspect-ratio presets, finite execution limits, bounded FFprobe verification, and temporary-output cleanup.
+- Durable owner-scoped render jobs with idempotent submission, lease-fenced worker execution, atomic output-asset registration, and stale-job recovery.
 - Authenticated brand-profile CRUD with per-user ownership, unique names per owner, and image-asset ownership validation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
 - Durable owner-scoped analysis submission with mandatory idempotency keys, AES-GCM encrypted request payloads, lease-fenced results, and worker recovery cleanup.
@@ -33,6 +36,9 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
+- `POST /video-intelligence/analyses/{analysis_id}/renders` — queue a silent cut-only MP4 render from a completed owned analysis. Requires an `Idempotency-Key` header.
+- `GET /video-intelligence/renders/{render_id}` — retrieve owner-scoped render status and the generated media asset ID when complete.
+- `GET /content/assets/{asset_id}/file` — download the generated MP4 using the existing owner-scoped media endpoint.
 
 ## Analysis scope and remaining work
 
@@ -42,8 +48,8 @@ Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-mo
 
 The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
-Audio transcription, OCR, dedicated motion analysis, prompt synthesis from semantic results, operator UI, production generation handoff, and end-to-end rendering remain unimplemented. Windows/Ollama execution still requires validation on the target machine.
+Audio transcription, OCR, dedicated motion analysis, prompt synthesis from semantic results, operator UI, production generation handoff, and audio/text/graphics timeline tracks remain unimplemented. The current renderer produces a silent cut-only MP4; transitions beyond hard cuts and creative motion effects are not yet rendered. Windows/Ollama execution and real-media end-to-end acceptance still require validation on the target machine.
 
 ## Security boundaries
 
-The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Analysis requests are owner-scoped and encrypted at rest with the existing authenticated payload envelope. The worker revalidates ownership before accessing each asset, and result writes require the current lease fencing token. Frame extraction and scene-boundary detection remain internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. The local vision adapter accepts only loopback Ollama endpoints and never falls back to a remote provider. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
+The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Analysis requests are owner-scoped and encrypted at rest with the existing authenticated payload envelope. Analysis and render workers revalidate source ownership before accessing media. Render output metadata and terminal job state are committed atomically only while the current lease fencing token is valid. Frame extraction and scene-boundary detection remain internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. The local vision adapter accepts only loopback Ollama endpoints and never falls back to a remote provider. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
