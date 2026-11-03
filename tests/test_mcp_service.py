@@ -1,10 +1,12 @@
-"""MCP service startup guard tests."""
+"""MCP service startup and configuration guard tests."""
 
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from mrhub import mcp_service
+from mrhub.config import Settings
 
 
 def _settings(**overrides):
@@ -15,6 +17,31 @@ def _settings(**overrides):
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def test_mcp_settings_default_to_disabled_loopback_only():
+    settings = Settings(_env_file=None)
+    assert settings.mcp_enabled is False
+    assert settings.mcp_host == "127.0.0.1"
+    assert settings.mcp_port == 8765
+
+
+@pytest.mark.parametrize("host", ["localhost", "0.0.0.0", "192.0.2.10", "hub.local"])
+def test_mcp_settings_reject_non_loopback_host_values(host):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, mcp_host=host)
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+def test_mcp_settings_accept_numeric_loopback_values(host):
+    settings = Settings(_env_file=None, mcp_host=host)
+    assert settings.mcp_host == host
+
+
+@pytest.mark.parametrize("port", [0, 65536, -1])
+def test_mcp_settings_reject_out_of_range_ports(port):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, mcp_port=port)
 
 
 def test_mcp_service_refuses_to_start_when_disabled(monkeypatch):
