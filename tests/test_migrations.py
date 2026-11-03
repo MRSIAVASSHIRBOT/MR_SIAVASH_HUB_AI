@@ -368,6 +368,13 @@ def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypa
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'video_render_runs'"
     ).fetchone() is not None
+    render_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(video_render_runs)")
+    }
+    assert {
+        "render_id", "task_id", "owner_user_id", "analysis_id",
+        "output_asset_id", "output_storage_key", "status",
+    } <= render_columns
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_video_render_owner_created'"
