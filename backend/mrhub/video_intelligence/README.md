@@ -30,6 +30,7 @@ All endpoints require an authenticated owner session:
 - `POST /video-intelligence/prompts/compose` — returns a composed prompt; it does not invoke a model or render a video.
 - `GET /video-intelligence/generation/providers` — lists explicitly registered generation adapters without probing or starting work. It currently returns `provider_unavailable`; no generation provider is configured.
 - `POST /video-intelligence/analyses/{analysis_id}/generations` — create an owner-scoped generation request only for an explicitly registered provider/model. The durable task starts in `waiting_approval`; the owner must approve the exact task through `POST /tasks/{task_id}/approval` before the pull worker can claim it.
+- `POST /video-intelligence/analyses/{analysis_id}/generations` — create an owner-scoped generation request only for an explicitly registered provider/model. The durable task starts in `waiting_approval`; the owner must approve the exact task through `POST /tasks/{task_id}/approval` before the pull worker can claim it.
 - `GET /video-intelligence/brands` — list the current owner's brand profiles.
 - `POST /video-intelligence/brands` — create an owner-scoped brand profile.
 - `GET /video-intelligence/brands/{profile_id}` — retrieve an owned profile.
@@ -72,10 +73,11 @@ Generation submission verifies the exact provider/model and its declared capabil
 before persisting the request. The repository stores the prompt in an AES-GCM envelope,
 then atomically links the job to a high-risk `video.generation` task in
 `waiting_approval`. The existing owner-authenticated approval API binds the decision
-to the task's action fingerprint. Only an approved task moves to `queued` and becomes
-eligible for the pull worker; missing, stale, or rejected approvals cannot dispatch a
-provider. Rejection marks the generation failed and removes its encrypted request
-payload. Idempotent replay returns the linked task and its current lifecycle state.
+to the task's action fingerprint, including the generation identifier and selected
+provider/model. Only an approved task moves to `queued` and becomes eligible for the
+pull worker; missing, stale, or rejected approvals cannot dispatch a provider.
+Rejection marks the generation failed and removes its encrypted request payload.
+Idempotent replay returns the linked task and its current lifecycle state.
 
 The worker verifies the approved task under its lease, checks the exact registered
 provider/model again, and records the transition to `submitting` before invoking the
