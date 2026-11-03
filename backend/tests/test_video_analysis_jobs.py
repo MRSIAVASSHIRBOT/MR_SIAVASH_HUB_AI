@@ -191,6 +191,11 @@ def test_cancel_running_analysis_signals_worker_and_worker_finishes_cancelled(
         "cancellation_requested": True,
     }
     assert repository.tasks.get(task_id).status.value == "cancelled"
+    assert repository.cancel("owner-a", analysis_id) == {
+        "analysis_id": str(analysis_id),
+        "status": "running",
+        "cancellation_requested": True,
+    }
     # The leased worker, not the API request, owns the terminal analysis write.
     assert repository.get("owner-a", analysis_id)["status"] == "running"
     repository.finish(
