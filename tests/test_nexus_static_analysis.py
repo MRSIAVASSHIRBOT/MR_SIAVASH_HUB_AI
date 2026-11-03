@@ -7,6 +7,7 @@ from mrhub.nexus.static_analysis import (
     MAX_FILES,
     StaticAnalysisError,
     analyze_python_repository,
+    analyze_python_source,
 )
 
 
@@ -24,6 +25,8 @@ def test_static_analysis_reports_line_evidence_without_source_text(tmp_path: Pat
     finding = next(item for item in result["findings"] if item["rule_id"] == "PY101")
     assert finding["path"] == "module.py"
     assert finding["line"] == 2
+    assert finding["confidence"] == "high"
+    assert "typed parser" in finding["remediation"]
     assert "user_input" not in str(result)
 
 
@@ -118,3 +121,21 @@ def test_static_analysis_marks_inventory_incomplete_when_directory_walk_fails(
     assert finding["path"] == "restricted"
     assert finding["severity"] == "warning"
     assert "incomplete" in finding["message"]
+
+
+
+def test_source_analysis_reports_confidence_and_remediation_without_execution():
+    result = analyze_python_source(
+        "def parse(value):\n    return eval(value)\n",
+        path="src/parser.py",
+    )
+
+    assert result["status"] == "ok"
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
+    finding = result["findings"][0]
+    assert finding["rule_id"] == "PY101"
+    assert finding["path"] == "src/parser.py"
+    assert finding["line"] == 2
+    assert finding["confidence"] == "high"
+    assert "typed parser" in finding["remediation"]
