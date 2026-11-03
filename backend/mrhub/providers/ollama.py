@@ -24,6 +24,7 @@ class OllamaProvider:
         base_url: str = "http://127.0.0.1:11434",
         timeout_seconds: float = 60.0,
         transport: httpx.BaseTransport | None = None,
+        vision_enabled: bool = False,
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid local model name")
@@ -35,7 +36,7 @@ class OllamaProvider:
         self.descriptor = ModelDescriptor(
             provider="ollama",
             model=model.strip(),
-            capability=ModelCapability(text=True),
+            capability=ModelCapability(text=True, vision=vision_enabled),
             available=True,
             local=True,
             priority=10,
@@ -89,6 +90,8 @@ class OllamaProvider:
             return ProviderHealth(available=False, reason_code="provider_unavailable")
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        if request.images and not self.descriptor.capability.vision:
+            raise ProviderConfigurationError("Vision is not enabled for this local model")
         try:
             with self._client() as client:
                 response = client.post(
@@ -96,6 +99,7 @@ class OllamaProvider:
                     json={
                         "model": self.descriptor.model,
                         "prompt": request.input_text,
+                        **({"images": [item.data_base64 for item in request.images]} if request.images else {}),
                         "stream": False,
                         "options": {"num_predict": request.max_output_tokens},
                     },
