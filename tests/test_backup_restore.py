@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -322,3 +323,97 @@ def test_verify_media_assets_does_not_hash_files_over_per_asset_limit(tmp_path, 
     assert result["ok"] is False
     assert result["invalid_entries"] == 1
     assert result["hash_mismatched_assets"] == 0
+
+
+
+def test_clean_destination_restore_recovers_database_and_media_asset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from fastapi.testclient import TestClient
+
+    from mrhub.config import get_settings
+    from mrhub.main import create_app
+    from mrhub.operations.backup import verify_media_assets
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source_database = source_dir / "hub.sqlite3"
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(source_database))
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        "dGVzdC1vbmx5LXBheWxvYWQta2V5LTMyLWJ5dGVzISE=",
+    )
+    get_settings.cache_clear()
+
+    media_payload = b"\\x89PNG\\r\\n\\x1a\\nrecovery-fixture"
+    with TestClient(create_app()) as source_client:
+        setup = source_client.post(
+            "/auth/setup",
+            json={"password": "test-only-strong-password-2026"},
+        )
+        assert setup.status_code == 201
+        login = source_client.post(
+            "/auth/login",
+            json={
+                "username": "owner",
+                "password": "test-only-strong-password-2026",
+            },
+        )
+        assert login.status_code == 200
+        source_headers = {
+            "Authorization": f"Bearer {login.json()['access_token']}",
+            "X-File-Name": "recovery.png",
+            "Content-Type": "image/png",
+        }
+        uploaded = source_client.post(
+            "/content/assets",
+            headers=source_headers,
+            content=media_payload,
+        )
+        assert uploaded.status_code == 201
+        asset_id = uploaded.json()["asset_id"]
+
+    backup = tmp_path / "recovery.sqlite3"
+    manifest = backup_database(source_database, backup)
+    assert manifest["sqlite_integrity"] == "ok"
+
+    restored_dir = tmp_path / "restored"
+    restored_database = restored_dir / "hub.sqlite3"
+    result = restore_database(backup, restored_database)
+    assert result["restored"] is True
+    shutil.copytree(source_dir / "content_assets", restored_dir / "content_assets")
+
+    verification = verify_media_assets(restored_database)
+    assert verification["ok"] is True
+    assert verification["registered_assets"] == 1
+    assert verification["verified_assets"] == 1
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(restored_database))
+    get_settings.cache_clear()
+    with TestClient(create_app()) as restored_client:
+        login = restored_client.post(
+            "/auth/login",
+            json={
+                "username": "owner",
+                "password": "test-only-strong-password-2026",
+            },
+        )
+        assert login.status_code == 200
+        restored_headers = {
+            "Authorization": f"Bearer {login.json()['access_token']}"
+        }
+        assets = restored_client.get(
+            "/content/assets", headers=restored_headers
+        )
+        assert assets.status_code == 200
+        assert assets.json()["count"] == 1
+        assert assets.json()["assets"][0]["asset_id"] == asset_id
+
+        download = restored_client.get(
+            f"/content/assets/{asset_id}/file",
+            headers=restored_headers,
+        )
+        assert download.status_code == 200
+        assert download.content == media_payload
+
+    get_settings.cache_clear()
