@@ -555,7 +555,7 @@ MIGRATIONS = (
         (
             """CREATE TABLE IF NOT EXISTS media_file_cleanup (
                 cleanup_id TEXT PRIMARY KEY,
-                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL,
                 storage_key TEXT NOT NULL UNIQUE CHECK (length(storage_key) BETWEEN 1 AND 80),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
