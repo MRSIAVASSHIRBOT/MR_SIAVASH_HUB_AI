@@ -76,6 +76,18 @@ class VisionResponse:
     model: str
     output_text: str
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not 1 <= len(self.provider) <= 80:
+            raise ValueError("Vision response provider is invalid")
+        if not isinstance(self.model, str) or not 1 <= len(self.model) <= 200:
+            raise ValueError("Vision response model is invalid")
+        if (
+            not isinstance(self.output_text, str)
+            or not self.output_text.strip()
+            or len(self.output_text) > MAX_VISION_OUTPUT_CHARS
+        ):
+            raise ValueError("Vision response text is empty or too large")
+
 
 class VisionProvider(Protocol):
     """Provider contract kept separate from text-only ModelProvider."""
