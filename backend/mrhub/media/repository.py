@@ -253,6 +253,7 @@ class MediaAssetRepository:
         output_filename: str,
         *,
         task_id: UUID,
+        render_id: UUID,
         lease,
     ) -> dict[str, object]:
         """Atomically register a generated render only while its worker lease is current."""
@@ -291,6 +292,27 @@ class MediaAssetRepository:
                     str(asset_uuid), owner_user_id, output_filename, storage_key,
                     size, digest.hexdigest(), now, now,
                 ),
+            )
+            completed = connection.execute(
+                """UPDATE video_render_runs
+                   SET status = 'completed', output_asset_id = ?, error_code = NULL, updated_at = ?
+                   WHERE render_id = ? AND task_id = ? AND owner_user_id = ? AND status = 'running'
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = ? AND e.lease_owner = ? AND e.execution_token = ?
+                         AND e.lease_expires_at > ?
+                     )""",
+                (
+                    str(asset_uuid), now, str(render_id), str(task_id), owner_user_id,
+                    str(task_id), lease.owner, lease.fencing_token, now,
+                ),
+            )
+            if completed.rowcount != 1:
+                raise ValueError("Render job is no longer owned by this worker lease")
+            connection.execute(
+                """UPDATE idempotency_records SET status = 'completed'
+                   WHERE task_id = ? AND scope = ?""",
+                (str(task_id), f"video-render:{owner_user_id}"),
             )
             row = connection.execute(
                 "SELECT * FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
