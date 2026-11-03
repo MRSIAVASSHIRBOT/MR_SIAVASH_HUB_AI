@@ -4,8 +4,6 @@ import sqlite3
 
 import pytest
 
-import pytest
-
 from mrhub.operations.backup import BackupError, backup_database, restore_database
 
 
@@ -142,6 +140,7 @@ def test_verify_media_assets_checks_registered_file_size_and_hash_read_only(tmp_
         "hash_mismatched_assets": 0,
         "invalid_entries": 0,
         "unregistered_entries": 0,
+        "verification_truncated": False,
     }
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT COUNT(*) FROM content_assets").fetchone() == (1,)
@@ -224,3 +223,54 @@ def test_verify_media_assets_rejects_symlinked_media_root_even_when_empty(tmp_pa
     assert result["ok"] is False
     assert result["registered_assets"] == 0
     assert result["invalid_entries"] == 1
+
+
+def test_verify_media_assets_fails_closed_when_registry_exceeds_work_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mrhub.operations import backup
+
+    database = tmp_path / "hub.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+        connection.executemany(
+            "INSERT INTO content_assets VALUES (?, ?, ?)",
+            [
+                ("12345678-1234-1234-1234-123456789abc.mp4", 1, "0" * 64),
+                ("22345678-1234-1234-1234-123456789abc.mp4", 1, "0" * 64),
+            ],
+        )
+    monkeypatch.setattr(backup, "MAX_MEDIA_ASSETS_TO_VERIFY", 1)
+
+    result = backup.verify_media_assets(database)
+
+    assert result["ok"] is False
+    assert result["registered_assets"] == 2
+    assert result["verified_assets"] == 0
+    assert result["verification_truncated"] is True
+
+
+def test_verify_media_assets_rejects_implausible_metadata_before_hashing(tmp_path):
+    from mrhub.operations.backup import verify_media_assets
+
+    database = tmp_path / "hub.sqlite3"
+    media_root = tmp_path / "content_assets"
+    media_root.mkdir()
+    storage_key = "12345678-1234-1234-1234-123456789abc.mp4"
+    (media_root / storage_key).write_bytes(b"payload")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO content_assets VALUES (?, ?, ?)",
+            (storage_key, 100_000_001, "not-a-sha256"),
+        )
+
+    result = verify_media_assets(database)
+
+    assert result["ok"] is False
+    assert result["invalid_entries"] == 1
+    assert result["verified_assets"] == 0
