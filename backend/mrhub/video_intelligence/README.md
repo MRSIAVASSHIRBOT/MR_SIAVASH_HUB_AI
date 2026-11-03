@@ -25,6 +25,7 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 All endpoints require an authenticated owner session:
 
 - `POST /video-intelligence/prompts/compose` — returns a composed prompt; it does not invoke a model or render a video.
+- `GET /video-intelligence/generation/providers` — lists explicitly registered generation adapters without probing or starting work. It currently returns `provider_unavailable`; no generation provider is configured.
 - `GET /video-intelligence/brands` — list the current owner's brand profiles.
 - `POST /video-intelligence/brands` — create an owner-scoped brand profile.
 - `GET /video-intelligence/brands/{profile_id}` — retrieve an owned profile.
@@ -43,7 +44,7 @@ Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-mo
 
 The dashboard provides an authenticated workflow to select owned video assets, submit an idempotent analysis job, manually refresh its status, inspect technical/semantic results, and compose/copy one prompt per source asset. The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
-Audio transcription, OCR, dedicated motion analysis, automatic brand-profile application, advanced operator controls, production generation handoff, and end-to-end rendering remain unimplemented. Prompt composition returns text and timeline metadata only; it never invokes a generator. Windows/Ollama execution still requires validation on the target machine.
+Audio transcription, OCR, dedicated motion analysis, automatic brand-profile application, advanced operator controls, durable generation jobs, production generation handoff, and end-to-end rendering remain unimplemented. A strict provider-neutral `VideoGenerationProvider` contract and explicit registry are now present, but no provider adapter is registered. Generation requests must remain unavailable until an adapter has passed review and is explicitly configured. Prompt composition returns text and timeline metadata only; it never invokes a generator. Windows/Ollama execution still requires validation on the target machine.
 
 ## Security boundaries
 
