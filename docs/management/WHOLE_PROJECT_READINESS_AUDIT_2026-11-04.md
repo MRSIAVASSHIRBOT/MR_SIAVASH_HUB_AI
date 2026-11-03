@@ -11,7 +11,7 @@ The project is a local-first, hybrid-capable modular AI workspace. It is not a v
 
 The latest integration PR #223 was squash-merged into `main` as `a5a1002907b3ddac2b218b84312e2fd74f2d0256`. Its exact PR head `fe153ac1d9a3b57e3a3e836c54e262263b36626c` passed Backend CI, CI on Python 3.11 and 3.12, Defensive Python Scan, and real FFmpeg/FFprobe rendering on Ubuntu and Windows GitHub-hosted runners. Post-merge push workflows were observed running on the new main commit at audit time; their completion must be checked separately.
 
-This integration materially advances the shared stability layer, AI Core, NEXUS, media recovery, and video rendering. It does not establish that every product domain is complete. Implementation, exact-head CI, target-runtime verification, owner acceptance, and production readiness remain distinct states.
+All four post-merge workflows also passed on the exact main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256`: Backend CI `41722222701`, CI `41722222754`, Defensive Python Scan `41722222735`, and Video Render Integration `41722222736`. This confirms the configured automated checks on main. It does not establish that every product domain is complete. Implementation, exact-head CI, target-device verification, owner acceptance, and production readiness remain distinct states.
 
 ## 2. Live repository inventory
 
