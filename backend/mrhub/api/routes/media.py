@@ -222,6 +222,9 @@ def transcode_video(
         "-protocol_whitelist",
         "file,pipe",
         "-y",
+        # Bound decoder frame allocations before the output scale filter.
+        "-max_pixels",
+        "33554432",
         "-i",
         str(input_path),
         "-t",
@@ -263,7 +266,8 @@ def transcode_video(
                 command,
                 shell=False,
                 check=False,
-                capture_output=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=120,
                 env=environment,
             )
