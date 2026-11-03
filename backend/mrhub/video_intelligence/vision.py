@@ -92,6 +92,7 @@ def analyze_sampled_frames(
     ]
     if (
         any(value not in allowed_timestamps for value in observed_timestamps)
+        or len(observed_timestamps) != len(set(observed_timestamps))
         or observed_timestamps != sorted(observed_timestamps)
     ):
         return {"status": "invalid_response", "reason_code": "visual_timestamp_mismatch"}
