@@ -318,7 +318,7 @@ def generate_local_model(payload: GenerateModelRequest):
     model_router = build_model_router()
     try:
         return model_router.generate(
-            ModelRequest(prefer_local=True),
+            ModelRequest(prefer_local=True, requires_vision=bool(payload.images)),
             ProviderRequest(
                 input_text=payload.input_text,
                 max_output_tokens=payload.max_output_tokens,
