@@ -2,7 +2,9 @@ import pytest
 from pydantic import ValidationError
 
 from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compose_prompt
+from mrhub.config import get_settings
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import AnalysisMode, BeatInstruction, BrandIdentity, VideoAnalysisRequest
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
@@ -115,3 +117,37 @@ def test_brand_profile_text_fields_have_per_item_limits():
             brand_name="Example",
             colors=["x" * 1000],
         )
+
+
+
+def test_video_brand_profiles_are_owner_scoped():
+    from client_helpers import authenticated_client
+
+    client = authenticated_client()
+    try:
+        created = client.post(
+            "/video-intelligence/brands",
+            json={
+                "brand_name": "Owner Brand",
+                "colors": ["#071A12", "#00C878"],
+                "font_preferences": ["Vazirmatn"],
+            },
+        )
+        assert created.status_code == 201
+        profile_id = created.json()["profile_id"]
+        assert client.get(f"/video-intelligence/brands/{profile_id}").status_code == 200
+
+        repository = VideoBrandRepository(get_settings().database_path)
+        from uuid import UUID
+
+        identifier = UUID(profile_id)
+        assert repository.get("another-owner", identifier) is None
+        assert repository.update(
+            "another-owner",
+            identifier,
+            BrandIdentity(brand_name="Unauthorized rename"),
+        ) is None
+        assert repository.delete("another-owner", identifier) is False
+        assert repository.get("local-owner", identifier)["brand_name"] == "Owner Brand"
+    finally:
+        client.close()
