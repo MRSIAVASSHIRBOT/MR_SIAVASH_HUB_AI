@@ -178,6 +178,10 @@ def submit_video_analysis(
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, object]:
     """Queue bounded analysis for video assets owned by the authenticated user."""
+    if payload.brand is not None:
+        # Inline brand identities may reference a logo asset; enforce the same
+        # owner-scoped image check used by the brand-profile CRUD endpoints.
+        _validate_logo(user.user_id, payload.brand)
     media = MediaAssetRepository(get_settings().database_path)
     for asset_value in payload.source_asset_ids:
         try:
