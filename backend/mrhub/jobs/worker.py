@@ -572,7 +572,14 @@ class WorkerEngine:
                         continue
                     UUID(storage_key[:-4])
                     candidate = root / storage_key
-                    if candidate.parent == root:
+                    if candidate.parent != root:
+                        continue
+                    with self._connection() as connection:
+                        registered = connection.execute(
+                            "SELECT 1 FROM content_assets WHERE storage_key = ?",
+                            (storage_key,),
+                        ).fetchone()
+                    if registered is None:
                         # Path.unlink removes a symlink itself rather than following it.
                         candidate.unlink(missing_ok=True)
                 except (OSError, TypeError, ValueError):
