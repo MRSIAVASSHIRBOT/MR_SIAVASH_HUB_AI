@@ -49,3 +49,19 @@ Audio transcription, OCR, dedicated motion analysis, automatic brand-profile app
 ## Security boundaries
 
 The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Analysis requests are owner-scoped and encrypted at rest with the existing authenticated payload envelope. The worker revalidates ownership before accessing each asset, and result writes require the current lease fencing token. Frame extraction and scene-boundary detection remain internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. The local vision adapter accepts only loopback Ollama endpoints and never falls back to a remote provider. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
+
+
+## Durable generation job persistence
+
+The generation-job repository stores owner-scoped job metadata and AES-GCM encrypted
+request payloads, with authenticated binding to the generation ID and owner. Its
+idempotency key is scoped to the owner and the canonical digest includes the source
+analysis, provider, model, and request options. Reusing a key with a different request
+is rejected.
+
+New records remain in the `prepared` state. This is intentional: the repository does
+not enqueue a task, contact a provider, or claim that generation has started. A future
+worker handoff must verify an explicitly registered provider before moving a job to
+`queued`. The `unknown_outcome` state retains its encrypted payload for reconciliation;
+it must never trigger a blind second submission. The API and worker dispatch are not
+yet wired to this repository.
