@@ -11,6 +11,10 @@ from typing import BinaryIO, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class VideoGenerationSubmissionError(RuntimeError):
+    """Provider submission may have reached the remote service; reconcile, never replay."""
+
+
 class GenerationStatus(StrEnum):
     ACCEPTED = "accepted"
     RUNNING = "running"
