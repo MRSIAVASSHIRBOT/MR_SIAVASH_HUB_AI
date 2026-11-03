@@ -20,12 +20,12 @@ def _scope(
     return DefensiveReviewScope(
         authorization_reference="ticket-123",
         authorized_assets=(asset,),
-        expires_at=expires_at or dt.dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
+        expires_at=expires_at or dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
     )
 
 
 def test_scope_requires_explicit_assets_and_current_authorization():
-    now = dt.dt.datetime(2026, 11, 2, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 11, 2, tzinfo=dt.UTC)
     scope = DefensiveReviewScope(
         authorization_reference="ticket-123",
         authorized_assets=("repo:owned-project",),
