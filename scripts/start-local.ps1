@@ -53,7 +53,15 @@ if (Test-Path $runtimeFile) {
     }
 }
 $worker = Start-Process -FilePath $venvPython -ArgumentList @("-m", "mrhub.worker_service") -WorkingDirectory $repoRoot -PassThru -RedirectStandardOutput (Join-Path $logDir "worker.out.log") -RedirectStandardError (Join-Path $logDir "worker.err.log")
-$api = Start-Process -FilePath $venvPython -ArgumentList @("-m", "uvicorn", "mrhub.main:app", "--host", "127.0.0.1", "--port", "8000") -WorkingDirectory $repoRoot -PassThru -RedirectStandardOutput (Join-Path $logDir "api.out.log") -RedirectStandardError (Join-Path $logDir "api.err.log")
+try {
+    $api = Start-Process -FilePath $venvPython -ArgumentList @("-m", "uvicorn", "mrhub.main:app", "--host", "127.0.0.1", "--port", "8000") -WorkingDirectory $repoRoot -PassThru -RedirectStandardOutput (Join-Path $logDir "api.out.log") -RedirectStandardError (Join-Path $logDir "api.err.log")
+} catch {
+    if (-not $worker.HasExited) {
+        Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue
+        $worker.WaitForExit(5000)
+    }
+    throw
+}
 @{api_pid=$api.Id; worker_pid=$worker.Id; started_at=(Get-Date).ToUniversalTime().ToString("o")} | ConvertTo-Json | Set-Content -Path $runtimeFile -Encoding UTF8
 
 $ready = $false
@@ -66,7 +74,28 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
     if ($api.HasExited -or $worker.HasExited) { break }
 }
 if (-not $ready) {
-    Write-Host "Startup did not reach ready state. Inspect logs/api.err.log and logs/worker.err.log."
+    Write-Warning "Startup did not reach ready state. Stopping processes started by this launcher."
+    foreach ($process in @($api, $worker)) {
+        try {
+            $process.Refresh()
+            if (-not $process.HasExited) {
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                if (-not $process.WaitForExit(5000)) {
+                    Write-Warning "Process $($process.Id) did not exit within five seconds."
+                }
+            }
+        } catch {
+            Write-Warning "Could not stop launcher-owned process $($process.Id): $($_.Exception.Message)"
+        }
+    }
+    $api.Refresh()
+    $worker.Refresh()
+    if ($api.HasExited -and $worker.HasExited) {
+        Remove-Item $runtimeFile -ErrorAction SilentlyContinue
+    } else {
+        Write-Warning "Runtime record retained for any process that could not be stopped."
+    }
+    Write-Host "Inspect logs/api.err.log and logs/worker.err.log for the startup failure."
     Write-Host "API PID: $($api.Id) | Worker PID: $($worker.Id)"
     exit 1
 }
