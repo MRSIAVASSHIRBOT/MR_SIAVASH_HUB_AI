@@ -489,3 +489,25 @@ def test_delete_and_analysis_lock_acquisition_are_serialized(tmp_path: Path) -> 
         assert repository.get("owner-1", asset_id) is None
         assert repository.cleanup_pending_files("owner-1") == 0
         assert not path.exists()
+
+def test_analysis_use_lease_is_exclusive_across_worker_executions(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "exclusive.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    first_lease = _active_worker_lease(repository, token=1)
+    second_lease = _active_worker_lease(repository, token=1)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    # Retrying the same execution is idempotent, but a second worker cannot
+    # concurrently acquire the same asset under a different task/lease.
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease) is False
+
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", asset_id)
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease) is True
+    assert repository.release_analysis_use("owner-1", asset_id, lease=second_lease) is True
