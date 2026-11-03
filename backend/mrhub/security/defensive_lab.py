@@ -405,7 +405,9 @@ def audit_structured_log_text(
             continue
         try:
             record = json.loads(raw_line)
-        except (json.JSONDecodeError, TypeError):
+        except (ValueError, RecursionError):
+            # Treat oversized numeric tokens and excessive nesting as malformed input.
+            # Never echo the raw line or let parser edge cases escape as server errors.
             unparsed_lines += 1
             continue
         if not isinstance(record, dict):
