@@ -128,6 +128,13 @@ class VideoRenderWorkerHandler:
         except (ValueError, TypeError, KeyError, OSError) as exc:
             if output_path is not None:
                 output_path.unlink(missing_ok=True)
+            current_task = self.tasks.get(task.task_id)
+            if current_task is not None and current_task.status is TaskStatus.CANCELLED:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_during_render", lease=lease,
+                )
+                return {"render_id": str(render_id), "status": "cancelled"}
             code = str(exc)[:80] if str(exc) else "render_request_invalid"
             self.jobs.finish(
                 task.task_id, owner_user_id, status="failed",
