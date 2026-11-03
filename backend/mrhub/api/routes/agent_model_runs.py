@@ -67,7 +67,7 @@ def submit_model_run(
             return {
                 "workflow_id": existing.workflow_id,
                 "task_id": existing.task_id,
-                "status": "accepted",
+                "status": existing.status,
                 "idempotent_replay": True,
             }
         raise HTTPException(status_code=409, detail="Idempotency key is already reserved")
@@ -160,7 +160,7 @@ def submit_model_run(
             return {
                 "workflow_id": saved.workflow_id,
                 "task_id": saved.task_id,
-                "status": "accepted",
+                "status": saved.status,
                 "idempotent_replay": True,
             }
         raise HTTPException(
