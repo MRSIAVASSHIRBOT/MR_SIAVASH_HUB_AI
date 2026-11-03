@@ -189,13 +189,36 @@ class WorkerEngine:
                     recovered_status = TaskStatus.FAILED
                     audit_outcome = "failed"
                     reason_code = "worker_interrupted"
-                    connection.execute(
-                        """
-                        UPDATE idempotency_records SET status = 'unknown_outcome'
-                        WHERE task_id = ? AND status IN ('accepted', 'running')
-                        """,
+                    video_analysis = connection.execute(
+                        """SELECT analysis_id, owner_user_id FROM video_analysis_runs
+                           WHERE task_id = ?""",
                         (str(task.task_id),),
-                    )
+                    ).fetchone()
+                    if video_analysis is not None:
+                        connection.execute(
+                            """UPDATE video_analysis_runs
+                               SET status = 'failed', error_code = 'worker_interrupted',
+                                   updated_at = ?
+                               WHERE task_id = ? AND owner_user_id = ?""",
+                            (now, str(task.task_id), video_analysis["owner_user_id"]),
+                        )
+                        connection.execute(
+                            "DELETE FROM video_analysis_payloads WHERE analysis_id = ?",
+                            (video_analysis["analysis_id"],),
+                        )
+                        connection.execute(
+                            """UPDATE idempotency_records SET status = 'failed'
+                               WHERE task_id = ? AND status IN ('accepted', 'running')""",
+                            (str(task.task_id),),
+                        )
+                    else:
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
                 elif (
                     workflow["status"] == "running"
                     and row["execution_error_code"] == "cancellation_requested"
