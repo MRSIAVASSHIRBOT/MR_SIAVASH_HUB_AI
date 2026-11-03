@@ -34,7 +34,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads", "capability_candidates",
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
         "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
-        "content_publish_schedules",
+        "content_publish_schedules", "media_file_cleanup",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -58,6 +58,25 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         row["name"] for row in connection.execute("PRAGMA table_info(workflow_runs)")
     }
     assert "owner_user_id" in workflow_columns
+    cleanup_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(media_file_cleanup)")
+    }
+    assert {
+        "cleanup_id", "owner_user_id", "storage_key", "attempt_count",
+        "created_at", "updated_at"
+    } <= cleanup_columns
+    # Cleanup intents must survive account deletion, so this table intentionally
+    # has no cascading foreign key to auth_users.
+    assert connection.execute(
+        "PRAGMA foreign_key_list(media_file_cleanup)"
+    ).fetchall() == []
+    cleanup_index = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_media_file_cleanup_owner_retry'"
+    ).fetchone()
+    assert cleanup_index is not None
+    assert "owner_user_id, attempt_count, updated_at, created_at" in cleanup_index["sql"]
     connection.close()
 
 
@@ -186,6 +205,7 @@ def test_unknown_future_migration_version_fails_closed(tmp_path):
         SchemaMigrator(connection).migrate()
     connection.close()
 
+
 def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     from mrhub.agents.repository import AgentRunRepository
     from mrhub.agents.workflow_repository import AgentWorkflowRepository
@@ -239,4 +259,40 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
         "SELECT owner_user_id FROM agent_runs WHERE run_id = 'historical-run'"
     ).fetchone()
     assert row["owner_user_id"] is None
+    connection.close()
+
+
+
+def test_migration_19_upgrades_an_existing_v18_database(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations
+
+    connection = connect(tmp_path / "version-18.sqlite3")
+    original = migrations.MIGRATIONS
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-1])
+
+    applied = SchemaMigrator(connection).migrate()
+
+    assert applied == [migration.version for migration in original[:-1]]
+    assert connection.execute(
+        "SELECT MAX(version) FROM schema_migrations"
+    ).fetchone()[0] == 18
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'media_file_cleanup'"
+    ).fetchone() is None
+
+    monkeypatch.setattr(migrations, "MIGRATIONS", original)
+    assert SchemaMigrator(connection).migrate() == [19]
+    assert connection.execute(
+        "SELECT MAX(version) FROM schema_migrations"
+    ).fetchone()[0] == 19
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'media_file_cleanup'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_media_file_cleanup_owner_retry'"
+    ).fetchone() is not None
+    assert SchemaMigrator(connection).migrate() == []
     connection.close()

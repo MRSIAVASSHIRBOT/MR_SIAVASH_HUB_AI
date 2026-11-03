@@ -549,6 +549,21 @@ MIGRATIONS = (
             "ALTER TABLE content_draft_versions ADD COLUMN media_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE RESTRICT",
         ),
     ),
+    Migration.build(
+        19,
+        "durable_media_file_cleanup_queue",
+        (
+            """CREATE TABLE IF NOT EXISTS media_file_cleanup (
+                cleanup_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL,
+                storage_key TEXT NOT NULL UNIQUE CHECK (length(storage_key) BETWEEN 1 AND 80),
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_owner_retry ON media_file_cleanup(owner_user_id, attempt_count, updated_at, created_at)",
+        ),
+    ),
 )
 
  
