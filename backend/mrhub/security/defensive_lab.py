@@ -197,7 +197,7 @@ def audit_configuration_text(
 
 
 _REQUIREMENT_RE = re.compile(
-    r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\\[[^\\]]+\\])?\\s*(.*)$"
+    r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]+\])?\s*(.*)$"
 )
 
 
@@ -292,6 +292,7 @@ def audit_requirements_text(
 
         packages_reviewed += 1
         specifier = match.group(2).split(";", 1)[0].strip()
+        version_specifier = specifier.split(maxsplit=1)[0] if specifier else ""
         if "@" in specifier:
             add(
                 "DEP002",
@@ -301,7 +302,12 @@ def audit_requirements_text(
                 "Direct URL dependency requires provenance review.",
                 "Prefer a trusted package index and an immutable, reviewed release.",
             )
-        elif not specifier.startswith("==") or specifier.startswith("===") or "*" in specifier:
+        elif (
+            not version_specifier.startswith("==")
+            or version_specifier.startswith("===")
+            or "*" in version_specifier
+            or "," in version_specifier
+        ):
             add(
                 "DEP001",
                 "medium",
