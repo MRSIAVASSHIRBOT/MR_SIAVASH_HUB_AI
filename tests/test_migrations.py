@@ -263,7 +263,7 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_21_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
@@ -286,7 +286,7 @@ def test_migrations_19_to_21_upgrade_an_existing_v18_database(tmp_path, monkeypa
     ).fetchone() is None
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [19, 20, 21]
+    assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
     ).fetchone()[0] == 21
@@ -309,6 +309,14 @@ def test_migrations_19_to_21_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'video_analysis_payloads'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_timeline_drafts'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_video_timeline_drafts_owner_updated'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
