@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import Callable, Sequence
+from typing import Annotated
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -22,17 +23,20 @@ from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.video_intelligence.frames import ExtractedVideoFrame
 
 
+VisualTag = Annotated[str, Field(min_length=1, max_length=120)]
+
+
 class VisualBatchResult(BaseModel):
     """Strictly bounded visual facts returned for one group of keyframes."""
 
     model_config = ConfigDict(extra="forbid")
 
     visual_summary: str = Field(min_length=1, max_length=1200)
-    visual_style: list[str] = Field(default_factory=list, max_length=8)
+    visual_style: list[VisualTag] = Field(default_factory=list, max_length=8)
     composition: str = Field(default="", max_length=600)
     camera_motion: str = Field(default="", max_length=600)
     editing_rhythm: str = Field(default="", max_length=600)
-    text_overlays: list[str] = Field(default_factory=list, max_length=8)
+    text_overlays: list[VisualTag] = Field(default_factory=list, max_length=8)
 
 
 class _AnalysisEnvelope(BaseModel):
