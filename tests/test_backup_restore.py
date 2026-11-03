@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 
@@ -110,7 +111,6 @@ def test_application_database_backup_restores_owner_login(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
 
-
 def test_verify_media_assets_checks_registered_file_size_and_hash_read_only(tmp_path):
     from mrhub.operations.backup import verify_media_assets
 
@@ -126,7 +126,7 @@ def test_verify_media_assets_checks_registered_file_size_and_hash_read_only(tmp_
         )
         connection.execute(
             "INSERT INTO content_assets VALUES (?, ?, ?)",
-            (storage_key, len(payload), __import__("hashlib").sha256(payload).hexdigest()),
+            (storage_key, len(payload), hashlib.sha256(payload).hexdigest()),
         )
 
     result = verify_media_assets(database)
