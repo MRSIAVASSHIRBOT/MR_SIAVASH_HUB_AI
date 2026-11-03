@@ -355,9 +355,7 @@ class VideoAnalysisJobRepository:
                 """UPDATE idempotency_records SET status = ?
                    WHERE scope = ? AND task_id = ?""",
                 (
-                    "completed" if status == "completed" else (
-                        "failed" if status == "failed" else "unknown_outcome"
-                    ),
+                    "completed" if status == "completed" else "failed",
                     self._scope(owner_user_id), str(task_id),
                 ),
             )
