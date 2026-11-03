@@ -5,7 +5,6 @@ from uuid import UUID
 import pytest
 
 from mrhub.domain.tasks import TaskStatus
-
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.jobs.worker import WorkerEngine
