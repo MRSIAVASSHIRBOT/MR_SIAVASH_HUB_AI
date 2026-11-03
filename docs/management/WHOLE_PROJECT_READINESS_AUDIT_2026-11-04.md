@@ -41,7 +41,7 @@ These counts describe repository structure and test inventory. They are not evid
 | NEXUS | Read-only Python AST analysis, import-alias awareness, advisory rules PY101–PY105 including `os.system`/`os.popen`, review-only patch proposals | Broader language/dependency coverage, performance validation on large repositories and explicitly authorized isolated test execution; analyzer must not execute target code |
 | Discovery and research | Roadmap and module boundaries | Source connectors, attributed research records, provenance, untrusted-content handling and end-to-end retrieval are not yet evidenced as complete |
 | Defensive Cybersecurity Lab | Scoped offline configuration and requirements review, authenticated metadata-only review API, structured-log triage | Approved advisory/CVE snapshot workflow and authorized asset inventory with scope/evidence tests; keep all operations defensive and non-destructive |
-| Operator UI | Self-hosted RTL dashboard with status, tasks, providers, memory/knowledge and workflow controls | Systematic browser/UX acceptance, error-state coverage, accessibility, and UI controls for render submission/status/cancellation; full workflow integration |
+| Operator UI | Self-hosted RTL dashboard with status, tasks, providers, memory/knowledge and workflow controls; PR #227 adds render submission/status/cancellation and authenticated MP4 download | Systematic browser/UX acceptance, error-state coverage, accessibility and full product workflow integration |
 | Diagnostics and hardware | Read-only diagnostics, resource advisor and static model profiles | Validate estimates against actual hardware and model configurations; avoid presenting static estimates as measured performance |
 | Backup and recovery | SQLite backup/restore helpers, coordinated runbook, bounded read-only media integrity verifier with hash/size/path checks | Actual target restore drill, protected encryption-key backup, coordinated database/media recovery and Windows clean install/upgrade/rollback |
 | Packaging and release | Wheel build and packaged UI checks in CI; Python 3.11/3.12 matrix | Canonical dependency lock, license decision, clean target install/upgrade/rollback, release notes, version/tag policy and owner-approved publication |
@@ -128,3 +128,15 @@ The push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2
 - Video Render Integration — success.
 
 This confirms the same integration remains green after the squash merge. It does not change the remaining target-device, restore-drill, external-provider, or whole-product release gates above.
+
+
+## 8. Operator UI render integration — PR #227
+
+**Merged commit:** `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`  
+**Exact tested PR head:** `643ddfaf141004f19a90067f0992d60cebce564a`
+
+The RTL operator workspace now exposes the existing owner-scoped video render API. A completed analysis with a non-empty validated timeline enables render submission. The UI persists the per-analysis idempotency key and render-to-analysis association in the current tab session, supports explicit status refresh and cancellation, and offers an authenticated download action for completed MP4 output. Media-library downloads use a bearer token in the request header, not the URL; ambient cookies are omitted, cache is disabled, redirects are rejected, and the browser enforces the repository's 100 MB output ceiling.
+
+Exact-head checks passed: Backend CI, CI on Python 3.11 and 3.12, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows hosted runners. UI tests verify control presence, idempotency/session behavior, authenticated download settings, and JavaScript syntax when Node is available.
+
+This is implementation plus CI evidence, not full browser acceptance. Manual interaction, accessibility, failure-state and target-device checks remain open. The UI does not start the pull worker or run background polling. The renderer remains silent and hard-cut-only; no AI video provider is registered.
