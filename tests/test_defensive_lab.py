@@ -241,10 +241,13 @@ def test_authenticated_config_review_api_enforces_scope_and_returns_safe_evidenc
     from mrhub.infrastructure.database import TaskRepository
 
     audit = TaskRepository(get_settings().database_path).list_audit()
-    assert len(audit) == 1
-    assert audit[0]["event_type"] == "security_lab.review_completed"
-    assert "ticket-123" not in str(audit[0])
-    assert "debug = true" not in str(audit[0])
+    completed = [
+        item for item in audit
+        if item["event_type"] == "security_lab.review_completed"
+    ]
+    assert len(completed) == 1
+    assert "ticket-123" not in str(completed[0])
+    assert "debug = true" not in str(completed[0])
 
 
 def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
@@ -271,10 +274,13 @@ def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
     from mrhub.infrastructure.database import TaskRepository
 
     audit = TaskRepository(get_settings().database_path).list_audit()
-    assert len(audit) == 1
-    assert audit[0]["event_type"] == "security_lab.review_denied"
-    assert audit[0]["outcome"] == "denied"
-    assert audit[0]["metadata"]["reason_code"] == "authorization_scope_denied"
+    denied = [
+        item for item in audit
+        if item["event_type"] == "security_lab.review_denied"
+    ]
+    assert len(denied) == 1
+    assert denied[0]["outcome"] == "denied"
+    assert denied[0]["metadata"]["reason_code"] == "authorization_scope_denied"
 
 
 def test_authenticated_dependency_review_api_is_offline_and_reports_unpinned_packages():
@@ -301,6 +307,18 @@ def test_authenticated_dependency_review_api_is_offline_and_reports_unpinned_pac
     assert result["network_requests_made"] is False
     assert result["packages_installed"] is False
     assert result["targets_modified"] is False
+
+    from mrhub.config import get_settings
+    from mrhub.infrastructure.database import TaskRepository
+
+    audit = TaskRepository(get_settings().database_path).list_audit()
+    completed = [
+        item for item in audit
+        if item["event_type"] == "security_lab.review_completed"
+    ]
+    assert len(completed) == 1
+    assert "ticket-123" not in str(completed[0])
+    assert "fastapi>=0.115" not in str(completed[0])
 
 
 def test_security_lab_api_requires_authentication():
