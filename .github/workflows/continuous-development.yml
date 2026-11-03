@@ -95,9 +95,10 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Check out trusted base without persisted credentials
+      - name: Check out trusted main base without persisted credentials
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: main
           fetch-depth: 1
           persist-credentials: false
 
@@ -144,5 +145,5 @@ jobs:
           gh pr create \
             --title "Scheduled development: run ${GITHUB_RUN_ID}" \
             --body "Automated, focused development proposal. Review the diff and CI results before merging. This PR was not merged automatically." \
-            --base "${GITHUB_REF_NAME}" \
+            --base "main" \
             --head "$BRANCH"
