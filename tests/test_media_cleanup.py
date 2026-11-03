@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Barrier
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -236,3 +237,51 @@ def test_delete_and_begin_processing_are_serialized(tmp_path: Path) -> None:
         assert repository.get("owner-1", asset_id) is None
         assert repository.cleanup_pending_files("owner-1") == 0
         assert not path.exists()
+
+
+
+def test_failed_cleanup_items_do_not_starve_unattempted_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _repository(tmp_path)
+    now = datetime(2026, 11, 3, tzinfo=UTC)
+    keys = [f"{uuid4()}.png" for _ in range(101)]
+    with repository.tasks._connection() as connection:
+        for index, key in enumerate(keys):
+            repository.file_path(key).write_bytes(b"queued-file")
+            created_at = (now + timedelta(microseconds=index)).isoformat()
+            connection.execute(
+                """
+                INSERT INTO media_file_cleanup (
+                    cleanup_id, owner_user_id, storage_key, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (str(uuid4()), "owner-1", key, created_at, created_at),
+            )
+
+    with repository.tasks._connection() as connection:
+        first_batch = {
+            row["storage_key"]
+            for row in connection.execute(
+                "SELECT storage_key FROM media_file_cleanup "
+                "WHERE owner_user_id = ? ORDER BY created_at LIMIT 100",
+                ("owner-1",),
+            ).fetchall()
+        }
+    untouched_key = next(key for key in keys if key not in first_batch)
+    real_file_path = repository.file_path
+
+    def fail_first_batch(key: str) -> Path:
+        if key in first_batch:
+            raise PermissionError("simulated persistent filesystem denial")
+        return real_file_path(key)
+
+    monkeypatch.setattr(repository, "file_path", fail_first_batch)
+
+    assert repository.cleanup_pending_files("owner-1", limit=100) == 101
+    assert real_file_path(untouched_key).is_file()
+
+    # The unattempted item has attempt_count=0 and must be selected before
+    # the 100 repeatedly failing items on the next bounded pass.
+    assert repository.cleanup_pending_files("owner-1", limit=100) == 100
+    assert not real_file_path(untouched_key).exists()
