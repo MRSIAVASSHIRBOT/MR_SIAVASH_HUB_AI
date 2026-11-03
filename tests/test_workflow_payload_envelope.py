@@ -99,7 +99,7 @@ def test_payload_key_loads_from_dotenv_file(tmp_path, monkeypatch: pytest.Monkey
     monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text(
-        f"MRH_WORKFLOW_PAYLOAD_KEY={encoded}\\n",
+        f"MRH_WORKFLOW_PAYLOAD_KEY={encoded}\n",
         encoding="utf-8",
     )
     get_settings.cache_clear()
