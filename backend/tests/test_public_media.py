@@ -7,7 +7,18 @@ from pydantic import SecretStr
 
 from mrhub.api.routes import public_media
 from mrhub.config import Settings
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.media.repository import MediaAssetRepository
+from mrhub.security.auth import AuthService
+
+
+def _create_test_owner(database_path: Path) -> str:
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    AuthService(tasks).initialize_owner("public-media-fixture-password")
+    owner = tasks.get_auth_user("owner")
+    assert owner is not None
+    return str(owner["user_id"])
 
 
 def test_sign_asset_url_requires_public_https_base(monkeypatch):
@@ -53,9 +64,10 @@ def test_signed_route_serves_only_valid_unexpired_image(monkeypatch, tmp_path: P
     )
     monkeypatch.setattr(public_media, "get_settings", lambda: settings)
     monkeypatch.setattr(public_media.time, "time", lambda: now)
+    owner_id = _create_test_owner(settings.database_path)
     repository = MediaAssetRepository(settings.database_path)
     asset = repository.store_upload(
-        "owner-1",
+        owner_id,
         "sample.png",
         "image/png",
         b"\x89PNG\r\n\x1a\n" + b"test-image-data",
@@ -114,9 +126,10 @@ def test_signed_route_rejects_mismatched_image_signature(monkeypatch, tmp_path: 
     )
     monkeypatch.setattr(public_media, "get_settings", lambda: settings)
     monkeypatch.setattr(public_media.time, "time", lambda: now)
+    owner_id = _create_test_owner(settings.database_path)
     repository = MediaAssetRepository(settings.database_path)
     asset = repository.store_upload(
-        "owner-1",
+        owner_id,
         "not-really-a-png.png",
         "image/png",
         b"not a png file",
@@ -131,6 +144,7 @@ def test_signed_route_rejects_mismatched_image_signature(monkeypatch, tmp_path: 
         )
     assert exc.value.status_code == 404
     assert exc.value.detail == "media_asset_type_mismatch"
+
 
 @pytest.mark.parametrize(
     "base_url",
@@ -159,4 +173,3 @@ def test_sign_asset_url_rejects_non_public_or_ambiguous_origins(monkeypatch, bas
             "123e4567-e89b-12d3-a456-426614174000",
             now=1_800_000_000,
         )
-
