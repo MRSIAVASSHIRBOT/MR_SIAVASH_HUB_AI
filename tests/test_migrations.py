@@ -263,12 +263,12 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_23_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
     original = migrations.MIGRATIONS
-    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-5])
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-6])
 
     applied = SchemaMigrator(connection).migrate()
 
