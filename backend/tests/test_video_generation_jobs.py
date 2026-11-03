@@ -36,6 +36,10 @@ def _repository(tmp_path):
                       '{}', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
             (str(analysis_id), str(task.task_id), "owner-a"),
         )
+        connection.execute(
+            "UPDATE tasks SET status = 'succeeded' WHERE task_id = ?",
+            (str(task.task_id),),
+        )
     return repository, analysis_id
 
 
