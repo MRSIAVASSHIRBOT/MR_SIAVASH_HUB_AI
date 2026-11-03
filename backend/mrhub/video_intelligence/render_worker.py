@@ -30,7 +30,7 @@ class VideoRenderWorkerHandler:
         loaded = self.jobs.load_for_worker(task.task_id)
         if loaded is None:
             raise ValueError("Video render request is unavailable")
-        owner_user_id, render_id, analysis_id = loaded
+        owner_user_id, render_id, analysis_id, output_storage_key = loaded
         if lease_lost.is_set() or not self.jobs.mark_running(
             task.task_id, owner_user_id, lease=lease
         ):
@@ -88,7 +88,11 @@ class VideoRenderWorkerHandler:
                     error_code="cancelled_before_render", lease=lease,
                 )
                 return {"render_id": str(render_id), "status": "cancelled"}
-            output_asset_id, storage_key, output_path = self.media.new_output_target()
+            try:
+                output_asset_id = str(UUID(output_storage_key.removesuffix(".mp4")))
+                output_path = self.media.file_path(output_storage_key)
+            except ValueError as exc:
+                raise ValueError("render_output_identity_invalid") from exc
             rendered = render_video_timeline(
                 timeline=timeline,
                 source_paths=source_paths,
@@ -127,7 +131,7 @@ class VideoRenderWorkerHandler:
             output = self.media.register_rendered_output(
                 owner_user_id,
                 output_asset_id,
-                storage_key,
+                output_storage_key,
                 rendered.output_path,
                 f"render-{render_id}.mp4",
                 task_id=task.task_id,
