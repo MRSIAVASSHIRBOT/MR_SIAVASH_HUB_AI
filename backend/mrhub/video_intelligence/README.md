@@ -12,6 +12,7 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Bounded Pydantic contracts for analysis requests, beat timelines, and brand identity.
 - Local-file FFprobe metadata probing with a timeout and a fixed output-size check.
 - Bounded local FFmpeg uniform frame sampling: up to 12 JPEG frames, up to 60 seconds of source duration, 1280-pixel maximum width, 30-second process timeout, and bounded frame output.
+- Bounded FFmpeg scene-cut timestamp detection: up to 24 cut boundaries over 60 seconds, threshold validation, 640-pixel post-selection hash frames, bounded framehash output, and a 30-second timeout. Results are heuristic cut boundaries, not semantic scene descriptions.
 - Deterministic, provider-neutral prompt composition.
 - Authenticated brand-profile CRUD with per-user ownership, unique names per owner, and image-asset ownership validation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
