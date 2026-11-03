@@ -1,7 +1,7 @@
 import json
+from uuid import UUID
 
 from client_helpers import authenticated_client, run_worker_once
-from uuid import UUID
 from mrhub.config import get_settings
 from mrhub.jobs.idempotency import IdempotencyRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
