@@ -149,14 +149,15 @@ This confirms both the renderer backend and its operator UI remain green after t
 
 ## Current-main follow-up — 2026-11-04 UTC
 
-This follow-up supersedes the audited-main pointer and inventory count above without rewriting the historical evidence for PR #223 or PR #227.
+This follow-up supersedes the audited-main pointer and inventory count above without rewriting the historical evidence for PR #223 or PR #227. The audit's application/code baseline is `92bc36e5a61446c258c558b151edcec582bf470b`; the subsequent PR #233 is documentation-only.
 
 - Current main: `92bc36e5a61446c258c558b151edcec582bf470b`.
 - Recursive Git tree: 326 entries (not truncated).
 - Python test files under `tests/` and `backend/tests/`: 94.
 - PR #231 (operator UI DOM selector integrity regression test) is merged.
-- PR #232 (`test(worker): cover bounded content schedule dispatch per cycle`) remains open and draft at head `cfcca4e0293f2d6edacb12ec181e66af6e3c9c3b`; it adds a worker/content integration regression test using an in-memory adapter. It must not be represented as merged functionality.
-- The PR #232 metadata reports the base as current main `92bc36e5a61446c258c558b151edcec582bf470b`. Its exact-head workflow state must be checked directly before review/merge. The commit-workflow lookup used in this audit only returns pull-request-triggered runs and therefore did not provide push-run evidence for main.
+- PR #232 (`test(worker): cover bounded content schedule dispatch per cycle`) remains open and draft at head `cfcca4e0293f2d6edacb12ec181e66af6e3c9c3b`; it adds a worker/content integration regression test using an in-memory adapter. It is not merged functionality.
+- Six exact-head GitHub Actions check runs on PR #232's head completed successfully: `scan`, Python 3.11, Python 3.12, backend `test`, and Linux/Windows real FFmpeg integration jobs (six total). The separate combined commit-status endpoint still reports `pending`; therefore PR #232 is not treated as fully cleared for merge on the basis of check-runs alone.
+- PR #233 is merged as documentation-only commit `320b62d0d7ef764ae7f0dbdde57a3cbaa10d3326`; it aligns this audit with the 92bc36e application baseline. Current main after this docs-only merge is `320b62d0d7ef764ae7f0dbdde57a3cbaa10d3326`.
 - The latest verified product boundary remains unchanged: hosted CI and static tests do not establish browser acceptance, Windows/laptop acceptance, real social/provider account operation, or a successful clean-destination restore drill.
 
-Next audit action: refresh the status ledger's top-level review date and reconcile its historical sections against this current baseline; do not rewrite historical commit evidence.
+The top-level status ledger review date is being refreshed in the same documentation-maintenance cycle; historical commit evidence remains preserved.
