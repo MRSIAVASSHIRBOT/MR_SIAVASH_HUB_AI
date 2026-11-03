@@ -194,6 +194,44 @@ class VideoGenerationJobRepository:
             "request": payload,
         }
 
+    def load_for_reconciliation(
+        self, owner_user_id: str, generation_id: UUID
+    ) -> dict[str, object] | None:
+        """Load the retained request only for an unknown provider outcome."""
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                """SELECT p.envelope_version, p.nonce_b64, p.ciphertext_b64,
+                          j.source_analysis_id, j.provider, j.model, j.status
+                   FROM video_generation_payloads AS p
+                   JOIN video_generation_jobs AS j
+                     ON j.generation_id = p.generation_id
+                    AND j.owner_user_id = p.owner_user_id
+                   WHERE p.generation_id = ? AND p.owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["status"] != "unknown_outcome":
+            raise ValueError("Only unknown-outcome jobs can be reconciled")
+        payload = decrypt_payload(
+            EncryptedPayload(
+                version=int(row["envelope_version"]),
+                nonce_b64=str(row["nonce_b64"]),
+                ciphertext_b64=str(row["ciphertext_b64"]),
+            ),
+            workflow_id=str(generation_id),
+            task_id=str(generation_id),
+            owner_user_id=owner_user_id,
+            key=load_payload_key(),
+        )
+        return {
+            "generation_id": str(generation_id),
+            "source_analysis_id": row["source_analysis_id"],
+            "provider": row["provider"],
+            "model": row["model"],
+            "request": payload,
+        }
+
     def transition(
         self,
         owner_user_id: str,
