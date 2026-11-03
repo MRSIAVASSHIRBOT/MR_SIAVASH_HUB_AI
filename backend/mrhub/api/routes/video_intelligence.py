@@ -39,13 +39,13 @@ from mrhub.video_intelligence.schemas import (
     VideoAnalysisRequest,
     VideoTechnicalMetadata,
 )
+from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 from mrhub.video_intelligence.timeline_drafts import (
     TimelineBeat,
     TimelineConflict,
     TimelineDraftUpdate,
     VideoTimelineDraftRepository,
 )
-from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 router = APIRouter(
     prefix="/video-intelligence",
@@ -340,7 +340,7 @@ class TimelineDraftCreateRequest(BaseModel):
     beats: list[TimelineBeat] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="after")
-    def validate_beats(self) -> "TimelineDraftCreateRequest":
+    def validate_beats(self) -> TimelineDraftCreateRequest:
         previous_end = 0.0
         for beat in self.beats:
             if beat.end_seconds > self.duration_seconds:
