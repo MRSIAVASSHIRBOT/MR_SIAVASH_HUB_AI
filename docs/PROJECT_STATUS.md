@@ -368,15 +368,15 @@ This refresh supersedes the older open-PR queue and video-only status snapshots 
 | #213 | Backup/restore operator runbook | `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
 | #214 | API/worker emergency-stop and resume smoke test | `413164eb2b1021d8da1eb0c845a99e2422d49bd4` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
 | #215 | Per-provider-request Agent input budget | `6c2aedaecd9195913507369568dcf99207dbc222` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
-| #216 | Bounded, read-only media asset integrity verifier | `baacd5b7be3ecb34dfa061587295f24047edd9e6` | Backend CI and Defensive Python Scan passed; CI still in progress | Draft/open; not merged |
-| #217 | Alias-aware NEXUS AST checks and OS shell API detection | `ba96dfa7e28f82b31d7d561bf7978155821543af` | Earlier head failed Ruff FLY002 in a test fixture; fixture was corrected on this latest head and checks are awaiting rerun | Draft/open; not merged |
+| #216 | Bounded, read-only media asset integrity verifier | `baacd5b7be3ecb34dfa061587295f24047edd9e6` | Backend CI, CI, and Defensive Python Scan passed | Draft/open; not merged |
+| #217 | Alias-aware NEXUS AST checks and OS shell API detection | `ba96dfa7e28f82b31d7d561bf7978155821543af` | Defensive Python Scan passed; Backend CI dependency audit and lint passed, tests still running; CI matrix queued | Draft/open; not merged |
 
 ### Verified technical progress
 
 - The workflow smoke test exercises the authenticated emergency-stop API and a separate worker process. Work submitted while stopped remains queued; explicit authenticated resume permits it to complete. This does not prove cancellation of already-running external side effects or Windows service behavior.
 - Agent orchestration now checks the serialized prompt against the per-call provider input contract before constructing the provider request. An oversized prompt returns a stable budget result without provider dispatch.
 - The media verifier compares generated storage keys, registered size, and SHA-256 metadata without copying or deleting files. It rejects symlinked roots and unsafe entries, limits verification to 10,000 registered assets and 10,000 directory entries, and refuses to hash files larger than 100 MB. A truncated result is not a successful verification.
-- NEXUS remains read-only. The pending change recognizes common import aliases for selected risky Python APIs and adds an advisory finding for `os.system` and `os.popen`. It does not execute or modify analyzed code.
+- NEXUS remains read-only. The pending change recognizes common import aliases for selected risky Python APIs and adds an advisory finding for `os.system` and `os.popen`. Its corrected head passed lint and Defensive Python Scan; test and CI matrix results remain pending. It does not execute or modify analyzed code.
 
 ### Integration and release boundary
 
