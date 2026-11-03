@@ -122,10 +122,21 @@ def analyze_video_frames(
     if provider is None:
         return {"status": "not_performed", "reason_code": provider_scope}
 
-    health = provider.health(timeout_seconds=2.0)
+    try:
+        health = provider.health(timeout_seconds=2.0)
+    except ProviderError:
+        return {
+            "status": "not_performed",
+            "reason_code": "vision_provider_unavailable",
+            "provider_scope": provider_scope,
+        }
     if not health.available:
         # A failed local provider never triggers a silent remote fallback.
-        return {"status": "not_performed", "reason_code": health.reason_code, "provider_scope": provider_scope}
+        return {
+            "status": "not_performed",
+            "reason_code": health.reason_code,
+            "provider_scope": provider_scope,
+        }
 
     batches: list[dict[str, object]] = []
     for start in range(0, len(frames), 4):
