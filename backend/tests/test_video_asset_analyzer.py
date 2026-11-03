@@ -10,7 +10,6 @@ from mrhub.video_intelligence.frames import ExtractedVideoFrame, FrameExtraction
 from mrhub.video_intelligence.scenes import SceneDetectionError, SceneDetectionResult
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
-
 ASSET_ID = uuid.UUID("9c4d0a4e-7ef3-4ea5-9463-bc03b3e9a960")
 
 
