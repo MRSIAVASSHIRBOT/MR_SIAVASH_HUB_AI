@@ -313,3 +313,44 @@ There are 13 open PRs at this snapshot:
 ### Verification limitations
 
 This is a metadata and changed-path audit, not a code-level approval. No source-level review or combined test run is implied by the workflow results above. Checks marked passed apply only to the exact PR head and named workflow. No PR was merged, closed, force-pushed, or deleted as part of this snapshot. Windows target-device acceptance, clean install/upgrade/rollback/restore, and live external-provider acceptance remain separate gates.
+
+
+## Superseding live integration snapshot — 2026-11-04 UTC
+
+This section supersedes older repository and PR snapshots above. The detailed current readiness matrix is in [Whole-Project Readiness Audit — 2026-11-04](management/WHOLE_PROJECT_READINESS_AUDIT_2026-11-04.md).
+
+- **Main:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`.
+- **Merged integration:** PR #223, squash merge `a5a1002907b3ddac2b218b84312e2fd74f2d0256`; 25 changed files.
+- **Exact PR head validated:** `fe153ac1d9a3b57e3a3e836c54e262263b36626c`.
+- **Exact-head evidence:** Backend CI, CI Python 3.11/3.12, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows all passed.
+- **Post-merge main checks:** all four push-triggered workflows passed on merge commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256`: Backend CI run `41722222701`, CI run `41722222754`, Defensive Python Scan run `41722222735`, and Video Render Integration run `41722222736`.
+- **Repository inventory:** 325 recursive tree entries (not truncated), 94 Python test files, 19 backend domain packages, seven GitHub Actions workflows, schema migrations through version 27.
+
+### Newly integrated capabilities
+
+- Workflow emergency-stop/resume runtime smoke coverage using separate API and worker processes.
+- Centralized 32,000-character provider-request input guard; oversized agent prompts return a sanitized budget result before provider dispatch.
+- Read-only media backup integrity verifier and coordinated backup/restore runbook.
+- Alias-aware NEXUS Python AST checks for risky imports/calls, including `os.system` and `os.popen`; analyzer remains read-only and advisory.
+- Durable owner-scoped silent cut-only video rendering, migration 27, idempotent render jobs, authenticated submit/read/cancel routes, lease-fenced worker, source media-use locks, atomic output registration and stale orphan/partial cleanup.
+- Real FFmpeg/FFprobe rendering succeeded on Linux and Windows hosted CI runners.
+
+### Current hard boundaries
+
+- Video output is silent and hard-cut-only. Audio, transitions, captions, graphics, motion effects and AI-generated footage remain unimplemented.
+- No operational AI video provider is registered.
+- Hosted Windows CI is not acceptance on the owner's actual Windows device.
+- The target restore drill, clean install/upgrade/rollback, live external-provider acceptance, social publishing acceptance and whole-product release gates remain open.
+- Do not label the whole project complete or production-ready.
+
+### Immediate next work
+
+1. Verify post-merge push CI on the exact main commit.
+2. Close duplicate/superseded PRs and refresh the canonical audit branch.
+3. Continue scheduled-trigger/recovery semantics, Discovery source connectors, Memory/Knowledge integrity, Operator UI end-to-end coverage and controlled Content integration.
+4. Keep target-device acceptance for the final integrated candidate; do not request device access before the complete product test package is ready.
+
+
+### Post-merge verification update — 2026-11-04 UTC
+
+All four push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan, and Video Render Integration. This is post-merge evidence on the exact main commit; target-device and whole-product acceptance gates remain open.
