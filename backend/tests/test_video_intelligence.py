@@ -1,8 +1,9 @@
+import pytest
 from pydantic import ValidationError
 
 from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compose_prompt
 from mrhub.security.auth import AuthenticatedUser
-from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
+from mrhub.video_intelligence.schemas import AnalysisMode, BeatInstruction, BrandIdentity, VideoAnalysisRequest
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 
@@ -81,3 +82,36 @@ def test_authenticated_prompt_composition_returns_draft_without_execution():
     assert result["status"] == "composed"
     assert result["execution"] == "not_started"
     assert "MR_SIAVASH_IR_BOT" in result["prompt"]
+
+
+
+def test_video_prompt_rejects_invalid_or_oversized_timeline_inputs():
+    with pytest.raises(ValidationError):
+        BeatInstruction(
+            start_seconds=5,
+            end_seconds=4,
+            generation_instruction="Invalid interval",
+        )
+    with pytest.raises(ValidationError):
+        PromptCompositionRequest(
+            style_summary="A bounded prompt",
+            duration_seconds=5,
+            beats=[{
+                "start_seconds": 0,
+                "end_seconds": 6,
+                "generation_instruction": "Beat exceeds requested duration",
+            }],
+        )
+    with pytest.raises(ValidationError):
+        PromptCompositionRequest(
+            style_summary="A bounded prompt",
+            colors=["x" * 1000],
+        )
+
+
+def test_brand_profile_text_fields_have_per_item_limits():
+    with pytest.raises(ValidationError):
+        BrandIdentity(
+            brand_name="Example",
+            colors=["x" * 1000],
+        )
