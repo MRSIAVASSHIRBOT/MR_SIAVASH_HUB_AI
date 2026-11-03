@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import (
@@ -38,6 +38,12 @@ from mrhub.video_intelligence.schemas import (
     BrandIdentity,
     VideoAnalysisRequest,
     VideoTechnicalMetadata,
+)
+from mrhub.video_intelligence.timeline_drafts import (
+    TimelineBeat,
+    TimelineConflict,
+    TimelineDraftUpdate,
+    VideoTimelineDraftRepository,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
@@ -190,6 +196,10 @@ def inspect_video_asset(
 
 
 
+
+def _timeline_drafts() -> VideoTimelineDraftRepository:
+    return VideoTimelineDraftRepository(get_settings().database_path)
+
 def _analysis_jobs() -> VideoAnalysisJobRepository:
     return VideoAnalysisJobRepository(get_settings().database_path)
 
@@ -318,3 +328,84 @@ def compose_prompt_from_analysis(
         "prompts": prompts,
         "count": len(prompts),
     }
+
+
+class TimelineDraftCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    analysis_id: UUID
+    asset_id: UUID
+    duration_seconds: int = Field(ge=3, le=60)
+    aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"]
+    beats: list[TimelineBeat] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_beats(self) -> "TimelineDraftCreateRequest":
+        previous_end = 0.0
+        for beat in self.beats:
+            if beat.end_seconds > self.duration_seconds:
+                raise ValueError("Timeline beat exceeds draft duration")
+            if beat.start_seconds < previous_end:
+                raise ValueError("Timeline beats must be ordered and cannot overlap")
+            previous_end = beat.end_seconds
+        return self
+
+
+@router.post("/timeline-drafts", status_code=status.HTTP_201_CREATED)
+def create_timeline_draft(
+    payload: TimelineDraftCreateRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Create an editable timeline only for an asset in the owner's completed analysis."""
+    analysis = _analysis_jobs().get(user.user_id, payload.analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Video analysis not found")
+    if analysis["status"] != "completed" or not isinstance(analysis.get("result"), dict):
+        raise HTTPException(status_code=409, detail="Video analysis is not completed")
+    assets = analysis["result"].get("assets")
+    if not isinstance(assets, list) or not any(
+        isinstance(item, dict) and item.get("asset_id") == str(payload.asset_id)
+        for item in assets
+    ):
+        raise HTTPException(status_code=404, detail="Asset is not part of this analysis")
+    try:
+        return _timeline_drafts().create(
+            user.user_id,
+            payload.analysis_id,
+            payload.asset_id,
+            payload.duration_seconds,
+            payload.aspect_ratio,
+            [beat.model_dump(mode="json") for beat in payload.beats],
+        )
+    except TimelineConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/timeline-drafts/{draft_id}")
+def get_timeline_draft(
+    draft_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    draft = _timeline_drafts().get(user.user_id, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Timeline draft not found")
+    return draft
+
+
+@router.put("/timeline-drafts/{draft_id}")
+def update_timeline_draft(
+    draft_id: UUID,
+    payload: TimelineDraftUpdate,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    try:
+        draft = _timeline_drafts().update(user.user_id, draft_id, payload)
+    except TimelineConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Timeline draft not found")
+    return draft
