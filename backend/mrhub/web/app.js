@@ -47,6 +47,14 @@
     pendingVideoAnalysisKey = null;
     pendingVideoAnalysisFingerprint = null;
     videoPromptResults = [];
+    $("#video-analysis-result").replaceChildren();
+    $("#video-prompt-output").value = "";
+    $("#video-prompt-timeline").replaceChildren();
+    $("#video-analysis-refresh").disabled = true;
+    $("#video-prompt-source").replaceChildren(element("option", "پس از تکمیل تحلیل فعال می‌شود"));
+    $("#video-prompt-source").disabled = true;
+    $("#video-compose-prompt").disabled = true;
+    $("#video-copy-prompt").disabled = true;
     setAuthenticated(false);
   }
 
