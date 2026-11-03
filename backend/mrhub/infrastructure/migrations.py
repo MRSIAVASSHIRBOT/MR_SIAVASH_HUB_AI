@@ -683,7 +683,7 @@ MIGRATIONS = (
         ),
     ),
     Migration.build(
-        24,
+        25,
         "durable_video_generation_task_handoff",
         (
             """CREATE TABLE IF NOT EXISTS video_generation_task_links (
