@@ -100,12 +100,6 @@ async def probe_loopback_service(
                     "status": "invalid_configuration",
                     "configured": False,
                 }
-            if not 1 <= max_response_bytes <= 16384:
-                return {
-                    "contract_version": INTEGRATION_CONTRACT_VERSION,
-                    "status": "invalid_configuration",
-                    "configured": False,
-                }
             received = 0
             # One-byte chunks make the configured limit strict: no oversized
             # chunk is buffered before the limit check can stop the stream.
