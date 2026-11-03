@@ -62,3 +62,11 @@ Do not put `OPENCLAW_GATEWAY_TOKEN`, `OPENCLAW_GATEWAY_PASSWORD`, or any other G
 OpenClaw compatibility is not claimed as end-to-end integration by this mapping. The current adapter only checks liveness. Deep readiness and actual assistant requests remain separate acceptance gates.
 
 **Upstream references (reviewed 2026-11-03):** [OpenClaw health checks](https://docs.openclaw.ai/gateway/health), [Gateway web interfaces and authentication](https://docs.openclaw.ai/web), [Tools invoke API and its operator-access boundary](https://docs.openclaw.ai/gateway/tools-invoke-http-api).
+
+## Reviewed product mapping: SiaCode
+
+The separate `Siavashc/SiaCode` repository is a **candidate** for the HUB-owned `code_engine` role, not a compatible runtime adapter today. Its README describes a Windows launcher, a local Anthropic-compatible proxy, an ngrok tunnel, and a remote molab kernel; it also documents a remote-kernel API capable of running Python. The reviewed README does not define a stable, authenticated, loopback HTTP health endpoint or a narrow typed coding-request API matching this contract. Consequently, do not point `MRH_CODE_ENGINE_BASE_URL` at an assumed port, invoke its launcher from the HUB, execute its scripts, create tunnels, or download its model automatically.
+
+A future SiaCode adapter can be reconsidered only after the upstream project exposes a documented local health endpoint and a constrained request contract with authentication, explicit workspace scope, bounded inputs/outputs, cancellation, and auditable outcomes. Any remote execution must remain an explicitly approved external operation; it must not bypass the HUB policy engine or workflow recovery rules. The SiaCode repository is MIT-licensed according to its repository metadata, but that does not by itself establish runtime compatibility or operational safety.
+
+**Upstream reference (reviewed 2026-11-03):** [Siavashc/SiaCode README and source](https://github.com/Siavashc/SiaCode).
