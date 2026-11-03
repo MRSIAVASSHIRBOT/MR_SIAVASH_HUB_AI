@@ -151,7 +151,7 @@ This confirms both the renderer backend and its operator UI remain green after t
 
 This follow-up supersedes the audited-main pointer and inventory count above without rewriting the historical evidence for PR #223 or PR #227. The audit's application/code baseline is `92bc36e5a61446c258c558b151edcec582bf470b`; the subsequent PR #233 is documentation-only.
 
-- Current main: `92bc36e5a61446c258c558b151edcec582bf470b`.
+- Application/code baseline inspected: `92bc36e5a61446c258c558b151edcec582bf470b`; current main after the documentation-only PR #233 is `320b62d0d7ef764ae7f0dbdde57a3cbaa10d3326`.
 - Recursive Git tree: 326 entries (not truncated).
 - Python test files under `tests/` and `backend/tests/`: 94.
 - PR #231 (operator UI DOM selector integrity regression test) is merged.
