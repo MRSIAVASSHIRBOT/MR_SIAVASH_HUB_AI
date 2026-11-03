@@ -1,5 +1,6 @@
+import datetime as dt
+
 import pytest
-from datetime import UTC, datetime, timedelta
 
 from client_helpers import authenticated_client
 from mrhub.security.defensive_lab import (
@@ -14,17 +15,17 @@ from mrhub.security.defensive_lab import (
 def _scope(
     asset: str = "repo:owned-project",
     *,
-    expires_at: datetime | None = None,
+    expires_at: dt.datetime | None = None,
 ) -> DefensiveReviewScope:
     return DefensiveReviewScope(
         authorization_reference="ticket-123",
         authorized_assets=(asset,),
-        expires_at=expires_at or datetime.now(UTC) + timedelta(days=1),
+        expires_at=expires_at or dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
     )
 
 
 def test_scope_requires_explicit_assets_and_current_authorization():
-    now = datetime(2026, 11, 2, tzinfo=UTC)
+    now = dt.datetime(2026, 11, 2, tzinfo=UTC)
     scope = DefensiveReviewScope(
         authorization_reference="ticket-123",
         authorized_assets=("repo:owned-project",),
