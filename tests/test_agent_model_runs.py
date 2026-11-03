@@ -256,6 +256,7 @@ def test_durable_model_run_applies_owner_reviewed_knowledge_freshness_policy(mon
         headers={"Idempotency-Key": "durable-run-freshness-001"},
         json={
             "goal": "Use only manually reviewed current evidence.",
+            "context_query": "durable stale context fixture",
             "provider_mode": "local",
             "include_memory": False,
             "include_knowledge": True,
