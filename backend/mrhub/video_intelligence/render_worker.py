@@ -43,7 +43,7 @@ class VideoRenderWorkerHandler:
                 raise ValueError("source_analysis_unavailable")
             result = analysis.get("result")
             if not isinstance(result, dict):
-                raise ValueError("source_analysis_invalid")
+                raise TypeError("source_analysis_invalid")
             timeline = VideoTimeline.model_validate(result.get("timeline"))
             source_ids = {clip.source_asset_id for clip in timeline.video_track}
             if not source_ids or len(source_ids) > 125:
