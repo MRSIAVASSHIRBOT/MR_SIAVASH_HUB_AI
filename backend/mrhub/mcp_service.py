@@ -1,4 +1,4 @@
-"""Explicit, loopback-only MCP service entry point.
+"""Explicit, numeric-loopback-only MCP service entry point.
 
 Install the optional dependency with: python -m pip install -e ".[mcp]"
 Enable it with MRH_MCP_ENABLED=true, then run: mrhub-mcp
@@ -16,8 +16,8 @@ def main() -> None:
         raise SystemExit(
             "MCP service is disabled. Set MRH_MCP_ENABLED=true to start it explicitly."
         )
-    if settings.mcp_host not in {"127.0.0.1", "localhost", "::1"}:
-        raise SystemExit("MCP service may bind only to a loopback address.")
+    if settings.mcp_host not in {"127.0.0.1", "::1"}:
+        raise SystemExit("MCP service may bind only to a numeric loopback address.")
 
     server = create_mcp_server()
     server.run(
