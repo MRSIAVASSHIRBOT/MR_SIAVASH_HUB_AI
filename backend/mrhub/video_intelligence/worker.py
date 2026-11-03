@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from threading import Event
 from uuid import UUID
 
@@ -66,6 +67,8 @@ class VideoAnalysisWorkerHandler:
                 return self._fail(task, owner_user_id, lease, "asset_not_found")
             if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
                 return self._fail(task, owner_user_id, lease, "asset_type_unsupported")
+            if asset["processing_status"] not in {"stored", "processed"}:
+                return self._fail(task, owner_user_id, lease, "asset_not_ready")
             try:
                 path = self.media.file_path(str(asset["storage_key"]))
             except ValueError:
@@ -74,7 +77,10 @@ class VideoAnalysisWorkerHandler:
             metadata = probe_video(path)
             if metadata.metadata_status != "available" or metadata.duration_seconds is None:
                 return self._fail(task, owner_user_id, lease, "video_probe_failed")
-            duration = min(float(metadata.duration_seconds), float(request.duration_seconds))
+            probed_duration = float(metadata.duration_seconds)
+            if not math.isfinite(probed_duration) or probed_duration <= 0:
+                return self._fail(task, owner_user_id, lease, "video_duration_invalid")
+            duration = min(probed_duration, float(request.duration_seconds))
             if duration < 0.1:
                 return self._fail(task, owner_user_id, lease, "video_duration_invalid")
             try:
