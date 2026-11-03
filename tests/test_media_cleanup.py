@@ -126,3 +126,36 @@ def test_deleting_source_queues_source_and_derivative_files(
     assert repository.cleanup_pending_files("owner-1") == 0
     assert not source_path.exists()
     assert not output_path.exists()
+
+
+def test_source_cleanup_query_is_scoped_to_asset_owner(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    repository.tasks.create_auth_user("owner-2", "other", "test-salt", "test-hash")
+    source = repository.store_upload(
+        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
+    )
+    source_id = UUID(str(source["asset_id"]))
+    foreign_id, foreign_key, foreign_path = repository.new_output_target()
+    foreign_path.write_bytes(b"foreign-file")
+    now = repository._now()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO content_assets (
+                asset_id, owner_user_id, source_asset_id, original_filename,
+                media_type, storage_key, file_size, content_hash,
+                processing_status, processing_profile, error_code, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'video/mp4', ?, ?, ?, 'processed',
+                      'video_mp4_720p', NULL, ?, ?)
+            """,
+            (
+                foreign_id, "owner-2", str(source_id), "foreign.mp4",
+                foreign_key, len(b"foreign-file"),
+                "0" * 64, now, now,
+            ),
+        )
+
+    deleted_keys = repository.delete("owner-1", source_id)
+
+    assert str(source["storage_key"]) in deleted_keys
+    assert foreign_key not in deleted_keys
