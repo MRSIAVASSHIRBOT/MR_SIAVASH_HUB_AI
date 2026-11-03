@@ -13,11 +13,12 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Local-file FFprobe metadata probing with a timeout and a fixed output-size check.
 - Bounded local FFmpeg uniform frame sampling: up to 12 JPEG frames, up to 60 seconds of source duration, 1280-pixel maximum width, 30-second process timeout, and bounded frame output.
 - Bounded FFmpeg scene-cut timestamp detection: up to 24 cut boundaries over 60 seconds, threshold validation, 640-pixel post-selection hash frames, bounded framehash output, and a 30-second timeout. Results are heuristic cut boundaries, not semantic scene descriptions.
+- Internal `VideoAssetAnalyzer` composition: owner-scoped asset resolution, technical metadata validation, one shared bounded analysis interval, transient keyframe extraction, and scene-boundary timestamps. Extracted frame bytes are returned only in memory and are not persisted.
 - Deterministic, provider-neutral prompt composition.
 - Authenticated brand-profile CRUD with per-user ownership, unique names per owner, and image-asset ownership validation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
 - Durable owner-scoped analysis submission with mandatory idempotency keys, AES-GCM encrypted request payloads, lease-fenced results, and worker recovery cleanup.
-- Worker-side bounded metadata probing, up to 12 transient keyframes, and up to 24 scene-cut timestamps per source asset; extracted JPEG bytes are not persisted.
+- Worker-side bounded metadata probing, up to 12 transient keyframes, and up to 24 scene-cut timestamps per source asset; extracted JPEG bytes are not persisted. The worker uses the shared internal analyzer and fenced per-asset usage leases.
 
 ## API surface
 
@@ -35,11 +36,9 @@ All endpoints require an authenticated owner session:
 
 ## Not implemented yet
 
-- Persisted video-analysis jobs and queue-backed analysis execution.
-- Public API orchestration for frame extraction and scene detection.
 - Visual understanding, motion analysis, OCR, and audio transcription.
 - Operator UI, model-provider adapters, and end-to-end video rendering.
 
 ## Security boundaries
 
-The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Analysis requests are owner-scoped and encrypted at rest with the existing authenticated payload envelope. The worker revalidates ownership before accessing each asset, and result writes require the current lease fencing token. Frame extraction and scene-boundary detection remain internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
+The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Analysis requests are owner-scoped and encrypted at rest with the existing authenticated payload envelope. The worker revalidates ownership before accessing each asset, and result writes require the current lease fencing token. Per-asset analysis-use leases are bound to the worker execution token; media deletion and transcoding are serialized against active analysis, while expired or superseded tokens do not hold files indefinitely. Frame extraction and scene-boundary detection remain internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
