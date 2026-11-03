@@ -8,6 +8,14 @@
   let activeModelRunWorkflowId = null;
   let pendingModelRunIdempotencyKey = null;
   let pendingModelRunPayloadFingerprint = null;
+  let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
+  if (!token) {
+    sessionStorage.removeItem("mrh_video_analysis_id");
+    activeVideoAnalysisId = null;
+  }
+  let pendingVideoAnalysisKey = null;
+  let pendingVideoAnalysisFingerprint = null;
+  let videoPromptResults = [];
 
   function message(target, text, kind = "") {
     const node = $(target);
@@ -34,6 +42,19 @@
   function endSession() {
     token = null;
     sessionStorage.removeItem(tokenKey);
+    sessionStorage.removeItem("mrh_video_analysis_id");
+    activeVideoAnalysisId = null;
+    pendingVideoAnalysisKey = null;
+    pendingVideoAnalysisFingerprint = null;
+    videoPromptResults = [];
+    $("#video-analysis-result").replaceChildren();
+    $("#video-prompt-output").value = "";
+    $("#video-prompt-timeline").replaceChildren();
+    $("#video-analysis-refresh").disabled = true;
+    $("#video-prompt-source").replaceChildren(element("option", "پس از تکمیل تحلیل فعال می‌شود"));
+    $("#video-prompt-source").disabled = true;
+    $("#video-compose-prompt").disabled = true;
+    $("#video-copy-prompt").disabled = true;
     setAuthenticated(false);
   }
 
@@ -353,6 +374,7 @@
   async function loadMediaAssets() {
     const response = await api("/content/assets?limit=100");
     mediaAssetsCache = Array.isArray(response.assets) ? response.assets : [];
+    updateVideoAssetOptions();
     const select = $("#draft-media-select");
     const selected = select.value;
     select.replaceChildren(element("option", "بدون رسانه"));
@@ -388,6 +410,264 @@
       return card;
     }, "هنوز رسانه‌ای آپلود نشده است.");
     return mediaAssetsCache;
+  }
+
+  function updateVideoAssetOptions() {
+    const select = $("#video-analysis-assets");
+    if (!select) return;
+    const selected = new Set(Array.from(select.selectedOptions).map((option) => option.value));
+    const videos = mediaAssetsCache.filter((asset) =>
+      ["video/mp4", "video/quicktime"].includes(asset.media_type)
+    );
+    select.replaceChildren();
+    if (!videos.length) {
+      const option = element("option", "ویدئوی MP4 در کتابخانه وجود ندارد");
+      option.value = "";
+      option.disabled = true;
+      select.append(option);
+      return;
+    }
+    for (const asset of videos) {
+      const option = element(
+        "option",
+        `${asset.original_filename} · ${(Number(asset.file_size || 0) / (1024 * 1024)).toFixed(1)} MB`
+      );
+      option.value = asset.asset_id;
+      option.selected = selected.has(asset.asset_id);
+      select.append(option);
+    }
+  }
+
+  function renderVideoAnalysis(analysis) {
+    const container = $("#video-analysis-result");
+    container.replaceChildren();
+    const labels = {
+      accepted: "در صف اجرا",
+      running: "در حال تحلیل",
+      completed: "تحلیل تکمیل شد",
+      failed: "تحلیل ناموفق",
+      cancelled: "لغو شد",
+    };
+    const statusText = labels[analysis.status] || analysis.status || "نامشخص";
+    container.append(recordCard(
+      "وضعیت Job",
+      statusText,
+      `شناسه: ${analysis.analysis_id || activeVideoAnalysisId} · آخرین به‌روزرسانی: ${analysis.updated_at || "نامشخص"}`
+    ));
+
+    const result = analysis.result;
+    const semantic = result && result.semantic_visual_analysis;
+    const canCompose = analysis.status === "completed"
+      && semantic && semantic.status === "completed"
+      && Array.isArray(semantic.assets)
+      && semantic.assets.length > 0
+      && semantic.assets.every((asset) => asset.status === "completed");
+    const source = $("#video-prompt-source");
+    const previousAssetId = source.value;
+    source.replaceChildren();
+    if (canCompose) {
+      for (const asset of semantic.assets) {
+        const media = mediaAssetsCache.find((item) => item.asset_id === asset.asset_id);
+        const option = element("option", media ? media.original_filename : asset.asset_id);
+        option.value = asset.asset_id;
+        source.append(option);
+      }
+      source.disabled = false;
+      if (semantic.assets.some((asset) => asset.asset_id === previousAssetId)) {
+        source.value = previousAssetId;
+      }
+    } else {
+      const option = element(
+        "option",
+        analysis.status === "completed"
+          ? "تحلیل معنایی معتبر در دسترس نیست"
+          : "پس از تکمیل تحلیل فعال می‌شود"
+      );
+      option.value = "";
+      source.append(option);
+      source.disabled = true;
+    }
+    $("#video-compose-prompt").disabled = !canCompose;
+    $("#video-copy-prompt").disabled = true;
+    $("#video-prompt-output").value = "";
+    $("#video-prompt-timeline").replaceChildren();
+    videoPromptResults = [];
+
+    if (result) {
+      const assets = Array.isArray(result.assets) ? result.assets : [];
+      for (const asset of assets) {
+        const technical = asset.technical_metadata || {};
+        container.append(recordCard(
+          mediaAssetsCache.find((item) => item.asset_id === asset.asset_id)?.original_filename || asset.asset_id,
+          `وضعیت فنی: ${technical.metadata_status || "نامشخص"} · فریم نمونه: ${asset.keyframe_count ?? "—"} · مرزهای صحنه: ${Array.isArray(asset.scene_start_timestamps) ? asset.scene_start_timestamps.length : 0}`,
+          `مدت بررسی: ${asset.analysis_window_seconds ?? "—"} ثانیه · تحلیل صوت: ${asset.audio_analysis || result.audio_analysis || "انجام نشده"}`
+        ));
+      }
+      const semanticLabel = semantic ? semantic.status : "unavailable";
+      container.append(element(
+        "p",
+        `تحلیل معنایی: ${semanticLabel}. تحلیل صوتی و رندر ویدئو در این نسخه اجرا نمی‌شوند.`,
+        "muted"
+      ));
+    } else if (analysis.error_code) {
+      container.append(element("p", `کد خطا: ${analysis.error_code}`, "message error"));
+    }
+    $("#video-analysis-refresh").disabled = !activeVideoAnalysisId;
+  }
+
+  async function refreshVideoAnalysis() {
+    if (!activeVideoAnalysisId) {
+      message("#video-analysis-message", "هنوز درخواست تحلیلی ثبت نشده است.", "error");
+      return;
+    }
+    try {
+      const analysis = await api(`/video-intelligence/analyses/${encodeURIComponent(activeVideoAnalysisId)}`);
+      renderVideoAnalysis(analysis);
+      const statusText = analysis.status === "completed"
+        ? "تحلیل پایان یافت. وضعیت تحلیل معنایی را بررسی کنید."
+        : analysis.status === "failed"
+          ? `تحلیل ناموفق بود: ${analysis.error_code || "خطای نامشخص"}`
+          : `وضعیت فعلی: ${analysis.status}. برای بررسی مجدد، دکمهٔ وضعیت را بزنید.`;
+      message("#video-analysis-message", statusText, analysis.status === "failed" ? "error" : "success");
+    } catch (error) {
+      message("#video-analysis-message", error.message, "error");
+    }
+  }
+
+  async function submitVideoAnalysis(event) {
+    event.preventDefault();
+    const selectedIds = Array.from($("#video-analysis-assets").selectedOptions)
+      .map((option) => option.value)
+      .filter(Boolean);
+    if (selectedIds.length < 1 || selectedIds.length > 5) {
+      message("#video-analysis-message", "بین ۱ تا ۵ ویدئو انتخاب کنید.", "error");
+      return;
+    }
+    const duration = Number($("#video-analysis-duration").value);
+    if (!Number.isInteger(duration) || duration < 3 || duration > 60) {
+      message("#video-analysis-message", "مدت بررسی باید عدد صحیح بین ۳ تا ۶۰ ثانیه باشد.", "error");
+      return;
+    }
+    const payload = {
+      mode: $("#video-analysis-mode").value,
+      source_asset_ids: selectedIds,
+      duration_seconds: duration,
+      output_aspect_ratio: $("#video-analysis-aspect").value,
+      include_audio_analysis: false,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (!pendingVideoAnalysisKey || pendingVideoAnalysisFingerprint !== fingerprint) {
+      if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
+        message("#video-analysis-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
+        return;
+      }
+      pendingVideoAnalysisKey = window.crypto.randomUUID();
+      pendingVideoAnalysisFingerprint = fingerprint;
+    }
+    const button = $("#video-analysis-submit");
+    button.disabled = true;
+    message("#video-analysis-message", "در حال ثبت درخواست امن در صف Worker…");
+    try {
+      const accepted = await api("/video-intelligence/analyses", {
+        method: "POST",
+        headers: { "Idempotency-Key": pendingVideoAnalysisKey },
+        body: payload,
+      });
+      activeVideoAnalysisId = accepted.analysis_id;
+      sessionStorage.setItem("mrh_video_analysis_id", activeVideoAnalysisId);
+      pendingVideoAnalysisKey = null;
+      pendingVideoAnalysisFingerprint = null;
+      videoPromptResults = [];
+      $("#video-prompt-output").value = "";
+      $("#video-prompt-source").replaceChildren(element("option", "پس از تکمیل تحلیل فعال می‌شود"));
+      $("#video-prompt-source").disabled = true;
+      $("#video-compose-prompt").disabled = true;
+      $("#video-copy-prompt").disabled = true;
+      $("#video-analysis-refresh").disabled = false;
+      message(
+        "#video-analysis-message",
+        accepted.created === false ? "درخواست قبلی بازیابی شد؛ شناسهٔ تکراری ساخته نشد." : "درخواست ثبت شد. Worker باید فعال باشد تا تحلیل اجرا شود.",
+        "success"
+      );
+      await refreshVideoAnalysis();
+    } catch (error) {
+      message("#video-analysis-message", `${error.message}؛ در صورت تلاش مجدد با همین ورودی، همان کلید idempotency حفظ می‌شود.`, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function renderSelectedVideoPrompt() {
+    const assetId = $("#video-prompt-source").value;
+    const selected = videoPromptResults.find((item) => item.asset_id === assetId);
+    const output = $("#video-prompt-output");
+    const timeline = $("#video-prompt-timeline");
+    timeline.replaceChildren();
+    if (!selected) {
+      output.value = "";
+      $("#video-copy-prompt").disabled = true;
+      return;
+    }
+    output.value = selected.prompt;
+    $("#video-copy-prompt").disabled = !selected.prompt;
+    for (const beat of selected.timeline || []) {
+      timeline.append(recordCard(
+        `Beat ${Number(beat.start_seconds).toFixed(2)}s – ${Number(beat.end_seconds).toFixed(2)}s`,
+        `Timestamp منبع: ${Number(beat.source_timestamp_seconds).toFixed(3)}s`,
+        "این بازه از مشاهدهٔ واقعی فریم نمونه‌برداری‌شده ساخته شده است."
+      ));
+    }
+  }
+
+  async function composeVideoPrompt() {
+    if (!activeVideoAnalysisId) return;
+    const button = $("#video-compose-prompt");
+    button.disabled = true;
+    message("#video-prompt-message", "در حال ساخت Prompt از مشاهدات معتبر…");
+    try {
+      const response = await api(
+        `/video-intelligence/analyses/${encodeURIComponent(activeVideoAnalysisId)}/prompts/compose`,
+        {
+          method: "POST",
+          body: { aspect_ratio: $("#video-prompt-aspect-ratio").value },
+        }
+      );
+      videoPromptResults = Array.isArray(response.prompts) ? response.prompts : [];
+      const source = $("#video-prompt-source");
+      const previousAssetId = source.value;
+      if (videoPromptResults.length) {
+        source.replaceChildren();
+        for (const item of videoPromptResults) {
+          const media = mediaAssetsCache.find((asset) => asset.asset_id === item.asset_id);
+          const option = element(media ? media.original_filename : item.asset_id);
+          option.value = item.asset_id;
+          source.append(option);
+        }
+        source.disabled = false;
+        source.value = videoPromptResults.some((item) => item.asset_id === previousAssetId)
+          ? previousAssetId
+          : videoPromptResults[0].asset_id;
+        renderSelectedVideoPrompt();
+        message("#video-prompt-message", `${videoPromptResults.length} Prompt مستقل ساخته شد؛ هیچ موتور تولیدی فراخوانی نشد.`, "success");
+      } else {
+        message("#video-prompt-message", "تحلیل معنایی معتبر برای ساخت Prompt وجود ندارد.", "error");
+      }
+    } catch (error) {
+      message("#video-prompt-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function copyVideoPrompt() {
+    const value = $("#video-prompt-output").value;
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      message("#video-prompt-message", "Prompt کپی شد.", "success");
+    } catch {
+      message("#video-prompt-message", "دسترسی Clipboard در این مرورگر فعال نیست؛ متن را دستی کپی کنید.", "error");
+    }
   }
 
   function updateMediaSelectAvailability() {
@@ -523,6 +803,10 @@
   async function refreshAll() {
     try {
       await Promise.all([loadOverview(), loadContentDrafts(), loadMediaAssets(), loadMemory(), loadKnowledge()]);
+      if (activeVideoAnalysisId) {
+        $("#video-analysis-refresh").disabled = false;
+        await refreshVideoAnalysis();
+      }
     } catch (error) {
       message("#workspace-message", error.message, "error");
     }
@@ -583,6 +867,12 @@
     endSession();
   });
   $("#refresh-button").addEventListener("click", refreshAll);
+
+  $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
+  $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
+  $("#video-compose-prompt").addEventListener("click", composeVideoPrompt);
+  $("#video-prompt-source").addEventListener("change", renderSelectedVideoPrompt);
+  $("#video-copy-prompt").addEventListener("click", copyVideoPrompt);
 
   $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
   $("#media-refresh-button").addEventListener("click", () =>

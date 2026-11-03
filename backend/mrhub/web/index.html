@@ -252,6 +252,71 @@
           <p id="media-message" class="message" role="status" aria-live="polite"></p>
           <div id="media-asset-list" class="record-list"></div>
         </div>
+
+        <div class="video-analysis-workspace">
+          <div class="section-heading">
+            <h3>تحلیل ویدئو و ساخت Prompt</h3>
+            <span class="status-pill status-muted">بدون تولید خودکار</span>
+          </div>
+          <p class="muted">فقط ویدئوهای متعلق به حساب شما بررسی می‌شوند. تحلیل در Worker اجرا می‌شود؛ این صفحه آن را در درخواست HTTP اجرا نمی‌کند. برای تحلیل معنایی باید Ollama و مدل بینایی محلی روی سرور فعال باشند.</p>
+          <form id="video-analysis-form" class="form-grid">
+            <label class="field-wide">ویدئوهای من (حداکثر ۵ فایل)
+              <select id="video-analysis-assets" name="source_asset_ids" multiple size="4" required>
+                <option value="">ابتدا ویدئوی MP4 بارگذاری کنید</option>
+              </select>
+            </label>
+            <label>روش تحلیل
+              <select id="video-analysis-mode" name="mode">
+                <option value="faithful_style_reconstruction">بازسازی تکنیک‌های بصری</option>
+                <option value="creative_style_fusion">ترکیب خلاقانهٔ سبک‌ها</option>
+              </select>
+            </label>
+            <label>حداکثر مدت بررسی (ثانیه)
+              <input id="video-analysis-duration" name="duration_seconds" type="number" min="3" max="60" value="10" required>
+            </label>
+            <label>نسبت تصویر هدف
+              <select id="video-analysis-aspect" name="output_aspect_ratio">
+                <option value="9:16">عمودی 9:16</option>
+                <option value="16:9">افقی 16:9</option>
+                <option value="1:1">مربع 1:1</option>
+                <option value="4:5">پرتره 4:5</option>
+              </select>
+            </label>
+            <button id="video-analysis-submit" class="button button-secondary" type="submit">ثبت درخواست تحلیل</button>
+          </form>
+          <div class="button-row">
+            <button id="video-analysis-refresh" class="button button-quiet" type="button" disabled>بررسی وضعیت تحلیل</button>
+          </div>
+          <p id="video-analysis-message" class="message" role="status" aria-live="polite"></p>
+          <div id="video-analysis-result" class="record-list"></div>
+
+          <div class="video-prompt-composer">
+            <div class="section-heading"><h4>ساخت Prompt از تحلیل معنایی معتبر</h4></div>
+            <div class="form-grid">
+              <label>نسبت تصویر Prompt
+                <select id="video-prompt-aspect-ratio">
+                  <option value="9:16">عمودی 9:16</option>
+                  <option value="16:9">افقی 16:9</option>
+                  <option value="1:1">مربع 1:1</option>
+                  <option value="4:5">پرتره 4:5</option>
+                </select>
+              </label>
+              <label>ویدئوی منبع
+                <select id="video-prompt-source" disabled>
+                  <option value="">پس از تحلیل معنایی فعال می‌شود</option>
+                </select>
+              </label>
+              <button id="video-compose-prompt" class="button button-primary" type="button" disabled>ساخت Prompt</button>
+              <button id="video-copy-prompt" class="button button-quiet" type="button" disabled>کپی Prompt</button>
+              <label class="field-wide">Prompt تولید (فقط متن؛ رندر اجرا نمی‌شود)
+                <textarea id="video-prompt-output" rows="9" maxlength="20000" readonly placeholder="پس از تکمیل تحلیل معنایی، Prompt اینجا نمایش داده می‌شود."></textarea>
+              </label>
+            </div>
+            <p id="video-prompt-message" class="message" role="status" aria-live="polite"></p>
+            <div id="video-prompt-timeline" class="record-list"></div>
+          </div>
+        </div>
+
         <form id="content-draft-form" class="form-grid">
           <label>عنوان<input name="title" required maxlength="200"></label>
           <label>پلتفرم

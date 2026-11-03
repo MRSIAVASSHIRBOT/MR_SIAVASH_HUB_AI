@@ -148,3 +148,39 @@ summary { color: var(--green); cursor: pointer; }
   min-width: 1rem;
   accent-color: var(--green);
 }
+
+
+.video-analysis-workspace {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--panel-soft);
+}
+.video-analysis-workspace h3,
+.video-analysis-workspace h4 { margin: 0; }
+.video-analysis-workspace .section-heading { margin-bottom: .25rem; }
+.video-analysis-workspace select[multiple] { min-height: 8rem; }
+.video-prompt-composer {
+  display: grid;
+  gap: .85rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+#video-prompt-output {
+  width: 100%;
+  min-height: 12rem;
+  resize: vertical;
+  direction: auto;
+  text-align: start;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  line-height: 1.6;
+}
+#video-prompt-timeline { display: grid; gap: .5rem; }
+.video-analysis-workspace .button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .video-analysis-workspace { padding: .75rem; }
+}
