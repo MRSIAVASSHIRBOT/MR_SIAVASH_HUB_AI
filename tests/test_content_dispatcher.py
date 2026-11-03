@@ -10,6 +10,9 @@ from mrhub.content.dispatcher import (
     PublishReceipt,
     UnknownPublishOutcome,
 )
+from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.worker import WorkerEngine
 from mrhub.media.repository import MediaAssetRepository
 
 
@@ -269,3 +272,44 @@ def test_dispatcher_rechecks_emergency_stop_before_provider_side_effect(monkeypa
     assert listed.status_code == 200
     assert listed.json()["count"] == 1
     assert listed.json()["schedules"][0]["attempt_count"] == 1
+
+
+def test_worker_processes_at_most_one_due_content_schedule_per_cycle():
+    client = authenticated_client()
+    first = _scheduled_due_post(client)
+    second = _scheduled_due_post(client)
+    repository = TaskRepository(get_settings().database_path)
+    queued_task = TaskRecord(task_type="demo.echo", description="worker cycle integration")
+    repository.create(queued_task)
+
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = []
+
+        def publish(self, draft: dict[str, object], *, idempotency_key: str) -> PublishReceipt:
+            self.calls.append((draft["draft_id"], idempotency_key))
+            return PublishReceipt(provider_post_id=f"provider-{len(self.calls)}")
+
+    adapter = CountingAdapter()
+    dispatcher = ContentScheduleDispatcher(
+        get_settings().database_path, adapters={"telegram": adapter}
+    )
+    worker = WorkerEngine(repository, content_schedule_dispatcher=dispatcher)
+
+    # One worker cycle may execute one task and at most one due content schedule.
+    completed = worker.run_once()
+    assert completed is not None
+    assert completed.task_id == queued_task.task_id
+    assert completed.status is TaskStatus.SUCCEEDED
+    assert len(adapter.calls) == 1
+
+    # The next cycle drains only the next due schedule; no hidden batch dispatch occurs.
+    assert worker.run_once() is None
+    assert len(adapter.calls) == 2
+    assert worker.run_once() is None
+    assert len(adapter.calls) == 2
+
+    published = client.get("/content/schedules?status=published")
+    assert published.status_code == 200
+    published_ids = {item["schedule_id"] for item in published.json()["schedules"]}
+    assert {first["schedule_id"], second["schedule_id"]}.issubset(published_ids)
