@@ -359,13 +359,13 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
             (str(task_id),),
         )
         connection.execute(
-            """UPDATE worker_executions
-               SET started_at = ?, lease_owner = ?, lease_expires_at = ?,
-                   execution_token = ?
-               WHERE task_id = ?""",
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
             (
-                "2000-01-01T00:00:00+00:00", "dead-worker",
-                "2000-01-01T00:00:00+00:00", 7, str(task_id),
+                str(task_id), "2000-01-01T00:00:00+00:00",
+                "dead-worker", "2000-01-01T00:00:00+00:00", 7,
             ),
         )
         connection.execute(
