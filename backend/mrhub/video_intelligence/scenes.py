@@ -70,7 +70,10 @@ def _parse_framehash_timestamps(output: bytes) -> list[float]:
                 raise ValueError("framehash time base is missing")
         except (csv.Error, ValueError, StopIteration) as exc:
             raise SceneDetectionError("scene_output_invalid") from exc
-        timestamp = float(pts * time_base)
+        try:
+            timestamp = float(pts * time_base)
+        except OverflowError as exc:
+            raise SceneDetectionError("scene_timestamp_invalid") from exc
         if not math.isfinite(timestamp) or timestamp < 0:
             raise SceneDetectionError("scene_timestamp_invalid")
         timestamps.append(timestamp)
