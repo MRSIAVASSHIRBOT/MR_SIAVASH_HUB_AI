@@ -263,7 +263,7 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_26_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
@@ -362,6 +362,18 @@ def test_migrations_19_to_26_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_video_generation_task_links_task'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_render_runs'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_video_render_owner_created'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_video_render_analysis'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
