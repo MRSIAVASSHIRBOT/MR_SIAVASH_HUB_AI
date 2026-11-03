@@ -146,6 +146,70 @@ def test_api_and_worker_execute_queued_workflow_in_separate_processes(tmp_path: 
         assert latest["status"] == "succeeded", (
             f"separate-process workflow did not succeed; final state: {latest!r}"
         )
+
+        # Exercise the durable emergency-stop gate through the real API and worker
+        # processes. Stop before queueing so this assertion is independent of polling
+        # timing and proves that queued work is not claimed while the switch is latched.
+        status, stopped = _request(
+            base_url,
+            "/jobs/emergency-stop",
+            method="POST",
+            token=token,
+            body={"reason": "runtime smoke test maintenance window"},
+        )
+        assert status == 200
+        assert stopped["stopped"] is True
+
+        status, waiting = _request(
+            base_url,
+            "/agent/workflows",
+            method="POST",
+            token=token,
+            body={
+                "goal": "Remain queued while emergency stop is active",
+                "tools": [{"name": "text.echo", "payload": {"text": "after-stop"}}],
+            },
+        )
+        assert status == 200
+        assert waiting["queued"] is True
+        waiting_id = waiting["workflow"]["workflow_id"]
+        assert waiting["workflow"]["status"] == "queued"
+
+        # Allow several worker polling intervals; it must not dispatch this workflow.
+        time.sleep(1.5)
+        _, held = _request(
+            base_url,
+            f"/agent/workflows/{waiting_id}",
+            token=token,
+        )
+        assert held["status"] == "queued"
+        assert worker.poll() is None
+
+        status, resumed = _request(
+            base_url,
+            "/jobs/resume",
+            method="POST",
+            token=token,
+        )
+        assert status == 200
+        assert resumed["stopped"] is False
+
+        deadline = time.monotonic() + 20
+        latest = held
+        while time.monotonic() < deadline:
+            if worker.poll() is not None:
+                raise AssertionError(f"worker process exited after resume: {worker.returncode}")
+            _, latest = _request(
+                base_url,
+                f"/agent/workflows/{waiting_id}",
+                token=token,
+            )
+            if latest["status"] in {"succeeded", "failed", "cancelled", "recovery_required"}:
+                break
+            time.sleep(0.25)
+        assert latest["status"] == "succeeded", (
+            f"workflow did not resume after emergency stop was cleared: {latest!r}"
+        )
     finally:
         if worker is not None and worker.poll() is None:
             worker.terminate()
