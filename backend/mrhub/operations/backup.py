@@ -220,7 +220,6 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
     return result
 
 
-
 def restore_database(backup: str | Path, destination: str | Path) -> dict[str, Any]:
     """Verify the backup manifest and SQLite integrity before atomically restoring a new file."""
     backup_path = Path(backup).expanduser().resolve(strict=True)
