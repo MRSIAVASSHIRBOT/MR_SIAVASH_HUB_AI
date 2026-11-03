@@ -1,7 +1,7 @@
 from uuid import UUID
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from client_helpers import authenticated_client, run_worker_once
 from mrhub.api.routes.video_intelligence import cancel_scene_job, get_scene_job
