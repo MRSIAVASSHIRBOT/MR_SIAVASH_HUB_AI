@@ -18,6 +18,8 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
 - Durable owner-scoped analysis submission with mandatory idempotency keys, AES-GCM encrypted request payloads, lease-fenced results, and worker recovery cleanup.
 - Bounded admission of up to two active analyses per owner and 25 globally; idempotent retries are resolved before capacity enforcement.
+- Admission accepts only assets in `stored` or `processed` state and the Worker rechecks readiness before analysis to close a concurrent-transcode race.
+- Inline brand logos must resolve to owner-scoped image assets; missing, foreign-owner, or non-image references are rejected.
 - Worker-side bounded metadata probing, up to 12 transient keyframes, and up to 24 scene-cut timestamps per source asset; extracted JPEG bytes are not persisted.
 - Optional local Ollama vision analysis over the transient keyframes, with a strict image-byte budget, finite timeout, structured output validation, and observations bound to actual extracted timestamps. It is disabled by default and never falls back to a remote model.
 
