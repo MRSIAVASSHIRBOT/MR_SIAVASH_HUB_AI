@@ -675,6 +675,27 @@ class WorkflowRecoveryRepository:
                 ).fetchone()
                 if counts is None or counts["total"] == 0 or counts["total"] != counts["succeeded"]:
                     raise WorkflowRecoveryError("Every workflow step must succeed before completion")
+            if status == "cancelled":
+                connection.execute(
+                    """
+                    UPDATE workflow_step_attempts
+                    SET status = 'cancelled', error_code = 'cancelled', finished_at = ?
+                    WHERE step_id IN (
+                        SELECT step_id FROM workflow_steps
+                        WHERE workflow_id = ? AND status = 'running'
+                    ) AND status = 'running'
+                    """,
+                    (now, str(workflow_id)),
+                )
+                connection.execute(
+                    """
+                    UPDATE workflow_steps
+                    SET status = 'cancelled', error_code = 'cancelled',
+                        finished_at = ?, updated_at = ?
+                    WHERE workflow_id = ? AND status = 'running'
+                    """,
+                    (now, now, str(workflow_id)),
+                )
             cursor = connection.execute(
                 """
                 UPDATE workflow_runs SET status = ?, updated_at = ?
