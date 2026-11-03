@@ -57,7 +57,11 @@ class VisionRequest:
             raise ValueError("Vision prompt is empty or too large")
         if not 1 <= len(self.images) <= MAX_VISION_IMAGES:
             raise ValueError("Vision request must contain between 1 and 12 images")
-        if not 1 <= self.max_output_tokens <= 2048:
+        if (
+            not isinstance(self.max_output_tokens, int)
+            or isinstance(self.max_output_tokens, bool)
+            or not 1 <= self.max_output_tokens <= 2048
+        ):
             raise ValueError("Vision output token limit is outside the supported range")
         if sum(len(image.jpeg_bytes) for image in self.images) > MAX_VISION_TOTAL_BYTES:
             raise ValueError("Vision image batch exceeds the aggregate byte limit")
