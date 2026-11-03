@@ -289,7 +289,7 @@ def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 21
+    ).fetchone()[0] == 22
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
