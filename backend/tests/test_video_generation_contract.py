@@ -51,6 +51,20 @@ def test_generation_submission_and_result_are_strict():
             status=GenerationStatus.SUCCEEDED,
             output_bytes=100_000_001,
         )
+    with pytest.raises(ValidationError):
+        VideoGenerationResult(
+            provider="local",
+            model="renderer-v1",
+            provider_job_id="job-2",
+            status=GenerationStatus.SUCCEEDED,
+        )
+    with pytest.raises(ValidationError):
+        VideoGenerationResult(
+            provider="local",
+            model="renderer-v1",
+            provider_job_id="job-3",
+            status=GenerationStatus.FAILED,
+        )
 
 
 def test_generation_registry_is_empty_until_explicit_adapter_registration():
