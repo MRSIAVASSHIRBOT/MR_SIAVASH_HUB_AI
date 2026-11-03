@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -147,3 +149,55 @@ def test_renderer_rejects_missing_owner_resolved_source_before_process(tmp_path,
             ffprobe_binary="/usr/bin/ffprobe",
         )
     assert called is False
+
+
+
+def test_real_ffmpeg_render_produces_probeable_mp4_when_available(tmp_path):
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if ffmpeg is None or ffprobe is None:
+        pytest.skip("FFmpeg and FFprobe are required for the real-render smoke test")
+
+    source = tmp_path / "generated-source.mp4"
+    output = tmp_path / "generated-output.mp4"
+    generated = subprocess.run(
+        [
+            ffmpeg,
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=320x240:d=4",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-t",
+            "4",
+            str(source),
+        ],
+        shell=False,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+    )
+    if generated.returncode != 0:
+        pytest.skip("The installed FFmpeg build cannot generate the synthetic test source")
+
+    result = render_video_timeline(
+        timeline=_timeline(),
+        source_paths={"asset-a": source},
+        output_path=output,
+        ffmpeg_binary=ffmpeg,
+        ffprobe_binary=ffprobe,
+    )
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert result.duration_seconds == pytest.approx(4.0, abs=0.5)
+    assert (result.width, result.height) == (1920, 1080)
