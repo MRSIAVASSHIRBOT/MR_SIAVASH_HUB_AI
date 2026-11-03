@@ -17,7 +17,8 @@ independent verification of third-party ownership.
 
 `POST /security-lab/config-review` reviews caller-supplied configuration text
 for selected risky patterns. It returns file/line evidence, severity,
-confidence, and remediation without echoing configuration values.
+confidence, and remediation without echoing configuration values. Confidence
+describes confidence in the pattern match, not exploitability or impact.
 
 ## Dependency manifest review
 
