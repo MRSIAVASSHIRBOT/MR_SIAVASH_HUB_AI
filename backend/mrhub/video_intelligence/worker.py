@@ -94,6 +94,10 @@ class VideoAnalysisWorkerHandler:
                 "scene_start_timestamps": list(scenes.scene_start_times),
                 "scene_boundaries_truncated": scenes.truncated,
                 "semantic_visual_analysis": "not_performed",
+                "audio_analysis": (
+                    "requested_but_not_performed"
+                    if request.include_audio_analysis else "not_requested"
+                ),
             })
 
         if lease_lost.is_set():
@@ -103,6 +107,12 @@ class VideoAnalysisWorkerHandler:
             "mode": request.mode.value,
             "analysis_level": "bounded_technical_and_temporal",
             "semantic_visual_analysis": False,
+            "audio_analysis": (
+                "requested_but_not_performed"
+                if request.include_audio_analysis else "not_requested"
+            ),
+            "brand_profile_applied": False,
+            "custom_changes_applied": False,
             "assets": results,
         }
         self.jobs.finish(task.task_id, owner_user_id, status="completed", result=result, lease=lease)
