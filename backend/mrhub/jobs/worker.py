@@ -943,7 +943,10 @@ class WorkerEngine:
                     (error_code, now, str(task.task_id)),
                 )
                 idempotency_status = (
-                    "unknown_outcome" if error_code == "handler_failed" else "failed"
+                    "unknown_outcome"
+                    if error_code == "handler_failed"
+                    and task.task_type not in {"video.analysis", "video.render"}
+                    else "failed"
                 )
                 connection.execute(
                     """
