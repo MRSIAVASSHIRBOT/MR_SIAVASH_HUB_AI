@@ -119,6 +119,17 @@ class VideoAnalysisWorkerHandler:
                 except SceneDetectionError as exc:
                     return self._fail(task, owner_user_id, lease, exc.reason_code)
 
+                current = self.tasks.get(task.task_id)
+                if current is None or current.status is TaskStatus.CANCELLED:
+                    if current is not None:
+                        self.jobs.finish(
+                            task.task_id, owner_user_id, status="cancelled",
+                            error_code="cancelled_during_frame_extraction", lease=lease,
+                        )
+                    return {"analysis_id": str(analysis_id), "status": "cancelled"}
+                if lease_lost.is_set():
+                    return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+
                 semantic = analyze_sampled_frames(
                     frames,
                     enabled=settings.local_vision_enabled,
@@ -161,6 +172,16 @@ class VideoAnalysisWorkerHandler:
 
         if lease_lost.is_set():
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+        # Recheck after the final asset and before persisting the aggregate result.
+        # This closes the race where cancellation arrives after the per-asset check.
+        current = self.tasks.get(task.task_id)
+        if current is None or current.status is TaskStatus.CANCELLED:
+            if current is not None:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_by_owner", lease=lease,
+                )
+            return {"analysis_id": str(analysis_id), "status": "cancelled"}
         semantic_states = [item["status"] for item in semantic_results]
         if semantic_states and all(state == "completed" for state in semantic_states):
             semantic_status = "completed"
@@ -208,7 +229,15 @@ class VideoAnalysisWorkerHandler:
     def _fail(
         self, task: TaskRecord, owner_user_id: str | None,
         lease: WorkerLease, error_code: str
-    ) -> None:
+    ) -> dict[str, object]:
+        current = self.tasks.get(task.task_id)
+        if current is not None and current.status is TaskStatus.CANCELLED:
+            if owner_user_id is not None:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_by_owner", lease=lease,
+                )
+            return {"status": "cancelled"}
         if owner_user_id is not None:
             self.jobs.finish(
                 task.task_id, owner_user_id, status="failed",
