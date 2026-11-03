@@ -251,3 +251,65 @@ def test_probe_video_fails_closed_when_ffprobe_times_out(tmp_path, monkeypatch):
     monkeypatch.setattr("mrhub.video_intelligence.service.subprocess.run", timeout)
 
     assert probe_video(source).metadata_status == "probe_failed"
+
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        b'{"streams": [], "format": {"duration": "1.0"}}',
+        b'{"streams": [{"codec_type": "video", "width": 1920, "height": 1080, "avg_frame_rate": "30/1"}], "format": {}}',
+        b'{"streams": [{"codec_type": "video", "width": 1920, "height": 1080, "avg_frame_rate": "30/1"}], "format": {"duration": "NaN"}}',
+        b'{"streams": [{"codec_type": "video", "width": 1920, "height": 1080, "avg_frame_rate": "30/0"}], "format": {"duration": "10"}}',
+        b'{"streams": [{"codec_type": "video", "width": 0, "height": 1080, "avg_frame_rate": "30/1"}], "format": {"duration": "10"}}',
+        b'{"streams": [{"codec_type": "video", "width": 1920, "height": 1080, "avg_frame_rate": "300/1"}], "format": {"duration": "10"}}',
+    ],
+)
+def test_probe_video_rejects_missing_or_implausible_core_metadata(
+    tmp_path, monkeypatch, stdout
+):
+    source = tmp_path / "invalid-metadata.mp4"
+    source.write_bytes(b"test")
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.shutil.which",
+        lambda _name: "/usr/bin/ffprobe",
+    )
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args, returncode=0, stdout=stdout, stderr=b""
+        ),
+    )
+
+    result = probe_video(source)
+
+    assert result.metadata_status == "probe_failed"
+
+
+def test_probe_video_accepts_valid_core_metadata(tmp_path, monkeypatch):
+    source = tmp_path / "valid.mp4"
+    source.write_bytes(b"test")
+    stdout = (
+        b'{"streams": [{"codec_type": "video", "codec_name": "h264", '
+        b'"width": 1920, "height": 1080, "avg_frame_rate": "30000/1001"}, '
+        b'{"codec_type": "audio"}], "format": {"duration": "12.5"}}'
+    )
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.shutil.which",
+        lambda _name: "/usr/bin/ffprobe",
+    )
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args, returncode=0, stdout=stdout, stderr=b""
+        ),
+    )
+
+    result = probe_video(source)
+
+    assert result.metadata_status == "available"
+    assert result.duration_seconds == 12.5
+    assert result.width == 1920
+    assert result.height == 1080
+    assert result.frame_rate == 29.97
+    assert result.has_audio is True
