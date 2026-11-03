@@ -78,6 +78,7 @@ def test_prompt_composition_uses_scene_cuts_as_per_beat_timing_cues():
         [0.0, 5.0],
         [0.1, 2.0],
         [0.0, True],
+        [0.0, 10**400],
         "not-a-list",
         [0.0] + [float(index) for index in range(1, 26)],
     ],
@@ -98,5 +99,5 @@ def test_prompt_composition_supports_legacy_analysis_without_scene_boundaries():
     )
 
     assert prompts[0]["scene_cut_count"] == 0
-    assert prompts[0]["scene_boundaries_truncated"] is True
+    assert prompts[0]["scene_boundaries_truncated"] is False
     assert all(not item["scene_cut_timestamps"] for item in prompts[0]["timeline"])
