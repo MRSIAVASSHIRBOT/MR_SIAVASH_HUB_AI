@@ -18,6 +18,7 @@ from mrhub.security.defensive_lab import (
     ScopeValidationError,
     audit_configuration_text,
     audit_requirements_text,
+    audit_structured_log_text,
 )
 
 router = APIRouter(
@@ -129,3 +130,44 @@ def review_dependency_manifest(
 ) -> dict[str, object]:
     """Review a requirements-style manifest without contacting or installing packages."""
     return _run_review(request, current_user, dependency=True)
+
+
+
+@router.post("/log-review")
+def review_structured_security_log(
+    request: OfflineReviewRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Review caller-supplied normalized JSONL security events without network or mutation."""
+    try:
+        result = audit_structured_log_text(
+            request.text,
+            scope=request.scope,
+            asset=request.asset,
+            filename=request.filename if request.filename != "config" else "security-events.jsonl",
+        )
+    except ScopeValidationError as exc:
+        _audit_review(
+            current_user=current_user,
+            event_type="security_lab.review_denied",
+            reason_code="authorization_scope_denied",
+            outcome="denied",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={"reason_code": "authorization_scope_denied"},
+        ) from exc
+    except ValueError as exc:
+        reason = str(exc)
+        status_code = 413 if "limit" in reason or "10000-line" in reason else 422
+        raise HTTPException(
+            status_code=status_code,
+            detail={"reason_code": "review_input_rejected"},
+        ) from exc
+
+    _audit_review(
+        current_user=current_user,
+        event_type="security_lab.review_completed",
+        reason_code="offline_structured_security_log_review",
+    )
+    return result
