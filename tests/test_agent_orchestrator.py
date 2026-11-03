@@ -328,3 +328,21 @@ def test_child_tool_calls_consume_the_parent_tool_budget():
     assert result["error_code"] == "tool_call_budget_exceeded"
     assert result["tool_calls"] == 1
     assert result["tools_executed"] is True
+
+
+
+def test_orchestrator_returns_budget_result_when_single_provider_prompt_exceeds_limit():
+    from mrhub.providers.base import MAX_PROVIDER_INPUT_CHARS
+
+    orchestrator, provider = make_orchestrator([])
+    orchestrator.tool_registry.catalog = lambda: [
+        {"name": "oversized.catalog.entry", "description": "x" * MAX_PROVIDER_INPUT_CHARS}
+    ]
+
+    result = orchestrator.run(AgentLoopRequest(goal="Respect provider request size"))
+
+    assert result["status"] == "budget_exhausted"
+    assert result["error_code"] == "provider_input_budget_exceeded"
+    assert result["turns"] == 0
+    assert result["tool_calls"] == 0
+    assert provider.requests == []
