@@ -9,6 +9,42 @@ from typing import Any
 
 MAX_FILES = 2_000
 MAX_FILE_BYTES = 1_000_000
+MAX_SOURCE_CHARS = 64_000
+
+RULE_GUIDANCE: dict[str, tuple[str, str]] = {
+    "PY000": (
+        "high",
+        "Reduce the file size or split the module before running deeper analysis.",
+    ),
+    "PY001": (
+        "high",
+        "Review file encoding and access permissions; keep source contents out of diagnostics.",
+    ),
+    "PY002": (
+        "high",
+        "Correct the syntax error, then rerun the read-only analysis.",
+    ),
+    "PY003": (
+        "medium",
+        "Review directory permissions and explicit analysis scope, then rerun the inventory.",
+    ),
+    "PY101": (
+        "high",
+        "Replace eval/exec with a typed parser or explicit allow-listed dispatch and validate inputs.",
+    ),
+    "PY102": (
+        "high",
+        "Avoid pickle for untrusted data; use a non-executable format such as JSON with a schema.",
+    ),
+    "PY103": (
+        "high",
+        "Use yaml.safe_load or pass yaml.SafeLoader explicitly.",
+    ),
+    "PY104": (
+        "high",
+        "Pass subprocess arguments as a list with shell=False and validate each argument.",
+    ),
+}
 EXCLUDED_DIRS = frozenset({
     ".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build",
 })
@@ -45,13 +81,13 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
             relative = error_path.relative_to(resolved_root).as_posix()
         except ValueError:
             relative = "."
-        findings.append({
-            "rule_id": "PY003",
-            "severity": "warning",
-            "path": relative or ".",
-            "line": 1,
-            "message": "Directory could not be traversed; repository inventory is incomplete.",
-        })
+        findings.append(_finding(
+            "PY003",
+            "warning",
+            relative or ".",
+            1,
+            "Directory could not be traversed; repository inventory is incomplete.",
+        ))
 
     for current, directories, filenames in os.walk(
         resolved_root,
@@ -75,36 +111,36 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
                 size = path.stat().st_size
                 if size > MAX_FILE_BYTES:
                     skipped_large += 1
-                    findings.append({
-                        "rule_id": "PY000",
-                        "severity": "info",
-                        "path": relative,
-                        "line": 1,
-                        "message": "File skipped because it exceeds the analysis size limit.",
-                    })
+                    findings.append(_finding(
+                        "PY000",
+                        "info",
+                        relative,
+                        1,
+                        "File skipped because it exceeds the analysis size limit.",
+                    ))
                     continue
                 source = path.read_text(encoding="utf-8")
             except (OSError, UnicodeError):
-                findings.append({
-                    "rule_id": "PY001",
-                    "severity": "warning",
-                    "path": str(path.relative_to(resolved_root)),
-                    "line": 1,
-                    "message": "File could not be read as UTF-8; contents were not exposed.",
-                })
+                findings.append(_finding(
+                    "PY001",
+                    "warning",
+                    str(path.relative_to(resolved_root)),
+                    1,
+                    "File could not be read as UTF-8; contents were not exposed.",
+                ))
                 continue
 
             scanned += 1
             try:
                 tree = ast.parse(source, filename=relative)
             except SyntaxError as exc:
-                findings.append({
-                    "rule_id": "PY002",
-                    "severity": "warning",
-                    "path": relative,
-                    "line": max(1, exc.lineno or 1),
-                    "message": "Python syntax could not be parsed.",
-                })
+                findings.append(_finding(
+                    "PY002",
+                    "warning",
+                    relative,
+                    max(1, exc.lineno or 1),
+                    "Python syntax could not be parsed.",
+                ))
                 inventory.append({"path": relative, "bytes": size, "parse_status": "syntax_error"})
                 continue
 
@@ -138,17 +174,67 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
     }
 
 
+def _finding(
+    rule_id: str,
+    severity: str,
+    path: str,
+    line: int,
+    message: str,
+) -> dict[str, Any]:
+    confidence, remediation = RULE_GUIDANCE.get(
+        rule_id,
+        ("medium", "Review the evidence manually and apply a minimal, tested remediation."),
+    )
+    return {
+        "rule_id": rule_id,
+        "severity": severity,
+        "confidence": confidence,
+        "path": path,
+        "line": max(1, line),
+        "message": message,
+        "remediation": remediation,
+    }
+
+
+def analyze_python_source(source: str, *, path: str = "proposed.py") -> dict[str, Any]:
+    """Analyze supplied Python text only; never reads paths or executes source."""
+    if not isinstance(source, str) or len(source) > MAX_SOURCE_CHARS:
+        raise ValueError("source_too_large")
+    try:
+        tree = ast.parse(source, filename=path)
+    except (SyntaxError, ValueError) as exc:
+        finding = _finding(
+            "PY002",
+            "warning",
+            path,
+            max(1, getattr(exc, "lineno", None) or 1),
+            "Python syntax could not be parsed.",
+        )
+        return {
+            "status": "syntax_error",
+            "findings": [finding],
+            "source_code_included": False,
+            "code_executed": False,
+        }
+    return {
+        "status": "ok",
+        "findings": _check_tree(tree, path),
+        "source_code_included": False,
+        "code_executed": False,
+    }
+
+
 def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
 
     def add(rule_id: str, node: ast.AST, severity: str, message: str) -> None:
-        findings.append({
-            "rule_id": rule_id,
-            "severity": severity,
-            "path": relative,
-            "line": max(1, getattr(node, "lineno", 1)),
-            "message": message,
-        })
+        findings.append(_finding(
+            rule_id,
+            severity,
+            relative,
+            max(1, getattr(node, "lineno", 1)),
+            message,
+        ))
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
