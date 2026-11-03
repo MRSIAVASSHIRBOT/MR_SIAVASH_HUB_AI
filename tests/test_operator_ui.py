@@ -2,8 +2,8 @@ import shutil
 import subprocess
 from importlib.resources import files
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
