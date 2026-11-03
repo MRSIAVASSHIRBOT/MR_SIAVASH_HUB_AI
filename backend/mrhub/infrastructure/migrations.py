@@ -584,7 +584,6 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_brand_profiles_owner_updated ON video_brand_profiles(owner_user_id, updated_at)",
         ),
     ),
-,
     Migration.build(
         21,
         "durable_owner_scoped_video_analysis_jobs",
