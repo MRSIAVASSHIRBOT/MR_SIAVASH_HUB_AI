@@ -87,6 +87,7 @@ class WorkerEngine:
         self.handlers["agent.workflow"] = self._run_agent_workflow
         self.handlers["agent.model_run"] = self._run_agent_model_run
         self.handlers["video.analysis"] = self._run_video_analysis
+        self.handlers["video.generation"] = self._run_video_generation
         self._initialize()
 
     def _now(self) -> datetime:
@@ -149,6 +150,16 @@ class WorkerEngine:
         from mrhub.video_intelligence.worker import VideoAnalysisWorkerHandler
 
         return VideoAnalysisWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
+
+    def _run_video_generation(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Submit one owner-scoped generation request under the canonical lease."""
+        from mrhub.video_intelligence.generation_worker import VideoGenerationWorkerHandler
+
+        return VideoGenerationWorkerHandler(self.repository)(
             task, lease=lease, lease_lost=lease_lost
         )
 
@@ -230,13 +241,54 @@ class WorkerEngine:
                             (str(task.task_id),),
                         )
                     else:
-                        connection.execute(
-                            """
-                            UPDATE idempotency_records SET status = 'unknown_outcome'
-                            WHERE task_id = ? AND status IN ('accepted', 'running')
-                            """,
+                        generation = connection.execute(
+                            """SELECT l.generation_id, l.owner_user_id, j.status
+                               FROM video_generation_task_links AS l
+                               JOIN video_generation_jobs AS j
+                                 ON j.generation_id = l.generation_id
+                                AND j.owner_user_id = l.owner_user_id
+                               WHERE l.task_id = ?""",
                             (str(task.task_id),),
-                        )
+                        ).fetchone()
+                        if generation is not None:
+                            if generation["status"] == "submitting":
+                                connection.execute(
+                                    """UPDATE video_generation_jobs
+                                       SET status = 'unknown_outcome',
+                                           error_code = 'worker_interrupted_during_submission',
+                                           updated_at = ?
+                                       WHERE generation_id = ? AND owner_user_id = ?
+                                         AND status = 'submitting'""",
+                                    (now, generation["generation_id"], generation["owner_user_id"]),
+                                )
+                                recovered_status = TaskStatus.WAITING_APPROVAL
+                                audit_outcome = "recovery_required"
+                                reason_code = "video_generation_submission_unknown_outcome"
+                            else:
+                                connection.execute(
+                                    """UPDATE video_generation_jobs
+                                       SET status = 'failed', error_code = 'worker_interrupted',
+                                           updated_at = ?
+                                       WHERE generation_id = ? AND owner_user_id = ?
+                                         AND status IN ('queued', 'prepared')""",
+                                    (now, generation["generation_id"], generation["owner_user_id"]),
+                                )
+                                connection.execute(
+                                    """DELETE FROM video_generation_payloads
+                                       WHERE generation_id = ? AND owner_user_id = ?""",
+                                    (generation["generation_id"], generation["owner_user_id"]),
+                                )
+                                recovered_status = TaskStatus.FAILED
+                                audit_outcome = "failed"
+                                reason_code = "video_generation_worker_interrupted_before_submit"
+                        else:
+                            connection.execute(
+                                """
+                                UPDATE idempotency_records SET status = 'unknown_outcome'
+                                WHERE task_id = ? AND status IN ('accepted', 'running')
+                                """,
+                                (str(task.task_id),),
+                            )
                 elif (
                     workflow["status"] == "running"
                     and row["execution_error_code"] == "cancellation_requested"
@@ -608,7 +660,7 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis"}:
+            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis", "video.generation"}:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)

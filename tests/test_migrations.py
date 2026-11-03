@@ -263,7 +263,7 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_25_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
@@ -272,6 +272,7 @@ def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypa
     pending = tuple(migration for migration in original if migration.version > 18)
     assert baseline and baseline[-1].version == 18
     assert pending and pending[0].version == 19
+    assert pending[-1].version == 25
 
     monkeypatch.setattr(migrations, "MIGRATIONS", baseline)
     applied = SchemaMigrator(connection).migrate()
@@ -295,7 +296,7 @@ def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypa
     ]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == pending[-1].version
+    ).fetchone()[0] == 25
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
@@ -303,6 +304,10 @@ def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_media_file_cleanup_owner_retry'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_media_file_cleanup_global_retry'"
     ).fetchone() is not None
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
@@ -333,6 +338,10 @@ def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypa
         "AND name = 'media_asset_analysis_leases'"
     ).fetchone() is not None
     assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_generation_task_links'"
+    ).fetchone() is not None
+    assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_media_asset_analysis_leases_asset'"
     ).fetchone() is not None
@@ -349,4 +358,5 @@ def test_migrations_19_to_24_upgrade_an_existing_v18_database(tmp_path, monkeypa
     }
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
+
 
