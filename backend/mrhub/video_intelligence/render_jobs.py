@@ -155,6 +155,92 @@ class VideoRenderJobRepository:
             "updated_at": row["updated_at"],
         }
 
+    def cancel(
+        self, owner_user_id: str, render_id: UUID
+    ) -> dict[str, object] | None:
+        """Cancel queued work atomically or signal a running leased worker."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT r.render_id, r.task_id, r.status, t.status AS task_status
+                   FROM video_render_runs AS r
+                   JOIN tasks AS t ON t.task_id = r.task_id
+                   WHERE r.render_id = ? AND r.owner_user_id = ?""",
+                (str(render_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            render_status = str(row["status"])
+            task_status = str(row["task_status"])
+            if render_status in {"completed", "failed", "cancelled"}:
+                return {
+                    "render_id": str(render_id),
+                    "status": render_status,
+                    "cancellation_requested": False,
+                }
+
+            if task_status == "queued" and render_status == "accepted":
+                connection.execute(
+                    """UPDATE tasks SET status = 'cancelled', updated_at = ?
+                       WHERE task_id = ? AND status = 'queued'""",
+                    (now, row["task_id"]),
+                )
+                connection.execute(
+                    """UPDATE video_render_runs
+                       SET status = 'cancelled', error_code = 'cancelled_before_execution',
+                           updated_at = ?
+                       WHERE render_id = ? AND owner_user_id = ? AND status = 'accepted'""",
+                    (now, str(render_id), owner_user_id),
+                )
+                connection.execute(
+                    """UPDATE idempotency_records SET status = 'failed'
+                       WHERE scope = ? AND task_id = ? AND status = 'accepted'""",
+                    (self._scope(owner_user_id), row["task_id"]),
+                )
+                return {
+                    "render_id": str(render_id),
+                    "status": "cancelled",
+                    "cancellation_requested": False,
+                }
+
+            if task_status == "cancelled" and render_status in {"accepted", "running"}:
+                return {
+                    "render_id": str(render_id),
+                    "status": render_status,
+                    "cancellation_requested": True,
+                }
+
+            if task_status == "running" and render_status in {"accepted", "running"}:
+                cursor = connection.execute(
+                    """UPDATE tasks SET status = 'cancelled', updated_at = ?
+                       WHERE task_id = ? AND status = 'running'""",
+                    (now, row["task_id"]),
+                )
+                if cursor.rowcount == 1:
+                    return {
+                        "render_id": str(render_id),
+                        "status": render_status,
+                        "cancellation_requested": True,
+                    }
+                latest = connection.execute(
+                    """SELECT r.status FROM video_render_runs AS r
+                       WHERE r.render_id = ? AND r.owner_user_id = ?""",
+                    (str(render_id), owner_user_id),
+                ).fetchone()
+                return {
+                    "render_id": str(render_id),
+                    "status": str(latest["status"]) if latest is not None else render_status,
+                    "cancellation_requested": False,
+                }
+
+            return {
+                "render_id": str(render_id),
+                "status": render_status,
+                "cancellation_requested": False,
+            }
+
     def load_for_worker(
         self, task_id: UUID
     ) -> tuple[str, UUID, UUID, str] | None:
