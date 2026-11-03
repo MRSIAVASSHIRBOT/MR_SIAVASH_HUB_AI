@@ -13,7 +13,6 @@ from typing import Any
 
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
-
 _PROBE_TIMEOUT_SECONDS = 12
 _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
 
