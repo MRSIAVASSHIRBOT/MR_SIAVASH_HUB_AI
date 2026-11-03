@@ -26,6 +26,11 @@ from mrhub.video_intelligence.jobs import (
     VideoAnalysisConflict,
     VideoAnalysisJobRepository,
 )
+from mrhub.video_intelligence.prompt_from_analysis import (
+    AnalysisPromptOptions,
+    PromptCompositionUnavailable,
+    compose_prompts_from_analysis,
+)
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
@@ -221,3 +226,48 @@ def get_video_analysis(
     if analysis is None:
         raise HTTPException(status_code=404, detail="Video analysis not found")
     return analysis
+
+
+
+@router.post("/analyses/{analysis_id}/prompts/compose")
+def compose_prompt_from_analysis(
+    analysis_id: UUID,
+    payload: AnalysisPromptOptions,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Compose original generation prompts from an owned completed analysis; never execute them."""
+    analysis = _analysis_jobs().get(user.user_id, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Video analysis not found")
+    if analysis["status"] != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "analysis_not_completed",
+                "message": "Video analysis must complete before prompt composition",
+            },
+        )
+    result = analysis.get("result")
+    if not isinstance(result, dict):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "analysis_result_unavailable",
+                "message": "Video analysis result is unavailable",
+            },
+        )
+    try:
+        prompts = compose_prompts_from_analysis(result, payload)
+    except PromptCompositionUnavailable as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
+    return {
+        "analysis_id": str(analysis_id),
+        "status": "composed",
+        "execution": "not_started",
+        "mode": result.get("mode"),
+        "prompts": prompts,
+        "count": len(prompts),
+    }
