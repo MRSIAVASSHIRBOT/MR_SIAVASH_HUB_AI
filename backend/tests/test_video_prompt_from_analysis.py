@@ -14,7 +14,7 @@ def _analysis_result(scene_starts):
     }
     if scene_starts is not None:
         technical["scene_start_timestamps"] = scene_starts
-    technical["scene_boundaries_truncated"] = True
+    technical["scene_boundaries_truncated"] = scene_starts is not None
     return {
         "semantic_visual_analysis": {
             "status": "completed",
