@@ -313,3 +313,42 @@ At this snapshot the open PR queue includes #198, #197, #196, #195, #186, #183, 
 6. No release, provider activation, branch-protection change, or production acceptance is implied by these merges. Local Windows/Ollama acceptance and real provider rendering remain unverified.
 
 **Governance:** no PR merge was performed by this audit addendum. The confirmed merges above were read from GitHub after the fact. All remaining merges and releases remain owner-controlled.
+
+
+## 10. Live recovery addendum — 2026-11-03 18:36 UTC
+
+This addendum supersedes the queue counts and baseline observations in earlier sections where they differ. Historical observations above are preserved.
+
+### Current repository snapshot
+- Current `main` SHA: `c073f55637a36c4c4f5897d19d77d1da46bc7ce6` (confirmed as the base SHA after retargeting PR #198).
+- Open PR search returned 13 open PRs at this snapshot.
+- Branch inventory completed across two pages: 196 branches total. This is an inventory count, not a recommendation to delete branches.
+- PR #196 was merged at 2026-11-03T18:11:49Z; it contributes migration 24.
+- PR #183 (this audit ledger) remains open; this document is still a proposal until its PR is reviewed and integrated.
+- The repository's continuous execution standard is present at `docs/management/CONTINUOUS_EXECUTION_STANDARD.md`.
+
+### Changes made during recovery
+- Created recovery tracker issue #200: https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/200
+- Retargeted PR #198 from the merged #196 stack to `main`.
+- Updated PR #198's integration notes to reflect the actual merged dependency and current evidence.
+- Verified the following checks completed successfully on exact head `6238a52b289961af81d8c54280ef120cac1a16ef`: Backend CI run `41693196427`, CI run `41693196292`, and Defensive Python Scan run `41693196318`.
+- GitHub reports PR #198 as `mergeable=false` after retargeting. It is therefore held; no merge was attempted.
+
+### Current open queue — initial triage
+- #198: retargeted to main; exact-head checks passed; mergeability unresolved; HOLD.
+- #162 and #179: substantial Agent/Knowledge and NEXUS changes; require exact-head checks and review against current main.
+- #183: audit ledger; needs reconciliation and review.
+- #176, #173, #178, #177, #197, #195, #186, #161: video work with shared surfaces and/or dependency relationships; do not treat as independent flat queue items.
+- #157: security documentation; verify exact-head checks and whether still needed.
+- The current 13-PR list is recorded in recovery issue #200; re-query before any integration decision because the queue changes.
+
+### Recovery priorities
+1. Resolve PR #198 mergeability without rewriting or discarding its migration history; inspect branch ancestry and conflicting paths before any rebase.
+2. Build a PR dependency and changed-file overlap matrix for all 13 open PRs.
+3. Reconcile the video work into one accepted API/schema baseline; verify every migration sequence from the actual main schema.
+4. Revalidate #162 and #179 on exact current heads.
+5. Reconcile this ledger and the project status page with the current mainline.
+6. Keep real Windows installation, runtime, backup/restore, and release acceptance marked NOT RUN until owner-device evidence is supplied.
+
+### Status boundary
+This addendum is a live GitHub inventory and recovery log, not a source-level audit of every file, a real-device acceptance, or production-readiness declaration. No branches were deleted, no PR was merged or closed, no secret/provider settings were changed, and no release was published.
