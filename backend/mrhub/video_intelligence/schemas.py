@@ -51,7 +51,10 @@ class VideoAnalysisRequest(BaseModel):
     duration_seconds: int = Field(default=10, ge=3, le=60)
     output_aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
     include_audio_analysis: bool = True
-    custom_changes: dict[str, str] = Field(default_factory=dict, max_length=12)
+    custom_changes: dict[
+        Annotated[str, Field(min_length=1, max_length=64)],
+        Annotated[str, Field(max_length=500)],
+    ] = Field(default_factory=dict, max_length=12)
 
 
 class VideoTechnicalMetadata(BaseModel):
