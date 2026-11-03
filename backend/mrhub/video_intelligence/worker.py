@@ -194,7 +194,7 @@ class VideoAnalysisWorkerHandler:
                     task.task_id, owner_user_id, status="cancelled",
                     error_code="cancelled_by_owner", lease=lease,
                 )
-            return {"analysis_id": str(task.task_id), "status": "cancelled"}
+            return {"status": "cancelled"}
         if owner_user_id is not None:
             self.jobs.finish(
                 task.task_id, owner_user_id, status="failed",
