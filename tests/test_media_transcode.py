@@ -130,3 +130,46 @@ def test_upload_rejects_excess_concurrency_with_429(monkeypatch):
 
     assert exc_info.value.status_code == 429
     semaphore.release()
+
+
+
+def test_upload_keeps_admission_slot_until_storage_thread_finishes_on_cancel(monkeypatch):
+    semaphore = threading.BoundedSemaphore(1)
+    started = threading.Event()
+    finish_storage = threading.Event()
+    monkeypatch.setattr(media_routes, "_UPLOAD_SEMAPHORE", semaphore)
+
+    class FakeRequest:
+        headers = {"content-type": "image/png", "content-length": "8"}
+
+        async def stream(self):
+            yield b"\x89PNG\r\n\x1a\n"
+
+    class BlockingRepository:
+        def store_upload(self, *_args):
+            started.set()
+            assert finish_storage.wait(timeout=5)
+            return {"asset_id": "asset-1", "storage_key": "private.png"}
+
+    monkeypatch.setattr(media_routes, "_repository", BlockingRepository)
+    monkeypatch.setattr(media_routes, "_audit", lambda *_args: None)
+
+    async def exercise_cancellation():
+        task = asyncio.create_task(
+            media_routes.upload_asset(
+                FakeRequest(),
+                AuthenticatedUser(user_id="local-owner", username="owner"),
+                "sample.png",
+            )
+        )
+        assert await asyncio.to_thread(started.wait, 2)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not semaphore.acquire(blocking=False)
+        finish_storage.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert semaphore.acquire(blocking=False)
+        semaphore.release()
+
+    asyncio.run(exercise_cancellation())
