@@ -130,3 +130,35 @@ def test_scene_job_api_cancels_only_existing_owner_job():
 
     terminal = client.post(f"/video-intelligence/scene-jobs/{job_id}/cancel")
     assert terminal.status_code == 409
+
+def test_scene_jobs_are_hidden_from_generic_task_and_job_endpoints():
+    import sqlite3
+
+    from mrhub.config import get_settings
+
+    client = authenticated_client()
+    asset_id = _upload_video(client)
+    accepted = client.post(
+        f"/video-intelligence/assets/{asset_id}/scene-jobs",
+        json={},
+    )
+    assert accepted.status_code == 202
+    job_id = accepted.json()["job_id"]
+
+    with sqlite3.connect(get_settings().database_path) as connection:
+        row = connection.execute(
+            "SELECT task_id FROM video_scene_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+    assert row is not None
+    task_id = row[0]
+
+    assert client.get(f"/tasks/{task_id}").status_code == 404
+    assert client.get(f"/tasks/{task_id}/result").status_code == 404
+    assert client.post(f"/jobs/{task_id}/cancel").status_code == 404
+    listed = client.get("/tasks").json()
+    assert all(task["task_id"] != task_id for task in listed)
+    owner_view = client.get(f"/video-intelligence/scene-jobs/{job_id}")
+    assert owner_view.status_code == 200
+    assert owner_view.json()["status"] == "queued"
+
