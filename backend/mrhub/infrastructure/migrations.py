@@ -612,6 +612,24 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_analysis_payloads_task ON video_analysis_payloads(task_id)",
         ),
     ),
+    Migration.build(
+        22,
+        "fenced_media_asset_analysis_use_leases",
+        (
+            """CREATE TABLE IF NOT EXISTS media_asset_analysis_leases (
+                lease_id TEXT PRIMARY KEY,
+                asset_id TEXT NOT NULL REFERENCES content_assets(asset_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+                lease_owner TEXT NOT NULL,
+                execution_token INTEGER NOT NULL CHECK (execution_token > 0),
+                created_at TEXT NOT NULL,
+                UNIQUE(asset_id, task_id, execution_token)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_media_asset_analysis_leases_asset ON media_asset_analysis_leases(asset_id, owner_user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_media_asset_analysis_leases_task ON media_asset_analysis_leases(task_id, execution_token)",
+        ),
+    ),
 )
 
  
