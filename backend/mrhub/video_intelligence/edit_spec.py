@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.video_intelligence.schemas import AnalysisMode, BrandIdentity, VideoAnalysisRequest
 
@@ -22,6 +22,15 @@ class EditSourceReference(BaseModel):
     scene_start_timestamps: list[float] = Field(min_length=1, max_length=25)
     scene_boundaries_truncated: bool = False
     visual_style_summary: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_scene_map(self) -> EditSourceReference:
+        starts = self.scene_start_timestamps
+        if starts[0] != 0.0 or starts != sorted(set(starts)):
+            raise ValueError("Scene map must start at zero and be strictly increasing")
+        if any(value < 0 or value >= self.source_duration_seconds for value in starts):
+            raise ValueError("Scene boundary is outside the analyzed source duration")
+        return self
 
 
 class BrandGuidance(BaseModel):
