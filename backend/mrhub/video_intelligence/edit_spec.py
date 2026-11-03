@@ -102,7 +102,14 @@ def build_edit_specification(
             EditSourceReference(
                 asset_id=str(item["asset_id"]),
                 source_duration_seconds=float(duration),
-                scene_start_timestamps=scene_starts,
+                # FFmpeg's parser allows a small timestamp tolerance around EOF.
+                # A cut at/after the analyzed duration cannot start an output segment.
+                scene_start_timestamps=[
+                    value for value in scene_starts
+                    if isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and value < float(duration)
+                ],
                 scene_boundaries_truncated=bool(item.get("scene_boundaries_truncated", False)),
                 visual_style_summary=summary,
             )
