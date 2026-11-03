@@ -474,3 +474,35 @@ def test_begin_processing_is_blocked_while_video_analysis_use_is_active(
 
     assert repository.release_analysis_use("owner-1", asset_id, lease=lease) is True
     assert repository.begin_processing("owner-1", asset_id) is not None
+
+
+
+def test_old_fencing_token_cannot_release_a_new_analysis_use_lock(tmp_path: Path):
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    first_lease = _active_worker_lease(repository, token=1)
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=first_lease)
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET execution_token = 2 WHERE task_id = ?",
+            (first_lease.task_id,),
+        )
+    second_lease = WorkerLease(
+        task_id=first_lease.task_id,
+        owner=first_lease.owner,
+        fencing_token=2,
+        expires_at=first_lease.expires_at,
+    )
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease)
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is False
+    with pytest.raises(MediaAssetBusy):
+        repository.delete("owner-1", asset_id)
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=second_lease) is True
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.cleanup_pending_files("owner-1") == 0
