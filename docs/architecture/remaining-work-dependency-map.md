@@ -1,6 +1,6 @@
 # Remaining Work Dependency Map
 
-Reviewed against `main` at `d2e4689dcdc873391ca4820dfaba60fba6298cbf` on 2026-11-02.
+Reviewed against `main` at `e561da2b7641fc4ba78d6e90710998b8fd78b2d1` on 2026-11-03.
 
 This plan defines seven remaining delivery workstreams. They are ordered by dependency and risk, not by visual feature appeal. A workstream is complete only when its acceptance gates are met on the exact proposed commit. Green CI alone is not a production-readiness claim.
 
