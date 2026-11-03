@@ -147,6 +147,9 @@ class VideoAnalysisWorkerHandler:
         )
         edit_specification = build_edit_specification(request, results)
         timeline = build_video_timeline(edit_specification)
+        edit_specification = edit_specification.model_copy(
+            update={"timeline_status": "validated_cut_only"}
+        )
         result = {
             "analysis_id": str(analysis_id),
             "mode": request.mode.value,
