@@ -55,13 +55,11 @@ def test_policy_api_ignores_client_claimed_approval() -> None:
     assert response.status_code == 200
     assert response.json()["decision"] == "require_approval"
 
-def test_video_scene_task_type_remains_high_risk_on_generic_task_endpoint() -> None:
+def test_video_scene_task_type_is_reserved_for_owner_scoped_endpoint() -> None:
     client = authenticated_client()
     response = client.post(
         "/tasks",
         json={"task_type": "video.scene_detection"},
     )
-    assert response.status_code == 201
-    assert response.json()["status"] == "waiting_approval"
-    assert response.json()["risk_class"] == "high"
+    assert response.status_code == 403
 
