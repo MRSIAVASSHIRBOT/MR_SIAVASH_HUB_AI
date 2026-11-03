@@ -28,7 +28,7 @@ $env:MRH_MCP_PORT = "8765"
 mrhub-mcp
 ```
 
-The endpoint is `http://127.0.0.1:8765/mcp`. The service is a separate process and is not started by the FastAPI application or worker. It binds only to loopback; do not expose it through a public reverse proxy. The SDK's default localhost Host/Origin protection remains enabled.
+The endpoint is `http://127.0.0.1:8765/mcp`. The service is a separate process and is not started by the FastAPI application or worker. It binds only to numeric loopback IP literals (`127.0.0.1` or `::1`); hostnames such as `localhost` are rejected to avoid relying on name resolution for the security boundary. Do not expose it through a public reverse proxy. The SDK's default localhost Host/Origin protection remains enabled.
 
 ## Exposed tools
 
@@ -41,7 +41,7 @@ The bridge currently exposes only tools already registered in the process. The i
 
 - The MCP SDK is an optional, exact-pinned dependency; core installs do not import it.
 - Only Streamable HTTP is used. No stdio subprocess launching, arbitrary MCP server discovery, or remote MCP client connection is provided.
-- Binding is restricted to loopback addresses and disabled by default.
+- Binding is restricted to numeric loopback IP literals and disabled by default.
 - Request bodies are capped at 1 MiB; legacy sessions are capped at 20 and expire after five idle minutes.
 - Every invocation passes through the existing Hub schema validation and policy engine.
 - The bridge supplies no permission grants and cannot mark an operation as user-approved. Tools requiring permissions, high-risk approval, or external-side-effect approval are denied by the existing policy engine.
@@ -53,12 +53,12 @@ The bridge currently exposes only tools already registered in the process. The i
 | Variable | Default | Meaning |
 |---|---:|---|
 | `MRH_MCP_ENABLED` | `false` | Explicitly enable the separate MCP service |
-| `MRH_MCP_HOST` | `127.0.0.1` | Loopback bind address only |
+| `MRH_MCP_HOST` | `127.0.0.1` | Numeric loopback bind address only (`127.0.0.1` or `::1`) |
 | `MRH_MCP_PORT` | `8765` | Local service port |
 
 ## Validation
 
-The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services. Startup tests also verify the disabled-by-default guard, reject non-loopback binds, and assert bounded transport settings:
+The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services. Startup tests verify the disabled-by-default guard, reject all hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, and assert bounded transport settings:
 
 ```powershell
 python -m pip install -e ".[dev,mcp]"
