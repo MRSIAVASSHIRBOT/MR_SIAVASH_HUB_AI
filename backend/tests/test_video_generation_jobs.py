@@ -198,6 +198,8 @@ def test_successful_generation_registers_private_output_asset_atomically(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-1"
     )
     repository.transition("owner-a", generation_id, "running", progress_percent=80)
+    with pytest.raises(ValueError):
+        repository.transition("owner-a", generation_id, "succeeded")
 
     from mrhub.media.repository import MediaAssetRepository
     from mrhub.video_intelligence import service
