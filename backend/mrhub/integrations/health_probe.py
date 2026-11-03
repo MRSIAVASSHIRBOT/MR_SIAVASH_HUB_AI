@@ -1,7 +1,5 @@
 """Shared bounded health probing for optional local integrations."""
 
-from __future__ import annotations
-
 import ipaddress
 import re
 from urllib.parse import urlsplit, urlunsplit
