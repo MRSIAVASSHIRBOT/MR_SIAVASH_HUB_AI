@@ -549,3 +549,11 @@ def test_global_cleanup_sweep_is_bounded_across_owners(
     assert repository.cleanup_pending_files_all(limit=100) == 0
     assert not first_path.exists()
     assert not second_path.exists()
+    with repository.tasks._connection() as connection:
+        indexes = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+    assert "idx_media_file_cleanup_global_retry" in indexes
