@@ -200,6 +200,8 @@ class VideoAnalysisJobRepository:
     def mark_running(
         self, task_id: UUID, owner_user_id: str, *, lease: WorkerLease
     ) -> bool:
+        if lease.task_id != str(task_id):
+            raise ValueError("Worker lease does not belong to this analysis task")
         now = self._now()
         with self.tasks._connection() as connection:
             cursor = connection.execute(
@@ -225,6 +227,8 @@ class VideoAnalysisJobRepository:
     ) -> None:
         if status not in {"completed", "failed", "cancelled"}:
             raise ValueError("Invalid terminal video-analysis status")
+        if lease.task_id != str(task_id):
+            raise ValueError("Worker lease does not belong to this analysis task")
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT analysis_id FROM video_analysis_runs
