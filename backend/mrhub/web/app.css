@@ -150,6 +150,18 @@ summary { color: var(--green); cursor: pointer; }
 }
 
 
+.video-render-workspace {
+  display: grid;
+  gap: 0.8rem;
+  margin: 1rem 0 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--panel);
+}
+.video-render-workspace .section-heading { margin-bottom: 0; }
+.video-render-workspace h4 { margin: 0; }
+
 .video-analysis-workspace {
   display: grid;
   gap: 1rem;

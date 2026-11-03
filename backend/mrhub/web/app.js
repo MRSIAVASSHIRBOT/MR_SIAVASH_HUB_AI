@@ -9,12 +9,20 @@
   let pendingModelRunIdempotencyKey = null;
   let pendingModelRunPayloadFingerprint = null;
   let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
+  let activeVideoAnalysisStatus = null;
+  let activeVideoRenderId = sessionStorage.getItem("mrh_video_render_id");
   if (!token) {
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_id");
     activeVideoAnalysisId = null;
+    activeVideoAnalysisStatus = null;
+    activeVideoRenderId = null;
   }
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
+  let pendingVideoRenderKey = null;
+  let pendingVideoRenderFingerprint = null;
+  let activeVideoRenderStatus = null;
   let videoPromptResults = [];
 
   function message(target, text, kind = "") {
@@ -43,11 +51,21 @@
     token = null;
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_id");
     activeVideoAnalysisId = null;
+    activeVideoAnalysisStatus = null;
+    activeVideoRenderId = null;
     pendingVideoAnalysisKey = null;
     pendingVideoAnalysisFingerprint = null;
+    pendingVideoRenderKey = null;
+    pendingVideoRenderFingerprint = null;
+    activeVideoRenderStatus = null;
     videoPromptResults = [];
     $("#video-analysis-result").replaceChildren();
+    $("#video-render-result").replaceChildren();
+    $("#video-render-submit").disabled = true;
+    $("#video-render-refresh").disabled = true;
+    $("#video-render-cancel").disabled = true;
     $("#video-prompt-output").value = "";
     $("#video-prompt-timeline").replaceChildren();
     $("#video-analysis-refresh").disabled = true;
@@ -371,6 +389,26 @@
     message("#workspace-message", failures ? `به‌روزرسانی انجام شد؛ ${failures} بخش در دسترس نبود.` : "وضعیت به‌روز شد.", failures ? "error" : "success");
   }
 
+  async function downloadMediaAsset(asset) {
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(
+      `/content/assets/${encodeURIComponent(asset.asset_id)}/file`,
+      { method: "GET", headers, cache: "no-store", credentials: "omit", redirect: "error" }
+    );
+    if (response.status === 401 || response.status === 403) endSession();
+    if (!response.ok) throw new Error(`دانلود رسانه ناموفق بود (HTTP ${response.status})`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = element("a", asset.original_filename || "media");
+    link.href = url;
+    link.download = asset.original_filename || "media";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   async function loadMediaAssets() {
     const response = await api("/content/assets?limit=100");
     mediaAssetsCache = Array.isArray(response.assets) ? response.assets : [];
@@ -397,6 +435,14 @@
         asset.media_type,
         `${sizeMb} MB · ${asset.processing_status} · ${asset.asset_id}`
       );
+      card.append(actionButton("دانلود رسانه", async () => {
+        try {
+          await downloadMediaAsset(asset);
+          message("#media-message", "دانلود رسانه آغاز شد.", "success");
+        } catch (error) {
+          message("#media-message", error.message, "error");
+        }
+      }));
       card.append(deleteButton("حذف رسانه", async () => {
         if (!window.confirm("این فایل رسانه‌ای حذف شود؟ اگر در تاریخچهٔ پیش‌نویس استفاده شده باشد، حذف رد می‌شود.")) return;
         try {
@@ -455,6 +501,7 @@
       `شناسه: ${analysis.analysis_id || activeVideoAnalysisId} · آخرین به‌روزرسانی: ${analysis.updated_at || "نامشخص"}`
     ));
 
+    activeVideoAnalysisStatus = analysis.status || null;
     const result = analysis.result;
     const semantic = result && result.semantic_visual_analysis;
     const canCompose = analysis.status === "completed"
@@ -506,13 +553,16 @@
       const semanticLabel = semantic ? semantic.status : "unavailable";
       container.append(element(
         "p",
-        `تحلیل معنایی: ${semanticLabel}. تحلیل صوتی و رندر ویدئو در این نسخه اجرا نمی‌شوند.`,
+        `تحلیل معنایی: ${semanticLabel}. رندر cut-only MP4 پس از تکمیل تحلیل در بخش پایین قابل درخواست است؛ تحلیل صوتی در این نسخه اجرا نمی‌شود.`,
         "muted"
       ));
     } else if (analysis.error_code) {
       container.append(element("p", `کد خطا: ${analysis.error_code}`, "message error"));
     }
     $("#video-analysis-refresh").disabled = !activeVideoAnalysisId;
+    $("#video-render-submit").disabled = analysis.status !== "completed"
+      || (Boolean(activeVideoRenderId) && !activeVideoRenderStatus)
+      || ["accepted", "running"].includes(activeVideoRenderStatus);
   }
 
   async function refreshVideoAnalysis() {
@@ -531,6 +581,146 @@
       message("#video-analysis-message", statusText, analysis.status === "failed" ? "error" : "success");
     } catch (error) {
       message("#video-analysis-message", error.message, "error");
+    }
+  }
+
+  function renderVideoRender(render) {
+    activeVideoRenderStatus = render.status || null;
+    const container = $("#video-render-result");
+    container.replaceChildren();
+    const labels = {
+      accepted: "در صف رندر",
+      running: "در حال رندر",
+      completed: "رندر تکمیل شد",
+      failed: "رندر ناموفق",
+      cancelled: "رندر لغو شد",
+    };
+    const statusText = labels[render.status] || render.status || "نامشخص";
+    container.append(recordCard(
+      "وضعیت رندر",
+      statusText,
+      `شناسه: ${render.render_id || activeVideoRenderId} · ${render.updated_at || render.created_at || "زمان نامشخص"}`
+    ));
+    if (render.error_code) {
+      container.append(element("p", `کد خطا: ${render.error_code}`, "message error"));
+    }
+    if (render.output_asset_id) {
+      const asset = mediaAssetsCache.find((item) => item.asset_id === render.output_asset_id);
+      container.append(recordCard(
+        "فایل خروجی MP4",
+        asset ? asset.original_filename : render.output_asset_id,
+        asset
+          ? `${(Number(asset.file_size || 0) / (1024 * 1024)).toFixed(1)} MB · ${asset.processing_status}`
+          : "شناسهٔ خروجی ثبت شده است؛ برای دریافت فایل، کتابخانهٔ رسانه را به‌روزرسانی کنید."
+      ));
+    }
+    $("#video-render-refresh").disabled = !activeVideoRenderId;
+    $("#video-render-cancel").disabled = !["accepted", "running"].includes(render.status);
+    $("#video-render-submit").disabled = activeVideoAnalysisStatus !== "completed"
+      || ["accepted", "running"].includes(render.status);
+  }
+
+  async function refreshVideoRender() {
+    if (!activeVideoRenderId) {
+      message("#video-render-message", "هنوز درخواست رندری ثبت نشده است.", "error");
+      return;
+    }
+    try {
+      const render = await api(
+        `/video-intelligence/renders/${encodeURIComponent(activeVideoRenderId)}`
+      );
+      renderVideoRender(render);
+      if (
+        render.status === "completed"
+        && render.output_asset_id
+        && !mediaAssetsCache.some((asset) => asset.asset_id === render.output_asset_id)
+      ) {
+        await loadMediaAssets();
+        renderVideoRender(render);
+      }
+      const statusText = render.status === "completed"
+        ? "رندر تکمیل شد؛ فایل خروجی در کتابخانهٔ رسانه قرار دارد."
+        : render.status === "failed"
+          ? `رندر ناموفق بود: ${render.error_code || "خطای نامشخص"}`
+          : render.status === "cancelled"
+            ? "رندر لغو شد."
+            : `وضعیت فعلی: ${render.status}. برای بررسی مجدد، دکمهٔ وضعیت را بزنید.`;
+      message("#video-render-message", statusText, render.status === "failed" ? "error" : "success");
+    } catch (error) {
+      message("#video-render-message", error.message, "error");
+    }
+  }
+
+  async function submitVideoRender() {
+    if (!activeVideoAnalysisId || activeVideoAnalysisStatus !== "completed") {
+      message("#video-render-message", "ابتدا باید تحلیل ویدئو با موفقیت تکمیل شود.", "error");
+      return;
+    }
+    const fingerprint = activeVideoAnalysisId;
+    if (!pendingVideoRenderKey || pendingVideoRenderFingerprint !== fingerprint) {
+      if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
+        message("#video-render-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
+        return;
+      }
+      pendingVideoRenderKey = window.crypto.randomUUID();
+      pendingVideoRenderFingerprint = fingerprint;
+    }
+    const button = $("#video-render-submit");
+    button.disabled = true;
+    message("#video-render-message", "در حال ثبت درخواست رندر در صف Worker…");
+    try {
+      const accepted = await api(
+        `/video-intelligence/analyses/${encodeURIComponent(activeVideoAnalysisId)}/renders`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": pendingVideoRenderKey },
+        }
+      );
+      activeVideoRenderId = accepted.render_id;
+      activeVideoRenderStatus = accepted.status || "accepted";
+      sessionStorage.setItem("mrh_video_render_id", activeVideoRenderId);
+      pendingVideoRenderKey = null;
+      pendingVideoRenderFingerprint = null;
+      $("#video-render-refresh").disabled = false;
+      message(
+        "#video-render-message",
+        accepted.created === false
+          ? "درخواست قبلی بازیابی شد؛ رندر تکراری ساخته نشد."
+          : "درخواست ثبت شد. Worker باید فعال باشد تا رندر اجرا شود.",
+        "success"
+      );
+      await refreshVideoRender();
+    } catch (error) {
+      message(
+        "#video-render-message",
+        `${error.message}؛ برای تلاش مجدد همان کلید idempotency حفظ می‌شود.`,
+        "error"
+      );
+    } finally {
+      button.disabled = activeVideoAnalysisStatus !== "completed"
+        || ["accepted", "running"].includes(activeVideoRenderStatus);
+    }
+  }
+
+  async function cancelVideoRender() {
+    if (!activeVideoRenderId || !["accepted", "running"].includes(activeVideoRenderStatus)) return;
+    if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
+    try {
+      const result = await api(
+        `/video-intelligence/renders/${encodeURIComponent(activeVideoRenderId)}`,
+        { method: "DELETE" }
+      );
+      activeVideoRenderStatus = result.status || activeVideoRenderStatus;
+      message(
+        "#video-render-message",
+        result.cancellation_requested
+          ? "درخواست لغو ثبت شد؛ Worker پس از مشاهدهٔ وضعیت، خروجی را منتشر نخواهد کرد."
+          : `وضعیت رندر: ${result.status}`,
+        "success"
+      );
+      await refreshVideoRender();
+    } catch (error) {
+      message("#video-render-message", error.message, "error");
     }
   }
 
@@ -574,7 +764,18 @@
         body: payload,
       });
       activeVideoAnalysisId = accepted.analysis_id;
+      activeVideoAnalysisStatus = accepted.status || "accepted";
       sessionStorage.setItem("mrh_video_analysis_id", activeVideoAnalysisId);
+      activeVideoRenderId = null;
+      activeVideoRenderStatus = null;
+      sessionStorage.removeItem("mrh_video_render_id");
+      pendingVideoRenderKey = null;
+      pendingVideoRenderFingerprint = null;
+      $("#video-render-result").replaceChildren();
+      $("#video-render-message").textContent = "";
+      $("#video-render-submit").disabled = true;
+      $("#video-render-refresh").disabled = true;
+      $("#video-render-cancel").disabled = true;
       pendingVideoAnalysisKey = null;
       pendingVideoAnalysisFingerprint = null;
       videoPromptResults = [];
@@ -807,6 +1008,9 @@
         $("#video-analysis-refresh").disabled = false;
         await refreshVideoAnalysis();
       }
+      if (activeVideoRenderId) {
+        await refreshVideoRender();
+      }
     } catch (error) {
       message("#workspace-message", error.message, "error");
     }
@@ -870,6 +1074,9 @@
 
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
   $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
+  $("#video-render-submit").addEventListener("click", submitVideoRender);
+  $("#video-render-refresh").addEventListener("click", refreshVideoRender);
+  $("#video-render-cancel").addEventListener("click", cancelVideoRender);
   $("#video-compose-prompt").addEventListener("click", composeVideoPrompt);
   $("#video-prompt-source").addEventListener("change", renderSelectedVideoPrompt);
   $("#video-copy-prompt").addEventListener("click", copyVideoPrompt);

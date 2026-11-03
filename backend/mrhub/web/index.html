@@ -290,6 +290,21 @@
           <p id="video-analysis-message" class="message" role="status" aria-live="polite"></p>
           <div id="video-analysis-result" class="record-list"></div>
 
+          <div class="video-render-workspace">
+            <div class="section-heading">
+              <h4>رندر MP4 از تحلیل تکمیل‌شده</h4>
+              <span class="status-pill status-muted">خروجی فعلی: بی‌صدا و برش سخت</span>
+            </div>
+            <p class="muted">پس از تکمیل تحلیل می‌توانید یک MP4 از timeline معتبر بسازید. این نسخه صدا، زیرنویس، گرافیک، افکت یا تولید ویدئوی هوش مصنوعی اضافه نمی‌کند. اجرا فقط در Worker انجام می‌شود.</p>
+            <div class="button-row">
+              <button id="video-render-submit" class="button button-primary" type="button" disabled>شروع رندر MP4</button>
+              <button id="video-render-refresh" class="button button-quiet" type="button" disabled>بررسی وضعیت رندر</button>
+              <button id="video-render-cancel" class="button button-quiet" type="button" disabled>درخواست لغو رندر</button>
+            </div>
+            <p id="video-render-message" class="message" role="status" aria-live="polite"></p>
+            <div id="video-render-result" class="record-list"></div>
+          </div>
+
           <div class="video-prompt-composer">
             <div class="section-heading"><h4>ساخت Prompt از تحلیل معنایی معتبر</h4></div>
             <div class="form-grid">
