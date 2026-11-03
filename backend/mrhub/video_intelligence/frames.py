@@ -85,6 +85,8 @@ def extract_video_frames(
                 "-hide_banner",
                 "-loglevel", "error",
                 "-protocol_whitelist", "file,pipe",
+                # Limit decoded frame allocation before the scale filter runs.
+                "-max_pixels", "33554432",
                 "-i", str(source),
                 "-t", f"{duration_seconds:.3f}",
                 "-map", "0:v:0",
