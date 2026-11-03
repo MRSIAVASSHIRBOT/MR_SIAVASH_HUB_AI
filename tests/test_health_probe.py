@@ -122,19 +122,37 @@ def test_validators_reject_encoded_or_ambiguous_local_paths():
     ) is None
 
 
-def test_probe_rejects_invalid_response_limit_before_reading(monkeypatch):
-    response = FakeResponse(status_code=200, chunks=(b"ok",))
+def test_probe_rejects_invalid_response_limit_before_creating_client(monkeypatch):
+    def unexpected_client(*_args, **_kwargs):
+        raise AssertionError("invalid response limit must be rejected before network access")
 
-    def fake_client(**kwargs):
-        return FakeClient(response, **kwargs)
-
-    monkeypatch.setattr(health_probe.httpx, "AsyncClient", fake_client)
+    monkeypatch.setattr(health_probe.httpx, "AsyncClient", unexpected_client)
     result = asyncio.run(
         health_probe.probe_loopback_service(
             "http://127.0.0.1:18789",
             "/health",
             timeout_seconds=1,
             max_response_bytes=0,
+        )
+    )
+    assert result == {
+        "contract_version": "1.0",
+        "status": "invalid_configuration",
+        "configured": False,
+    }
+
+
+def test_probe_rejects_malformed_health_path_before_creating_client(monkeypatch):
+    def unexpected_client(*_args, **_kwargs):
+        raise AssertionError("malformed health path must be rejected before network access")
+
+    monkeypatch.setattr(health_probe.httpx, "AsyncClient", unexpected_client)
+    result = asyncio.run(
+        health_probe.probe_loopback_service(
+            "http://127.0.0.1:18789",
+            "http://[",
+            timeout_seconds=1,
+            max_response_bytes=1024,
         )
     )
     assert result == {
