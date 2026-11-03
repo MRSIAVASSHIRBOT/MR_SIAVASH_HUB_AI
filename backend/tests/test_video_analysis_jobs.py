@@ -203,6 +203,12 @@ def test_cancel_running_analysis_blocks_late_success_and_finishes_cancelled(tmp_
     )
     assert repository.get("owner-a", analysis_id)["status"] == "cancelled"
     assert repository.load_for_worker(task_id) is None
+    with repository.tasks._connection() as connection:
+        idempotency = connection.execute(
+            "SELECT status FROM idempotency_records WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()
+    assert idempotency["status"] == "failed"
 
 
 def test_cancel_analysis_is_idempotent_and_owner_scoped(tmp_path, monkeypatch):
