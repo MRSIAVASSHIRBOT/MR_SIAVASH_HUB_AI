@@ -201,3 +201,70 @@ def test_stale_worker_recovery_releases_orphaned_asset_use_locks(
 
     assert media.delete("owner-a", asset_id) == [str(asset["storage_key"])]
     assert media.cleanup_pending_files("owner-a") == 0
+
+
+def test_active_analysis_limits_allow_idempotent_replay_but_reject_new_jobs(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
+    )
+    from mrhub.video_intelligence import jobs as video_jobs
+
+    monkeypatch.setattr(video_jobs, "MAX_ACTIVE_VIDEO_ANALYSES_PER_OWNER", 1)
+    repository = _repository(tmp_path)
+    request = _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+
+    accepted, created = repository.submit("owner-a", request, "active-cap-1")
+    assert created is True
+
+    replay, replay_created = repository.submit("owner-a", request, "active-cap-1")
+    assert replay_created is False
+    assert replay["analysis_id"] == accepted["analysis_id"]
+
+    with pytest.raises(video_jobs.VideoAnalysisCapacityExceeded):
+        repository.submit("owner-a", request, "active-cap-2")
+
+
+def test_global_analysis_limit_applies_across_owners(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"d" * 32).decode("ascii"),
+    )
+    from mrhub.video_intelligence import jobs as video_jobs
+
+    monkeypatch.setattr(video_jobs, "MAX_ACTIVE_VIDEO_ANALYSES_GLOBAL", 1)
+    repository = _repository(tmp_path)
+    request = _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+
+    repository.submit("owner-a", request, "global-cap-owner-a")
+    with pytest.raises(video_jobs.VideoAnalysisCapacityExceeded):
+        repository.submit("owner-b", request, "global-cap-owner-b")
+
+
+def test_idempotent_replay_does_not_require_reencrypting_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"e" * 32).decode("ascii"),
+    )
+    repository = _repository(tmp_path)
+    request = _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    accepted, created = repository.submit("owner-a", request, "replay-without-key")
+    assert created is True
+
+    monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
+    from types import SimpleNamespace
+
+    from mrhub.jobs import payload_envelope
+
+    monkeypatch.setattr(
+        payload_envelope,
+        "get_settings",
+        lambda: SimpleNamespace(workflow_payload_key=None),
+    )
+    replay, replay_created = repository.submit(
+        "owner-a", request, "replay-without-key"
+    )
+    assert replay_created is False
+    assert replay["analysis_id"] == accepted["analysis_id"]
