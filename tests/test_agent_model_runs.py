@@ -105,6 +105,74 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert idempotency.status == "completed"
 
 
+
+def test_queued_model_run_cancellation_is_owner_scoped_and_removes_request_ciphertext(monkeypatch):
+    client = authenticated_client()
+    router = _router(ScriptedProvider())
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-run-cancel"},
+        json={
+            "goal": "Cancel before worker claim.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+    assert submitted.status_code == 202
+    workflow_id = UUID(submitted.json()["workflow_id"])
+
+    recovery = WorkflowRecoveryRepository(get_settings().database_path)
+    assert recovery.get_run(workflow_id, owner_user_id="another-owner") is None
+    cancelled = client.post(f"/agent/model-run-workflows/{workflow_id}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert recovery.get_encrypted_payload(
+        workflow_id, owner_user_id="owner"
+    ) is None
+
+    status = client.get(f"/agent/model-run-workflows/{workflow_id}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "cancelled"
+    assert status.json()["result"] is None
+
+
+def test_model_run_idempotency_key_rejects_a_different_request(monkeypatch):
+    client = authenticated_client()
+    router = _router(ScriptedProvider())
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    headers = {"Idempotency-Key": "durable-run-conflict"}
+    first = client.post(
+        "/agent/model-runs",
+        headers=headers,
+        json={
+            "goal": "First request.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+    assert first.status_code == 202
+    second = client.post(
+        "/agent/model-runs",
+        headers=headers,
+        json={
+            "goal": "Different request.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+    assert second.status_code == 409
+
+
 def test_interrupted_model_run_is_unknown_outcome_and_not_replayed(monkeypatch):
     client = authenticated_client()
     provider = ScriptedProvider(error=RuntimeError("ambiguous provider interruption"))
