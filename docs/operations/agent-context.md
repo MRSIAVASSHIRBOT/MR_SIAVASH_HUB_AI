@@ -75,3 +75,25 @@ The authenticated model-run history is available without persisting prompts, ret
 - Records contain the run identifier, outcome, timestamp, provider mode, terminal status, selected provider, turn count, tool-call count, and retrieved-passage count.
 - The history is backed by the existing audit-event store; no schema migration or duplicate history table is introduced.
 - The audit metadata allow-list explicitly permits only these operational fields. Arbitrary request fields, prompts, evidence, answers, credentials, and tool payloads remain excluded.
+
+
+## Knowledge freshness filtering
+
+Both `POST /agent/context/assemble` and `POST /agent/run` accept
+`knowledge_freshness_policy`:
+
+- `include_all` (default) preserves the existing behavior and labels each passage.
+- `owner_reviewed_current_only` includes only knowledge sources whose freshness status
+  is `owner_reviewed_current` and whose review timestamp is present. The filtered mode
+  inspects up to 25 ranked chunk candidates before selecting at most 4 eligible passages,
+  so stale top-ranked chunks do not automatically hide a later reviewed candidate. Stale,
+  unknown, and incomplete review records are excluded before context budgeting.
+
+The response reports `excluded_stale_knowledge_count` and
+`excluded_unreviewed_knowledge_count`. This policy relies on the owner's manual review
+assertion; it does **not** perform automatic URL checks or prove that a source is current.
+Memory evidence is unaffected by this knowledge-only filter. Retrieved content remains
+untrusted and cannot grant tool permissions.
+
+The operator UI exposes the same policy selector in its bounded Agent run panel and
+shows the number of stale and unreviewed knowledge passages excluded from each run.

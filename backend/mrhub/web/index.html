@@ -105,6 +105,13 @@
               <option value="remote">مدل ابری (ارسال صریح به سرویس ثالث)</option>
             </select>
           </label>
+          <label>سیاست تازگی اسناد دانشی
+            <select name="knowledge_freshness_policy">
+              <option value="include_all">استفاده از همه اسناد با نمایش وضعیت تازگی</option>
+              <option value="owner_reviewed_current_only">فقط اسناد بازبینی‌شده توسط مالک</option>
+            </select>
+          </label>
+          <p class="muted">بازبینی مالک یک تأیید دستی است و به معنی بررسی خودکار یا تضمین به‌روز بودن منبع نیست.</p>
           <div class="checkbox-grid">
             <label class="checkbox-row"><input name="include_memory" type="checkbox" checked> استفاده از حافظهٔ شخصی</label>
             <label class="checkbox-row"><input name="include_knowledge" type="checkbox" checked> استفاده از اسناد دانشی</label>

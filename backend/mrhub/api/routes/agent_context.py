@@ -1,6 +1,6 @@
 """Authenticated, bounded Agent Context assembly endpoint."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -23,6 +23,9 @@ class AgentContextRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     include_memory: bool = True
     include_knowledge: bool = True
+    knowledge_freshness_policy: Literal[
+        "include_all", "owner_reviewed_current_only"
+    ] = "include_all"
 
 
 @router.post("/assemble")
@@ -39,6 +42,7 @@ def assemble_agent_context(
             query=payload.query,
             include_memory=payload.include_memory,
             include_knowledge=payload.include_knowledge,
+            knowledge_freshness_policy=payload.knowledge_freshness_policy,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid context query") from exc

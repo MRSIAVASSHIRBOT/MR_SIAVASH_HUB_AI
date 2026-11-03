@@ -32,6 +32,9 @@ class AgentRunRequest(BaseModel):
     provider_mode: Literal["local", "remote"] = "local"
     include_memory: bool = True
     include_knowledge: bool = True
+    knowledge_freshness_policy: Literal[
+        "include_all", "owner_reviewed_current_only"
+    ] = "include_all"
     max_turns: int = Field(default=3, ge=1, le=3)
     max_output_tokens: int = Field(default=512, ge=1, le=512)
 
@@ -67,6 +70,7 @@ def run_agent(
         query=query,
         include_memory=payload.include_memory,
         include_knowledge=payload.include_knowledge,
+        knowledge_freshness_policy=payload.knowledge_freshness_policy,
     )
     evidence = json.dumps(
         context["passages"],
@@ -131,6 +135,9 @@ def run_agent(
         "run_id": run_id,
         "provider_mode": payload.provider_mode,
         "context_passage_count": context["passage_count"],
+        "knowledge_freshness_policy": context["knowledge_freshness_policy"],
+        "excluded_stale_knowledge_count": context["excluded_stale_knowledge_count"],
+        "excluded_unreviewed_knowledge_count": context["excluded_unreviewed_knowledge_count"],
         "context_sources": context_sources,
         "execution": result,
         "external_side_effects_performed": False,
