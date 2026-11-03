@@ -127,12 +127,12 @@ This backlog converts the audit into ordered work packages. It is a plan and evi
 | ID | Work package | Dependencies | Deliverables | Acceptance gate | Initial state |
 |---|---|---|---|---|---|
 | WP-00 | Mainline and change control | None | Current audit, branch/PR inventory, one status vocabulary, exact-SHA evidence | Every integration starts from current main; no stale branch or unreviewed migration is replayed | IN_PROGRESS |
-| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | IN_PROGRESS (runbook PR #213 + media integrity verifier PR #216) |
-| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | IN_PROGRESS (runtime test PR #214; exact-head CI pending) |
-| WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | IN_PROGRESS (provider prompt budget fix PR #215) |
+| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | IN_PROGRESS (runbook PR #213 + bounded media verifier PR #216) |
+| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | IN_PROGRESS (runtime smoke PR #214; exact-head CI passed) |
+| WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | IN_PROGRESS (provider prompt budget fix PR #215; exact-head CI passed) |
 | WP-04 | Memory and knowledge integrity | WP-03 | Source-content verification, provenance checks, bounded context assembly and retrieval evaluation | Owner isolation, deletion/export, provenance, stale-source behavior and prompt-injection boundaries pass tests | PLANNED |
 | WP-05 | Tools and MCP governance | WP-02, WP-03 | Compatibility/integrity checks, least-privilege grants, tool lifecycle and audit coverage | Invalid schemas, denied grants, timeout, oversized output and untrusted tool results fail closed | PLANNED |
-| WP-06 | NEXUS and Discovery | WP-02, WP-03, WP-05 | Evidence-backed repository analysis; source-attributed research records; read-only default | No unapproved execution or network access; provenance, bounded resource use and untrusted-content handling are tested | PLANNED |
+| WP-06 | NEXUS and Discovery | WP-02, WP-03, WP-05 | Evidence-backed repository analysis; source-attributed research records; read-only default | No unapproved execution or network access; provenance, bounded resource use and untrusted-content handling are tested | IN_PROGRESS (alias-aware AST rules PR #217) |
 | WP-07 | Defensive Security Lab | WP-00 | Complete offline log review, privacy and malformed-input handling; later approved advisory-snapshot review | Exact-scope authorization, bounded input, no target mutation/network activity, privacy assertions and exact-head CI | IN_PROGRESS |
 | WP-08 | Content and social integrations | WP-02, WP-03, WP-05 | External-origin/media reachability checks, provider scopes, controlled publish/reconciliation flow | Draft-first approval; real controlled account test; ambiguous provider outcomes remain quarantined and are never blindly retried | PLANNED |
 | WP-09 | Video and media pipeline | WP-02, WP-05 | Current-main renderer rebuild; fenced source-media-use lease; output registration and cleanup | Validated timeline input, fixed render profiles, bounded FFmpeg/FFprobe, lease held for full render, real MP4 metadata check, no orphaned outputs | PLANNED |
@@ -199,7 +199,7 @@ PR #214 adds process-level emergency-stop/resume coverage to the separate-proces
 
 PR #216 adds a read-only `verify_media_assets(database_path)` consistency gate for the sibling `content_assets/` directory. It compares each registered storage key, file size, and SHA-256 digest; rejects unsafe/symlinked paths; and counts unregistered entries without exposing asset identifiers or contents. It does not copy or delete media and requires API/worker writers to be stopped for a meaningful backup-point check.
 
-PR #216 exact head: `601166b5a931a18468f2bc055963af9ba2c9cd47`. A final review added a regression for a symlinked media root even when the registry is empty. Backend CI and Defensive Python Scan are in progress; CI is pending. It is not yet tested or integrated.
+PR #216 latest exact head: `baacd5b7be3ecb34dfa061587295f24047edd9e6`. Follow-up changes bound registry rows, directory entries, and per-file hashing; validate size/hash metadata; and add regression tests for resource limits and symlink roots. Backend CI and Defensive Python Scan passed; CI is still running. The PR is not integrated or runtime-verified.
 
 
 ### 8.10 Exact-head validation refresh
@@ -210,3 +210,18 @@ PR #216 exact head: `601166b5a931a18468f2bc055963af9ba2c9cd47`. A final review a
 - PR #213: all three required workflows passed on `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6`.
 - PR #214: all three required workflows passed on `413164eb2b1021d8da1eb0c845a99e2422d49bd4`.
 - Main remains `067177554ac923864981c11f80628e92aea0aa70`; no merge has been performed.
+
+
+### 8.11 NEXUS static-analysis expansion
+
+PR #217 extends the read-only Python AST checks to recognize straightforward module aliases and imported-function aliases for `pickle`, `yaml`, `subprocess`, `os`, and `builtins`. It adds advisory high-severity rule `PY105` for `os.system` and `os.popen`, while preserving the safe YAML `SafeLoader` alias case. Regression tests cover both risky aliases and the safe-loader exception. No target code is imported or executed, and no repository files are modified by the analyzer.
+
+PR #217 exact head: `a74455c275bc0c449bdfdfa87bf4d03940f37a29`; Backend CI, CI, and Defensive Python Scan are queued. This is pending exact-head validation and is not yet integrated.
+
+### 8.12 Current validation snapshot
+
+- PR #214 process-level emergency-stop/resume smoke test: all three required workflows passed on exact head `413164eb2b1021d8da1eb0c845a99e2422d49bd4`.
+- PR #215 provider prompt budget correction: all three required workflows passed on exact head `6c2aedaecd9195913507369568dcf99207dbc222`.
+- PR #216 bounded media verifier: Backend CI and Defensive Python Scan passed on `baacd5b7be3ecb34dfa061587295f24047edd9e6`; CI remains in progress.
+- PR #217 NEXUS AST expansion: all three required workflows queued on `a74455c275bc0c449bdfdfa87bf4d03940f37a29`.
+- Main remains `067177554ac923864981c11f80628e92aea0aa70`. No merge has been performed.
