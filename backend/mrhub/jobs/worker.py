@@ -650,7 +650,9 @@ class WorkerEngine:
                 or approval.get("action_fingerprint") != action_fingerprint(task)
             ):
                 if task.task_type == "video.generation":
-                    from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+                    from mrhub.video_intelligence.generation_jobs import (
+                        VideoGenerationJobRepository,
+                    )
 
                     VideoGenerationJobRepository(self.database_path).fail_unapproved_task(
                         task.task_id
