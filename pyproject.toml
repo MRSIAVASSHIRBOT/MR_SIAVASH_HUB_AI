@@ -24,6 +24,7 @@ mrhub-mcp = "mrhub.mcp_service:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=9.0.3,<10.0",
+  "pytest-cov>=6.0,<8.0",
   "ruff>=0.6,<1.0",
   "pip-audit>=2.7,<3.0",
   "bandit==1.9.4",
@@ -41,7 +42,7 @@ mrhub = ["web/*.html", "web/*.css", "web/*.js"]
 
 [tool.pytest.ini_options]
 pythonpath = ["backend"]
-testpaths = ["tests"]
+testpaths = ["tests", "backend/tests"]
 addopts = "-q"
 
 [tool.ruff]
