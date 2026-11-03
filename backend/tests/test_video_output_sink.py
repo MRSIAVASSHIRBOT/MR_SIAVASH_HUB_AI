@@ -52,7 +52,7 @@ def test_overflow_poison_sink_even_when_exception_is_caught(tmp_path):
             sink.write(b"6")
 
         assert sink.bytes_written == 5
-        with pytest.raises(ValueError, match="closed"):
+        with pytest.raises(ValueError, match="cannot be committed"):
             sink.commit()
         with pytest.raises(ValueError, match="closed"):
             sink.write(b"7")
