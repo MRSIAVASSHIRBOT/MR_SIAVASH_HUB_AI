@@ -16,6 +16,8 @@ from typing import Any
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from mrhub.config import get_settings
+
 
 ENVELOPE_VERSION = 1
 NONCE_BYTES = 12
@@ -39,6 +41,9 @@ class EncryptedPayload:
 def load_payload_key(encoded_key: str | None = None) -> bytes:
     """Load a 32-byte URL-safe Base64 key; never generate or fall back silently."""
     value = encoded_key if encoded_key is not None else os.getenv("MRH_WORKFLOW_PAYLOAD_KEY")
+    if not value:
+        configured = get_settings().workflow_payload_key
+        value = configured.get_secret_value() if configured is not None else None
     if not value:
         raise PayloadEnvelopeError("Workflow payload encryption key is not configured")
     try:
