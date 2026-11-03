@@ -7,8 +7,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-
 MAX_AUTHORIZATION_LIFETIME_DAYS = 30
 
 
