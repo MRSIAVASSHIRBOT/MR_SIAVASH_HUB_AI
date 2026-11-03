@@ -570,7 +570,7 @@ class WorkerEngine:
                 try:
                     if not storage_key.endswith(".mp4"):
                         continue
-                    UUID(storage_key[:-4])
+                    asset_id = str(UUID(storage_key[:-4]))
                     candidate = root / storage_key
                     if candidate.parent != root:
                         continue
@@ -579,9 +579,25 @@ class WorkerEngine:
                             "SELECT 1 FROM content_assets WHERE storage_key = ?",
                             (storage_key,),
                         ).fetchone()
-                    if registered is None:
-                        # Path.unlink removes a symlink itself rather than following it.
-                        candidate.unlink(missing_ok=True)
+                    if registered is not None:
+                        continue
+                    # A hard process crash can leave FFmpeg's random temporary
+                    # sibling behind. Only inspect names tied to this exact reserved
+                    # asset UUID; never sweep unrelated active renders or user files.
+                    if media.storage_root.is_symlink() or not root.is_dir():
+                        continue
+                    candidate.unlink(missing_ok=True)
+                    prefix = f".{asset_id}."
+                    suffix = ".partial.mp4"
+                    for partial in root.glob(f".{asset_id}.*.partial.mp4"):
+                        nonce = partial.name[len(prefix):-len(suffix)]
+                        if (
+                            partial.parent == root
+                            and len(nonce) == 32
+                            and all(char in "0123456789abcdef" for char in nonce)
+                        ):
+                            # Unlink removes a symlink itself instead of following it.
+                            partial.unlink(missing_ok=True)
                 except (OSError, TypeError, ValueError):
                     # A failed cleanup remains visible to the read-only media verifier.
                     continue
