@@ -6,9 +6,9 @@ repository in a later integration layer.
 """
 
 import json
+import pathlib
 import shutil
 import subprocess
-from pathlib import Path
 from typing import Any
 
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
@@ -17,7 +17,7 @@ _PROBE_TIMEOUT_SECONDS = 12
 _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
 
 
-def probe_video(path: Path) -> VideoTechnicalMetadata:
+def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
     """Return measurable technical metadata using ffprobe when installed."""
     binary = shutil.which("ffprobe")
     if binary is None:
@@ -39,7 +39,7 @@ def probe_video(path: Path) -> VideoTechnicalMetadata:
             check=False,
             capture_output=True,
             timeout=_PROBE_TIMEOUT_SECONDS,
-            env={"PATH": str(Path(binary).parent), "LANG": "C", "LC_ALL": "C"},
+            env={"PATH": str(pathlib.Path(binary).parent), "LANG": "C", "LC_ALL": "C"},
         )
     except (OSError, subprocess.TimeoutExpired):
         return VideoTechnicalMetadata(metadata_status="probe_failed")
