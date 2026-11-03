@@ -296,10 +296,25 @@ class MediaAssetRepository:
             if active_worker is None:
                 return False
 
-            # Keep expired rows until explicit release or stale-task recovery:
-            # a child FFmpeg process may still be reading the source file.
+            # A media asset has one exclusive analysis reader. Replays by the
+            # exact same fenced execution are idempotent; another execution must
+            # wait until the current reader releases its record or stale recovery
+            # proves that the previous worker is no longer active.
+            existing = connection.execute(
+                """SELECT task_id, lease_owner, execution_token
+                   FROM media_asset_analysis_leases
+                   WHERE asset_id = ? AND owner_user_id = ?""",
+                (str(asset_id), owner_user_id),
+            ).fetchone()
+            if existing is not None:
+                return (
+                    existing["task_id"] == lease.task_id
+                    and existing["lease_owner"] == lease.owner
+                    and existing["execution_token"] == lease.fencing_token
+                )
+
             connection.execute(
-                """INSERT OR IGNORE INTO media_asset_analysis_leases (
+                """INSERT INTO media_asset_analysis_leases (
                     lease_id, asset_id, owner_user_id, task_id,
                     lease_owner, execution_token, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -308,16 +323,7 @@ class MediaAssetRepository:
                     lease.owner, lease.fencing_token, now,
                 ),
             )
-            acquired = connection.execute(
-                """SELECT 1 FROM media_asset_analysis_leases
-                   WHERE asset_id = ? AND owner_user_id = ? AND task_id = ?
-                     AND lease_owner = ? AND execution_token = ?""",
-                (
-                    str(asset_id), owner_user_id, lease.task_id,
-                    lease.owner, lease.fencing_token,
-                ),
-            ).fetchone()
-        return acquired is not None
+        return True
 
     def release_analysis_use(
         self,
