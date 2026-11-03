@@ -263,3 +263,53 @@ The following changes were merged after the previous status entry:
 - The continuous-development workflow still requires a controlled end-to-end run to verify artifact transfer, patch validation, and PR publication. The OpenRouter inference key is still available to the model-agent process and must be treated as a sensitive credential.
 - OpenRouter inference, Telegram/Instagram publishing, OpenClaw/SiaCode execution, and remote code execution remain opt-in or unavailable until separately configured and accepted.
 - Do not claim production readiness until target-device install/upgrade/rollback/backup/restore drills and required provider acceptance tests are recorded.
+
+
+## Live integration baseline — 2026-11-03 UTC
+
+This section supersedes earlier open-PR counts and integration notes above. It was checked against GitHub at main `c073f55637a36c4c4f5897d19d77d1da46bc7ce6`. Re-check live metadata and exact-head checks before every integration.
+
+### Current open pull requests
+
+There are 13 open PRs at this snapshot:
+
+| PR | Area | Current disposition |
+|---|---|---|
+| #198 | Durable video-generation worker handoff | Candidate for focused review; Backend CI and CI were still running at snapshot time. Defensive Python Scan passed on exact head. |
+| #183 | Project audit ledger | Documentation-only, but its branch is diverged from main; reconcile on a fresh main-based branch before integration. |
+| #179 | NEXUS evidence-backed patch risk review | Independent capability; exact-head Backend CI, CI, and Defensive Python Scan passed. Review semantics and safety boundaries before integration. |
+| #162 | Agent orchestration and knowledge integrity | Independent capability; exact-head Backend CI, CI, and Defensive Python Scan passed. Review authorization/context boundaries before integration. |
+| #176 | Video analysis admission and media readiness | Candidate foundational video change; exact-head CI workflows passed. Integrate only after API/worker contract review. |
+| #197 | Owner-scoped editable timeline drafts | Draft; exact-head CI failed. Do not integrate until failure is diagnosed and rerun. |
+| #195 | Video edit specification and timeline | Draft; exact-head checks passed, but overlaps #177 on the same edit-spec/timeline files. Consolidate the duplicate line of work before integration. |
+| #186 | Bounded cut-only MP4 render engine | Draft; CI and Video Render Integration passed on exact head. Depends on the validated timeline contract and overlaps generation/worker/migration surfaces; hold for ordered integration. |
+| #157 | Bandit guidance documentation | Independent documentation change; exact-head checks passed, but branch is 17 commits behind main. Rebase/reapply the one-file change on current main before integration. |
+| #177 | Validated edit specifications | Draft; exact-head checks passed, but GitHub reports non-mergeable and it overlaps #195. Treat #195/#177 as one consolidation decision, not two independent merges. |
+| #178 | Semantic editing-prompt synthesis | Draft; CI passed on exact head. Depends on stable video-analysis semantics/API; hold behind foundational analysis integration. |
+| #173 | Owner-scoped analysis cancellation | Draft; exact-head checks passed, but GitHub reports non-mergeable and it overlaps #176 on jobs/worker/API files. Integrate after #176 contract review. |
+| #161 | Owned-asset analysis primitives | Draft; exact-head checks passed, but GitHub reports non-mergeable and its branch is behind main. Review whether its analyzer abstraction remains needed after #176 and current main. |
+
+### Verified integration facts
+
+- Main baseline: `c073f55637a36c4c4f5897d19d77d1da46bc7ce6`.
+- PR #198 head: `7b39173eb5c525ec5f309f57576f145e8f8142ef`; compare reported 29 commits ahead and 0 behind, with 9 changed files. Backend CI and CI were in progress; Defensive Python Scan passed.
+- PR #183 head: `d5cb1473d2f593e68c541821b97422933b10d2e2`; compare reported 2 ahead / 2 behind, one changed file. The branch must be reconciled before merge even though GitHub currently reports mergeable.
+- PR #179 and #162 each have one unique commit ahead and are two commits behind main. Their exact-head CI workflows passed; still require code review and integration tests.
+- Video PRs share API route, schema, worker, README, and migration paths. A flat merge queue is unsafe. In particular #177/#195 overlap edit-spec/timeline files; #173/#176 overlap analysis jobs/worker/API files; #186/#198 overlap API, worker, and migration paths.
+- PR #197 has a failing CI result on exact head `35d68c94f8c9cc77d997f8da227e13927407f76e`; this is a hard stop until diagnosed.
+- PR #157 is a single documentation file but its branch is substantially behind main; reapply its reviewed delta onto a fresh main-based branch rather than merging its stale history.
+
+### Integration order
+
+1. Preserve main as the only integration baseline; no direct main edits.
+2. Review and integrate independent NEXUS/Agent changes (#179, #162) one at a time after checking full diffs and exact-head CI.
+3. Consolidate the video-analysis contract: #176 first, then decide whether #173 and #161 contain still-needed unique behavior.
+4. Resolve the single canonical edit-spec/timeline implementation from #177/#195; do not merge both blindly.
+5. Integrate rendering (#186) only after its timeline contract and migration/worker interactions are stable.
+6. Revisit prompt synthesis (#178) and generation worker handoff (#198) against the integrated API contract.
+7. Repair #197 CI before reconsidering timeline drafts.
+8. Reapply documentation-only changes (#157, #183) on current main-based branches.
+
+### Verification limitations
+
+This is a metadata and changed-path audit, not a code-level approval. No source-level review or combined test run is implied by the workflow results above. Checks marked passed apply only to the exact PR head and named workflow. No PR was merged, closed, force-pushed, or deleted as part of this snapshot. Windows target-device acceptance, clean install/upgrade/rollback/restore, and live external-provider acceptance remain separate gates.
