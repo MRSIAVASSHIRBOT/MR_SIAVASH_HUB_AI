@@ -1,8 +1,8 @@
 from pydantic import ValidationError
 
-from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
 from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compose_prompt
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 
