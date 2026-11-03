@@ -68,3 +68,51 @@ jobs:
               & .\scripts\stop-local.ps1
             }
           }
+
+  failed-startup-cleanup:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install project into a clean Python 3.11 environment
+        shell: pwsh
+        run: |
+          py -3.11 -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw "Virtual environment creation failed." }
+          & .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -e .
+          if ($LASTEXITCODE -ne 0) { throw "Project installation failed." }
+      - name: Verify worker cleanup when API port is unavailable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-launcher-failure.sqlite3"
+          $env:MRH_REQUIRE_WORKER_FOR_READINESS = "true"
+          $listener = Start-Process -FilePath "py" -ArgumentList @(
+            "-3.11", "-c",
+            "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',8000)); s.listen(); time.sleep(90)"
+          ) -PassThru -WindowStyle Hidden
+          try {
+            Start-Sleep -Seconds 2
+            & pwsh -NoProfile -File .\scripts\start-local.ps1 -SkipInstall
+            $launcherExit = $LASTEXITCODE
+            if ($launcherExit -eq 0) {
+              throw "Launcher unexpectedly reported success while port 8000 was occupied."
+            }
+            if (Test-Path ".mrhub-runtime.json") {
+              throw "Runtime record was not removed after both launcher-owned processes exited."
+            }
+            Start-Sleep -Seconds 2
+            $orphan = Get-CimInstance Win32_Process | Where-Object {
+              $_.CommandLine -and $_.CommandLine.Contains("mrhub.worker_service")
+            } | Select-Object -First 1
+            if ($orphan) {
+              throw "Worker process $($orphan.ProcessId) remained after failed startup."
+            }
+            Write-Host "Failed-startup cleanup smoke test passed."
+          }
+          finally {
+            if (-not $listener.HasExited) {
+              Stop-Process -Id $listener.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
