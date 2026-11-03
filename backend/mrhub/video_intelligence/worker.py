@@ -8,12 +8,10 @@ from uuid import UUID
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
-from mrhub.media.repository import MediaAssetRepository
-from mrhub.video_intelligence.frames import FrameExtractionError, extract_video_frames
+from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
+from mrhub.video_intelligence.analyzer import VideoAssetAnalysisError, VideoAssetAnalyzer
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
-from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
-from mrhub.video_intelligence.service import probe_video
 
 
 class VideoAnalysisWorkerHandler:
@@ -23,6 +21,9 @@ class VideoAnalysisWorkerHandler:
         self.tasks = repository
         self.jobs = VideoAnalysisJobRepository(repository.database_path)
         self.media = MediaAssetRepository(repository.database_path)
+        self.analyzer = VideoAssetAnalyzer(
+            repository.database_path, repository=self.media
+        )
 
     def __call__(
         self, task: TaskRecord, *, lease: WorkerLease, lease_lost: Event
@@ -67,32 +68,45 @@ class VideoAnalysisWorkerHandler:
             if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
                 return self._fail(task, owner_user_id, lease, "asset_type_unsupported")
             try:
-                path = self.media.file_path(str(asset["storage_key"]))
-            except ValueError:
-                return self._fail(task, owner_user_id, lease, "asset_path_invalid")
+                acquired = self.media.acquire_analysis_use(
+                    owner_user_id, asset_id, lease=lease
+                )
+            except MediaAssetBusy:
+                return self._fail(task, owner_user_id, lease, "asset_busy")
+            if not acquired:
+                if lease_lost.is_set():
+                    return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+                return self._fail(
+                    task, owner_user_id, lease, "asset_analysis_lock_unavailable"
+                )
 
-            metadata = probe_video(path)
-            if metadata.metadata_status != "available" or metadata.duration_seconds is None:
-                return self._fail(task, owner_user_id, lease, "video_probe_failed")
-            duration = min(float(metadata.duration_seconds), float(request.duration_seconds))
-            if duration < 0.1:
-                return self._fail(task, owner_user_id, lease, "video_duration_invalid")
             try:
-                frames = extract_video_frames(path, duration_seconds=duration, max_frames=12)
-                scenes = detect_scene_boundaries(path, duration_seconds=duration)
-            except FrameExtractionError as exc:
+                analyzed = self.analyzer.analyze(
+                    owner_user_id,
+                    asset_id,
+                    duration_seconds=float(request.duration_seconds),
+                    max_frames=12,
+                )
+                if lease_lost.is_set():
+                    return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+            except VideoAssetAnalysisError as exc:
                 return self._fail(task, owner_user_id, lease, exc.reason_code)
-            except SceneDetectionError as exc:
-                return self._fail(task, owner_user_id, exc.reason_code)
+            finally:
+                self.media.release_analysis_use(
+                    owner_user_id, asset_id, lease=lease
+                )
 
             results.append({
                 "asset_id": str(asset_id),
-                "technical_metadata": metadata.model_dump(mode="json"),
-                "analysis_window_seconds": round(duration, 3),
-                "keyframe_count": len(frames),
-                "keyframe_timestamps": [frame.timestamp_seconds for frame in frames],
-                "scene_start_timestamps": list(scenes.scene_start_times),
-                "scene_boundaries_truncated": scenes.truncated,
+                "content_hash": analyzed.content_hash,
+                "technical_metadata": analyzed.metadata.model_dump(mode="json"),
+                "analysis_window_seconds": analyzed.analyzed_duration_seconds,
+                "keyframe_count": len(analyzed.frames),
+                "keyframe_timestamps": [
+                    frame.timestamp_seconds for frame in analyzed.frames
+                ],
+                "scene_start_timestamps": list(analyzed.scenes.scene_start_times),
+                "scene_boundaries_truncated": analyzed.scenes.truncated,
                 "semantic_visual_analysis": "not_performed",
                 "audio_analysis": (
                     "requested_but_not_performed"
