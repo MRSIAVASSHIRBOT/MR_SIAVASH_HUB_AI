@@ -612,6 +612,26 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_analysis_payloads_task ON video_analysis_payloads(task_id)",
         ),
     ),
+
+    Migration.build(
+        22,
+        "durable_owner_scoped_video_render_jobs",
+        (
+            """CREATE TABLE IF NOT EXISTS video_render_runs (
+                render_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE RESTRICT,
+                status TEXT NOT NULL CHECK (status IN ('accepted', 'running', 'completed', 'failed', 'cancelled')),
+                output_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE SET NULL,
+                error_code TEXT CHECK (error_code IS NULL OR length(error_code) <= 80),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_render_owner_created ON video_render_runs(owner_user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_video_render_analysis ON video_render_runs(analysis_id, owner_user_id)",
+        ),
+    ),
 )
 
  
