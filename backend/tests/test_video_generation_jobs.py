@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from mrhub.domain.tasks import TaskRecord
+from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
@@ -20,7 +20,11 @@ def _repository(tmp_path):
     repository = VideoGenerationJobRepository(tmp_path / "generation.sqlite")
     repository.tasks.create_auth_user("owner-a", "owner-a", "salt-a", "hash-a")
     repository.tasks.create_auth_user("owner-b", "owner-b", "salt-b", "hash-b")
-    task = TaskRecord(task_type="video.analysis", description="Completed source analysis")
+    task = TaskRecord(
+        task_type="video.analysis",
+        status=TaskStatus.SUCCEEDED,
+        description="Completed source analysis",
+    )
     repository.tasks.create(task)
     analysis_id = uuid4()
     with repository.tasks._connection() as connection:
