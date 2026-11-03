@@ -406,15 +406,22 @@ def test_stale_worker_token_cannot_release_newer_analysis_lock(tmp_path: Path) -
                WHERE task_id = ?""",
             (expires_at, first_lease.task_id),
         )
+        connection.execute(
+            """UPDATE media_asset_analysis_leases
+               SET execution_token = 2
+               WHERE asset_id = ? AND owner_user_id = ? AND task_id = ?""",
+            (str(asset_id), "owner-1", first_lease.task_id),
+        )
     second_lease = WorkerLease(
         task_id=first_lease.task_id,
         owner=first_lease.owner,
         fencing_token=2,
         expires_at=expires_at,
     )
-    assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease)
 
-    assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    # The record now belongs to the newer execution token. A stale worker
+    # cannot release it even though it knows the same task and owner.
+    assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is False
     with pytest.raises(MediaAssetBusy, match="video analysis"):
         repository.delete("owner-1", asset_id)
 
