@@ -6,6 +6,7 @@ not silently start background execution; operators opt into this process.
 """
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import sqlite3
@@ -17,6 +18,11 @@ from uuid import uuid4
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker import WorkerEngine, WorkerError
+from mrhub.media.repository import MediaAssetRepository
+
+logger = logging.getLogger(__name__)
+CLEANUP_SWEEP_INTERVAL_SECONDS = 30.0
+CLEANUP_SWEEP_BATCH_SIZE = 100
 
 
 def main() -> None:
@@ -24,6 +30,7 @@ def main() -> None:
     repository = TaskRepository(settings.database_path)
     repository.initialize()
     worker = WorkerEngine(repository)
+    media_repository = MediaAssetRepository(settings.database_path)
     stop = Event()
     heartbeat_stop = Event()
     instance_id = str(uuid4())
@@ -57,8 +64,19 @@ def main() -> None:
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
 
+    last_cleanup_sweep = 0.0
     try:
         while not stop.is_set():
+            now = time.monotonic()
+            if now - last_cleanup_sweep >= CLEANUP_SWEEP_INTERVAL_SECONDS:
+                try:
+                    media_repository.cleanup_pending_files_all(
+                        limit=CLEANUP_SWEEP_BATCH_SIZE
+                    )
+                except (OSError, sqlite3.Error, ValueError) as exc:
+                    # Log only the exception class; never expose storage paths or data.
+                    logger.warning("Media cleanup sweep failed (%s)", type(exc).__name__)
+                last_cleanup_sweep = time.monotonic()
             try:
                 result = worker.run_once()
             except (WorkerError, sqlite3.Error, RuntimeError, ValueError):
