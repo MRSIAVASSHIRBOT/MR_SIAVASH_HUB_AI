@@ -1,6 +1,4 @@
 """Offline defensive configuration review with explicit authorization scope."""
-from __future__ import annotations
-
 import hashlib
 import re
 from datetime import UTC, datetime, timedelta
