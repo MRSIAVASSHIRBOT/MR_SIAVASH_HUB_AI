@@ -103,7 +103,16 @@ def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(
 
 
 def test_submit_fails_closed_without_encryption_key(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import mrhub.jobs.payload_envelope as payload_envelope
+
     monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
+    monkeypatch.setattr(
+        payload_envelope,
+        "get_settings",
+        lambda: SimpleNamespace(workflow_payload_key=None),
+    )
     repository = _repository(tmp_path)
     with pytest.raises(PayloadEnvelopeError):
         repository.submit(
