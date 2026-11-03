@@ -1,7 +1,7 @@
 """Safe handoff from a completed provider job to a private media asset."""
 from __future__ import annotations
 
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.video_intelligence.generation import (
