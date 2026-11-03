@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.media.output_sink import BoundedOutputSink
 
 MAX_UPLOAD_BYTES = 25_000_000
 MAX_OUTPUT_BYTES = 100_000_000
@@ -75,6 +76,15 @@ class MediaAssetRepository:
         if path.parent != root:
             raise ValueError("Media path escapes storage root")
         return path
+
+    def create_output_sink(
+        self, storage_key: str, *, max_bytes: int = MAX_OUTPUT_BYTES
+    ) -> BoundedOutputSink:
+        """Create a private bounded sink for an internally generated storage key."""
+        target = self.file_path(storage_key)
+        if target.exists():
+            raise FileExistsError("Generated media target already exists")
+        return BoundedOutputSink(target, max_bytes=max_bytes)
 
     def new_output_target(self) -> tuple[str, str, Path]:
         asset_id = str(uuid4())
