@@ -584,6 +584,35 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_brand_profiles_owner_updated ON video_brand_profiles(owner_user_id, updated_at)",
         ),
     ),
+,
+    Migration.build(
+        21,
+        "durable_owner_scoped_video_analysis_jobs",
+        (
+            """CREATE TABLE IF NOT EXISTS video_analysis_runs (
+                analysis_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                mode TEXT NOT NULL CHECK (mode IN ('faithful_style_reconstruction', 'creative_style_fusion')),
+                status TEXT NOT NULL CHECK (status IN ('accepted', 'running', 'completed', 'failed', 'cancelled')),
+                result_json TEXT,
+                error_code TEXT CHECK (error_code IS NULL OR length(error_code) <= 80),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_analysis_owner_created ON video_analysis_runs(owner_user_id, created_at)",
+            """CREATE TABLE IF NOT EXISTS video_analysis_payloads (
+                analysis_id TEXT PRIMARY KEY REFERENCES video_analysis_runs(analysis_id) ON DELETE CASCADE,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                envelope_version INTEGER NOT NULL CHECK (envelope_version > 0),
+                nonce_b64 TEXT NOT NULL,
+                ciphertext_b64 TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_analysis_payloads_task ON video_analysis_payloads(task_id)",
+        ),
+    ),
 )
 
  
