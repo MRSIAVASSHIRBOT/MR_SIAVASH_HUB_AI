@@ -97,6 +97,7 @@ def submit_model_run(
         query=query,
         include_memory=payload.include_memory,
         include_knowledge=payload.include_knowledge,
+        knowledge_freshness_policy=payload.knowledge_freshness_policy,
     )
     evidence = json.dumps(
         context["passages"], ensure_ascii=False, separators=(",", ":")
@@ -125,6 +126,12 @@ def submit_model_run(
             "request": request_data,
             "evidence": evidence,
             "context_sources": context_sources,
+            "context_summary": {
+                "passage_count": context.get("passage_count", 0),
+                "knowledge_freshness_policy": context.get("knowledge_freshness_policy", "include_all"),
+                "excluded_stale_knowledge_count": context.get("excluded_stale_knowledge_count", 0),
+                "excluded_unreviewed_knowledge_count": context.get("excluded_unreviewed_knowledge_count", 0),
+            },
         },
         workflow_id=str(workflow_id),
         task_id=str(task.task_id),
@@ -166,6 +173,9 @@ def submit_model_run(
         "status": "queued",
         "idempotent_replay": False,
         "context_passage_count": context.get("passage_count", 0),
+        "knowledge_freshness_policy": context.get("knowledge_freshness_policy", "include_all"),
+        "excluded_stale_knowledge_count": context.get("excluded_stale_knowledge_count", 0),
+        "excluded_unreviewed_knowledge_count": context.get("excluded_unreviewed_knowledge_count", 0),
     }
 
 
@@ -207,6 +217,7 @@ def get_model_run(
                     response["result"] = {
                         "provider_mode": result.get("provider_mode"),
                         "context_sources": result.get("context_sources", []),
+                        "context_summary": result.get("context_summary", {}),
                         "execution": result.get("execution"),
                     }
             except (PayloadEnvelopeError, TypeError, ValueError):
