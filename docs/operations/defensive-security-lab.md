@@ -45,3 +45,12 @@ snapshot or a separately authorized network workflow.
 - Audit events record only safe outcome metadata; raw configuration,
   dependency manifest contents, authorization references, and values are not
   written to audit logs.
+
+
+## Structured security log review
+
+`POST /security-lab/log-review` accepts normalized JSON Lines (JSONL) records under the same exact-asset authorization scope. It is an offline triage aid, not a SIEM, attribution tool, incident verdict, or active scanner.
+
+Supported event types are `auth.login.failed`, `auth.login.succeeded`, `authorization.role_changed`, `audit.integrity_failed`, and `audit.record_deleted`. Repeated authentication failures are correlated using an internal SHA-256 pseudonym of the supplied actor identifier; raw actor identifiers and log values are never returned or written to audit metadata. Findings contain only rule IDs, severity/confidence, filename, line number, a generic explanation, and remediation guidance.
+
+The input is limited to 1 MB and 10,000 lines. Malformed or unsupported records are counted but not echoed. No network requests, package operations, target modifications, or active tests are performed. Results are heuristic triage signals and require review against the original authorized source.
