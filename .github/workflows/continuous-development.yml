@@ -134,6 +134,10 @@ jobs:
           set -euo pipefail
           BRANCH="automation/continuous-development-${GITHUB_RUN_ID}"
           git switch -c "$BRANCH"
+          # The publisher owns commit creation; set a deterministic bot identity
+          # because checkout intentionally does not persist Git credentials or identity.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git apply --index --binary "$RUNNER_TEMP/agent-proposal/agent.patch"
           if git diff --cached --quiet; then
             echo "No applicable changes; nothing to publish."
