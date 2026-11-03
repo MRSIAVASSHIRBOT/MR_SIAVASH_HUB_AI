@@ -96,6 +96,15 @@ class VideoRenderWorkerHandler:
                 if self.media.get(owner_user_id, asset_id) is None:
                     raise ValueError("render_source_ownership_changed")
 
+            task_result = {
+                "render_id": str(render_id),
+                "status": "completed",
+                "output_asset_id": output_asset_id,
+                "duration_seconds": rendered.duration_seconds,
+                "width": rendered.width,
+                "height": rendered.height,
+                "file_size": rendered.file_size,
+            }
             output = self.media.register_rendered_output(
                 owner_user_id,
                 output_asset_id,
@@ -105,16 +114,9 @@ class VideoRenderWorkerHandler:
                 task_id=task.task_id,
                 render_id=render_id,
                 lease=lease,
+                task_result=task_result,
             )
-            return {
-                "render_id": str(render_id),
-                "status": "completed",
-                "output_asset_id": str(output["asset_id"]),
-                "duration_seconds": rendered.duration_seconds,
-                "width": rendered.width,
-                "height": rendered.height,
-                "file_size": rendered.file_size,
-            }
+            return {**task_result, "output_asset_id": str(output["asset_id"])}
         except VideoRenderError as exc:
             if output_path is not None:
                 output_path.unlink(missing_ok=True)
