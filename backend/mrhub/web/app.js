@@ -701,6 +701,7 @@
         body: readAgentRunPayload(form),
       });
       activeModelRunWorkflowId = result.workflow_id;
+      $("#agent-queued-workflow-id").value = result.workflow_id;
       $("#agent-queued-refresh-button").disabled = false;
       output.textContent = [
         "وضعیت: " + (result.status || "queued"),
@@ -719,11 +720,13 @@
   }
 
   async function refreshQueuedAgentRun() {
-    if (!activeModelRunWorkflowId) return;
+    const workflowId = activeModelRunWorkflowId || $("#agent-queued-workflow-id").value.trim();
+    if (!workflowId) return;
+    activeModelRunWorkflowId = workflowId;
     const output = $("#agent-queued-result");
     try {
       const result = await api(
-        "/agent/model-run-workflows/" + encodeURIComponent(activeModelRunWorkflowId)
+        "/agent/model-run-workflows/" + encodeURIComponent(workflowId)
       );
       const execution = result.result && result.result.execution
         ? result.result.execution
@@ -760,11 +763,13 @@
   }
 
   async function cancelQueuedAgentRun() {
-    if (!activeModelRunWorkflowId) return;
+    const workflowId = activeModelRunWorkflowId || $("#agent-queued-workflow-id").value.trim();
+    if (!workflowId) return;
+    activeModelRunWorkflowId = workflowId;
     if (!window.confirm("درخواست لغو اجرای صف‌شده ثبت شود؟")) return;
     try {
       const result = await api(
-        "/agent/model-run-workflows/" + encodeURIComponent(activeModelRunWorkflowId) + "/cancel",
+        "/agent/model-run-workflows/" + encodeURIComponent(workflowId) + "/cancel",
         { method: "POST" }
       );
       $("#agent-queued-result").textContent = "نتیجهٔ درخواست لغو: " + result.status;
