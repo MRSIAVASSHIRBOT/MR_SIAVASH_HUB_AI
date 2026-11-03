@@ -1,5 +1,10 @@
-import pytest
+from uuid import UUID
 
+import pytest
+from fastapi import HTTPException
+
+from mrhub.api.routes import video_intelligence as video_route
+from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.prompt_from_analysis import (
     AnalysisPromptOptions,
     PromptCompositionUnavailable,
@@ -112,3 +117,69 @@ def test_prompt_composition_refuses_observation_after_analysis_window():
 def test_prompt_options_bound_individual_palette_values():
     with pytest.raises(ValueError):
         AnalysisPromptOptions(colors=["x" * 1000])
+
+
+
+def test_analysis_prompt_endpoint_is_owner_scoped_and_does_not_execute(
+    monkeypatch,
+):
+    analysis_id = UUID("8a83e1f0-5cc7-4b9e-aec8-cd2e0b4d6a1e")
+
+    class FakeRepository:
+        def get(self, owner_user_id, requested_id):
+            assert owner_user_id == "owner-a"
+            assert requested_id == analysis_id
+            return {
+                "analysis_id": str(analysis_id),
+                "status": "completed",
+                "result": _analysis_result(),
+            }
+
+    monkeypatch.setattr(video_route, "_analysis_jobs", lambda: FakeRepository())
+    response = video_route.compose_prompt_from_analysis(
+        analysis_id,
+        AnalysisPromptOptions(),
+        AuthenticatedUser(user_id="owner-a", username="owner-a"),
+    )
+    assert response["status"] == "composed"
+    assert response["execution"] == "not_started"
+    assert response["count"] == 2
+
+
+def test_analysis_prompt_endpoint_returns_not_found_for_non_owner(monkeypatch):
+    analysis_id = UUID("8a83e1f0-5cc7-4b9e-aec8-cd2e0b4d6a1e")
+
+    class FakeRepository:
+        def get(self, owner_user_id, requested_id):
+            assert owner_user_id == "owner-b"
+            return None
+
+    monkeypatch.setattr(video_route, "_analysis_jobs", lambda: FakeRepository())
+    with pytest.raises(HTTPException) as error:
+        video_route.compose_prompt_from_analysis(
+            analysis_id,
+            AnalysisPromptOptions(),
+            AuthenticatedUser(user_id="owner-b", username="owner-b"),
+        )
+    assert error.value.status_code == 404
+
+
+def test_analysis_prompt_endpoint_rejects_pending_analysis(monkeypatch):
+    analysis_id = UUID("8a83e1f0-5cc7-4b9e-aec8-cd2e0b4d6a1e")
+
+    class FakeRepository:
+        def get(self, _owner_user_id, _requested_id):
+            return {
+                "analysis_id": str(analysis_id),
+                "status": "running",
+                "result": None,
+            }
+
+    monkeypatch.setattr(video_route, "_analysis_jobs", lambda: FakeRepository())
+    with pytest.raises(HTTPException) as error:
+        video_route.compose_prompt_from_analysis(
+            analysis_id,
+            AnalysisPromptOptions(),
+            AuthenticatedUser(user_id="owner-a", username="owner-a"),
+        )
+    assert error.value.status_code == 409
