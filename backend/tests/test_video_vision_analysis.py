@@ -5,8 +5,8 @@ import pytest
 from mrhub.providers.base import ProviderUnavailableError
 from mrhub.providers.vision import VisionResponse
 from mrhub.video_intelligence.frames import ExtractedVideoFrame
-from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 from mrhub.video_intelligence.vision import analyze_sampled_frames
+from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 
 
 def _frames():
