@@ -1,9 +1,13 @@
 import base64
+import hashlib
+from threading import Event
+from types import SimpleNamespace
 from uuid import UUID
 
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.render_worker import VideoRenderWorkerHandler
 from mrhub.video_intelligence.render_jobs import (
     VideoRenderJobRepository,
 )
@@ -198,3 +202,94 @@ def test_render_output_registration_rejects_stale_worker_lease(tmp_path, monkeyp
 
     assert media.get("owner-a", UUID(output_id)) is None
     assert jobs.get("owner-a", render_id)["status"] == "accepted"
+
+
+def test_render_worker_holds_fenced_media_use_leases_through_render_and_publication(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence import render_worker
+
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    jobs = VideoRenderJobRepository(database)
+    media = MediaAssetRepository(database)
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-use-lock-key")
+    task_id = UUID(accepted["task_id"])
+    render_id = UUID(accepted["render_id"])
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    storage_key = f"{source_id}.mp4"
+    source_path = media.file_path(storage_key)
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_bytes = b"source-video"
+    source_path.write_bytes(source_bytes)
+    now = "2026-11-04T00:00:00+00:00"
+
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO content_assets (
+                asset_id, owner_user_id, source_asset_id, original_filename,
+                media_type, storage_key, file_size, content_hash,
+                processing_status, processing_profile, error_code, created_at, updated_at
+            ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
+            (
+                str(source_id), "owner-a", "source.mp4", storage_key,
+                len(source_bytes), hashlib.sha256(source_bytes).hexdigest(), now, now,
+            ),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (str(task_id), now, "render-worker", "2099-01-01T00:00:00+00:00", 7),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
+            (now, str(task_id)),
+        )
+
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=7,
+        expires_at="2099-01-01T00:00:00+00:00",
+    )
+    assert jobs.mark_running(task_id, "owner-a", lease=lease) is True
+    output_id, _output_key, output_path = media.new_output_target()
+    observations = []
+
+    def fake_render(**kwargs):
+        with analysis_repository.tasks._connection() as connection:
+            lock = connection.execute(
+                "SELECT task_id, execution_token FROM media_asset_analysis_leases WHERE asset_id = ?",
+                (str(source_id),),
+            ).fetchone()
+        observations.append(lock)
+        assert lock is not None
+        assert lock["task_id"] == str(task_id)
+        assert lock["execution_token"] == 7
+        kwargs["output_path"].write_bytes(b"rendered")
+        return SimpleNamespace(
+            output_path=kwargs["output_path"],
+            duration_seconds=3.0,
+            width=1920,
+            height=1080,
+            file_size=8,
+        )
+
+    monkeypatch.setattr(render_worker, "render_video_timeline", fake_render)
+    task = analysis_repository.tasks.get(task_id)
+    result = VideoRenderWorkerHandler(analysis_repository.tasks)(
+        task, lease=lease, lease_lost=Event()
+    )
+
+    assert result["status"] == "completed"
+    assert result["output_asset_id"] == output_id
+    assert len(observations) == 1
+    with analysis_repository.tasks._connection() as connection:
+        remaining = connection.execute(
+            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0]
+    assert remaining == 0
+    assert jobs.get("owner-a", render_id)["status"] == "completed"
