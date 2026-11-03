@@ -8,7 +8,7 @@ from uuid import UUID
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
-from mrhub.media.repository import MediaAssetRepository
+from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.render import VideoRenderError, render_video_timeline
 from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
@@ -37,6 +37,7 @@ class VideoRenderWorkerHandler:
             return {"render_id": str(render_id), "status": "lease_lost"}
 
         output_path = None
+        locked_asset_ids: list[UUID] = []
         try:
             analysis = self.analyses.get(owner_user_id, analysis_id)
             if analysis is None or analysis["status"] != "completed":
@@ -62,6 +63,17 @@ class VideoRenderWorkerHandler:
                     raise ValueError("render_source_not_found")
                 if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
                     raise ValueError("render_source_type_unsupported")
+                if asset["processing_status"] not in {"stored", "processed"}:
+                    raise ValueError("render_source_not_ready")
+                try:
+                    acquired = self.media.acquire_analysis_use(
+                        owner_user_id, asset_id, lease=lease
+                    )
+                except MediaAssetBusy as exc:
+                    raise ValueError("render_source_busy") from exc
+                if not acquired:
+                    raise ValueError("render_source_not_ready_or_locked")
+                locked_asset_ids.append(asset_id)
                 path = self.media.file_path(str(asset["storage_key"]))
                 if not path.is_file():
                     raise ValueError("render_source_file_missing")
@@ -149,3 +161,8 @@ class VideoRenderWorkerHandler:
                 error_code="render_internal_error", lease=lease,
             )
             raise ValueError("Video render execution failed") from exc
+        finally:
+            for asset_id in reversed(locked_asset_ids):
+                self.media.release_analysis_use(
+                    owner_user_id, asset_id, lease=lease
+                )
