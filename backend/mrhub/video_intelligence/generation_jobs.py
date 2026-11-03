@@ -302,6 +302,12 @@ class VideoGenerationJobRepository:
             ).fetchone()
             if job is None:
                 return None
+            if (
+                job["provider"] != result.provider
+                or job["model"] != result.model
+                or job["provider_job_id"] != result.provider_job_id
+            ):
+                raise ValueError("Provider result does not match the selected generation job")
             if job["status"] == "succeeded":
                 if job["output_asset_id"] != output_asset_id:
                     raise ValueError("Generation job already has a different output asset")
@@ -313,12 +319,6 @@ class VideoGenerationJobRepository:
                 return MediaAssetRepository._record(existing) if existing is not None else None
             if job["status"] not in {"submitting", "running", "unknown_outcome"}:
                 raise ValueError("Generation job is not eligible for output registration")
-            if (
-                job["provider"] != result.provider
-                or job["model"] != result.model
-                or job["provider_job_id"] != result.provider_job_id
-            ):
-                raise ValueError("Provider result does not match the selected generation job")
 
             connection.execute(
                 """INSERT INTO content_assets (
