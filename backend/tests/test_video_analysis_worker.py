@@ -47,6 +47,11 @@ def _prepare_worker(tmp_path, monkeypatch):
     assert created is True
 
     task_id = UUID(accepted["task_id"])
+    with tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
     task = tasks.get(task_id)
     assert task is not None
     expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
