@@ -68,8 +68,12 @@ def extract_video_frames(
     # Cap the sampling rate as well as the frame count so short clips do not
     # trigger excessive decode work.
     sampling_rate = min(max_frames / duration_seconds, 2.0)
+    # Bound both dimensions: limiting width alone permits pathological portrait
+    # inputs to create extremely tall decoded frames and oversized temp files.
     filter_expression = (
-        f"fps={sampling_rate:.6f},scale=w='min({max_width},iw)':h=-2"
+        f"fps={sampling_rate:.6f},"
+        f"scale=w='min({max_width},iw)':h='min({max_width},ih)':"
+        "force_original_aspect_ratio=decrease"
     )
 
     try:
@@ -107,7 +111,10 @@ def extract_video_frames(
                     command,
                     shell=False,
                     check=False,
-                    capture_output=True,
+                    # FFmpeg writes frames to files; capturing stderr/stdout can
+                    # otherwise retain attacker-controlled diagnostic output.
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                     timeout=_EXTRACTION_TIMEOUT_SECONDS,
                     env=environment,
                 )
