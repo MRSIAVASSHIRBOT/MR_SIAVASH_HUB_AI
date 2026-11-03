@@ -154,7 +154,9 @@ class VideoAnalysisJobRepository:
         if row is None:
             return None
         return {
-            **self._record(row),
+            "analysis_id": row["analysis_id"],
+            "status": row["status"],
+            "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             "result": json.loads(row["result_json"]) if row["result_json"] else None,
             "error_code": row["error_code"],
