@@ -1,6 +1,7 @@
 """Offline defensive configuration review with explicit authorization scope."""
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -335,5 +336,172 @@ def audit_requirements_text(
         "vulnerability_database_consulted": False,
         "network_requests_made": False,
         "packages_installed": False,
+        "targets_modified": False,
+    }
+
+
+MAX_STRUCTURED_LOG_LINES = 10_000
+MAX_STRUCTURED_LOG_FINDINGS = 200
+_AUTH_FAILURE_THRESHOLD = 5
+
+
+def audit_structured_log_text(
+    text: str,
+    *,
+    scope: DefensiveReviewScope,
+    asset: str,
+    filename: str = "security-events.jsonl",
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Review normalized JSONL security events offline without returning identifiers or raw values.
+
+    Supported event_type values:
+    - auth.login.failed
+    - auth.login.succeeded
+    - authorization.role_changed
+    - audit.integrity_failed
+    - audit.record_deleted
+
+    This is a triage aid for structured logs, not a SIEM, attribution tool, or
+    proof that an incident occurred. Unknown schemas and malformed lines are
+    counted but never echoed.
+    """
+    authorized_asset = _validated_scope(scope, asset, now)
+    safe_filename = _validate_filename(filename)
+    if not isinstance(text, str) or len(text) > 1_000_000:
+        raise ValueError("Structured log text exceeds the 1 MB review limit")
+
+    lines = text.splitlines()
+    if len(lines) > MAX_STRUCTURED_LOG_LINES:
+        raise ValueError("Structured log text exceeds the 10000-line review limit")
+
+    failed_by_actor: dict[str, list[int]] = {}
+    successful_by_actor: dict[str, list[int]] = {}
+    findings: list[dict[str, object]] = []
+    structured_records = 0
+    unparsed_lines = 0
+    uncorrelated_auth_events = 0
+
+    def add(
+        rule_id: str,
+        severity: str,
+        confidence: str,
+        line_number: int,
+        message: str,
+        remediation: str,
+    ) -> None:
+        findings.append(_finding(
+            rule_id,
+            severity,
+            confidence,
+            safe_filename,
+            line_number,
+            message,
+            remediation,
+        ))
+
+    for line_number, raw_line in enumerate(lines, start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            record = json.loads(raw_line)
+        except (ValueError, RecursionError):
+            # Treat oversized numeric tokens and excessive nesting as malformed input.
+            # Never echo the raw line or let parser edge cases escape as server errors.
+            unparsed_lines += 1
+            continue
+        if not isinstance(record, dict):
+            unparsed_lines += 1
+            continue
+
+        event_type = record.get("event_type")
+        if not isinstance(event_type, str) or not event_type or len(event_type) > 100:
+            unparsed_lines += 1
+            continue
+        structured_records += 1
+
+        actor_id = record.get("actor_id")
+        actor_key: str | None = None
+        if isinstance(actor_id, str) and actor_id.strip() and len(actor_id) <= 256:
+            actor_key = hashlib.sha256(actor_id.strip().encode("utf-8")).hexdigest()
+
+        if event_type in {"auth.login.failed", "auth.login.succeeded"} and actor_key is None:
+            uncorrelated_auth_events += 1
+        elif event_type == "auth.login.failed" and actor_key is not None:
+            failed_by_actor.setdefault(actor_key, []).append(line_number)
+        elif event_type == "auth.login.succeeded" and actor_key is not None:
+            successful_by_actor.setdefault(actor_key, []).append(line_number)
+        elif event_type == "authorization.role_changed":
+            add(
+                "LOG001",
+                "high",
+                "medium",
+                line_number,
+                "A privileged role or authorization assignment changed.",
+                "Verify the change against an approved change record and confirm the actor had the required authorization.",
+            )
+        elif event_type == "audit.integrity_failed":
+            add(
+                "LOG002",
+                "high",
+                "high",
+                line_number,
+                "An audit integrity check reported a failure.",
+                "Preserve the original log source and investigate integrity, retention, and access controls before modifying records.",
+            )
+        elif event_type == "audit.record_deleted":
+            add(
+                "LOG003",
+                "medium",
+                "medium",
+                line_number,
+                "An audit record deletion event was recorded.",
+                "Verify that retention policy and an approved administrative action explain the deletion.",
+            )
+
+    for actor_key, failure_lines in failed_by_actor.items():
+        if len(failure_lines) < _AUTH_FAILURE_THRESHOLD:
+            continue
+        add(
+            "LOG004",
+            "medium",
+            "medium",
+            failure_lines[0],
+            f"At least {_AUTH_FAILURE_THRESHOLD} failed authentication events share one pseudonymized actor within this input.",
+            "Review the surrounding authentication events and apply the service's normal account-protection procedure if the activity is unexpected.",
+        )
+        later_successes = [
+            line for line in successful_by_actor.get(actor_key, [])
+            if line > failure_lines[-1]
+        ]
+        if later_successes:
+            add(
+                "LOG005",
+                "medium",
+                "low",
+                later_successes[0],
+                "A successful authentication followed repeated failures for the same pseudonymized actor.",
+                "Confirm the successful session belongs to the legitimate account owner and review session activity using approved internal procedures.",
+            )
+
+    findings.sort(key=lambda item: (int(item["line"]), str(item["rule_id"])))
+    findings_truncated = len(findings) > MAX_STRUCTURED_LOG_FINDINGS
+    findings = findings[:MAX_STRUCTURED_LOG_FINDINGS]
+    return {
+        "mode": "offline_structured_security_log_review",
+        "asset": authorized_asset,
+        "authorization_reference": scope.authorization_reference,
+        "authorization_expires_at": scope.expires_at.astimezone(UTC).isoformat(),
+        "scope_validated": True,
+        "log_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "lines_reviewed": len(lines),
+        "structured_records": structured_records,
+        "unparsed_lines": unparsed_lines,
+        "uncorrelated_auth_events": uncorrelated_auth_events,
+        "findings": findings,
+        "findings_truncated": findings_truncated,
+        "actor_identifiers_included": False,
+        "raw_log_values_included": False,
+        "network_requests_made": False,
         "targets_modified": False,
     }

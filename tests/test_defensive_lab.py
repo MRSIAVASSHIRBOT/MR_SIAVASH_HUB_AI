@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 
 import pytest
 
@@ -8,6 +9,7 @@ from mrhub.security.defensive_lab import (
     ScopeValidationError,
     audit_configuration_text,
     audit_requirements_text,
+    audit_structured_log_text,
 )
 
 
@@ -351,3 +353,139 @@ def test_scope_rejects_authorizations_longer_than_thirty_days():
     )
     with pytest.raises(ScopeValidationError, match="30-day"):
         scope.assert_current()
+
+
+
+def test_structured_log_review_correlates_events_without_returning_actor_identifiers():
+    actor = "sensitive-user-identifier"
+    records = [
+        {"event_type": "auth.login.failed", "actor_id": actor}
+        for _ in range(5)
+    ]
+    records += [
+        {"event_type": "auth.login.succeeded", "actor_id": actor},
+        {"event_type": "authorization.role_changed", "actor_id": "admin-actor"},
+        {"event_type": "audit.integrity_failed"},
+        {"event_type": "audit.record_deleted"},
+    ]
+    text = "\n".join(json.dumps(record) for record in records)
+
+    result = audit_structured_log_text(
+        text,
+        scope=_scope(),
+        asset="repo:owned-project",
+        filename="events.jsonl",
+    )
+
+    assert result["mode"] == "offline_structured_security_log_review"
+    assert result["scope_validated"] is True
+    assert result["lines_reviewed"] == 9
+    assert result["structured_records"] == 9
+    assert result["network_requests_made"] is False
+    assert result["targets_modified"] is False
+    assert result["actor_identifiers_included"] is False
+    assert result["raw_log_values_included"] is False
+    assert {item["rule_id"] for item in result["findings"]} == {
+        "LOG001", "LOG002", "LOG003", "LOG004", "LOG005"
+    }
+    assert actor not in str(result)
+    assert "admin-actor" not in str(result)
+
+
+def test_structured_log_review_counts_malformed_records_without_echoing_them():
+    raw_secret = "malformed-line-with-sensitive-content"
+    text = (
+        json.dumps({"event_type": "unknown.event", "actor_id": "private-actor"})
+        + "\n"
+        + raw_secret
+        + "\n"
+        + json.dumps(["not", "an", "object"])
+    )
+    result = audit_structured_log_text(
+        text,
+        scope=_scope(),
+        asset="repo:owned-project",
+    )
+
+    assert result["structured_records"] == 1
+    assert result["unparsed_lines"] == 2
+    assert result["findings"] == []
+    assert raw_secret not in str(result)
+    assert "private-actor" not in str(result)
+
+
+def test_structured_log_review_enforces_scope_and_line_limit():
+    scope = _scope()
+    with pytest.raises(ScopeValidationError, match="outside"):
+        audit_structured_log_text(
+            "{}",
+            scope=scope,
+            asset="repo:another-project",
+        )
+    with pytest.raises(ValueError, match="10000-line"):
+        audit_structured_log_text(
+            "{}\n" * 10_001,
+            scope=scope,
+            asset="repo:owned-project",
+        )
+
+
+def test_authenticated_structured_log_review_api_returns_safe_findings_and_audits_metadata():
+    client = authenticated_client()
+    records = "\n".join(
+        json.dumps({"event_type": "auth.login.failed", "actor_id": "private-login-id"})
+        for _ in range(5)
+    )
+    response = client.post(
+        "/security-lab/log-review",
+        json={
+            "scope": {
+                "authorization_reference": "ticket-log-123",
+                "authorized_assets": ["host:approved-test"],
+                "expires_at": (dt.datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
+                "review_mode": "offline_static_only",
+            },
+            "asset": "host:approved-test",
+            "filename": "auth-events.jsonl",
+            "text": records,
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["mode"] == "offline_structured_security_log_review"
+    assert result["findings"][0]["rule_id"] == "LOG004"
+    assert result["network_requests_made"] is False
+    assert result["targets_modified"] is False
+    assert "private-login-id" not in response.text
+
+    from mrhub.config import get_settings
+    from mrhub.infrastructure.database import TaskRepository
+
+    audit = TaskRepository(get_settings().database_path).list_audit()
+    completed = [
+        item for item in audit
+        if item["event_type"] == "security_lab.review_completed"
+    ]
+    assert len(completed) == 1
+    assert completed[0]["metadata"]["reason_code"] == "offline_structured_security_log_review"
+    assert "private-login-id" not in str(completed[0])
+
+
+
+def test_structured_log_review_counts_json_parser_resource_edge_cases_as_unparsed():
+    oversized_integer = '{"event_type":"unknown.event","value":' + ("9" * 5_000) + '}'
+    deeply_nested = '{"event_type":"unknown.event","value":' + ("[" * 10_000) + "0" + ("]" * 10_000) + "}"
+    text = f"{oversized_integer}\n{deeply_nested}"
+
+    result = audit_structured_log_text(
+        text,
+        scope=_scope(),
+        asset="repo:owned-project",
+    )
+
+    assert result["structured_records"] == 0
+    assert result["unparsed_lines"] == 2
+    assert result["findings"] == []
+    assert oversized_integer not in str(result)
+    assert deeply_nested not in str(result)
