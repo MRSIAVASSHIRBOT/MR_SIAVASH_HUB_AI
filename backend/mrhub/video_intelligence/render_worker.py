@@ -81,6 +81,13 @@ class VideoRenderWorkerHandler:
 
             if lease_lost.is_set():
                 return {"render_id": str(render_id), "status": "lease_lost"}
+            current_task = self.tasks.get(task.task_id)
+            if current_task is None or current_task.status is TaskStatus.CANCELLED:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_before_render", lease=lease,
+                )
+                return {"render_id": str(render_id), "status": "cancelled"}
             output_asset_id, storage_key, output_path = self.media.new_output_target()
             rendered = render_video_timeline(
                 timeline=timeline,
