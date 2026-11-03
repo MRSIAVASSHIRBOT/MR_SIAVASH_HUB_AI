@@ -69,7 +69,7 @@ def test_mcp_service_refuses_non_numeric_loopback_bind(host, monkeypatch):
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
-def test_mcp_service_starts_explicitly_with_bounded_transport(host, monkeypatch):
+def test_mcp_service_starts_explicitly_with_stateless_bounded_transport(host, monkeypatch):
     calls = {}
 
     class FakeServer:
@@ -88,6 +88,4 @@ def test_mcp_service_starts_explicitly_with_bounded_transport(host, monkeypatch)
         "streamable_http_path": "/mcp",
         "stateless_http": True,
         "max_request_body_size": 1_048_576,
-        "max_sessions": 20,
-        "session_idle_timeout": 300,
     }
