@@ -157,3 +157,15 @@ This backlog converts the audit into ordered work packages. It is a plan and evi
 ### 8.5 Completion semantics
 
 A work package may move from PLANNED to IN_PROGRESS only when an owner, bounded scope, and acceptance criteria are recorded. It moves to IMPLEMENTED when code exists, TESTED only after named checks pass on the exact SHA, INTEGRATED only after an authorized merge to current main, RUNTIME VERIFIED only after the intended environment is exercised, and ACCEPTED only after owner-controlled acceptance. WP-11 remains blocked until the whole-project gates in Section 6 are satisfied.
+
+
+### 8.6 WP-01 source-review findings
+
+The current `backend/mrhub/operations/backup.py` implementation is intentionally database-only:
+- SQLite backup uses the SQLite online backup API, then verifies `PRAGMA quick_check`, file size and SHA-256 manifest data.
+- Restore verifies the sidecar manifest and checksum, copies into a new temporary database, rechecks integrity, and publishes without intentionally overwriting an existing destination.
+- The manifest explicitly excludes provider tokens, application secrets and external media. Encryption keys and media therefore remain separate recovery responsibilities.
+- The manifest checksum is not a signature or encryption; its protection must be independent of the backup file.
+- POSIX output permissions are restricted to owner read/write. Windows ACL behavior and real target-device restore have not been verified.
+
+**WP-01 next design tasks:** define a media inventory and consistency strategy; define a user-controlled, separately protected key-material recovery procedure; specify restore ordering and post-restore validation for the API/worker/UI; then add automated tests for any new helper before target-device acceptance. No secret export, credential collection, or automatic key copying is authorized by this work package.
