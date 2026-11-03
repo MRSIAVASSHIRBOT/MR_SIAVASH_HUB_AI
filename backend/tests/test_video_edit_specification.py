@@ -96,3 +96,17 @@ def test_request_bounds_custom_directive_keys_and_values():
             source_asset_ids=["asset-123"],
             custom_changes={"captions": "x" * 501},
         )
+
+
+
+def test_edit_spec_excludes_scene_cut_at_or_after_analyzed_source_end():
+    request = VideoAnalysisRequest(
+        mode=AnalysisMode.FAITHFUL,
+        source_asset_ids=["asset-123"],
+    )
+    asset = _asset_result()
+    asset["scene_start_timestamps"] = [0.0, 3.5, 8.0, 12.0]
+
+    specification = build_edit_specification(request, [asset])
+
+    assert specification.sources[0].scene_start_timestamps == [0.0, 3.5, 8.0]
