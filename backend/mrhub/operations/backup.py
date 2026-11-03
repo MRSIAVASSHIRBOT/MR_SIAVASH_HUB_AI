@@ -155,6 +155,8 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
     }
     registered_keys: set[str] = set()
     root_is_safe = not media_root.is_symlink()
+    if not root_is_safe:
+        result["invalid_entries"] += 1
     try:
         resolved_root = media_root.resolve(strict=False)
     except OSError:
@@ -163,8 +165,10 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
 
     for storage_key, expected_size, expected_hash in rows:
         key = storage_key if isinstance(storage_key, str) else ""
-        if not _MEDIA_STORAGE_KEY_PATTERN.fullmatch(key) or not root_is_safe:
+        if not _MEDIA_STORAGE_KEY_PATTERN.fullmatch(key):
             result["invalid_entries"] += 1
+            continue
+        if not root_is_safe:
             continue
         registered_keys.add(key)
         candidate = media_root / key
