@@ -11,11 +11,13 @@ from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
+from mrhub.video_intelligence.edit_spec import build_edit_specification
 from mrhub.video_intelligence.frames import FrameExtractionError, extract_video_frames
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
 from mrhub.video_intelligence.service import probe_video
+from mrhub.video_intelligence.timeline import build_video_timeline
 from mrhub.video_intelligence.vision import analyze_sampled_frames
 
 
@@ -175,6 +177,11 @@ class VideoAnalysisWorkerHandler:
                 else "bounded_technical_and_temporal"
             )
         )
+        edit_specification = build_edit_specification(request, results)
+        timeline = build_video_timeline(edit_specification)
+        edit_specification = edit_specification.model_copy(
+            update={"timeline_status": "validated_cut_only"}
+        )
         result = {
             "analysis_id": str(analysis_id),
             "mode": request.mode.value,
@@ -190,6 +197,8 @@ class VideoAnalysisWorkerHandler:
             "brand_profile_applied": False,
             "custom_changes_applied": False,
             "assets": results,
+            "edit_specification": edit_specification.model_dump(mode="json"),
+            "timeline": timeline.model_dump(mode="json"),
         }
         self.jobs.finish(task.task_id, owner_user_id, status="completed", result=result, lease=lease)
         return {"analysis_id": str(analysis_id), "status": "completed", "asset_count": len(results)}
