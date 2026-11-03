@@ -1,7 +1,7 @@
-"""Durable owner-scoped persistence for explicit video-generation requests.
+"""Durable owner-scoped persistence for approval-gated video-generation requests.
 
-Jobs remain prepared until a separately configured worker/provider handoff is
-available. This repository never invokes a provider or starts background work.
+The repository stores encrypted inputs and fenced lifecycle state. Provider calls
+are performed only by the separately registered, lease-owned worker handler.
 """
 from __future__ import annotations
 
