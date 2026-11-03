@@ -564,6 +564,26 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_owner_retry ON media_file_cleanup(owner_user_id, attempt_count, updated_at, created_at)",
         ),
     ),
+    Migration.build(
+        20,
+        "owner_scoped_video_brand_profiles",
+        (
+            """CREATE TABLE IF NOT EXISTS video_brand_profiles (
+                profile_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                brand_name TEXT NOT NULL CHECK (length(brand_name) BETWEEN 1 AND 80),
+                handle TEXT CHECK (handle IS NULL OR length(handle) <= 80),
+                logo_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE SET NULL,
+                colors_json TEXT NOT NULL,
+                font_preferences_json TEXT NOT NULL,
+                tone TEXT CHECK (tone IS NULL OR length(tone) <= 240),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id, brand_name)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_brand_profiles_owner_updated ON video_brand_profiles(owner_user_id, updated_at)",
+        ),
+    ),
 )
 
  
