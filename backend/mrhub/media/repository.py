@@ -402,6 +402,7 @@ class MediaAssetRepository:
                 """UPDATE video_render_runs
                    SET status = 'completed', output_asset_id = ?, error_code = NULL, updated_at = ?
                    WHERE render_id = ? AND task_id = ? AND owner_user_id = ? AND status = 'running'
+                     AND output_storage_key = ?
                      AND EXISTS (
                        SELECT 1 FROM worker_executions AS e
                        WHERE e.task_id = ? AND e.lease_owner = ? AND e.execution_token = ?
@@ -409,7 +410,7 @@ class MediaAssetRepository:
                      )""",
                 (
                     str(asset_uuid), now, str(render_id), str(task_id), owner_user_id,
-                    str(task_id), lease.owner, lease.fencing_token, now,
+                    storage_key, str(task_id), lease.owner, lease.fencing_token, now,
                 ),
             )
             if completed.rowcount != 1:
