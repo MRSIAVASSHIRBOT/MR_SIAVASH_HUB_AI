@@ -105,3 +105,55 @@ A new defensive capability is under review in PR #212:
 - On the corrected head, Defensive Python Scan passed; Backend CI and the Python 3.11/3.12 CI suites were still running at this update. Do not merge until all required checks finish successfully.
 
 The current open PR queue now also includes #211 (this audit) and #212 (defensive log review), in addition to the historical #183, #186 and #210. All remain open; no merge or release was performed by this update.
+
+
+## 8. Execution backlog and dependency gates
+
+This backlog converts the audit into ordered work packages. It is a plan and evidence ledger, not a claim that unstarted work is in progress. Work may run in parallel only when its file ownership and contracts do not conflict.
+
+### 8.1 Active baseline
+
+| Item | Evidence / state | Next action |
+|---|---|---|
+| Mainline | `main` = `067177554ac923864981c11f80628e92aea0aa70`; tree inventory is unchanged at 319 entries | Keep this SHA as the integration baseline until a verified merge changes it |
+| PR #211 | Draft documentation PR; exact head `5ffa706dcea65d46872ed45c445558e9adb9042d`; Backend CI, CI, and Defensive Python Scan completed successfully | Keep open for review; do not treat as merged |
+| PR #212 | Draft defensive log-review PR; exact head `9d98c38f1752e07f290c736eb3dd9ddd6e0894e7`; new exact-head checks were queued/running at the latest observation | Review new parser-hardening tests and wait for all exact-head checks |
+| PR #186 | Renderer branch is stacked on an obsolete timeline base and contains a migration collision | Do not merge or rebase the full branch; rebuild only renderer-specific changes on current main |
+| PR #183 / #210 | Historical audit/status snapshots based on older mainlines | Preserve as historical evidence; do not use as the current source of truth |
+
+### 8.2 Work packages
+
+| ID | Work package | Dependencies | Deliverables | Acceptance gate | Initial state |
+|---|---|---|---|---|---|
+| WP-00 | Mainline and change control | None | Current audit, branch/PR inventory, one status vocabulary, exact-SHA evidence | Every integration starts from current main; no stale branch or unreviewed migration is replayed | IN_PROGRESS |
+| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | PLANNED |
+| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | PLANNED |
+| WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | PLANNED |
+| WP-04 | Memory and knowledge integrity | WP-03 | Source-content verification, provenance checks, bounded context assembly and retrieval evaluation | Owner isolation, deletion/export, provenance, stale-source behavior and prompt-injection boundaries pass tests | PLANNED |
+| WP-05 | Tools and MCP governance | WP-02, WP-03 | Compatibility/integrity checks, least-privilege grants, tool lifecycle and audit coverage | Invalid schemas, denied grants, timeout, oversized output and untrusted tool results fail closed | PLANNED |
+| WP-06 | NEXUS and Discovery | WP-02, WP-03, WP-05 | Evidence-backed repository analysis; source-attributed research records; read-only default | No unapproved execution or network access; provenance, bounded resource use and untrusted-content handling are tested | PLANNED |
+| WP-07 | Defensive Security Lab | WP-00 | Complete offline log review, privacy and malformed-input handling; later approved advisory-snapshot review | Exact-scope authorization, bounded input, no target mutation/network activity, privacy assertions and exact-head CI | IN_PROGRESS |
+| WP-08 | Content and social integrations | WP-02, WP-03, WP-05 | External-origin/media reachability checks, provider scopes, controlled publish/reconciliation flow | Draft-first approval; real controlled account test; ambiguous provider outcomes remain quarantined and are never blindly retried | PLANNED |
+| WP-09 | Video and media pipeline | WP-02, WP-05 | Current-main renderer rebuild; fenced source-media-use lease; output registration and cleanup | Validated timeline input, fixed render profiles, bounded FFmpeg/FFprobe, lease held for full render, real MP4 metadata check, no orphaned outputs | PLANNED |
+| WP-10 | Operator UI | WP-02 through WP-09 | End-to-end UI coverage for supported workflows and clear capability/limitation states | Authenticated browser smoke tests, owner isolation, safe error states, keyboard/accessibility review | PLANNED |
+| WP-11 | Packaging and release candidate | WP-01 through WP-10 | Canonical dependency lock, license decision, reproducible wheel/package, Windows install/upgrade/rollback and recovery runbooks | Exact final-SHA CI and security scans; clean target-device install, restart, restore and rollback; owner acceptance | BLOCKED on prior work and target-device acceptance |
+
+### 8.3 Parallel execution lanes
+
+- **Reliability lane:** WP-01 and WP-02. Keep database, media, and key-material recovery boundaries separate.
+- **AI and knowledge lane:** WP-03 and WP-04. Provider budgets and provenance contracts must be settled before expanding agent context.
+- **Platform governance lane:** WP-05 and WP-06. Tool permissions and untrusted-source handling are shared dependencies.
+- **Product capability lane:** WP-07, WP-08, and WP-09 may proceed independently after WP-00; do not share or duplicate worker, migration, or API files without an explicit contract review.
+- **Experience and delivery lane:** WP-10 follows stable API contracts; WP-11 is the final release gate.
+
+### 8.4 Immediate next actions
+
+1. Finish exact-head validation and code review for PR #212, including parser edge cases; keep it Draft until the review and checks are complete.
+2. Keep PR #211 as the single project-wide readiness record and refresh it whenever an integration changes main.
+3. Start WP-01 with a source-level review of the existing SQLite backup helper and a media/key recovery design; do not export or copy secret material automatically.
+4. Start WP-02 with a lifecycle/side-effect contract review before adding scheduled triggers or changing worker state transitions.
+5. Rebuild the renderer from current main only after its source-media lease and timeline contracts are specified.
+
+### 8.5 Completion semantics
+
+A work package may move from PLANNED to IN_PROGRESS only when an owner, bounded scope, and acceptance criteria are recorded. It moves to IMPLEMENTED when code exists, TESTED only after named checks pass on the exact SHA, INTEGRATED only after an authorized merge to current main, RUNTIME VERIFIED only after the intended environment is exercised, and ACCEPTED only after owner-controlled acceptance. WP-11 remains blocked until the whole-project gates in Section 6 are satisfied.
