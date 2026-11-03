@@ -70,6 +70,7 @@ def test_probe_disables_redirects_and_environment_proxy_inheritance(monkeypatch)
     assert clients[0].kwargs["follow_redirects"] is False
     assert clients[0].kwargs["trust_env"] is False
     assert clients[0].request_args[0:2] == ("GET", "http://127.0.0.1:18789/health")
+    assert clients[0].request_args[2]["headers"] == {"Accept": "application/json"}
 
 
 def test_probe_enforces_response_byte_limit(monkeypatch):
