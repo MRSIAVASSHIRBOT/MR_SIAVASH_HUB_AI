@@ -561,7 +561,7 @@ MIGRATIONS = (
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""",
-            "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_owner_created ON media_file_cleanup(owner_user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_owner_retry ON media_file_cleanup(owner_user_id, attempt_count, updated_at, created_at)",
         ),
     ),
 )
