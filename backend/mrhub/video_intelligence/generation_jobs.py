@@ -1,7 +1,7 @@
-"""Durable owner-scoped persistence for explicit video-generation requests.
+"""Durable owner-scoped persistence for approval-gated video-generation requests.
 
-Jobs remain prepared until a separately configured worker/provider handoff is
-available. This repository never invokes a provider or starts background work.
+The repository stores encrypted inputs and fenced lifecycle state. Provider calls
+are performed only by the separately registered, lease-owned worker handler.
 """
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
     decrypt_payload,
@@ -152,6 +154,204 @@ class VideoGenerationJobRepository:
             "model": model,
             "execution": "not_started",
         }, True
+
+    def enqueue(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
+        """Atomically bind a prepared generation to one durable worker task."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            job = connection.execute(
+                """SELECT status, provider, model FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if job is None:
+                return None
+            existing = connection.execute(
+                """SELECT task_id FROM video_generation_task_links
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if existing is not None:
+                return {"generation_id": str(generation_id), "task_id": existing["task_id"], "status": str(job["status"]), "created": False}
+            if job["status"] != "prepared":
+                raise ValueError("Only prepared generation jobs can be enqueued")
+            task = TaskRecord(
+                task_type="video.generation",
+                risk_class=RiskClass.HIGH,
+                description=(
+                    f"Owner-requested generation {generation_id} "
+                    f"via {job['provider']}/{job['model']}"
+                ),
+            )
+            connection.execute(
+                """INSERT INTO tasks (
+                    task_id, task_type, status, risk_class, created_at, updated_at, description
+                ) VALUES (?, ?, 'waiting_approval', ?, ?, ?, ?)""",
+                (str(task.task_id), task.task_type, task.risk_class.value,
+                 task.created_at.isoformat(), task.updated_at.isoformat(), task.description),
+            )
+            connection.execute(
+                """INSERT INTO video_generation_task_links (
+                    generation_id, owner_user_id, task_id, created_at
+                ) VALUES (?, ?, ?, ?)""",
+                (str(generation_id), owner_user_id, str(task.task_id), now),
+            )
+            connection.execute(
+                """UPDATE video_generation_jobs SET status = 'queued', updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = 'prepared'""",
+                (now, str(generation_id), owner_user_id),
+            )
+        return {"generation_id": str(generation_id), "task_id": str(task.task_id), "status": "queued", "created": True}
+
+    def load_for_worker(self, task_id: UUID) -> dict[str, object] | None:
+        """Decrypt one queued job only through its linked durable task."""
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                """SELECT l.owner_user_id, l.generation_id, j.provider, j.model,
+                          j.status, p.envelope_version, p.nonce_b64, p.ciphertext_b64
+                   FROM video_generation_task_links AS l
+                   JOIN video_generation_jobs AS j
+                     ON j.generation_id = l.generation_id
+                    AND j.owner_user_id = l.owner_user_id
+                   JOIN video_generation_payloads AS p
+                     ON p.generation_id = j.generation_id
+                    AND p.owner_user_id = j.owner_user_id
+                   WHERE l.task_id = ?""",
+                (str(task_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["status"] != "queued":
+            raise ValueError("Only queued generation jobs can be dispatched")
+        generation_id = str(row["generation_id"])
+        owner_user_id = str(row["owner_user_id"])
+        payload = decrypt_payload(
+            EncryptedPayload(
+                version=int(row["envelope_version"]),
+                nonce_b64=str(row["nonce_b64"]),
+                ciphertext_b64=str(row["ciphertext_b64"]),
+            ),
+            workflow_id=generation_id,
+            task_id=generation_id,
+            owner_user_id=owner_user_id,
+            key=load_payload_key(),
+        )
+        return {
+            "owner_user_id": owner_user_id,
+            "generation_id": generation_id,
+            "provider": str(row["provider"]),
+            "model": str(row["model"]),
+            "request": payload,
+        }
+
+    def transition_under_lease(
+        self,
+        owner_user_id: str,
+        generation_id: UUID,
+        target: str,
+        *,
+        lease: WorkerLease,
+        provider_job_id: str | None = None,
+        error_code: str | None = None,
+    ) -> dict[str, object] | None:
+        """Change a generation state only while its task fencing token is current."""
+        if lease.task_id == "" or not lease.owner or lease.fencing_token < 1:
+            raise ValueError("A valid worker lease is required")
+        now = self._now()
+        allowed = {"queued": {"submitting", "failed"}, "submitting": {"running", "unknown_outcome", "failed"}}
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            link = connection.execute(
+                """SELECT task_id FROM video_generation_task_links
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if link is None or link["task_id"] != lease.task_id:
+                raise ValueError("Worker lease does not own this generation task")
+            current = connection.execute(
+                """SELECT status FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if current is None:
+                return None
+            if target not in allowed.get(str(current["status"]), set()):
+                raise ValueError("Invalid fenced generation state transition")
+            cursor = connection.execute(
+                """UPDATE video_generation_jobs SET status = ?,
+                       provider_job_id = COALESCE(?, provider_job_id),
+                       error_code = ?, updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = ?
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions e
+                       WHERE e.task_id = ? AND e.lease_owner = ?
+                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )""",
+                (target, provider_job_id, error_code, now, str(generation_id),
+                 owner_user_id, current["status"], lease.task_id, lease.owner,
+                 lease.fencing_token, now),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Worker lease lost before generation state update")
+        return self.get(owner_user_id, generation_id)
+
+
+    def fail_unapproved_task(self, task_id: UUID) -> bool:
+        """Fail a queued generation task that lacks a valid owner approval."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT l.generation_id, l.owner_user_id
+                   FROM video_generation_task_links AS l
+                   WHERE l.task_id = ?""",
+                (str(task_id),),
+            ).fetchone()
+            if row is None:
+                return False
+            cursor = connection.execute(
+                """UPDATE video_generation_jobs
+                   SET status = 'failed', error_code = 'approval_missing_or_stale',
+                       updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = 'queued'""",
+                (now, row["generation_id"], row["owner_user_id"]),
+            )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """DELETE FROM video_generation_payloads
+                       WHERE generation_id = ? AND owner_user_id = ?""",
+                    (row["generation_id"], row["owner_user_id"]),
+                )
+        return cursor.rowcount == 1
+
+    def reject_pending_task(self, task_id: UUID, owner_user_id: str) -> bool:
+        """Purge an owner-rejected generation payload before any provider dispatch."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            link = connection.execute(
+                """SELECT generation_id FROM video_generation_task_links
+                   WHERE task_id = ? AND owner_user_id = ?""",
+                (str(task_id), owner_user_id),
+            ).fetchone()
+            if link is None:
+                return False
+            generation_id = str(link["generation_id"])
+            cursor = connection.execute(
+                """UPDATE video_generation_jobs
+                   SET status = 'failed', error_code = 'owner_rejected_before_submission',
+                       updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = 'queued'""",
+                (now, generation_id, owner_user_id),
+            )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """DELETE FROM video_generation_payloads
+                       WHERE generation_id = ? AND owner_user_id = ?""",
+                    (generation_id, owner_user_id),
+                )
+        return cursor.rowcount == 1
 
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:

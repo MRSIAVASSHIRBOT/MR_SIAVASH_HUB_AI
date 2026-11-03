@@ -95,6 +95,13 @@ def decide_approval(
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    if payload.decision == "rejected" and task.task_type == "video.generation":
+        from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+        VideoGenerationJobRepository(repository.database_path).reject_pending_task(
+            task_id, user.user_id
+        )
+
     AuditLogger(repository).record(
         event_type="task.approval_decided",
         outcome=payload.decision,
