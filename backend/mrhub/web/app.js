@@ -575,6 +575,7 @@
     canSubmitVideoRender = analysis.status === "completed"
       && timeline && Array.isArray(timeline.video_track) && timeline.video_track.length > 0;
     $("#video-render-submit").disabled = !canSubmitVideoRender
+      || (Boolean(activeVideoRenderId) && !activeVideoRenderStatus)
       || ["accepted", "running"].includes(activeVideoRenderStatus);
   }
 
