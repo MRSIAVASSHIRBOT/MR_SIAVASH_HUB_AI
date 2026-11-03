@@ -21,6 +21,15 @@ class PromptCompositionUnavailable(ValueError):
         self.code = code
 
 
+def _is_finite_number(value: object) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 class AnalysisPromptOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -87,12 +96,7 @@ def compose_prompts_from_analysis(
     prompts: list[dict[str, object]] = []
     for asset_id, technical in technical_by_id.items():
         window = technical.get("analysis_window_seconds")
-        if (
-            not isinstance(window, (int, float))
-            or isinstance(window, bool)
-            or not math.isfinite(window)
-            or not 0 < window <= 60
-        ):
+        if not _is_finite_number(window) or not 0 < window <= 60:
             raise PromptCompositionUnavailable("analysis_result_invalid", "Analysis duration is invalid")
         duration_seconds = max(3, min(60, math.ceil(window)))
 
@@ -104,9 +108,7 @@ def compose_prompts_from_analysis(
         scene_starts: list[float] = []
         for index, raw_timestamp in enumerate(raw_scene_starts):
             if (
-                isinstance(raw_timestamp, bool)
-                or not isinstance(raw_timestamp, (int, float))
-                or not math.isfinite(raw_timestamp)
+                not _is_finite_number(raw_timestamp)
                 or raw_timestamp < 0
                 or raw_timestamp >= window
             ):
