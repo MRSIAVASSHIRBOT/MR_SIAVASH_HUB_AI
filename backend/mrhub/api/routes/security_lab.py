@@ -41,17 +41,22 @@ def _audit_review(
     current_user: AuthenticatedUser,
     event_type: str,
     reason_code: str,
+    outcome: str = "success",
 ) -> None:
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     AuditLogger(repository).record(
         event_type=event_type,
-        outcome="success",
+        outcome=outcome,
         subject_type="security_review",
         subject_id=str(uuid4()),
         actor_type="user",
         actor_id=current_user.user_id,
-        metadata={"reason_code": reason_code, "decision": "allow", "status": "completed"},
+        metadata={
+            "reason_code": reason_code,
+            "decision": "allow" if outcome == "success" else "deny",
+            "status": "completed" if outcome == "success" else "denied",
+        },
     )
 
 
@@ -82,6 +87,12 @@ def _run_review(
             )
             reason_code = "offline_configuration_review"
     except ScopeValidationError as exc:
+        _audit_review(
+            current_user=current_user,
+            event_type="security_lab.review_denied",
+            reason_code="authorization_scope_denied",
+            outcome="denied",
+        )
         raise HTTPException(
             status_code=403,
             detail={"reason_code": "authorization_scope_denied"},
