@@ -9,10 +9,8 @@ from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
 from mrhub.video_intelligence.render_worker import VideoRenderWorkerHandler
-from mrhub.video_intelligence.render_jobs import (
-    VideoRenderJobRepository,
-)
 from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
 
 
@@ -42,6 +40,10 @@ def _completed_analysis(tmp_path, monkeypatch):
                 task_id, lease_owner, lease_expires_at, execution_token
             ) VALUES (?, ?, ?, ?)""",
             (str(task_id), "analysis-worker", expiry, 1),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
         )
     repository.finish(
         task_id,
