@@ -4,6 +4,7 @@ import base64
 
 import pytest
 
+from mrhub.config import get_settings
 from mrhub.jobs.payload_envelope import (
     ENVELOPE_VERSION,
     EncryptedPayload,
@@ -78,6 +79,7 @@ def test_unknown_version_and_bad_key_are_rejected() -> None:
 
 def test_missing_or_invalid_environment_key_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
+    get_settings.cache_clear()
     with pytest.raises(PayloadEnvelopeError, match="not configured"):
         load_payload_key()
     with pytest.raises(PayloadEnvelopeError, match="32 bytes"):
@@ -89,3 +91,19 @@ def test_non_json_and_oversized_payload_are_rejected() -> None:
         encrypt_payload({"not_finite": float("nan")}, **BINDING, key=KEY)
     with pytest.raises(PayloadEnvelopeError, match="size limit"):
         encrypt_payload({"data": "x" * 1_100_000}, **BINDING, key=KEY)
+
+
+
+def test_payload_key_loads_from_dotenv_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    encoded = base64.urlsafe_b64encode(KEY).decode("ascii")
+    monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        f"MRH_WORKFLOW_PAYLOAD_KEY={encoded}\\n",
+        encoding="utf-8",
+    )
+    get_settings.cache_clear()
+    try:
+        assert load_payload_key() == KEY
+    finally:
+        get_settings.cache_clear()
