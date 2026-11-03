@@ -1,4 +1,4 @@
-from uuid import UUID
+import uuid
 
 import pytest
 
@@ -12,7 +12,7 @@ from mrhub.video_intelligence.scenes import SceneDetectionError, SceneDetectionR
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
 
-ASSET_ID = UUID("9c4d0a4e-7ef3-4ea5-9463-bc03b3e9a960")
+ASSET_ID = uuid.UUID("9c4d0a4e-7ef3-4ea5-9463-bc03b3e9a960")
 
 
 class FakeMediaRepository:
