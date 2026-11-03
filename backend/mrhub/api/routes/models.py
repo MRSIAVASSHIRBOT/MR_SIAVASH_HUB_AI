@@ -322,6 +322,7 @@ def generate_local_model(payload: GenerateModelRequest):
             ProviderRequest(
                 input_text=payload.input_text,
                 max_output_tokens=payload.max_output_tokens,
+                images=tuple(payload.images),
             ),
         )
     except ProviderError as exc:
