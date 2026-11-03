@@ -68,6 +68,7 @@ def test_asset_cannot_be_deleted_while_transcode_is_in_progress(tmp_path: Path) 
 
     assert repository.get("owner-1", asset_id) is not None
 
+
 def test_deleting_transcoded_derivative_queues_its_file_for_cleanup(
     tmp_path: Path,
 ) -> None:
