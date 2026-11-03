@@ -111,6 +111,7 @@ def test_detect_scene_boundaries_returns_opening_scene_when_no_cuts(
         b"#tb 0: 1/24\n0, 0, N/A, 1, 100, deadbeef\n",
         b"#tb 0: 1/24\n0, 0, 24, 1, 100\n",
         b"\xff",
+        _framehash(10**400),
     ],
 )
 def test_parse_framehash_rejects_malformed_output(output):
