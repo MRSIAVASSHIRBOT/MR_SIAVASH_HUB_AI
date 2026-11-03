@@ -107,6 +107,8 @@ class ModelRunWorkerHandler:
 
         try:
             result = orchestrator.run(request, should_cancel=should_cancel)
+            if should_cancel() and result.get("status") != "cancelled":
+                result = {**result, "status": "cancelled", "error_code": "cancelled"}
         except Exception:
             # The inference/tool loop may have partially completed. Never replay it.
             self.recovery.mark_interrupted(workflow_id, lease=lease)
