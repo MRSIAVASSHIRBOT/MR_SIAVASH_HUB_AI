@@ -459,3 +459,72 @@ def test_render_output_registration_rejects_unreserved_storage_key(tmp_path, mon
 
     assert media.get("owner-a", UUID(output_id)) is None
     assert jobs.get("owner-a", render_id)["status"] == "running"
+
+
+def test_render_cancellation_is_owner_scoped_and_terminal_when_queued(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-cancel-queued")
+    render_id = UUID(accepted["render_id"])
+    task_id = UUID(accepted["task_id"])
+
+    assert jobs.cancel("owner-b", render_id) is None
+    cancelled = jobs.cancel("owner-a", render_id)
+    assert cancelled == {
+        "render_id": str(render_id),
+        "status": "cancelled",
+        "cancellation_requested": False,
+    }
+    assert jobs.get("owner-a", render_id)["status"] == "cancelled"
+    assert analysis_repository.tasks.get(task_id).status.value == "cancelled"
+    with analysis_repository.tasks._connection() as connection:
+        status = connection.execute(
+            "SELECT status FROM idempotency_records WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()["status"]
+    assert status == "failed"
+
+
+def test_running_render_cancellation_signals_worker_without_publishing(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-cancel-running")
+    render_id = UUID(accepted["render_id"])
+    task_id = UUID(accepted["task_id"])
+    expiry = "2099-01-01T00:00:00+00:00"
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (
+                str(task_id), "2026-11-04T00:00:00+00:00",
+                "render-worker", expiry, 11,
+            ),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=11,
+        expires_at=expiry,
+    )
+    assert jobs.mark_running(task_id, "owner-a", lease=lease) is True
+
+    cancelled = jobs.cancel("owner-a", render_id)
+    assert cancelled == {
+        "render_id": str(render_id),
+        "status": "running",
+        "cancellation_requested": True,
+    }
+    assert analysis_repository.tasks.get(task_id).status.value == "cancelled"
+    # The worker owns the terminal render transition after it observes cancellation.
+    assert jobs.get("owner-a", render_id)["status"] == "running"
