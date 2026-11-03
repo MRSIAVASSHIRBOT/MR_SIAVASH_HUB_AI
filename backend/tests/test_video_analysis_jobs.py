@@ -1,10 +1,13 @@
 import base64
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
 
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
+from mrhub.jobs.worker import WorkerEngine
+from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
 from mrhub.video_intelligence.jobs import (
     VideoAnalysisConflict,
     VideoAnalysisJobRepository,
@@ -120,3 +123,81 @@ def test_submit_fails_closed_without_encryption_key(tmp_path, monkeypatch):
             _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"),
             "request-3",
         )
+
+
+
+def test_stale_worker_recovery_releases_orphaned_asset_use_locks(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository = _repository(tmp_path)
+    media = MediaAssetRepository(repository.database_path)
+    asset = media.store_upload(
+        "owner-a", "recovery.mp4", "video/mp4", b"recovery-video-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    accepted, created = repository.submit(
+        "owner-a", _request(str(asset_id)), "recovery-idempotency-key"
+    )
+    assert created is True
+    task_id = UUID(accepted["task_id"])
+
+    now = datetime.now(UTC)
+    started_at = (now - timedelta(minutes=10)).isoformat()
+    expired_at = (now - timedelta(minutes=5)).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            "UPDATE video_analysis_runs SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, 'worker-crashed', ?, 9)""",
+            (str(task_id), started_at, expired_at),
+        )
+        connection.execute(
+            """INSERT INTO media_asset_analysis_leases (
+                lease_id, asset_id, owner_user_id, task_id,
+                lease_owner, execution_token, created_at
+            ) VALUES (?, ?, ?, ?, 'worker-crashed', 9, ?)""",
+            (
+                "stale-analysis-lock",
+                str(asset_id),
+                "owner-a",
+                str(task_id),
+                started_at,
+            ),
+        )
+
+    # Lease expiry alone does not unblock deletion; stale recovery must confirm
+    # that the worker is old enough and clear its orphaned lock transactionally.
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        media.delete("owner-a", asset_id)
+
+    WorkerEngine(repository.tasks, clock=lambda: now)._recover_interrupted()
+
+    analysis = repository.get("owner-a", UUID(accepted["analysis_id"]))
+    assert analysis is not None
+    assert analysis["status"] == "failed"
+    assert analysis["error_code"] == "worker_interrupted"
+    assert repository.load_for_worker(task_id) is None
+    recovered_task = repository.tasks.get(task_id)
+    assert recovered_task is not None
+    assert recovered_task.status.value == "failed"
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0] == 0
+
+    assert media.delete("owner-a", asset_id) == [str(asset["storage_key"])]
+    assert media.cleanup_pending_files("owner-a") == 0

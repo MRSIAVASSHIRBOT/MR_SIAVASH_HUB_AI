@@ -34,7 +34,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads", "capability_candidates",
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
         "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
-        "content_publish_schedules", "media_file_cleanup",
+        "content_publish_schedules", "media_file_cleanup", "media_asset_analysis_leases",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -263,16 +263,16 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_23_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
     original = migrations.MIGRATIONS
-    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-4])
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-5])
 
     applied = SchemaMigrator(connection).migrate()
 
-    assert applied == [migration.version for migration in original[:-4]]
+    assert applied == [migration.version for migration in original[:-5]]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
     ).fetchone()[0] == 18
@@ -286,10 +286,10 @@ def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypa
     ).fetchone() is None
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22]
+    assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22, 23]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 22
+    ).fetchone()[0] == 23
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
@@ -323,5 +323,24 @@ def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypa
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'video_generation_idempotency'"
     ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'media_asset_analysis_leases'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_media_asset_analysis_leases_asset'"
+    ).fetchone() is not None
+    lease_foreign_keys = {
+        row["table"]: row["on_delete"]
+        for row in connection.execute(
+            "PRAGMA foreign_key_list(media_asset_analysis_leases)"
+        )
+    }
+    assert lease_foreign_keys == {
+        "content_assets": "RESTRICT",
+        "auth_users": "RESTRICT",
+        "tasks": "RESTRICT",
+    }
     assert SchemaMigrator(connection).migrate() == []
     connection.close()

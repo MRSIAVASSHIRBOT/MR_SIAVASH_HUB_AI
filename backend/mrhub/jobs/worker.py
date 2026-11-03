@@ -194,6 +194,14 @@ class WorkerEngine:
                            WHERE task_id = ?""",
                         (str(task.task_id),),
                     ).fetchone()
+                    if video_analysis is not None:
+                        # Recovery runs only after the task is older than the stale
+                        # threshold and its worker lease has expired. At this point
+                        # orphaned file-use locks can be released safely.
+                        connection.execute(
+                            "DELETE FROM media_asset_analysis_leases WHERE task_id = ?",
+                            (str(task.task_id),),
+                        )
                     if video_analysis is not None and video_analysis["status"] == "completed":
                         recovered_status = TaskStatus.SUCCEEDED
                         audit_outcome = "succeeded"
