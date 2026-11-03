@@ -4,7 +4,12 @@ from uuid import UUID, uuid4
 import pytest
 
 from mrhub.domain.tasks import TaskRecord
-from mrhub.video_intelligence.generation import VideoGenerationRequest
+from mrhub.video_intelligence.generation import (
+    GenerationStatus,
+    VideoGenerationRequest,
+    VideoGenerationResult,
+)
+from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
     VideoGenerationJobRepository,
