@@ -309,9 +309,10 @@ def test_security_lab_api_requires_authentication():
 
 
 def test_scope_rejects_authorizations_longer_than_thirty_days():
+    scope = DefensiveReviewScope(
+        authorization_reference="ticket-long",
+        authorized_assets=("repo:owned-project",),
+        expires_at=datetime.now(UTC) + timedelta(days=31),
+    )
     with pytest.raises(ScopeValidationError, match="30-day"):
-        DefensiveReviewScope(
-            authorization_reference="ticket-long",
-            authorized_assets=("repo:owned-project",),
-            expires_at=datetime.now(UTC) + timedelta(days=31),
-        )
+        scope.assert_current()
