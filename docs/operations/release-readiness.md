@@ -4,6 +4,9 @@ Use this checklist before tagging a release. A green unit-test suite is necessar
 
 Read the [release management policy](release-management.md) for the repository baseline, SemVer rules, dependency-lock requirements, release gates, update procedure, migration constraints, and rollback procedure.
 
+## Windows real-device acceptance
+- [ ] Complete the [Windows Local Acceptance Checklist](windows-acceptance-checklist.md) on a real Windows machine and record the tested commit SHA and sanitized results.
+
 ## Clean installation
 - [ ] Create a fresh Python 3.11 and/or 3.12 environment and install the approved dependency set from the checked-out commit.
 - [ ] Confirm the installed package imports and the documented local startup command works.
