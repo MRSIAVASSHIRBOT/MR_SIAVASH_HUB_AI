@@ -20,7 +20,7 @@ from mrhub.jobs.payload_envelope import (
     encrypt_payload,
     load_payload_key,
 )
-from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.tools.builtins import build_tool_registry
 
 
@@ -85,14 +85,42 @@ class ModelRunWorkerHandler:
             return {"workflow_id": str(workflow_id), "execution_completed": False,
                     "error_code": "worker_lease_lost"}
 
-        self.recovery.start_run(workflow_id, lease=lease)
-        attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
-        model_router = build_model_router(
-            provider_mode=provider_mode,
-            include_stub=False,
-            max_timeout_seconds=30.0,
-        )
-        orchestrator = AgentOrchestrator(model_router, build_tool_registry())
+        try:
+            self.recovery.start_run(workflow_id, lease=lease)
+            attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
+        except (WorkflowRecoveryError, LookupError):
+            self._fail_closed(task, lease)
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "workflow_not_dispatchable",
+            }
+
+        try:
+            model_router = build_model_router(
+                provider_mode=provider_mode,
+                include_stub=False,
+                max_timeout_seconds=30.0,
+            )
+            orchestrator = AgentOrchestrator(model_router, build_tool_registry())
+        except Exception:
+            self.recovery.fail_step(
+                workflow_id, attempt, "model_setup_failed", lease=lease
+            )
+            with self.repository._connection() as connection:
+                connection.execute(
+                    """UPDATE idempotency_records SET status = 'failed'
+                       WHERE task_id = ? AND status = 'running'""",
+                    (str(task.task_id),),
+                )
+            current = self.jobs.get(task.task_id)
+            if current is not None and current.status is TaskStatus.RUNNING:
+                self.jobs.transition(task.task_id, TaskStatus.FAILED, lease=lease)
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "model_setup_failed",
+            }
 
         def should_cancel() -> bool:
             if lease_lost.is_set():
