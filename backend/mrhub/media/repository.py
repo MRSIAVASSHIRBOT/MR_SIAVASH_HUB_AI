@@ -436,6 +436,48 @@ class MediaAssetRepository:
             )
         return keys
 
+    def cleanup_pending_files_all(self, limit: int = 100) -> int:
+        """Retry a bounded batch of durable cleanup entries across all owners.
+
+        This is an internal maintenance operation for the opt-in worker process.
+        Each row remains owner-scoped for its update/delete, and failed entries
+        are moved behind untouched entries to prevent starvation.
+        """
+        bounded_limit = max(1, min(limit, 100))
+        with self.tasks._connection() as connection:
+            rows = connection.execute(
+                "SELECT cleanup_id, owner_user_id, storage_key FROM media_file_cleanup "
+                "ORDER BY attempt_count, updated_at, created_at LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
+
+        for row in rows:
+            owner_user_id = str(row["owner_user_id"])
+            cleanup_id = str(row["cleanup_id"])
+            try:
+                self.file_path(str(row["storage_key"])).unlink(missing_ok=True)
+            except (OSError, ValueError):
+                with self.tasks._connection() as connection:
+                    connection.execute(
+                        "UPDATE media_file_cleanup "
+                        "SET attempt_count = attempt_count + 1, updated_at = ? "
+                        "WHERE cleanup_id = ? AND owner_user_id = ?",
+                        (self._now(), cleanup_id, owner_user_id),
+                    )
+                continue
+            with self.tasks._connection() as connection:
+                connection.execute(
+                    "DELETE FROM media_file_cleanup "
+                    "WHERE cleanup_id = ? AND owner_user_id = ?",
+                    (cleanup_id, owner_user_id),
+                )
+
+        with self.tasks._connection() as connection:
+            pending = connection.execute(
+                "SELECT COUNT(*) AS total FROM media_file_cleanup"
+            ).fetchone()
+        return int(pending["total"]) if pending is not None else 0
+
     def cleanup_pending_files(self, owner_user_id: str, limit: int = 100) -> int:
         """Retry bounded, owner-scoped file cleanup; return the number still pending."""
         bounded_limit = max(1, min(limit, 100))
