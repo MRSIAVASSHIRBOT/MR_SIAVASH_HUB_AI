@@ -116,3 +116,15 @@ All future implementation must:
 - **BLOCKED / NOT RUN:** Evidence is missing or a required gate cannot yet be completed.
 
 These labels are not interchangeable. A green CI run is not target-device acceptance. A working render engine is not an operational AI video provider. The project must not be called complete until the whole-product acceptance gates are satisfied.
+
+
+## Post-merge verification update — 2026-11-04 UTC
+
+The push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` have now all completed successfully:
+
+- Backend CI — success.
+- CI — success.
+- Defensive Python Scan — success.
+- Video Render Integration — success.
+
+This confirms the same integration remains green after the squash merge. It does not change the remaining target-device, restore-drill, external-provider, or whole-product release gates above.
