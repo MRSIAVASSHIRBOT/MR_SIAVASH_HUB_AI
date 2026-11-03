@@ -1,5 +1,5 @@
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
 from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compose_prompt
 from mrhub.config import get_settings
