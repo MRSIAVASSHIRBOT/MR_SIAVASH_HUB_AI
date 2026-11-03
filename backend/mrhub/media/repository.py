@@ -25,6 +25,10 @@ _STORAGE_KEY_PATTERN = re.compile(
 )
 
 
+class MediaAssetBusy(RuntimeError):
+    """Raised when an asset is currently being modified by a media operation."""
+
+
 class MediaAssetRepository:
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -237,19 +241,23 @@ class MediaAssetRepository:
         return self._record(row)
 
     def delete(self, owner_user_id: str, asset_id: UUID) -> list[str] | None:
+        now = self._now()
         with self.tasks._connection() as connection:
             row = connection.execute(
-                "SELECT source_asset_id FROM content_assets "
+                "SELECT source_asset_id, processing_status FROM content_assets "
                 "WHERE asset_id = ? AND owner_user_id = ?",
                 (str(asset_id), owner_user_id),
             ).fetchone()
             if row is None:
                 return None
+            if row["processing_status"] == "processing":
+                raise MediaAssetBusy("Media asset is currently being processed")
             if row["source_asset_id"] is not None:
-                keys = [connection.execute(
-                    "SELECT storage_key FROM content_assets WHERE asset_id = ?",
-                    (str(asset_id),),
-                ).fetchone()["storage_key"]]
+                rows = connection.execute(
+                    "SELECT storage_key FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
+                    (str(asset_id), owner_user_id),
+                ).fetchall()
+                keys = [item["storage_key"] for item in rows]
                 connection.execute(
                     "DELETE FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
                     (str(asset_id), owner_user_id),
@@ -258,17 +266,67 @@ class MediaAssetRepository:
                     "UPDATE content_assets SET processing_status = 'stored', "
                     "processing_profile = NULL, error_code = NULL, updated_at = ? "
                     "WHERE asset_id = ? AND owner_user_id = ?",
-                    (self._now(), row["source_asset_id"], owner_user_id),
+                    (now, row["source_asset_id"], owner_user_id),
+                )
+            else:
+                rows = connection.execute(
+                    "SELECT storage_key FROM content_assets "
+                    "WHERE asset_id = ? OR source_asset_id = ?",
+                    (str(asset_id), str(asset_id)),
+                ).fetchall()
+                keys = [item["storage_key"] for item in rows]
+                # Persist cleanup intent in the same transaction as metadata deletion.
+                # A process crash after COMMIT can therefore never lose the file key.
+                connection.executemany(
+                    "INSERT OR IGNORE INTO media_file_cleanup "
+                    "(cleanup_id, owner_user_id, storage_key, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    [
+                        (str(uuid4()), owner_user_id, key, now, now)
+                        for key in keys
+                    ],
+                )
+                connection.execute(
+                    "DELETE FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
+                    (str(asset_id), owner_user_id),
                 )
                 return keys
-            rows = connection.execute(
-                "SELECT storage_key FROM content_assets "
-                "WHERE asset_id = ? OR source_asset_id = ?",
-                (str(asset_id), str(asset_id)),
-            ).fetchall()
-            keys = [item["storage_key"] for item in rows]
-            connection.execute(
-                "DELETE FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
-                (str(asset_id), owner_user_id),
+
+            connection.executemany(
+                "INSERT OR IGNORE INTO media_file_cleanup "
+                "(cleanup_id, owner_user_id, storage_key, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (str(uuid4()), owner_user_id, key, now, now)
+                    for key in keys
+                ],
             )
         return keys
+
+    def cleanup_pending_files(self, owner_user_id: str, limit: int = 100) -> int:
+        """Retry bounded, owner-scoped file cleanup; return the number still pending."""
+        bounded_limit = max(1, min(limit, 100))
+        with self.tasks._connection() as connection:
+            rows = connection.execute(
+                "SELECT cleanup_id, storage_key FROM media_file_cleanup "
+                "WHERE owner_user_id = ? ORDER BY created_at LIMIT ?",
+                (owner_user_id, bounded_limit),
+            ).fetchall()
+
+        for row in rows:
+            try:
+                self.file_path(str(row["storage_key"])).unlink(missing_ok=True)
+            except OSError:
+                continue
+            with self.tasks._connection() as connection:
+                connection.execute(
+                    "DELETE FROM media_file_cleanup WHERE cleanup_id = ? AND owner_user_id = ?",
+                    (row["cleanup_id"], owner_user_id),
+                )
+
+        with self.tasks._connection() as connection:
+            pending = connection.execute(
+                "SELECT COUNT(*) AS total FROM media_file_cleanup WHERE owner_user_id = ?",
+                (owner_user_id,),
+            ).fetchone()
+        return int(pending["total"]) if pending is not None else 0
