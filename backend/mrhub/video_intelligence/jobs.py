@@ -160,6 +160,14 @@ class VideoAnalysisJobRepository:
             "error_code": row["error_code"],
         }
 
+    def owner_for_task(self, task_id: UUID) -> str | None:
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                "SELECT owner_user_id FROM video_analysis_runs WHERE task_id = ?",
+                (str(task_id),),
+            ).fetchone()
+        return str(row["owner_user_id"]) if row is not None else None
+
     def load_for_worker(self, task_id: UUID) -> tuple[str, UUID, dict[str, object]] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
