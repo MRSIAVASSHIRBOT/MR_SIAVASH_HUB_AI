@@ -131,6 +131,19 @@
         <pre id="agent-run-result" class="output-box" aria-live="polite">هنوز اجرایی انجام نشده است.</pre>
         <h3>منابع زمینهٔ استفاده‌شده</h3>
         <div id="agent-run-sources" class="record-list"></div>
+        <div class="workflow-tools">
+          <div class="section-heading">
+            <div><p class="eyebrow">DURABLE AGENT EXECUTION</p><h3>اجرای صف‌شده و پایدار</h3></div>
+            <span class="status-pill status-muted">اجرا توسط Worker</span>
+          </div>
+          <p class="muted">این گزینه درخواست را در صف ثبت می‌کند و صفحه منتظر اجرای مدل نمی‌ماند. وضعیت و نتیجه فقط با دکمهٔ به‌روزرسانی دریافت می‌شود؛ هیچ polling خودکاری انجام نمی‌شود.</p>
+          <div class="button-row">
+            <button id="agent-queue-button" class="button button-secondary" type="button">قرار دادن اجرا در صف</button>
+            <button id="agent-queued-refresh-button" class="button button-quiet" type="button" disabled>به‌روزرسانی وضعیت</button>
+            <button id="agent-queued-cancel-button" class="button button-quiet" type="button" hidden>لغو اجرای صف‌شده</button>
+          </div>
+          <pre id="agent-queued-result" class="output-box" aria-live="polite">هنوز اجرای صف‌شده‌ای ثبت نشده است.</pre>
+        </div>
       </section>
 
       <section class="panel">
