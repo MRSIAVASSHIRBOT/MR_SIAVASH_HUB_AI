@@ -675,6 +675,27 @@ class WorkflowRecoveryRepository:
                 ).fetchone()
                 if counts is None or counts["total"] == 0 or counts["total"] != counts["succeeded"]:
                     raise WorkflowRecoveryError("Every workflow step must succeed before completion")
+            if status == "cancelled":
+                connection.execute(
+                    """
+                    UPDATE workflow_step_attempts
+                    SET status = 'cancelled', error_code = 'cancelled', finished_at = ?
+                    WHERE step_id IN (
+                        SELECT step_id FROM workflow_steps
+                        WHERE workflow_id = ? AND status = 'running'
+                    ) AND status = 'running'
+                    """,
+                    (now, str(workflow_id)),
+                )
+                connection.execute(
+                    """
+                    UPDATE workflow_steps
+                    SET status = 'cancelled', error_code = 'cancelled',
+                        finished_at = ?, updated_at = ?
+                    WHERE workflow_id = ? AND status = 'running'
+                    """,
+                    (now, now, str(workflow_id)),
+                )
             cursor = connection.execute(
                 """
                 UPDATE workflow_runs SET status = ?, updated_at = ?
@@ -954,6 +975,39 @@ class WorkflowRecoveryRepository:
                 "task_id": task_id,
                 "status": "cancelled" if status in {"queued", "paused"} else "cancellation_requested",
             }
+
+    def replace_encrypted_payload(
+        self,
+        workflow_id: UUID,
+        *,
+        owner_user_id: str,
+        task_id: str,
+        payload_envelope: dict[str, object],
+    ) -> bool:
+        """Atomically replace an owner's encrypted envelope without exposing plaintext."""
+        version = payload_envelope.get("version")
+        nonce_b64 = payload_envelope.get("nonce_b64")
+        ciphertext_b64 = payload_envelope.get("ciphertext_b64")
+        if (
+            not isinstance(version, int) or version < 1
+            or not isinstance(nonce_b64, str) or not nonce_b64
+            or not isinstance(ciphertext_b64, str) or not ciphertext_b64
+        ):
+            raise WorkflowRecoveryError("Encrypted workflow payload envelope is invalid")
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE workflow_payloads
+                SET envelope_version = ?, nonce_b64 = ?, ciphertext_b64 = ?,
+                    created_at = ?
+                WHERE workflow_id = ? AND task_id = ? AND owner_user_id = ?
+                """,
+                (
+                    version, nonce_b64, ciphertext_b64, self._now(),
+                    str(workflow_id), task_id, owner_user_id,
+                ),
+            )
+            return cursor.rowcount == 1
 
     def get_encrypted_payload(
         self, workflow_id: UUID, *, owner_user_id: str

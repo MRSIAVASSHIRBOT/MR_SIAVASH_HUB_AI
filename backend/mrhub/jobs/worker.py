@@ -85,6 +85,7 @@ class WorkerEngine:
             "demo.echo": self._echo,
         }
         self.handlers["agent.workflow"] = self._run_agent_workflow
+        self.handlers["agent.model_run"] = self._run_agent_model_run
         self._initialize()
 
     def _now(self) -> datetime:
@@ -127,6 +128,16 @@ class WorkerEngine:
         from mrhub.jobs.workflow_dispatch import WorkflowWorkerHandler
 
         return WorkflowWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
+
+    def _run_agent_model_run(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Dispatch one durable model-driven Agent run under the current lease."""
+        from mrhub.jobs.model_run_dispatch import ModelRunWorkerHandler
+
+        return ModelRunWorkerHandler(self.repository)(
             task, lease=lease, lease_lost=lease_lost
         )
 
@@ -278,6 +289,14 @@ class WorkerEngine:
                     recovered_status = TaskStatus.WAITING_APPROVAL
                     audit_outcome = "recovery_required"
                     reason_code = "workflow_recovery_already_required"
+                    if workflow["status"] == "recovery_required":
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
                 else:
                     active_steps = connection.execute(
                         """
@@ -517,7 +536,7 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            if task.task_type == "agent.workflow":
+            if task.task_type in {"agent.workflow", "agent.model_run"}:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)
@@ -535,7 +554,7 @@ class WorkerEngine:
         # terminal, and do not overwrite paused/recovery-required states.
         after_handler = self.repository.get(task.task_id)
         if (
-            task.task_type == "agent.workflow"
+            task.task_type in {"agent.workflow", "agent.model_run"}
             and after_handler is not None
             and after_handler.status is not TaskStatus.RUNNING
         ):
