@@ -185,21 +185,18 @@ class ModelRunWorkerHandler:
         except Exception:
             # A completed model/tool loop whose result cannot be durably stored
             # is ambiguous to callers and must never be replayed automatically.
-            try:
-                self.recovery.mark_interrupted(workflow_id, lease=lease)
-                with self.repository._connection() as connection:
-                    connection.execute(
-                        """UPDATE idempotency_records SET status = 'unknown_outcome'
-                           WHERE task_id = ? AND status = 'running'""",
-                        (str(task.task_id),),
-                    )
-                current = self.jobs.get(task.task_id)
-                if current is not None and current.status is TaskStatus.RUNNING:
-                    self.jobs.transition(
-                        task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease
-                    )
-            except Exception:
-                pass
+            self.recovery.mark_interrupted(workflow_id, lease=lease)
+            with self.repository._connection() as connection:
+                connection.execute(
+                    """UPDATE idempotency_records SET status = 'unknown_outcome'
+                       WHERE task_id = ? AND status = 'running'""",
+                    (str(task.task_id),),
+                )
+            current = self.jobs.get(task.task_id)
+            if current is not None and current.status is TaskStatus.RUNNING:
+                self.jobs.transition(
+                    task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease
+                )
             return {
                 "workflow_id": str(workflow_id),
                 "execution_completed": False,
