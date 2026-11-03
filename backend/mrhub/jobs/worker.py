@@ -190,16 +190,26 @@ class WorkerEngine:
                     audit_outcome = "failed"
                     reason_code = "worker_interrupted"
                     video_analysis = connection.execute(
-                        """SELECT analysis_id, owner_user_id FROM video_analysis_runs
+                        """SELECT analysis_id, owner_user_id, status FROM video_analysis_runs
                            WHERE task_id = ?""",
                         (str(task.task_id),),
                     ).fetchone()
-                    if video_analysis is not None:
+                    if video_analysis is not None and video_analysis["status"] == "completed":
+                        recovered_status = TaskStatus.SUCCEEDED
+                        audit_outcome = "succeeded"
+                        reason_code = "video_analysis_completed_before_task_commit"
+                        connection.execute(
+                            """UPDATE idempotency_records SET status = 'completed'
+                               WHERE task_id = ? AND status IN ('accepted', 'running')""",
+                            (str(task.task_id),),
+                        )
+                    elif video_analysis is not None:
                         connection.execute(
                             """UPDATE video_analysis_runs
                                SET status = 'failed', error_code = 'worker_interrupted',
                                    updated_at = ?
-                               WHERE task_id = ? AND owner_user_id = ?""",
+                               WHERE task_id = ? AND owner_user_id = ?
+                                 AND status IN ('accepted', 'running')""",
                             (now, str(task.task_id), video_analysis["owner_user_id"]),
                         )
                         connection.execute(
