@@ -341,6 +341,10 @@ class VideoAnalysisJobRepository:
                        SELECT 1 FROM worker_executions AS e
                        WHERE e.task_id = ? AND e.lease_owner = ?
                          AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )
+                     AND EXISTS (
+                       SELECT 1 FROM tasks AS t
+                       WHERE t.task_id = ? AND t.status = ?
                      )""",
                 (
                     status,
@@ -348,6 +352,7 @@ class VideoAnalysisJobRepository:
                     error_code[:80] if error_code else None,
                     now, str(task_id), owner_user_id, str(task_id),
                     lease.owner, lease.fencing_token, now,
+                    str(task_id), "cancelled" if status == "cancelled" else "running",
                 ),
             )
             if cursor.rowcount != 1:
