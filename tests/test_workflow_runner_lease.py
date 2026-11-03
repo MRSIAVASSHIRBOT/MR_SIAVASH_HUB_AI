@@ -3,9 +3,9 @@ from threading import Event
 
 import pytest
 
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, WorkerLease
-from mrhub.agents.workflow_runner import AgentWorkflowRunner
 
 
 @pytest.mark.parametrize(
