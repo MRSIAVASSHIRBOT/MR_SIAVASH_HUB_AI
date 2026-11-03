@@ -1,10 +1,12 @@
 import base64
 import hashlib
+from datetime import UTC, datetime
 from threading import Event
 from types import SimpleNamespace
 from uuid import UUID
 
 from mrhub.jobs.leases import WorkerLease
+from mrhub.jobs.worker import WorkerEngine
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.render_worker import VideoRenderWorkerHandler
@@ -299,3 +301,93 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
         ).fetchone()[0]
     assert remaining == 0
     assert jobs.get("owner-a", render_id)["status"] == "completed"
+
+
+def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    media = MediaAssetRepository(tmp_path / "render.sqlite")
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-recovery-key")
+    task_id = UUID(accepted["task_id"])
+    render_id = UUID(accepted["render_id"])
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    source_key = f"{source_id}.mp4"
+    source_path = media.file_path(source_key)
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_bytes = b"source-video"
+    source_path.write_bytes(source_bytes)
+    now = "2026-11-04T00:00:00+00:00"
+
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO content_assets (
+                asset_id, owner_user_id, source_asset_id, original_filename,
+                media_type, storage_key, file_size, content_hash,
+                processing_status, processing_profile, error_code, created_at, updated_at
+            ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
+            (
+                str(source_id), "owner-a", "source.mp4", source_key,
+                len(source_bytes), hashlib.sha256(source_bytes).hexdigest(), now, now,
+            ),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
+            (now, str(task_id)),
+        )
+        connection.execute(
+            "UPDATE video_render_runs SET status = 'running' WHERE render_id = ?",
+            (str(render_id),),
+        )
+        connection.execute(
+            "UPDATE idempotency_records SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """UPDATE worker_executions
+               SET started_at = ?, lease_owner = ?, lease_expires_at = ?,
+                   execution_token = ?
+               WHERE task_id = ?""",
+            (
+                "2000-01-01T00:00:00+00:00", "dead-worker",
+                "2000-01-01T00:00:00+00:00", 7, str(task_id),
+            ),
+        )
+        connection.execute(
+            """INSERT INTO media_asset_analysis_leases (
+                lease_id, asset_id, owner_user_id, task_id,
+                lease_owner, execution_token, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "lease-orphan", str(source_id), "owner-a", str(task_id),
+                "dead-worker", 7, now,
+            ),
+        )
+        reserved = connection.execute(
+            "SELECT output_storage_key FROM video_render_runs WHERE render_id = ?",
+            (str(render_id),),
+        ).fetchone()["output_storage_key"]
+
+    orphan_path = media.file_path(reserved)
+    orphan_path.write_bytes(b"orphaned-render-output")
+    worker = WorkerEngine(
+        analysis_repository.tasks,
+        clock=lambda: datetime(2026, 11, 4, tzinfo=UTC),
+    )
+
+    assert worker.run_once() is None
+    assert analysis_repository.tasks.get(task_id).status.value == "failed"
+    assert jobs.get("owner-a", render_id)["status"] == "failed"
+    assert orphan_path.exists() is False
+    with analysis_repository.tasks._connection() as connection:
+        remaining_locks = connection.execute(
+            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0]
+        idempotency = connection.execute(
+            "SELECT status FROM idempotency_records WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()["status"]
+    assert remaining_locks == 0
+    assert idempotency == "failed"
