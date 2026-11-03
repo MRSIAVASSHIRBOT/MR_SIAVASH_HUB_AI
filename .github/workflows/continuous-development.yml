@@ -1,7 +1,8 @@
 name: Continuous Development
 
 on:
-  workflow_dispatch:
+  # Scheduled runs execute from the default branch only. Do not expose the
+  # privileged publisher job through workflow_dispatch on arbitrary branches.
   schedule:
     - cron: "23 */2 * * *"
 
