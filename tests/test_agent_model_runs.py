@@ -1,9 +1,7 @@
-import base64
 import json
 
 from client_helpers import authenticated_client, run_worker_once
 from mrhub.config import get_settings
-from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.idempotency import IdempotencyRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.providers.base import ProviderHealth, ProviderRequest, ProviderResponse
@@ -78,7 +76,6 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert repeated.json()["workflow_id"] == accepted["workflow_id"]
     assert repeated.json()["idempotent_replay"] is True
 
-    repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(get_settings().database_path)
     stored = recovery.get_encrypted_payload(
         __import__("uuid").UUID(accepted["workflow_id"]),
