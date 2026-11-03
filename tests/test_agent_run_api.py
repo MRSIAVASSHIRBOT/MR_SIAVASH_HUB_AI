@@ -93,6 +93,29 @@ def test_agent_run_uses_owner_scoped_context_and_returns_freshness_citations(mon
         ).fetchone()
     assert audit is not None
     assert "Summarize evidence" not in audit["metadata_json"]
+    metadata = json.loads(audit["metadata_json"])
+    assert metadata == {
+        "context_passage_count": 1,
+        "provider_mode": "local",
+        "selected_provider": "test-local",
+        "status": "completed",
+        "tool_calls": 0,
+        "turns": 1,
+    }
+
+    history = client.get("/agent/model-runs")
+    assert history.status_code == 200
+    assert history.json()["count"] == 1
+    history_item = history.json()["runs"][0]
+    assert history_item["run_id"] == body["run_id"]
+    assert history_item["outcome"] == "success"
+    assert history_item["metadata"] == metadata
+    assert "Summarize evidence" not in history.text
+    assert body["execution"]["answer"] not in history.text
+
+    detail = client.get(f"/agent/model-runs/{body['run_id']}")
+    assert detail.status_code == 200
+    assert detail.json() == history_item
 
 
 def test_agent_run_fails_closed_when_requested_provider_is_not_configured(monkeypatch):
@@ -146,7 +169,6 @@ def test_agent_run_emergency_stop_prevents_model_inference(monkeypatch):
     assert body["execution"]["turns"] == 0
     assert body["execution"]["model_inference_started"] is False
     assert provider.requests == []
-
 
 
 def test_agent_run_can_exclude_stale_knowledge_from_model_evidence(monkeypatch):
