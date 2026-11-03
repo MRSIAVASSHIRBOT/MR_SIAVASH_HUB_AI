@@ -25,6 +25,7 @@ from mrhub.api.routes.models import router as models_router
 from mrhub.api.routes.nexus import router as nexus_router
 from mrhub.api.routes.policy import router as policy_router
 from mrhub.api.routes.public_media import router as public_media_router
+from mrhub.api.routes.security_lab import router as security_lab_router
 from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.tools import router as tools_router
 from mrhub.api.routes.video_intelligence import router as video_intelligence_router
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(memory_router)
     app.include_router(media_router)
     app.include_router(public_media_router)
+    app.include_router(security_lab_router)
     app.include_router(tools_router)
     app.include_router(video_intelligence_router)
     app.include_router(agent_router)
