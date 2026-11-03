@@ -31,6 +31,15 @@ def download_and_register_generation_output(
     capability = provider.capability
     if (capability.provider, capability.model) != (result.provider, result.model):
         raise ValueError("Provider capability does not match the generation result")
+    job = jobs.get(owner_user_id, generation_id)
+    if (
+        job is None
+        or job["status"] not in {"submitting", "running", "unknown_outcome"}
+        or job["provider"] != result.provider
+        or job["model"] != result.model
+        or job["provider_job_id"] != result.provider_job_id
+    ):
+        raise ValueError("Provider result does not match an active owner-scoped generation job")
 
     asset_id, storage_key, output_path = media.new_output_target()
     with media.create_output_sink(storage_key, max_bytes=MAX_OUTPUT_BYTES) as sink:
