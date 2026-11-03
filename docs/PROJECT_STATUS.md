@@ -347,10 +347,21 @@ This section supersedes older repository and PR snapshots above. The detailed cu
 
 1. Verify post-merge push CI on the exact main commit.
 2. Close duplicate/superseded PRs and refresh the canonical audit branch.
-3. Continue scheduled-trigger/recovery semantics, Discovery source connectors, Memory/Knowledge integrity, Operator UI end-to-end coverage and controlled Content integration.
+3. Continue scheduled-trigger/recovery semantics, Discovery source connectors, Memory/Knowledge integrity, browser-level Operator UI acceptance and controlled Content integration.
 4. Keep target-device acceptance for the final integrated candidate; do not request device access before the complete product test package is ready.
 
 
 ### Post-merge verification update — 2026-11-04 UTC
 
 All four push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan, and Video Render Integration. This is post-merge evidence on the exact main commit; target-device and whole-product acceptance gates remain open.
+
+
+## Operator UI video-render integration — 2026-11-04 UTC
+
+- **PR #227** merged by squash as `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`.
+- Exact tested PR head: `643ddfaf141004f19a90067f0992d60cebce564a`.
+- The RTL operator UI now submits owner-scoped cut-only MP4 render jobs from completed analyses with valid non-empty timelines, persists the per-analysis idempotency key in the current tab session, restores render/analysis association after reload, exposes manual status refresh and cancellation, and provides authenticated MP4 download.
+- Media-library downloads use bearer authorization on the same origin, omit ambient cookies, disable caching, reject redirects, and enforce the 100 MB client-side download bound.
+- Exact-head Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration all passed.
+- UI regression tests verify controls, idempotency/session handling, authenticated downloads, and JavaScript syntax when Node is available.
+- Browser-level interactive acceptance, accessibility review and target-device acceptance remain open. The UI does not start workers or poll automatically.
