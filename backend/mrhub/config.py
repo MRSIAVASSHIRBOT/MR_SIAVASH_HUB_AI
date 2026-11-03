@@ -26,10 +26,12 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
     session_ttl_hours: int = Field(default=12, ge=1, le=168)
     local_inference_enabled: bool = False
+    local_inference_vision_enabled: bool = False
     local_inference_base_url: str = "http://127.0.0.1:11434"
     local_inference_model: str | None = None
     local_inference_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
     remote_inference_enabled: bool = False
+    remote_inference_vision_enabled: bool = False
     remote_inference_api_key: SecretStr | None = None
     # Shared by the API and pull worker to encrypt durable Agent workflow payloads.
     workflow_payload_key: SecretStr | None = None
