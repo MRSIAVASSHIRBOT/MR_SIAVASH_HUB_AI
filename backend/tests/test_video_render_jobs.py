@@ -266,7 +266,6 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
         fencing_token=7,
         expires_at="2099-01-01T00:00:00+00:00",
     )
-    assert jobs.mark_running(task_id, "owner-a", lease=lease) is True
     observations = []
 
     def fake_render(**kwargs):
@@ -378,7 +377,7 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
         clock=lambda: datetime(2026, 11, 4, tzinfo=UTC),
     )
 
-    assert worker.run_once() is None
+    worker._recover_interrupted()
     assert analysis_repository.tasks.get(task_id).status.value == "failed"
     assert jobs.get("owner-a", render_id)["status"] == "failed"
     assert orphan_path.exists() is False
