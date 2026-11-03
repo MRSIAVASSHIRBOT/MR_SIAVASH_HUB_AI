@@ -182,7 +182,7 @@ Live queue refresh: PR #213 was opened from current main for the coordinated med
 - PR #214 adds the missing real-process smoke path: stop via authenticated API, enqueue a deterministic workflow, verify it remains queued across worker polls, explicitly resume, then verify completion. This is pending exact-head CI and is not yet runtime-verified evidence.
 - PR #212 now has successful exact-head Backend CI, CI, and Defensive Python Scan on `c164847a84c11269643831752f344ca2183d536a`.
 - PR #213 now has successful exact-head Backend CI, CI, and Defensive Python Scan on `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6`; the runbook itself remains unexercised on the target Windows device.
-- PR #214 exact head is `413164eb2b1021d8da1eb0c845a99e2422d49bd4`; its workflows have not yet been returned by the Actions API at this observation.
+- PR #214 exact head is `413164eb2b1021d8da1eb0c845a99e2422d49bd4`; all three required workflows passed.
 - Main remains `067177554ac923864981c11f80628e92aea0aa70`. No PR in this delivery batch has been merged.
 
 
@@ -190,6 +190,6 @@ Live queue refresh: PR #213 was opened from current main for the coordinated med
 
 Source review found a mismatch between the root Agent run input budget (up to 64,000 characters across a run) and the typed per-request provider contract (32,000 characters per provider call). A serialized prompt can include the registered tool catalog and accumulated observations, so one prompt can exceed the provider schema even while remaining inside the total-run budget. Before this correction, Pydantic validation could escape the orchestrator's sanitized provider-error handling.
 
-PR #215 centralizes the provider input limit and adds a pre-dispatch check that returns `budget_exhausted/provider_input_budget_exceeded` without calling the provider. It includes a regression test and operator documentation. Exact-head CI is pending; this is not yet integrated or runtime-verified.
+PR #215 centralizes the provider input limit and adds a pre-dispatch check that returns `budget_exhausted/provider_input_budget_exceeded` without calling the provider. It includes a regression test and operator documentation. The first exact-head Backend CI run exposed a Ruff import-spacing issue; that was corrected. Current head is `6c2aedaecd9195913507369568dcf99207dbc222`, with Backend CI, CI, and Defensive Python Scan queued/pending. This is not yet integrated or runtime-verified.
 
-PR #214 adds process-level emergency-stop/resume coverage to the separate-process API/worker smoke test. Exact-head Backend CI and CI remain in progress at this observation; Defensive Python Scan has passed.
+PR #214 adds process-level emergency-stop/resume coverage to the separate-process API/worker smoke test. All three workflows (Backend CI, CI, Defensive Python Scan) passed on exact head `413164eb2b1021d8da1eb0c845a99e2422d49bd4`.
