@@ -8,7 +8,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class GenerationStatus(StrEnum):
@@ -53,12 +53,27 @@ class VideoGenerationResult(BaseModel):
     model: str = Field(min_length=1, max_length=120)
     provider_job_id: str = Field(min_length=1, max_length=255)
     status: GenerationStatus
-    output_url: str | None = Field(default=None, max_length=2048)
     output_bytes: int | None = Field(default=None, ge=1, le=100_000_000)
     duration_seconds: float | None = Field(default=None, gt=0, le=60)
     width: int | None = Field(default=None, ge=1, le=3840)
     height: int | None = Field(default=None, ge=1, le=3840)
     error_code: str | None = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_terminal_result(self) -> VideoGenerationResult:
+        if self.status is GenerationStatus.SUCCEEDED and any(
+            value is None
+            for value in (
+                self.output_bytes,
+                self.duration_seconds,
+                self.width,
+                self.height,
+            )
+        ):
+            raise ValueError("Successful generation requires bounded output metadata")
+        if self.status is GenerationStatus.FAILED and not self.error_code:
+            raise ValueError("Failed generation requires a stable error code")
+        return self
 
 
 class VideoGenerationCapability(BaseModel):
