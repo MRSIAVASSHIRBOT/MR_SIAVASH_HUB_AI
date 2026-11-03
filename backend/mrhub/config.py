@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
     code_engine_health_path: str = Field(default="/health", min_length=1, max_length=200)
     code_engine_timeout_seconds: float = Field(default=2.0, ge=0.2, le=10.0)
     code_engine_max_response_bytes: int = Field(default=8192, ge=256, le=16384)
+    # MCP is a separate, opt-in local process; numeric loopback literals only.
+    mcp_enabled: bool = False
+    mcp_host: Literal["127.0.0.1", "::1"] = "127.0.0.1"
+    mcp_port: int = Field(default=8765, ge=1, le=65535)
 
 
 @lru_cache
