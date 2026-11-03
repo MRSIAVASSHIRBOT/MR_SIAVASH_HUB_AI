@@ -70,6 +70,7 @@ class VideoAnalysisAccepted(BaseModel):
     mode: AnalysisMode
     message: str
 
+
 class VideoSceneAnalysisRequest(BaseModel):
     """Validated bounds for one asynchronous, read-only scene analysis job."""
 
