@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from datetime import UTC, datetime
 from threading import Event, Thread
 from uuid import UUID, uuid4
@@ -12,7 +13,7 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
-from mrhub.jobs.leases import LeaseManager, WorkerLease
+from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.recovery import ResumeDecision, StepAttempt, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
 
@@ -47,7 +48,13 @@ class AgentWorkflowRunner:
     def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lost: Event) -> None:
         interval = max(0.1, self.lease_seconds / 3)
         while not stop.wait(interval):
-            if self.lease_manager.heartbeat(lease) is None:
+            try:
+                renewed = self.lease_manager.heartbeat(lease)
+            except (sqlite3.Error, LeaseError):
+                # A heartbeat failure means lease ownership cannot be confirmed.
+                lost.set()
+                return
+            if renewed is None:
                 lost.set()
                 return
 
