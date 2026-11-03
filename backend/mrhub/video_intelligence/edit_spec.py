@@ -19,6 +19,11 @@ class EditSourceReference(BaseModel):
 
     asset_id: str = Field(min_length=1, max_length=64)
     source_duration_seconds: float = Field(gt=0, le=60)
+    width: int | None = Field(default=None, ge=1, le=16384)
+    height: int | None = Field(default=None, ge=1, le=16384)
+    frame_rate: float | None = Field(default=None, ge=0, le=240)
+    codec: str | None = Field(default=None, max_length=40)
+    has_audio: bool | None = None
     scene_start_timestamps: list[float] = Field(min_length=1, max_length=25)
     scene_boundaries_truncated: bool = False
     visual_style_summary: str | None = Field(default=None, max_length=1000)
@@ -102,6 +107,11 @@ def build_edit_specification(
             EditSourceReference(
                 asset_id=str(item["asset_id"]),
                 source_duration_seconds=float(duration),
+                width=metadata.get("width"),
+                height=metadata.get("height"),
+                frame_rate=metadata.get("frame_rate"),
+                codec=metadata.get("codec"),
+                has_audio=metadata.get("has_audio"),
                 # FFmpeg's parser allows a small timestamp tolerance around EOF.
                 # A cut at/after the analyzed duration cannot start an output segment.
                 scene_start_timestamps=[
