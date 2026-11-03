@@ -5,6 +5,7 @@ from __future__ import annotations
 from threading import Event
 from uuid import UUID
 
+from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
@@ -14,6 +15,7 @@ from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
 from mrhub.video_intelligence.service import probe_video
+from mrhub.video_intelligence.vision import analyze_sampled_frames
 
 
 class VideoAnalysisWorkerHandler:
@@ -46,6 +48,8 @@ class VideoAnalysisWorkerHandler:
         if not self.jobs.mark_running(task.task_id, owner_user_id, lease=lease):
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
         results: list[dict[str, object]] = []
+        semantic_results: list[dict[str, object]] = []
+        settings = get_settings()
 
         for asset_value in request.source_asset_ids:
             current = self.tasks.get(task.task_id)
@@ -85,6 +89,25 @@ class VideoAnalysisWorkerHandler:
             except SceneDetectionError as exc:
                 return self._fail(task, owner_user_id, exc.reason_code)
 
+            semantic = analyze_sampled_frames(
+                frames,
+                enabled=settings.local_vision_enabled,
+                model=settings.local_vision_model,
+                base_url=settings.local_inference_base_url,
+                timeout_seconds=settings.local_vision_timeout_seconds,
+            )
+            if lease_lost.is_set():
+                return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+            current = self.tasks.get(task.task_id)
+            if current is None or current.status is TaskStatus.CANCELLED:
+                if current is not None:
+                    self.jobs.finish(
+                        task.task_id, owner_user_id, status="cancelled",
+                        error_code="cancelled_during_vision_analysis", lease=lease,
+                    )
+                return {"analysis_id": str(analysis_id), "status": "cancelled"}
+
+            semantic_results.append({"asset_id": str(asset_id), **semantic})
             results.append({
                 "asset_id": str(asset_id),
                 "technical_metadata": metadata.model_dump(mode="json"),
@@ -93,7 +116,7 @@ class VideoAnalysisWorkerHandler:
                 "keyframe_timestamps": [frame.timestamp_seconds for frame in frames],
                 "scene_start_timestamps": list(scenes.scene_start_times),
                 "scene_boundaries_truncated": scenes.truncated,
-                "semantic_visual_analysis": "not_performed",
+                "semantic_visual_analysis": semantic,
                 "audio_analysis": (
                     "requested_but_not_performed"
                     if request.include_audio_analysis else "not_requested"
@@ -102,11 +125,32 @@ class VideoAnalysisWorkerHandler:
 
         if lease_lost.is_set():
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+        semantic_states = [item["status"] for item in semantic_results]
+        if semantic_states and all(state == "completed" for state in semantic_states):
+            semantic_status = "completed"
+        elif any(state == "completed" for state in semantic_states):
+            semantic_status = "partial"
+        elif semantic_states and all(state == "not_configured" for state in semantic_states):
+            semantic_status = "not_configured"
+        else:
+            semantic_status = "unavailable"
+        analysis_level = (
+            "bounded_technical_temporal_and_local_semantic"
+            if semantic_status == "completed"
+            else (
+                "bounded_technical_temporal_with_partial_semantic"
+                if semantic_status == "partial"
+                else "bounded_technical_and_temporal"
+            )
+        )
         result = {
             "analysis_id": str(analysis_id),
             "mode": request.mode.value,
-            "analysis_level": "bounded_technical_and_temporal",
-            "semantic_visual_analysis": False,
+            "analysis_level": analysis_level,
+            "semantic_visual_analysis": {
+                "status": semantic_status,
+                "assets": semantic_results,
+            },
             "audio_analysis": (
                 "requested_but_not_performed"
                 if request.include_audio_analysis else "not_requested"
