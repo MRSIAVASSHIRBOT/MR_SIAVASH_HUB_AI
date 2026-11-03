@@ -1,4 +1,11 @@
+from uuid import UUID
+
+import pytest
+from fastapi import HTTPException
+
 from client_helpers import authenticated_client, run_worker_once
+from mrhub.api.routes.video_intelligence import cancel_scene_job, get_scene_job
+from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence import scenes, service
 from mrhub.video_intelligence.scenes import SceneDetectionResult
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
@@ -127,6 +134,7 @@ def test_scene_job_api_cancels_only_existing_owner_job():
     cancelled = client.post(f"/video-intelligence/scene-jobs/{job_id}/cancel")
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+    assert "task_id" not in cancelled.json()
 
     terminal = client.post(f"/video-intelligence/scene-jobs/{job_id}/cancel")
     assert terminal.status_code == 409
@@ -161,4 +169,23 @@ def test_scene_jobs_are_hidden_from_generic_task_and_job_endpoints():
     owner_view = client.get(f"/video-intelligence/scene-jobs/{job_id}")
     assert owner_view.status_code == 200
     assert owner_view.json()["status"] == "queued"
+
+def test_scene_job_read_and_cancel_are_owner_scoped():
+    client = authenticated_client()
+    asset_id = _upload_video(client)
+    accepted = client.post(
+        f"/video-intelligence/assets/{asset_id}/scene-jobs",
+        json={},
+    )
+    assert accepted.status_code == 202
+    job_id = UUID(accepted.json()["job_id"])
+    other_user = AuthenticatedUser(user_id="different-owner", username="other")
+
+    with pytest.raises(HTTPException) as read_error:
+        get_scene_job(job_id, other_user)
+    assert read_error.value.status_code == 404
+
+    with pytest.raises(HTTPException) as cancel_error:
+        cancel_scene_job(job_id, other_user)
+    assert cancel_error.value.status_code == 404
 
