@@ -293,6 +293,34 @@ class VideoGenerationJobRepository:
         return self.get(owner_user_id, generation_id)
 
 
+    def reject_pending_task(self, task_id: UUID, owner_user_id: str) -> bool:
+        """Purge an owner-rejected generation payload before any provider dispatch."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            link = connection.execute(
+                """SELECT generation_id FROM video_generation_task_links
+                   WHERE task_id = ? AND owner_user_id = ?""",
+                (str(task_id), owner_user_id),
+            ).fetchone()
+            if link is None:
+                return False
+            generation_id = str(link["generation_id"])
+            cursor = connection.execute(
+                """UPDATE video_generation_jobs
+                   SET status = 'failed', error_code = 'owner_rejected_before_submission',
+                       updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = 'queued'""",
+                (now, generation_id, owner_user_id),
+            )
+            if cursor.rowcount == 1:
+                connection.execute(
+                    """DELETE FROM video_generation_payloads
+                       WHERE generation_id = ? AND owner_user_id = ?""",
+                    (generation_id, owner_user_id),
+                )
+        return cursor.rowcount == 1
+
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
