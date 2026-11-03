@@ -215,7 +215,11 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
 
         valid = True
         try:
-            if resolved.stat().st_size != bounded_expected_size:
+            actual_size = resolved.stat().st_size
+            if actual_size > MAX_MEDIA_ASSET_BYTES:
+                result["invalid_entries"] += 1
+                continue
+            if actual_size != bounded_expected_size:
                 result["size_mismatched_assets"] += 1
                 valid = False
             if _sha256(resolved) != expected_hash:
@@ -227,9 +231,12 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
         if valid:
             result["verified_assets"] += 1
 
-    if media_root.exists() and root_is_safe:
+    if not result["verification_truncated"] and media_root.exists() and root_is_safe:
         try:
-            for entry in media_root.iterdir():
+            for index, entry in enumerate(media_root.iterdir()):
+                if index >= MAX_MEDIA_ASSETS_TO_VERIFY:
+                    result["verification_truncated"] = True
+                    break
                 if entry.name not in registered_keys:
                     result["unregistered_entries"] += 1
         except OSError:
