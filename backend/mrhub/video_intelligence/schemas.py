@@ -53,6 +53,12 @@ class VideoAnalysisRequest(BaseModel):
     include_audio_analysis: bool = True
     custom_changes: dict[str, str] = Field(default_factory=dict, max_length=12)
 
+    @model_validator(mode="after")
+    def validate_source_assets(self) -> VideoAnalysisRequest:
+        if len(set(self.source_asset_ids)) != len(self.source_asset_ids):
+            raise ValueError("Source asset IDs must be unique")
+        return self
+
 
 class VideoTechnicalMetadata(BaseModel):
     duration_seconds: float | None = None
