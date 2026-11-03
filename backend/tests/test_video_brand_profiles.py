@@ -1,9 +1,17 @@
 import sqlite3
+from uuid import UUID
 
 import pytest
 
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import BrandIdentity
+
+
+def _repository(tmp_path):
+    repository = VideoBrandRepository(tmp_path / "video-brands.sqlite")
+    repository.tasks.create_auth_user("owner-a", "owner-a", "salt-a", "hash-a")
+    repository.tasks.create_auth_user("owner-b", "owner-b", "salt-b", "hash-b")
+    return repository
 
 
 def _brand(name: str = "MR SIAVASH") -> BrandIdentity:
@@ -17,15 +25,13 @@ def _brand(name: str = "MR SIAVASH") -> BrandIdentity:
 
 
 def test_brand_profiles_are_private_and_support_crud(tmp_path):
-    repository = VideoBrandRepository(tmp_path / "video-brands.sqlite")
+    repository = _repository(tmp_path)
     created = repository.create("owner-a", _brand())
 
     assert created["brand_name"] == "MR SIAVASH"
     assert created["colors"] == ["#071A12", "#00C878"]
     assert len(repository.list("owner-a")) == 1
     assert repository.list("owner-b") == []
-
-    from uuid import UUID
 
     profile_id = UUID(str(created["profile_id"]))
     assert repository.get("owner-b", profile_id) is None
@@ -40,7 +46,7 @@ def test_brand_profiles_are_private_and_support_crud(tmp_path):
 
 
 def test_brand_name_is_unique_per_owner(tmp_path):
-    repository = VideoBrandRepository(tmp_path / "video-brands.sqlite")
+    repository = _repository(tmp_path)
     repository.create("owner-a", _brand())
 
     with pytest.raises(sqlite3.IntegrityError):
