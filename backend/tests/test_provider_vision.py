@@ -96,3 +96,19 @@ def test_openrouter_vision_is_opt_in_and_uses_data_uri():
     content = calls[0]["messages"][0]["content"]
     assert content[0] == {"type": "text", "text": "Describe this frame"}
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_model_router_selects_only_explicitly_vision_capable_provider():
+    from mrhub.providers.router import ModelRequest, ModelRouter
+
+    router = ModelRouter()
+    text_only = OllamaProvider("text-model")
+    router.register_provider(text_only)
+    with pytest.raises(LookupError):
+        router.select(ModelRequest(requires_vision=True))
+
+    vision = OllamaProvider("vision-model", vision_enabled=True)
+    router.register_provider(vision)
+    selection = router.select(ModelRequest(requires_vision=True, prefer_local=True))
+    assert selection.model == "vision-model"
+    assert selection.local is True
