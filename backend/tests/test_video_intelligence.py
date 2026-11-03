@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 from pydantic import ValidationError
 
@@ -156,3 +158,34 @@ def test_video_brand_profiles_are_owner_scoped():
         assert repository.get("local-owner", identifier)["brand_name"] == "Owner Brand"
     finally:
         client.close()
+
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        b"[]",
+        b'{"streams": "not-a-list", "format": {}}',
+        b'{"streams": ["not-a-stream-object"], "format": {}}',
+        b'{"streams": [], "format": []}',
+    ],
+)
+def test_probe_video_rejects_malformed_ffprobe_json_shapes(
+    tmp_path, monkeypatch, stdout
+):
+    source = tmp_path / "malformed.mp4"
+    source.write_bytes(b"test")
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.shutil.which",
+        lambda _name: "/usr/bin/ffprobe",
+    )
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args, returncode=0, stdout=stdout, stderr=b""
+        ),
+    )
+
+    result = probe_video(source)
+
+    assert result.metadata_status == "probe_failed"
