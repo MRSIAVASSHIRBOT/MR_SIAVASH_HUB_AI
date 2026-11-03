@@ -263,16 +263,16 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migration_19_upgrades_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_and_20_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
     original = migrations.MIGRATIONS
-    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-1])
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-2])
 
     applied = SchemaMigrator(connection).migrate()
 
-    assert applied == [migration.version for migration in original[:-1]]
+    assert applied == [migration.version for migration in original[:-2]]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
     ).fetchone()[0] == 18
@@ -280,12 +280,16 @@ def test_migration_19_upgrades_an_existing_v18_database(tmp_path, monkeypatch):
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
     ).fetchone() is None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_brand_profiles'"
+    ).fetchone() is None
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [19]
+    assert SchemaMigrator(connection).migrate() == [19, 20]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 19
+    ).fetchone()[0] == 20
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
@@ -293,6 +297,10 @@ def test_migration_19_upgrades_an_existing_v18_database(tmp_path, monkeypatch):
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_media_file_cleanup_owner_retry'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_brand_profiles'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
