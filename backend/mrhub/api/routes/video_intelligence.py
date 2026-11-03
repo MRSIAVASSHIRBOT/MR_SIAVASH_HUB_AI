@@ -38,7 +38,7 @@ class PromptCompositionRequest(BaseModel):
     final_frame: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
-    def validate_timeline(self) -> "PromptCompositionRequest":
+    def validate_timeline(self) -> PromptCompositionRequest:
         if any(beat.end_seconds > self.duration_seconds for beat in self.beats):
             raise ValueError("Beat timeline cannot exceed the requested duration")
         return self
