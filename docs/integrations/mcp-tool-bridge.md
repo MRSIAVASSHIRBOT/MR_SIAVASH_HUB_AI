@@ -42,8 +42,9 @@ The bridge currently exposes only tools already registered in the process. The i
 - The MCP SDK is an optional, exact-pinned dependency; core installs do not import it.
 - Only Streamable HTTP is used. No stdio subprocess launching, arbitrary MCP server discovery, or remote MCP client connection is provided.
 - Binding is restricted to numeric loopback IP literals and disabled by default.
+- The transport uses `stateless_http=True`: requests do not retain MCP session state. Consequently, the SDK's `max_sessions` and `session_idle_timeout` options are not active resource limits in this configuration and are intentionally not presented as protections.
+- The request body is capped at 1 MiB before parsing.
 - **Loopback is not per-user authentication.** Any process or local user able to connect to the host's loopback interface may be able to call the MCP endpoint. Do not enable this service on shared or multi-user machines unless an additional, independently reviewed access-control boundary is deployed. Do not assume that binding to 127.0.0.1 isolates the service from other local processes.
-- Request bodies are capped at 1 MiB; legacy sessions are capped at 20 and expire after five idle minutes.
 - Every invocation passes through the existing Hub schema validation and policy engine.
 - The bridge supplies no permission grants and cannot mark an operation as user-approved. Tools requiring permissions, high-risk approval, or external-side-effect approval are denied by the existing policy engine.
 - Error responses contain stable codes only; handler exception details, credentials, and payload contents are not logged or returned.
@@ -59,7 +60,7 @@ The bridge currently exposes only tools already registered in the process. The i
 
 ## Validation
 
-The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services. Startup tests verify the disabled-by-default guard, reject all hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, and assert bounded transport settings:
+The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services. Startup tests verify the disabled-by-default guard, reject all hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, validate port bounds, and assert the actual stateless transport and request-body limit:
 
 ```powershell
 python -m pip install -e ".[dev,mcp]"
