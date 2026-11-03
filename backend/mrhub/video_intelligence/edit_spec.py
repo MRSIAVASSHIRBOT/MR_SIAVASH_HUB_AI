@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from mrhub.video_intelligence.schemas import AnalysisMode, BrandIdentity, VideoAnalysisRequest
+from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
 
 DirectiveKey = Annotated[str, Field(min_length=1, max_length=64)]
 DirectiveValue = Annotated[str, Field(max_length=500)]
@@ -85,14 +85,14 @@ def build_edit_specification(
     for item in asset_results:
         metadata = item.get("technical_metadata")
         if not isinstance(metadata, dict):
-            raise ValueError("Technical metadata is required for edit specification")
+            raise TypeError("Technical metadata is required for edit specification")
         duration = item.get("analysis_window_seconds")
         scene_starts = item.get("scene_start_timestamps")
         semantic = item.get("semantic_visual_analysis")
         if not isinstance(duration, (int, float)) or isinstance(duration, bool):
-            raise ValueError("Source duration is invalid")
+            raise TypeError("Source duration is invalid")
         if not isinstance(scene_starts, list):
-            raise ValueError("Scene map is invalid")
+            raise TypeError("Scene map is invalid")
         summary: str | None = None
         if isinstance(semantic, dict) and semantic.get("status") == "completed":
             candidate = semantic.get("style_summary")
