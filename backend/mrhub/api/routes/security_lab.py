@@ -55,14 +55,22 @@ def _audit_review(
     )
 
 
-def _run_review(request: OfflineReviewRequest, current_user: AuthenticatedUser, *, dependency: bool):
+def _run_review(
+    request: OfflineReviewRequest,
+    current_user: AuthenticatedUser,
+    *,
+    dependency: bool,
+) -> dict[str, object]:
+    review_filename = request.filename
+    if dependency and review_filename == "config":
+        review_filename = "requirements.txt"
     try:
         if dependency:
             result = audit_requirements_text(
                 request.text,
                 scope=request.scope,
                 asset=request.asset,
-                filename=request.filename,
+                filename=review_filename,
             )
             reason_code = "offline_dependency_manifest_review"
         else:
