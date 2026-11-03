@@ -253,5 +253,5 @@ def cancel_scene_job(
     updated = jobs.get(user.user_id, job_id)
     if updated is None:
         raise HTTPException(status_code=404, detail="Scene job not found")
-    return updated
+    return {key: value for key, value in updated.items() if key != "task_id"}
 
