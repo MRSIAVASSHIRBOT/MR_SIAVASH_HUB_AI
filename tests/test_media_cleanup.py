@@ -285,3 +285,173 @@ def test_failed_cleanup_items_do_not_starve_unattempted_entries(
     # the 100 repeatedly failing items on the next bounded pass.
     assert repository.cleanup_pending_files("owner-1", limit=100) == 100
     assert not real_file_path(untouched_key).exists()
+
+
+
+def _active_worker_lease(repository: MediaAssetRepository, token: int = 1):
+    from mrhub.domain.tasks import RiskClass, TaskRecord
+    from mrhub.jobs.leases import WorkerLease
+
+    task = TaskRecord(
+        task_type="video.analysis",
+        risk_class=RiskClass.LOW,
+        description="test asset analysis lease",
+    )
+    repository.tasks.create(task)
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, lease_owner, lease_expires_at, execution_token
+            ) VALUES (?, ?, ?, ?)""",
+            (str(task.task_id), "worker-test", expires_at, token),
+        )
+    return WorkerLease(
+        task_id=str(task.task_id),
+        owner="worker-test",
+        fencing_token=token,
+        expires_at=expires_at,
+    )
+
+
+def test_active_video_analysis_use_blocks_asset_delete_until_release(tmp_path: Path):
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+    lease = _active_worker_lease(repository)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=lease) is True
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", asset_id)
+
+    assert repository.get("owner-1", asset_id) is not None
+    assert path.is_file()
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=lease) is True
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not path.exists()
+
+
+def test_analysis_use_lock_is_fenced_by_the_current_worker_execution_token(
+    tmp_path: Path,
+):
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+    lease = _active_worker_lease(repository, token=2)
+
+    # A stale lock from a previous attempt must not block deletion after the
+    # worker execution has advanced to a different fencing token.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO media_asset_analysis_leases (
+                lease_id, asset_id, owner_user_id, task_id,
+                lease_owner, execution_token, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(uuid4()), str(asset_id), "owner-1", lease.task_id,
+                "worker-old", 1, repository._now(),
+            ),
+        )
+
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.get("owner-1", asset_id) is None
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not path.exists()
+
+
+def test_expired_worker_lease_does_not_block_video_asset_delete(tmp_path: Path):
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+    lease = _active_worker_lease(repository)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=lease) is True
+    expired_at = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET lease_expires_at = ? WHERE task_id = ?",
+            (expired_at, lease.task_id),
+        )
+
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.get("owner-1", asset_id) is None
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not path.exists()
+
+
+def test_deleting_source_is_blocked_when_its_derivative_is_under_analysis(
+    tmp_path: Path,
+):
+    repository = _repository(tmp_path)
+    source = repository.store_upload(
+        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
+    )
+    source_id = UUID(str(source["asset_id"]))
+    assert repository.begin_processing("owner-1", source_id) is not None
+
+    output_id, output_key, output_path = repository.new_output_target()
+    output_path.write_bytes(b"fake-transcoded-video")
+    repository.register_transcoded_output(
+        "owner-1", source_id, output_id, output_key, output_path, "source-processed.mp4"
+    )
+    lease = _active_worker_lease(repository)
+    derivative_id = UUID(output_id)
+
+    assert repository.acquire_analysis_use("owner-1", derivative_id, lease=lease) is True
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", source_id)
+
+    assert repository.get("owner-1", source_id) is not None
+    assert repository.get("owner-1", derivative_id) is not None
+    assert output_path.is_file()
+
+
+def test_delete_and_analysis_use_acquisition_are_serialized(tmp_path: Path):
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+    lease = _active_worker_lease(repository)
+    barrier = Barrier(2)
+
+    def acquire():
+        barrier.wait()
+        return repository.acquire_analysis_use("owner-1", asset_id, lease=lease)
+
+    def delete_asset():
+        barrier.wait()
+        try:
+            return ("deleted", repository.delete("owner-1", asset_id))
+        except MediaAssetBusy:
+            return ("busy", None)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        acquire_future = executor.submit(acquire)
+        delete_future = executor.submit(delete_asset)
+        acquired = acquire_future.result(timeout=10)
+        delete_status, deleted_keys = delete_future.result(timeout=10)
+
+    if acquired:
+        assert delete_status == "busy"
+        assert repository.get("owner-1", asset_id) is not None
+        assert path.is_file()
+        assert repository.release_analysis_use("owner-1", asset_id, lease=lease) is True
+    else:
+        assert delete_status == "deleted"
+        assert deleted_keys == [str(asset["storage_key"])]
+        assert repository.get("owner-1", asset_id) is None
+        assert repository.cleanup_pending_files("owner-1") == 0
+        assert not path.exists()
