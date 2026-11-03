@@ -336,7 +336,7 @@ def _visual_analysis_fixture():
                 "timestamp_seconds": 0.0,
                 "description": "A wide establishing composition with a single geometric subject",
                 "shot_scale": "wide",
-                "camera_movement": "slow_push",
+                "camera_movement": "tracking",
                 "composition": "centered with generous negative space",
                 "lighting": "soft directional key light",
                 "color_notes": ["deep green", "warm neutral"],
