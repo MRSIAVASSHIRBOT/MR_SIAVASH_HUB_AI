@@ -205,7 +205,10 @@ def submit_video_analysis(
 
     if not created:
         response.status_code = status.HTTP_200_OK
-    return {**accepted, "created": created}
+    public_result = {
+        key: value for key, value in accepted.items() if key != "task_id"
+    }
+    return {**public_result, "created": created}
 
 
 @router.get("/analyses/{analysis_id}")
