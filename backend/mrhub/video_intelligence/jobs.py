@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
     decrypt_payload,
@@ -188,18 +189,31 @@ class VideoAnalysisJobRepository:
         )
         return str(row["owner_user_id"]), analysis_id, payload
 
-    def mark_running(self, task_id: UUID, owner_user_id: str) -> None:
+    def mark_running(
+        self, task_id: UUID, owner_user_id: str, *, lease: WorkerLease
+    ) -> bool:
+        now = self._now()
         with self.tasks._connection() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """UPDATE video_analysis_runs SET status = 'running', updated_at = ?
-                   WHERE task_id = ? AND owner_user_id = ? AND status = 'accepted'""",
-                (self._now(), str(task_id), owner_user_id),
+                   WHERE task_id = ? AND owner_user_id = ? AND status = 'accepted'
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = ? AND e.lease_owner = ?
+                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )""",
+                (
+                    now, str(task_id), owner_user_id, str(task_id),
+                    lease.owner, lease.fencing_token, now,
+                ),
             )
+        return cursor.rowcount == 1
 
     def finish(
         self, task_id: UUID, owner_user_id: str, *,
         status: str, result: dict[str, object] | None = None,
         error_code: str | None = None,
+        lease: WorkerLease,
     ) -> None:
         if status not in {"completed", "failed", "cancelled"}:
             raise ValueError("Invalid terminal video-analysis status")
@@ -211,18 +225,37 @@ class VideoAnalysisJobRepository:
             ).fetchone()
             if row is None:
                 return
-            connection.execute(
+            now = self._now()
+            cursor = connection.execute(
                 """UPDATE video_analysis_runs
                    SET status = ?, result_json = ?, error_code = ?, updated_at = ?
-                   WHERE task_id = ? AND owner_user_id = ?""",
+                   WHERE task_id = ? AND owner_user_id = ?
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = ? AND e.lease_owner = ?
+                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )""",
                 (
                     status,
                     json.dumps(result, ensure_ascii=False, sort_keys=True) if result is not None else None,
                     error_code[:80] if error_code else None,
-                    self._now(), str(task_id), owner_user_id,
+                    now, str(task_id), owner_user_id, str(task_id),
+                    lease.owner, lease.fencing_token, now,
                 ),
             )
+            if cursor.rowcount != 1:
+                return
             connection.execute(
                 "DELETE FROM video_analysis_payloads WHERE analysis_id = ? AND owner_user_id = ?",
                 (row["analysis_id"], owner_user_id),
+            )
+            connection.execute(
+                """UPDATE idempotency_records SET status = ?
+                   WHERE scope = ? AND task_id = ?""",
+                (
+                    "completed" if status == "completed" else (
+                        "failed" if status == "failed" else "unknown_outcome"
+                    ),
+                    self._scope(owner_user_id), str(task_id),
+                ),
             )
