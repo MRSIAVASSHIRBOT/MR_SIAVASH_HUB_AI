@@ -184,7 +184,7 @@ def detect_scene_boundaries(
     detected = _parse_framehash_timestamps(result.stdout)
     valid_timestamps: list[float] = []
     for timestamp in detected:
-        if timestamp > duration_seconds + 0.25:
+        if timestamp >= duration_seconds:
             raise SceneDetectionError("scene_timestamp_out_of_range")
         if valid_timestamps and timestamp < valid_timestamps[-1] - 0.001:
             raise SceneDetectionError("scene_timestamps_not_monotonic")

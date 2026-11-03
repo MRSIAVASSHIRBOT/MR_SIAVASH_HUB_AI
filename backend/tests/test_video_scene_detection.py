@@ -180,6 +180,24 @@ def test_detect_scene_boundaries_rejects_timestamp_beyond_clip_duration(
     assert error.value.reason_code == "scene_timestamp_out_of_range"
 
 
+def test_detect_scene_boundaries_rejects_cut_even_within_old_tolerance(
+    monkeypatch, tmp_path
+):
+    source = _source(tmp_path)
+    monkeypatch.setattr(scenes.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(
+        scenes.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, _framehash(99), b""
+        ),
+    )
+
+    with pytest.raises(scenes.SceneDetectionError) as error:
+        scenes.detect_scene_boundaries(source, duration_seconds=4)
+    assert error.value.reason_code == "scene_timestamp_out_of_range"
+
+
 
 def test_detect_scene_boundaries_rejects_oversized_framehash_output(
     monkeypatch, tmp_path
