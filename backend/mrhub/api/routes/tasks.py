@@ -50,6 +50,12 @@ def create_task(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> TaskRecord:
+    if payload.task_type == "video.scene_detection":
+        raise HTTPException(
+            status_code=403,
+            detail="Scene detection must be submitted through the video-intelligence API",
+        )
+
     risk_class = policy.classify_task_type(payload.task_type)
     decision = policy.evaluate(ActionRequest(
         action="task.submit",
