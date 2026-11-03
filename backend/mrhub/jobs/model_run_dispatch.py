@@ -131,6 +131,7 @@ class ModelRunWorkerHandler:
             "kind": "agent.model_run.result",
             "provider_mode": provider_mode,
             "context_sources": payload.get("context_sources", []),
+            "context_summary": payload.get("context_summary", {}),
             "execution": result,
         }
         encrypted = encrypt_payload(
