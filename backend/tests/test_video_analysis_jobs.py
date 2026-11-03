@@ -1,10 +1,9 @@
 import base64
 from uuid import UUID
 
-from mrhub.jobs.leases import WorkerLease
-
 import pytest
 
+from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.video_intelligence.jobs import (
     VideoAnalysisConflict,
