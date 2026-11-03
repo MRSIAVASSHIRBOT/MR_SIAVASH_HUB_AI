@@ -80,7 +80,7 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     recovery = WorkflowRecoveryRepository(get_settings().database_path)
     stored = recovery.get_encrypted_payload(
         UUID(accepted["workflow_id"]),
-        owner_user_id="owner",
+        owner_user_id="local-owner",
     )
     assert stored is not None
     assert "Return a durable answer" not in stored["ciphertext_b64"]
@@ -99,7 +99,7 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert body["result"]["execution"]["status"] == "completed"
 
     idempotency = IdempotencyRepository(get_settings().database_path).get(
-        "agent.model_run:owner", "durable-run-001"
+        "agent.model_run:local-owner", "durable-run-001"
     )
     assert idempotency is not None
     assert idempotency.status == "completed"
@@ -132,7 +132,7 @@ def test_queued_model_run_cancellation_is_owner_scoped_and_removes_request_ciphe
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
     assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="owner"
+        workflow_id, owner_user_id="local-owner"
     ) is None
 
     status = client.get(f"/agent/model-run-workflows/{workflow_id}")
@@ -207,14 +207,14 @@ def test_interrupted_model_run_is_unknown_outcome_and_not_replayed(monkeypatch):
     assert provider.calls == 1
 
     run = WorkflowRecoveryRepository(get_settings().database_path).get_run(
-        UUID(workflow_id), owner_user_id="owner"
+        UUID(workflow_id), owner_user_id="local-owner"
     )
     assert run is not None
     assert run["status"] == "recovery_required"
     assert run["steps"][0]["status"] == "unknown_outcome"
 
     reservation = IdempotencyRepository(get_settings().database_path).get(
-        "agent.model_run:owner", "durable-run-unknown"
+        "agent.model_run:local-owner", "durable-run-unknown"
     )
     assert reservation is not None
     assert reservation.status == "unknown_outcome"
