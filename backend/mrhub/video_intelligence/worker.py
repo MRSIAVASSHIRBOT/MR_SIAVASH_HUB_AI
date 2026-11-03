@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from threading import Event
 from uuid import UUID
 
@@ -12,11 +11,9 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
 from mrhub.video_intelligence.edit_spec import build_edit_specification
-from mrhub.video_intelligence.frames import FrameExtractionError, extract_video_frames
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
-from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
-from mrhub.video_intelligence.service import probe_video
+from mrhub.video_intelligence.analyzer import VideoAssetAnalysisError, VideoAssetAnalyzer
 from mrhub.video_intelligence.timeline import build_video_timeline
 from mrhub.video_intelligence.vision import analyze_sampled_frames
 
@@ -28,6 +25,7 @@ class VideoAnalysisWorkerHandler:
         self.tasks = repository
         self.jobs = VideoAnalysisJobRepository(repository.database_path)
         self.media = MediaAssetRepository(repository.database_path)
+        self.analyzer = VideoAssetAnalyzer(repository.database_path, repository=self.media)
 
     def __call__(
         self, task: TaskRecord, *, lease: WorkerLease, lease_lost: Event
@@ -68,13 +66,6 @@ class VideoAnalysisWorkerHandler:
                 asset_id = UUID(asset_value)
             except ValueError:
                 return self._fail(task, owner_user_id, lease, "asset_id_invalid")
-            asset = self.media.get(owner_user_id, asset_id)
-            if asset is None:
-                return self._fail(task, owner_user_id, lease, "asset_not_found")
-            if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
-                return self._fail(task, owner_user_id, lease, "asset_type_unsupported")
-            if asset["processing_status"] not in {"stored", "processed"}:
-                return self._fail(task, owner_user_id, lease, "asset_not_ready")
             try:
                 acquired = self.media.acquire_analysis_use(
                     owner_user_id, asset_id, lease=lease
@@ -90,34 +81,19 @@ class VideoAnalysisWorkerHandler:
 
             try:
                 try:
-                    path = self.media.file_path(str(asset["storage_key"]))
-                except ValueError:
-                    return self._fail(task, owner_user_id, lease, "asset_path_invalid")
-
-                metadata = probe_video(path)
-                if (
-                    metadata.metadata_status != "available"
-                    or metadata.duration_seconds is None
-                    or not math.isfinite(float(metadata.duration_seconds))
-                    or float(metadata.duration_seconds) <= 0
-                ):
-                    return self._fail(task, owner_user_id, lease, "video_probe_failed")
-                duration = min(
-                    float(metadata.duration_seconds), float(request.duration_seconds)
-                )
-                if not math.isfinite(duration) or duration < 0.1:
-                    return self._fail(task, owner_user_id, lease, "video_duration_invalid")
-                try:
-                    frames = extract_video_frames(
-                        path, duration_seconds=duration, max_frames=12
+                    analyzed = self.analyzer.analyze(
+                        owner_user_id,
+                        asset_id,
+                        duration_seconds=float(request.duration_seconds),
                     )
-                    scenes = detect_scene_boundaries(
-                        path, duration_seconds=duration
+                except VideoAssetAnalysisError as exc:
+                    return self._fail(
+                        task, owner_user_id, lease, exc.reason_code
                     )
-                except FrameExtractionError as exc:
-                    return self._fail(task, owner_user_id, lease, exc.reason_code)
-                except SceneDetectionError as exc:
-                    return self._fail(task, owner_user_id, lease, exc.reason_code)
+                metadata = analyzed.metadata
+                duration = analyzed.analyzed_duration_seconds
+                frames = analyzed.frames
+                scenes = analyzed.scenes
 
                 current = self.tasks.get(task.task_id)
                 if current is None or current.status is TaskStatus.CANCELLED:
@@ -151,6 +127,7 @@ class VideoAnalysisWorkerHandler:
                 semantic_results.append({"asset_id": str(asset_id), **semantic})
                 results.append({
                     "asset_id": str(asset_id),
+                    "content_hash": analyzed.content_hash,
                     "technical_metadata": metadata.model_dump(mode="json"),
                     "analysis_window_seconds": round(duration, 3),
                     "keyframe_count": len(frames),
