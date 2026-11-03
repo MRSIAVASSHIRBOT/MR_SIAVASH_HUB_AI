@@ -33,7 +33,10 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
-- `POST /video-intelligence/analyses/{analysis_id}/prompt` — synthesize an original, bounded editing prompt from one selected asset's validated Vision observations; optional owner-scoped brand profile and custom constraints are supported. This composes a prompt only and does not invoke a generation provider or render a video.\n- `POST /video-intelligence/timeline-drafts` — persist an editable timeline for an asset in the current owner's completed analysis.\n- `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned timeline draft.\n- `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
+- `POST /video-intelligence/analyses/{analysis_id}/prompt` — synthesize an original, bounded editing prompt from one selected asset's validated Vision observations; optional owner-scoped brand profile and custom constraints are supported. This composes a prompt only and does not invoke a generation provider or render a video.
+- `POST /video-intelligence/timeline-drafts` — persist an editable timeline for an asset in the current owner's completed analysis.
+- `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned timeline draft.
+- `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
 - `DELETE /video-intelligence/analyses/{analysis_id}` — cancel queued work or request cooperative cancellation of a running analysis owned by the current user.
 
 ## Analysis scope and remaining work
