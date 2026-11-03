@@ -255,7 +255,6 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
         expires_at="2099-01-01T00:00:00+00:00",
     )
     assert jobs.mark_running(task_id, "owner-a", lease=lease) is True
-    output_id, _output_key, output_path = media.new_output_target()
     observations = []
 
     def fake_render(**kwargs):
@@ -279,12 +278,11 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
 
     monkeypatch.setattr(render_worker, "render_video_timeline", fake_render)
     task = analysis_repository.tasks.get(task_id)
-    result = VideoRenderWorkerHandler(analysis_repository.tasks)(
-        task, lease=lease, lease_lost=Event()
-    )
+    handler = VideoRenderWorkerHandler(analysis_repository.tasks)
+    result = handler(task, lease=lease, lease_lost=Event())
 
     assert result["status"] == "completed"
-    assert result["output_asset_id"] == output_id
+    assert media.get("owner-a", UUID(result["output_asset_id"])) is not None
     assert len(observations) == 1
     with analysis_repository.tasks._connection() as connection:
         remaining = connection.execute(
