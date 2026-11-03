@@ -354,3 +354,39 @@ This section supersedes older repository and PR snapshots above. The detailed cu
 ### Post-merge verification update — 2026-11-04 UTC
 
 All four push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan, and Video Render Integration. This is post-merge evidence on the exact main commit; target-device and whole-product acceptance gates remain open.
+
+
+## Superseding live integration snapshot — 2026-11-04 (post-PR #227)
+
+This section supersedes the earlier 2026-11-04 snapshot above. The current main SHA is
+`fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`. The current whole-project audit is
+[WHOLE_PROJECT_READINESS_AUDIT_2026-11-04.md](management/WHOLE_PROJECT_READINESS_AUDIT_2026-11-04.md).
+
+### Latest merged work
+
+- **PR #223** — workflow stability, AI Core provider-budget guard, media integrity verification, NEXUS alias-aware analysis and durable cut-only video rendering. Merge SHA: `a5a1002907b3ddac2b218b84312e2fd74f2d0256`.
+- **PR #224** — whole-project readiness audit and release baseline refresh. Documentation-only merge.
+- **PR #227** — operator UI render workflow. Merge SHA: `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`; exact tested PR head: `643ddfaf141004f19a90067f0992d60cebce564a`.
+
+### Exact-head and post-merge evidence
+
+PR #227 exact head passed Backend CI, CI on Python 3.11/3.12, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows. All four push workflows on current main `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d` also passed:
+- Backend CI: `41724900988`
+- CI: `41724901109`
+- Defensive Python Scan: `41724900883`
+- Video Render Integration: `41724900921`
+
+### Current integrated video workflow
+
+The RTL operator UI can now submit a render from a completed analysis with a non-empty timeline, preserve the per-analysis idempotency key during same-tab retries/reloads, refresh status, request queued/running cancellation, and download completed output through the authenticated media route. The media library also has authenticated download controls. Status refresh is manual; the pull Worker must be running separately.
+
+### Current boundaries and next priorities
+
+- Output remains silent and hard-cut-only; audio, transitions, captions, graphics, motion effects and AI-generated footage are not implemented.
+- No operational AI video provider is registered.
+- Real FFmpeg execution is verified on hosted Linux and Windows CI, not on the owner's actual device.
+- Browser/UX acceptance, target Windows install/upgrade/rollback, coordinated restore drill, license/lockfile decisions, and external provider/social acceptance remain open.
+- Continue scheduled workflow triggers and recovery semantics, Discovery source connectors, Memory/Knowledge integrity, defensive-lab advisory inventory, and end-to-end Operator UI coverage.
+- Keep the target-device test request deferred until the complete product candidate and acceptance package are ready.
+
+No public release or whole-product completion is claimed.

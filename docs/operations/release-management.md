@@ -159,3 +159,16 @@ The project remains **not release-ready**. Outstanding gates include the actual 
 ### Post-merge verification update — 2026-11-04 UTC
 
 All push-triggered workflows on main commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256` completed successfully: Backend CI, CI, Defensive Python Scan and Video Render Integration. This confirms the merged baseline remains green after integration; it does not replace target-device acceptance or the coordinated restore drill.
+
+
+## Superseding release baseline — 2026-11-04 (post-PR #227)
+
+Current main is `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`. PR #227 integrated the RTL operator controls for video render submission, manual status refresh, queued/running cancellation and authenticated MP4 download. The media library also supports authenticated asset downloads. Render submission uses a per-analysis idempotency key persisted in the current tab session to protect uncertain retries.
+
+The exact PR #227 head `643ddfaf141004f19a90067f0992d60cebce564a` passed Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows. All four post-merge push workflows on main `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d` also passed (Backend CI run 41724900988, CI run 41724901109, Defensive Python Scan run 41724900883, Video Render Integration run 41724900921).
+
+The UI does not start background polling; the pull Worker must be running separately. Downloads use authenticated same-origin requests, omit ambient cookies, do not place bearer tokens in URLs, and enforce the 100 MB client-side bound. The renderer still produces silent hard-cut-only MP4. No audio, transitions, captions, graphics, AI-generated footage or operational AI video provider is claimed.
+
+### Updated release decision
+
+The project remains **not release-ready**. Remaining gates include target-device Windows installation and real-media acceptance, browser/UX acceptance, coordinated database/media/key restore drill, clean upgrade/rollback, canonical dependency lock, license decision, external provider/social acceptance and final owner approval. No public tag, release or package publication is implied by these merges.
