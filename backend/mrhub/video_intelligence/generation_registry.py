@@ -31,3 +31,7 @@ class VideoGenerationRegistry:
             self._providers[key].capability
             for key in sorted(self._providers)
         ]
+
+
+# Adapters are registered by explicit application configuration only.
+video_generation_registry = VideoGenerationRegistry()
