@@ -6,6 +6,8 @@
   let token = sessionStorage.getItem(tokenKey);
   let mediaAssetsCache = [];
   let activeModelRunWorkflowId = null;
+  let pendingModelRunIdempotencyKey = null;
+  let pendingModelRunPayloadFingerprint = null;
 
   function message(target, text, kind = "") {
     const node = $(target);
@@ -698,11 +700,22 @@
     button.disabled = true;
     output.textContent = "در حال ثبت درخواست در صف…";
     try {
+      const requestBody = readAgentRunPayload(form);
+      const payloadFingerprint = JSON.stringify(requestBody);
+      if (
+        !pendingModelRunIdempotencyKey
+        || pendingModelRunPayloadFingerprint !== payloadFingerprint
+      ) {
+        pendingModelRunIdempotencyKey = crypto.randomUUID();
+        pendingModelRunPayloadFingerprint = payloadFingerprint;
+      }
       const result = await api("/agent/model-runs", {
         method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: readAgentRunPayload(form),
+        headers: { "Idempotency-Key": pendingModelRunIdempotencyKey },
+        body: requestBody,
       });
+      pendingModelRunIdempotencyKey = null;
+      pendingModelRunPayloadFingerprint = null;
       activeModelRunWorkflowId = result.workflow_id;
       $("#agent-queued-workflow-id").value = result.workflow_id;
       $("#agent-queued-refresh-button").disabled = false;
