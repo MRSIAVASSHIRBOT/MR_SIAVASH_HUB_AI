@@ -199,3 +199,26 @@ def test_verify_media_assets_rejects_unsafe_storage_key_without_echoing_it(tmp_p
     assert result["ok"] is False
     assert result["invalid_entries"] == 1
     assert unsafe_key not in str(result)
+
+
+def test_verify_media_assets_rejects_symlinked_media_root_even_when_empty(tmp_path):
+    from mrhub.operations.backup import verify_media_assets
+
+    database = tmp_path / "hub.sqlite3"
+    external_root = tmp_path / "external_assets"
+    external_root.mkdir()
+    media_root = tmp_path / "content_assets"
+    try:
+        media_root.symlink_to(external_root, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are unavailable in this environment")
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+
+    result = verify_media_assets(database)
+
+    assert result["ok"] is False
+    assert result["registered_assets"] == 0
+    assert result["invalid_entries"] == 1
