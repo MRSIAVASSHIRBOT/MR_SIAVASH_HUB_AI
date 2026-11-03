@@ -503,7 +503,14 @@ class WorkerEngine:
     def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lease_lost: Event) -> None:
         interval = max(0.1, self._lease_seconds / 3)
         while not stop.wait(interval):
-            if self._lease_manager.heartbeat(lease) is None:
+            try:
+                renewed = self._lease_manager.heartbeat(lease)
+            except Exception:
+                # A failed heartbeat cannot prove ownership; fail closed rather
+                # than letting a handler continue after its lease may have expired.
+                lease_lost.set()
+                return
+            if renewed is None:
                 lease_lost.set()
                 return
 
