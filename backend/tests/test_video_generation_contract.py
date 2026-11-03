@@ -1,3 +1,5 @@
+from io import BytesIO
+
 import pytest
 from pydantic import ValidationError
 
@@ -100,6 +102,12 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
                 status=GenerationStatus.RUNNING,
             )
 
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            content = b"fake-mp4"
+            if len(content) > max_bytes:
+                raise ValueError("output_too_large")
+            return sink.write(content)
+
         def cancel(self, provider_job_id):
             return True
 
@@ -107,6 +115,9 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
     registry.register(adapter)
     assert registry.catalog() == [adapter.capability]
     assert registry.get("test", "fake-v1") is adapter
+    sink = BytesIO()
+    assert adapter.download_output("job-1", sink, max_bytes=100) == 8
+    assert sink.getvalue() == b"fake-mp4"
     with pytest.raises(ValueError):
         registry.register(adapter)
 

@@ -6,7 +6,7 @@ subprocess, model download, billing, or rendering operation.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -99,6 +99,20 @@ class VideoGenerationProvider(Protocol):
         ...
 
     def get_status(self, provider_job_id: str) -> VideoGenerationResult:
+        ...
+
+    def download_output(
+        self,
+        provider_job_id: str,
+        sink: BinaryIO,
+        *,
+        max_bytes: int,
+    ) -> int:
+        """Stream output into a caller-owned bounded sink; never return or fetch a raw URL.
+
+        The application supplies a sink that rejects writes above max_bytes. The
+        adapter must not close the sink and must return the exact byte count written.
+        """
         ...
 
     def cancel(self, provider_job_id: str) -> bool:
