@@ -32,6 +32,6 @@ returns storage keys or file contents and never copies or deletes files.
 
 A backup set should not be accepted while the verifier reports `ok: false`.
 This verifier is a local consistency gate, not a media backup/copy utility and
-not a substitute for an actual restore drill. The API and worker must remain
+not a substitute for an actual restore drill. Verification is bounded to 10,000 registered assets and 100 MB per asset; larger registries or implausible metadata fail closed and require an explicitly planned offline verification procedure. The API and worker must remain
 quiescent while the database and media directory are checked and copied, so the
 two components represent the same recovery point.
