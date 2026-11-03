@@ -45,6 +45,7 @@ All endpoints require an authenticated owner session:
 - `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
 - `POST /video-intelligence/analyses/{analysis_id}/renders` — queue a silent cut-only MP4 render from a completed owned analysis; requires an `Idempotency-Key` header.
 - `GET /video-intelligence/renders/{render_id}` — retrieve owner-scoped render status and output asset metadata.
+- `DELETE /video-intelligence/renders/{render_id}` — cancel queued work immediately or request cooperative cancellation of a running render; the worker owns the final terminal transition after it observes the request.
 - `GET /content/assets/{asset_id}/file` — download a completed private render through the existing owner-scoped media route.
 
 ## Analysis scope and remaining work
