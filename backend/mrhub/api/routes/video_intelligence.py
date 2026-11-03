@@ -337,6 +337,7 @@ def synthesize_video_prompt(
             custom_changes=payload.custom_changes,
             sound_design=payload.sound_design,
             final_frame=payload.final_frame,
+            timeline=timeline,
         )
     except ValueError:
         raise HTTPException(status_code=422, detail="Visual observations cannot form a valid timeline") from None
