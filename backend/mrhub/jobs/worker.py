@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 from mrhub.content.dispatcher import ContentScheduleDispatcher
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.leases import LeaseManager, WorkerLease
+from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.security.audit import AuditLogger
 
@@ -505,7 +505,7 @@ class WorkerEngine:
         while not stop.wait(interval):
             try:
                 renewed = self._lease_manager.heartbeat(lease)
-            except Exception:
+            except (sqlite3.Error, LeaseError):
                 # A failed heartbeat cannot prove ownership; fail closed rather
                 # than letting a handler continue after its lease may have expired.
                 lease_lost.set()
