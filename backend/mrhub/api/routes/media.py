@@ -126,10 +126,22 @@ async def upload_asset(
             raise HTTPException(status_code=415, detail="Media signature does not match Content-Type")
         filename = _safe_filename(x_file_name)
         repository = _repository()
-        try:
-            record = await asyncio.to_thread(
+        storage_task = asyncio.create_task(
+            asyncio.to_thread(
                 repository.store_upload, user.user_id, filename, media_type, data
             )
+        )
+        try:
+            # Shield the storage thread from request cancellation. If the HTTP
+            # task is cancelled, keep the admission slot until the thread stops
+            # using the upload buffer.
+            record = await asyncio.shield(storage_task)
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(storage_task)
+            except Exception:
+                pass
+            raise
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid media upload") from exc
         _audit(repository, user, "content.asset_uploaded", str(record["asset_id"]), "asset_uploaded")
