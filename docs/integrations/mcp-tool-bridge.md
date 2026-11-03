@@ -37,11 +37,12 @@ The endpoint is `http://127.0.0.1:8765/mcp`. The service is a separate process a
 
 The bridge currently exposes only tools already registered in the process. The initial built-in catalog contains the deterministic `text.echo` tool. This is an interoperability slice, not a broad automation integration.
 
-## Security boundaries
+## Security boundaries and deployment warning
 
 - The MCP SDK is an optional, exact-pinned dependency; core installs do not import it.
 - Only Streamable HTTP is used. No stdio subprocess launching, arbitrary MCP server discovery, or remote MCP client connection is provided.
 - Binding is restricted to numeric loopback IP literals and disabled by default.
+- **Loopback is not per-user authentication.** Any process or local user able to connect to the host's loopback interface may be able to call the MCP endpoint. Do not enable this service on shared or multi-user machines unless an additional, independently reviewed access-control boundary is deployed. Do not assume that binding to 127.0.0.1 isolates the service from other local processes.
 - Request bodies are capped at 1 MiB; legacy sessions are capped at 20 and expire after five idle minutes.
 - Every invocation passes through the existing Hub schema validation and policy engine.
 - The bridge supplies no permission grants and cannot mark an operation as user-approved. Tools requiring permissions, high-risk approval, or external-side-effect approval are denied by the existing policy engine.
