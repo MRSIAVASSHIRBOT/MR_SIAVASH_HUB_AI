@@ -117,7 +117,8 @@ This backlog converts the audit into ordered work packages. It is a plan and evi
 |---|---|---|
 | Mainline | `main` = `067177554ac923864981c11f80628e92aea0aa70`; tree inventory is unchanged at 319 entries | Keep this SHA as the integration baseline until a verified merge changes it |
 | PR #211 | Draft documentation PR; exact head `5ffa706dcea65d46872ed45c445558e9adb9042d`; Backend CI, CI, and Defensive Python Scan completed successfully | Keep open for review; do not treat as merged |
-| PR #212 | Draft defensive log-review PR; exact head `9d98c38f1752e07f290c736eb3dd9ddd6e0894e7`; new exact-head checks were queued/running at the latest observation | Review new parser-hardening tests and wait for all exact-head checks |
+| PR #212 | Draft defensive log-review PR; current exact head `c164847a84c11269643831752f344ca2183d536a`; Backend CI and Defensive Python Scan passed, CI was still running at latest observation | Finish exact-head CI and review before any integration decision |
+| PR #213 | Draft backup-recovery runbook; exact head `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6`; documentation-only | Review the media/database consistency and separately protected key-recovery procedure; no runtime acceptance claimed |
 | PR #186 | Renderer branch is stacked on an obsolete timeline base and contains a migration collision | Do not merge or rebase the full branch; rebuild only renderer-specific changes on current main |
 | PR #183 / #210 | Historical audit/status snapshots based on older mainlines | Preserve as historical evidence; do not use as the current source of truth |
 
@@ -169,3 +170,6 @@ The current `backend/mrhub/operations/backup.py` implementation is intentionally
 - POSIX output permissions are restricted to owner read/write. Windows ACL behavior and real target-device restore have not been verified.
 
 **WP-01 next design tasks:** define a media inventory and consistency strategy; define a user-controlled, separately protected key-material recovery procedure; specify restore ordering and post-restore validation for the API/worker/UI; then add automated tests for any new helper before target-device acceptance. No secret export, credential collection, or automatic key copying is authorized by this work package.
+
+
+Live queue refresh: PR #213 was opened from current main for the coordinated media/database and key-recovery runbook. The open historical/documentation queue now includes #183, #186, #210, #211, #212, and #213. The current main SHA remains `067177554ac923864981c11f80628e92aea0aa70`; none of these PRs is merged. PR #212's current exact-head Backend CI and Defensive Python Scan are successful; its Python 3.11/3.12 CI workflow was still running when this note was added. PR #213's validation workflows were also running.
