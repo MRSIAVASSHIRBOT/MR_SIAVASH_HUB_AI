@@ -1,6 +1,7 @@
 """Authenticated bounded media uploads and sandboxed local FFmpeg transcode."""
 from __future__ import annotations
 
+import asyncio
 import re
 import shutil
 import sqlite3
@@ -26,6 +27,8 @@ from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/content/assets", tags=["content-media"], dependencies=[Depends(require_user)])
 _FFMPEG_SEMAPHORE = threading.BoundedSemaphore(1)
+# Per-process admission control bounds simultaneous in-memory upload buffers.
+_UPLOAD_SEMAPHORE = threading.BoundedSemaphore(1)
 _ALLOWED_TYPES = {
     "video/mp4",
     "video/quicktime",
@@ -72,7 +75,7 @@ def _safe_filename(value: str) -> str:
     return cleaned
 
 
-def _signature_matches(media_type: str, content: bytes) -> bool:
+def _signature_matches(media_type: str, content: bytes | bytearray) -> bool:
     if media_type == "image/jpeg":
         return content.startswith(b"\xff\xd8\xff")
     if media_type == "image/png":
@@ -99,34 +102,51 @@ async def upload_asset(
     media_type = request.headers.get("content-type", "").split(";", maxsplit=1)[0].strip().lower()
     if media_type not in _ALLOWED_TYPES:
         raise HTTPException(status_code=415, detail="Unsupported media type")
-    content_length = request.headers.get("content-length")
-    if content_length:
-        try:
-            if int(content_length) > MAX_UPLOAD_BYTES:
-                raise HTTPException(status_code=413, detail="Media upload exceeds the 25 MB limit")
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid Content-Length") from exc
-
-    chunks: list[bytes] = []
-    size = 0
-    async for chunk in request.stream():
-        size += len(chunk)
-        if size > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="Media upload exceeds the 25 MB limit")
-        chunks.append(chunk)
-    data = b"".join(chunks)
-    if not _signature_matches(media_type, data):
-        raise HTTPException(status_code=415, detail="Media signature does not match Content-Type")
-    filename = _safe_filename(x_file_name)
-    repository = _repository()
+    if not _UPLOAD_SEMAPHORE.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="upload_busy")
     try:
-        record = await __import__("asyncio").to_thread(
-            repository.store_upload, user.user_id, filename, media_type, data
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Media upload exceeds the 25 MB limit")
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="Invalid Content-Length") from exc
+
+        # Extend one bounded buffer instead of retaining every ASGI chunk and
+        # allocating a second full-size object with b"".join(chunks).
+        data = bytearray()
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Media upload exceeds the 25 MB limit")
+            data.extend(chunk)
+        if not _signature_matches(media_type, data):
+            raise HTTPException(status_code=415, detail="Media signature does not match Content-Type")
+        filename = _safe_filename(x_file_name)
+        repository = _repository()
+        storage_task = asyncio.create_task(
+            asyncio.to_thread(
+                repository.store_upload, user.user_id, filename, media_type, data
+            )
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid media upload") from exc
-    _audit(repository, user, "content.asset_uploaded", str(record["asset_id"]), "asset_uploaded")
-    return _public_asset(record)
+        try:
+            # Shield the storage thread from request cancellation. If the HTTP
+            # task is cancelled, keep the admission slot until the thread stops
+            # using the upload buffer.
+            record = await asyncio.shield(storage_task)
+        except asyncio.CancelledError:
+            await asyncio.shield(
+                asyncio.gather(storage_task, return_exceptions=True)
+            )
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid media upload") from exc
+        _audit(repository, user, "content.asset_uploaded", str(record["asset_id"]), "asset_uploaded")
+        return _public_asset(record)
+    finally:
+        _UPLOAD_SEMAPHORE.release()
 
 
 @router.get("")
