@@ -14,6 +14,7 @@ from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
 from mrhub.video_intelligence.service import probe_video
+from mrhub.video_intelligence.vision import analyze_video_frames
 
 
 class VideoAnalysisWorkerHandler:
@@ -85,6 +86,27 @@ class VideoAnalysisWorkerHandler:
             except SceneDetectionError as exc:
                 return self._fail(task, owner_user_id, exc.reason_code)
 
+            semantic = analyze_video_frames(
+                frames,
+                allow_remote=request.allow_remote_vision,
+                should_cancel=lambda: (
+                    lease_lost.is_set()
+                    or (
+                        (current_task := self.tasks.get(task.task_id)) is None
+                        or current_task.status is TaskStatus.CANCELLED
+                    )
+                ),
+            )
+            if semantic.get("status") == "cancelled":
+                current = self.tasks.get(task.task_id)
+                if current is not None and current.status is TaskStatus.CANCELLED:
+                    self.jobs.finish(
+                        task.task_id, owner_user_id, status="cancelled",
+                        error_code="cancelled_by_owner", lease=lease,
+                    )
+                    return {"analysis_id": str(analysis_id), "status": "cancelled"}
+                return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+
             results.append({
                 "asset_id": str(asset_id),
                 "technical_metadata": metadata.model_dump(mode="json"),
@@ -115,8 +137,15 @@ class VideoAnalysisWorkerHandler:
         result = {
             "analysis_id": str(analysis_id),
             "mode": request.mode.value,
-            "analysis_level": "bounded_technical_and_temporal",
-            "semantic_visual_analysis": False,
+            "analysis_level": (
+                "technical_temporal_and_semantic_visual"
+                if all(item["semantic_visual_analysis"].get("status") == "completed" for item in results)
+                else "bounded_technical_temporal_with_optional_semantic_visual"
+            ),
+            "semantic_visual_analysis": all(
+                item["semantic_visual_analysis"].get("status") == "completed"
+                for item in results
+            ),
             "audio_analysis": (
                 "requested_but_not_performed"
                 if request.include_audio_analysis else "not_requested"
