@@ -692,6 +692,27 @@ MIGRATIONS = (
             ),
         ),
     ),
+    Migration.build(
+        25,
+        "owner_scoped_editable_video_timeline_drafts",
+        (
+            """CREATE TABLE IF NOT EXISTS video_timeline_drafts (
+                draft_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE CASCADE,
+                asset_id TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL CHECK (duration_seconds BETWEEN 3 AND 60),
+                aspect_ratio TEXT NOT NULL CHECK (aspect_ratio IN ('9:16', '16:9', '1:1', '4:5')),
+                timeline_json TEXT NOT NULL CHECK (length(timeline_json) <= 60000),
+                version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(owner_user_id, analysis_id, asset_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_timeline_drafts_owner_updated ON video_timeline_drafts(owner_user_id, updated_at)",
+            "CREATE INDEX IF NOT EXISTS idx_video_timeline_drafts_analysis ON video_timeline_drafts(analysis_id, asset_id)",
+        ),
+    ),
 )
 
 

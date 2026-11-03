@@ -38,12 +38,17 @@ All endpoints require an authenticated owner session:
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
 - `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. Requires an owned analysis and does not start video generation.
+- `POST /video-intelligence/timeline-drafts` — persist an editable timeline for an asset in the current owner's completed analysis.
+- `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned timeline draft.
+- `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
 
 ## Analysis scope and remaining work
 
 The durable Worker always reports technical metadata, sampled keyframe timestamps, and heuristic scene-cut timestamps. If local vision is explicitly enabled and an installed vision-capable Ollama model is configured, it also returns evidence-linked visual observations tied to actual sampled timestamps.
 
 Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-model>`, and optionally `MRH_LOCAL_VISION_TIMEOUT_SECONDS=120`. Ollama must be running on the configured loopback-only `MRH_LOCAL_INFERENCE_BASE_URL`. No model is downloaded automatically, and there is no remote fallback. If vision is disabled or unavailable, the job completes with an explicit semantic-analysis status rather than fabricated descriptions.
+
+Editable timeline drafts can be saved separately with owner isolation, bounded beat intervals, and optimistic version checks. Editing a draft does not trigger rendering or provider execution.
 
 The dashboard provides an authenticated workflow to select owned video assets, submit an idempotent analysis job, manually refresh its status, inspect technical/semantic results, and compose/copy one prompt per source asset. The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
