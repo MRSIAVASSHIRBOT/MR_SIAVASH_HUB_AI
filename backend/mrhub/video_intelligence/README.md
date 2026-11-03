@@ -35,10 +35,9 @@ All endpoints require an authenticated owner session:
 
 ## Not implemented yet
 
-- Semantic scene understanding, motion analysis, OCR, and audio transcription.
+- Semantic scene understanding and motion analysis.
+- OCR and audio transcription.
 - Model-provider adapters, operator UI, and end-to-end video rendering.
-- Visual understanding, motion analysis, OCR, and audio transcription.
-- Operator UI, model-provider adapters, and end-to-end video rendering.
 
 ## Security boundaries
 
