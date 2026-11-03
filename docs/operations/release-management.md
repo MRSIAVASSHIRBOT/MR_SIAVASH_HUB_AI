@@ -128,3 +128,30 @@ The SQLite helper does not back up provider tokens, encryption keys, or media fi
 The Release & Update Manager may prepare branches, changelog entries, packaging improvements, and release documentation. Public release publication, official GitHub Release creation, final package publication, and final tag creation remain under the project owner's and project manager's control.
 
 Never claim cross-platform validation based only on CI. State exactly which operating systems, Python versions, and environments were exercised.
+
+
+## Repository-wide release baseline refresh — 2026-11-03
+
+This dated addendum supersedes the earlier point-in-time repository and release evidence above where the two differ. The older evidence remains useful as historical context.
+
+- **Current main at audit time:** `067177554ac923864981c11f80628e92aea0aa70`.
+- **Schema migrations:** the current immutable migration registry includes versions 1–26. Version 26 is `durable_video_generation_task_handoff`. Any future schema change must use the next unused version after re-reading the live registry; never infer a version from an old PR.
+- **Current release metadata:** `0.1.0`; Python floor `>=3.11`; CI matrix includes 3.11 and 3.12.
+- **Dependency reproducibility:** the root manifest currently has no canonical lockfile. Version ranges in `pyproject.toml` are not a deterministic deployment lock. Resolve one canonical lock strategy before making reproducible-install claims.
+- **Distribution license:** the project still has no selected root distribution license. Resolve this before public package distribution.
+- **Target platforms:** current automated CI evidence is Linux-based. Windows launcher workflow checks are not equivalent to a clean install/upgrade/rollback drill on the owner's Windows device. macOS is not established as a supported platform.
+- **Backup scope:** the implemented helper backs up SQLite only. Media files live separately under the database directory's `content_assets` folder; workflow payload encryption, public-media signing, provider tokens, and other configured secrets are separate materials. No complete application backup/restore drill has yet been evidenced.
+- **Current release evidence:** PR #209 exact-head Backend CI, CI, and Defensive Python Scan passed. This does not establish that current main or a future release candidate has passed those workflows. The current-main combined-status query returned no status records during this audit.
+
+### Pre-release dependency closure
+
+Before creating a release candidate, reconcile the following as a single release workstream:
+
+1. Select and document the canonical dependency lock workflow; build/install from that lock in a clean environment.
+2. Select and include the distribution license.
+3. Define an operator-safe backup set and restore order for SQLite, media assets, workflow payload encryption key, public-media signing key, and provider configuration. Keep secret material out of source control and manifests; use a separate protected channel for key recovery.
+4. Run a disposable restore drill that validates database integrity, media hashes/metadata consistency, application startup, authenticated owner access, and required key availability without publishing to external providers.
+5. Verify clean Windows install, upgrade, restart, and rollback on the target device before claiming Windows support.
+6. Re-run all required CI/security/build workflows on the exact final release candidate SHA and retain the run identifiers.
+
+No release, tag, publication, paid service activation, external publishing, or owner-device test is authorized by this documentation update.
