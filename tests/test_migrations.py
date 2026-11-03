@@ -198,6 +198,7 @@ def test_unknown_future_migration_version_fails_closed(tmp_path):
         SchemaMigrator(connection).migrate()
     connection.close()
 
+
 def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     from mrhub.agents.repository import AgentRunRepository
     from mrhub.agents.workflow_repository import AgentWorkflowRepository
