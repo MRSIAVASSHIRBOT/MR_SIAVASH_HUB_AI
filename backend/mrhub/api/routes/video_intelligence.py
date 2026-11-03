@@ -173,7 +173,7 @@ def submit_scene_job(
     """Queue bounded scene analysis for a video asset owned by the caller."""
     policy = PolicyEngine()
     # This dedicated endpoint explicitly grants only bounded, read-only analysis.
-    # Generic /tasks submissions still classify this unknown task as high risk.
+    # Generic /tasks submissions reserve this internal task type and reject it.
     risk_class = RiskClass.LOW
     decision = policy.evaluate(
         ActionRequest(action="video.scene_detection", risk_class=risk_class)
