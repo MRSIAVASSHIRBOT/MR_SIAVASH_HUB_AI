@@ -199,7 +199,7 @@ PR #214 adds process-level emergency-stop/resume coverage to the separate-proces
 
 PR #216 adds a read-only `verify_media_assets(database_path)` consistency gate for the sibling `content_assets/` directory. It compares each registered storage key, file size, and SHA-256 digest; rejects unsafe/symlinked paths; and counts unregistered entries without exposing asset identifiers or contents. It does not copy or delete media and requires API/worker writers to be stopped for a meaningful backup-point check.
 
-PR #216 latest exact head: `baacd5b7be3ecb34dfa061587295f24047edd9e6`. Follow-up changes bound registry rows, directory entries, and per-file hashing; validate size/hash metadata; and add regression tests for resource limits and symlink roots. Backend CI and Defensive Python Scan passed; CI is still running. The PR is not integrated or runtime-verified.
+PR #216 exact head: `baacd5b7be3ecb34dfa061587295f24047edd9e6`. Follow-up changes bound registry rows, directory entries, and per-file hashing; validate size/hash metadata; and add regression tests for resource limits and symlink roots. Backend CI, CI, and Defensive Python Scan all passed on this exact head. The PR is not integrated or runtime-verified.
 
 
 ### 8.10 Exact-head validation refresh
@@ -216,7 +216,7 @@ PR #216 latest exact head: `baacd5b7be3ecb34dfa061587295f24047edd9e6`. Follow-up
 
 PR #217 extends the read-only Python AST checks to recognize straightforward module aliases and imported-function aliases for `pickle`, `yaml`, `subprocess`, `os`, and `builtins`. It adds advisory high-severity rule `PY105` for `os.system` and `os.popen`, while preserving the safe YAML `SafeLoader` alias case. Regression tests cover both risky aliases and the safe-loader exception. No target code is imported or executed, and no repository files are modified by the analyzer.
 
-PR #217 exact head: `a74455c275bc0c449bdfdfa87bf4d03940f37a29`; Backend CI, CI, and Defensive Python Scan are queued. This is pending exact-head validation and is not yet integrated.
+PR #217 exact head: `ba96dfa7e28f82b31d7d561bf7978155821543af`. The first Backend CI attempt identified a Ruff FLY002 test-fixture style issue; the fixture was rewritten as a multiline literal. On the corrected head, Defensive Python Scan passed, Backend CI lint and dependency audit passed, and the test suite is running; CI matrix jobs are queued. The PR is not yet fully validated or integrated.
 
 ### 8.12 Current validation snapshot
 
@@ -225,3 +225,10 @@ PR #217 exact head: `a74455c275bc0c449bdfdfa87bf4d03940f37a29`; Backend CI, CI, 
 - PR #216 bounded media verifier: Backend CI and Defensive Python Scan passed on `baacd5b7be3ecb34dfa061587295f24047edd9e6`; CI remains in progress.
 - PR #217 NEXUS AST expansion: all three required workflows queued on `a74455c275bc0c449bdfdfa87bf4d03940f37a29`.
 - Main remains `067177554ac923864981c11f80628e92aea0aa70`. No merge has been performed.
+
+
+### 8.13 Latest exact-head status
+
+- PR #216: all three required workflows passed on `baacd5b7be3ecb34dfa061587295f24047edd9e6`.
+- PR #217: Defensive Python Scan passed on `ba96dfa7e28f82b31d7d561bf7978155821543af`; Backend CI dependency audit and lint passed, with coverage tests still running; CI matrix was queued at the latest observation.
+- The PR #217 earlier lint failure was corrected; no failure is hidden or counted as a pass on the corrected head until its remaining jobs complete.
