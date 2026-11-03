@@ -11,7 +11,7 @@ from mrhub.config import get_settings
 from mrhub.diagnostics.model_profiles import get_model_profile, list_model_profiles
 from mrhub.diagnostics.model_recommender import recommend_model_profiles
 from mrhub.diagnostics.resource_advisor import assess_model_resources
-from mrhub.providers.base import ProviderError, ProviderRequest
+from mrhub.providers.base import ImageInput, ProviderError, ProviderRequest
 from mrhub.providers.ollama import OllamaProvider
 from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
@@ -38,6 +38,7 @@ def build_model_router(
             OllamaProvider(
                 model=settings.local_inference_model,
                 base_url=settings.local_inference_base_url,
+                vision_enabled=settings.local_inference_vision_enabled,
                 timeout_seconds=(
                     min(settings.local_inference_timeout_seconds, max_timeout_seconds)
                     if max_timeout_seconds is not None
@@ -56,6 +57,7 @@ def build_model_router(
                 model=settings.remote_inference_model,
                 api_key=settings.remote_inference_api_key.get_secret_value(),
                 base_url=settings.remote_inference_base_url,
+                vision_enabled=settings.remote_inference_vision_enabled,
                 timeout_seconds=(
                     min(settings.remote_inference_timeout_seconds, max_timeout_seconds)
                     if max_timeout_seconds is not None
@@ -81,6 +83,7 @@ class ProviderHealthCheckRequest(BaseModel):
 class GenerateModelRequest(BaseModel):
     input_text: str = Field(min_length=1, max_length=32_000)
     max_output_tokens: int = Field(default=512, ge=1, le=2048)
+    images: list[ImageInput] = Field(default_factory=list, max_length=4)
 
 
 class AssessModelRequest(BaseModel):
