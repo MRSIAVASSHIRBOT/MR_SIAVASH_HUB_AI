@@ -88,15 +88,16 @@ jobs:
           $ErrorActionPreference = "Stop"
           $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-launcher-failure.sqlite3"
           $env:MRH_REQUIRE_WORKER_FOR_READINESS = "true"
-          $listener = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList @(
-            "-c",
-            "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',8000)); s.listen(); time.sleep(90)"
-          ) -PassThru -WindowStyle Hidden
+          $listenerError = Join-Path $env:RUNNER_TEMP "port-listener.err.log"
+          $listenerCode = "import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('127.0.0.1',8000)); s.listen(); time.sleep(90)"
+          $listenerArguments = '-c "' + $listenerCode + '"'
+          $listener = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList $listenerArguments -PassThru -WindowStyle Hidden -RedirectStandardError $listenerError
           try {
             Start-Sleep -Seconds 2
             $listener.Refresh()
             if ($listener.HasExited) {
-              throw "Port-occupying listener exited before the launcher test began."
+              $listenerOutput = if (Test-Path $listenerError) { Get-Content $listenerError -Raw } else { "No listener stderr was captured." }
+              throw "Port-occupying listener exited before the launcher test began. $listenerOutput"
             }
             $portOwner = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
               Select-Object -First 1
