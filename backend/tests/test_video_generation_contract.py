@@ -95,3 +95,21 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
     assert registry.get("test", "fake-v1") is adapter
     with pytest.raises(ValueError):
         registry.register(adapter)
+
+
+
+def test_authenticated_provider_catalog_fails_closed_when_no_adapter_is_configured():
+    from client_helpers import authenticated_client
+
+    client = authenticated_client()
+    try:
+        response = client.get("/video-intelligence/generation/providers")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["providers"] == []
+        assert payload["count"] == 0
+        assert payload["generation_available"] is False
+        assert payload["reason_code"] == "provider_unavailable"
+        assert payload["execution"] == "not_started"
+    finally:
+        client.close()
