@@ -9,6 +9,7 @@ from mrhub.security.defensive_lab import (
     ScopeValidationError,
     audit_configuration_text,
     audit_requirements_text,
+    audit_structured_log_text,
 )
 
 
