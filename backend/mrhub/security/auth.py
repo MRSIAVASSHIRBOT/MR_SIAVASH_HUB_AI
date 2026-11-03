@@ -93,6 +93,12 @@ class AuthService:
         token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
         self.repository.delete_auth_session(token_hash)
 
+    def cleanup_expired_sessions(self) -> int:
+        """Delete all expired auth sessions from the database."""
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC).isoformat()
+        return self.repository.cleanup_expired_auth_sessions(now)
 
 
 class LoginAttemptLimiter:

@@ -65,7 +65,6 @@ def test_invalid_password_does_not_create_session(tmp_path, monkeypatch) -> None
     assert client.get("/tasks").status_code == 401
 
 
-
 def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "login-limit.sqlite3"))
     get_settings.cache_clear()
@@ -102,7 +101,6 @@ def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, mo
     assert limited.headers["Cache-Control"] == "no-store"
     assert limited.headers["Pragma"] == "no-cache"
     assert 1 <= int(limited.headers["Retry-After"]) <= 300
-
 
 
 def test_owner_setup_rejects_non_loopback_client(tmp_path, monkeypatch) -> None:
@@ -161,8 +159,69 @@ def test_login_prunes_expired_sessions(tmp_path, monkeypatch) -> None:
     assert login.status_code == 200
 
     with sqlite3.connect(database_path) as connection:
+        remaining = connection.execute("SELECT session_id FROM auth_sessions").fetchall()
+    assert len(remaining) == 1
+    assert remaining[0][0] != "expired-session"
+
+
+def test_auth_service_cleanup_expired_sessions(tmp_path, monkeypatch) -> None:
+    from mrhub.api.dependencies import get_auth_service
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "cleanup.sqlite3"))
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    password = "test-only-strong-password-2026"
+    assert client.post("/auth/setup", json={"password": password}).status_code == 201
+
+    with sqlite3.connect(tmp_path / "cleanup.sqlite3") as connection:
+        expired_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+        connection.execute(
+            """
+            INSERT INTO auth_sessions (session_id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "expired-1",
+                "local-owner",
+                "a" * 64,
+                expired_at,
+                expired_at,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO auth_sessions (session_id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "expired-2",
+                "local-owner",
+                "b" * 64,
+                expired_at,
+                expired_at,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO auth_sessions (session_id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "valid",
+                "local-owner",
+                "c" * 64,
+                (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+
+    auth_service = get_auth_service()
+    deleted_count = auth_service.cleanup_expired_sessions()
+    assert deleted_count == 2
+
+    with sqlite3.connect(tmp_path / "cleanup.sqlite3") as connection:
         remaining = connection.execute(
             "SELECT session_id FROM auth_sessions"
         ).fetchall()
     assert len(remaining) == 1
-    assert remaining[0][0] != "expired-session"
+    assert remaining[0][0] == "valid"
