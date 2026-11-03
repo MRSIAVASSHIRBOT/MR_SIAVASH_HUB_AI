@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import (
@@ -33,13 +33,33 @@ from mrhub.video_intelligence.schemas import (
     VideoAnalysisRequest,
     VideoTechnicalMetadata,
 )
-from mrhub.video_intelligence.service import build_generation_prompt, probe_video
+from mrhub.video_intelligence.service import (
+    build_generation_prompt,
+    build_prompt_from_visual_analysis,
+    probe_video,
+)
+from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 
 router = APIRouter(
     prefix="/video-intelligence",
     tags=["video-intelligence"],
     dependencies=[Depends(require_user)],
 )
+
+
+class AnalysisPromptSynthesisRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: UUID
+    duration_seconds: int = Field(default=10, ge=3, le=60)
+    aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
+    brand_profile_id: UUID | None = None
+    custom_changes: dict[
+        Annotated[str, Field(min_length=1, max_length=40)],
+        Annotated[str, Field(max_length=240)],
+    ] = Field(default_factory=dict, max_length=12)
+    sound_design: str | None = Field(default=None, max_length=500)
+    final_frame: str | None = Field(default=None, max_length=500)
 
 
 class PromptCompositionRequest(BaseModel):
@@ -239,3 +259,95 @@ def get_video_analysis(
     if analysis is None:
         raise HTTPException(status_code=404, detail="Video analysis not found")
     return analysis
+
+
+
+@router.post("/analyses/{analysis_id}/prompt")
+def synthesize_video_prompt(
+    analysis_id: UUID,
+    payload: AnalysisPromptSynthesisRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Create an original editing prompt from one owned asset's validated Vision result."""
+    analysis = _analysis_jobs().get(user.user_id, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Video analysis not found")
+    if analysis["status"] != "completed" or not isinstance(analysis.get("result"), dict):
+        raise HTTPException(status_code=409, detail="Video analysis is not completed")
+
+    result = analysis["result"]
+    assets = result.get("assets")
+    if not isinstance(assets, list):
+        raise HTTPException(status_code=409, detail="Analysis result has no asset observations")
+    selected = next(
+        (
+            item for item in assets
+            if isinstance(item, dict) and item.get("asset_id") == str(payload.asset_id)
+        ),
+        None,
+    )
+    if selected is None:
+        raise HTTPException(status_code=404, detail="Asset is not part of this analysis")
+
+    semantic = selected.get("semantic_visual_analysis")
+    if not isinstance(semantic, dict) or semantic.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail="Validated semantic visual analysis is unavailable for this asset",
+        )
+    try:
+        visual_analysis = VisualAnalysisResult.model_validate({
+            "style_summary": semantic.get("style_summary"),
+            "observations": semantic.get("observations"),
+        })
+        source_duration = float(selected["analysis_window_seconds"])
+    except (TypeError, ValueError, KeyError):
+        raise HTTPException(
+            status_code=409,
+            detail="Stored visual analysis is incomplete or invalid",
+        ) from None
+
+    brand = None
+    if payload.brand_profile_id is not None:
+        profile = _brands().get(user.user_id, payload.brand_profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="Brand profile not found")
+        brand = BrandIdentity.model_validate({
+            key: profile[key]
+            for key in (
+                "brand_name", "handle", "logo_asset_id",
+                "colors", "font_preferences", "tone",
+            )
+        })
+        _validate_logo(user.user_id, brand)
+
+    try:
+        prompt = build_prompt_from_visual_analysis(
+            visual_analysis=visual_analysis,
+            source_duration_seconds=source_duration,
+            duration_seconds=payload.duration_seconds,
+            aspect_ratio=payload.aspect_ratio,
+            brand=brand,
+            custom_changes=payload.custom_changes,
+            sound_design=payload.sound_design,
+            final_frame=payload.final_frame,
+        )
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Visual observations cannot form a valid timeline") from None
+
+    return {
+        "analysis_id": str(analysis_id),
+        "asset_id": str(payload.asset_id),
+        "status": "composed",
+        "execution": "not_started",
+        "mode": result.get("mode"),
+        "duration_seconds": payload.duration_seconds,
+        "aspect_ratio": payload.aspect_ratio,
+        "prompt": prompt,
+        "evidence": {
+            "source_duration_seconds": source_duration,
+            "observation_count": len(visual_analysis.observations),
+            "semantic_provider": semantic.get("provider"),
+            "semantic_model": semantic.get("model"),
+        },
+    }
