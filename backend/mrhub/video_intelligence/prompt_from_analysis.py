@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,7 +25,7 @@ class AnalysisPromptOptions(BaseModel):
 
     aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
     brand_name: str | None = Field(default=None, max_length=80)
-    colors: list[str] = Field(default_factory=list, max_length=8)
+    colors: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=8)
     typography: str | None = Field(default=None, max_length=240)
     sound_design: str | None = Field(default=None, max_length=500)
     final_frame: str | None = Field(default=None, max_length=500)
