@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`  
+**Audited main SHA:** `92bc36e5a61446c258c558b151edcec582bf470b`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -17,9 +17,9 @@ These results confirm the configured automated checks on the current main commit
 
 ## 2. Live repository inventory
 
-At main `fabafbad607aa6bcf254669a3ccb1b4b7ff9ce2d`:
+At main `92bc36e5a61446c258c558b151edcec582bf470b` (2026-11-04 UTC):
 
-- Recursive Git tree: 325 entries; response was not truncated.
+- Recursive Git tree: 326 entries; response was not truncated.
 - Python test files under `tests/` and `backend/tests/`: 94.
 - Backend package domains: 19 (agents, API, capabilities, content, diagnostics, domain, infrastructure, integrations, jobs, knowledge, media, memory, NEXUS, operations, providers, security, tools, video intelligence, web).
 - GitHub Actions workflows: 7, including Backend CI, the Python 3.11/3.12 CI matrix, Defensive Python Scan, Windows launcher validation, and real video-render integration.
@@ -99,7 +99,7 @@ The current output is silent, hard-cut-only MP4. The Linux/Windows CI jobs prove
 
 ## 5. Pull-request hygiene and integration policy
 
-PR #223 integrated the workflow, AI Core, media integrity, NEXUS and bounded renderer workstreams. PR #227 integrated the corresponding operator UI. Source candidates #214–#222, duplicate UI PRs #225/#226, stale audit PRs #183/#211, and historical video snapshot/renderer PRs #210/#186 have been closed as superseded. PR #224 delivered the current audit and release baseline. The repository had no open pull requests at the time of this snapshot.
+PR #223 integrated the workflow, AI Core, media integrity, NEXUS and bounded renderer workstreams. PR #227 integrated the corresponding operator UI. Source candidates #214–#222, duplicate UI PRs #225/#226, stale audit PRs #183/#211, and historical video snapshot/renderer PRs #210/#186 have been closed as superseded. PR #224 delivered the current audit and release baseline. At the current follow-up check, PR #232 is open as a draft; its worker/content scheduling regression test is not part of main until merged.
 
 All future implementation must:
 - Branch from the latest main and use focused, reviewable pull requests.
@@ -145,3 +145,18 @@ All four push-triggered workflows on main commit `fabafbad607aa6bcf254669a3ccb1b
 - Video Render Integration run `41724900921` — success.
 
 This confirms both the renderer backend and its operator UI remain green after their merges. It does not change the remaining target-device, restore-drill, external-provider, or whole-product release gates above.
+
+
+## Current-main follow-up — 2026-11-04 UTC
+
+This follow-up supersedes the audited-main pointer and inventory count above without rewriting the historical evidence for PR #223 or PR #227.
+
+- Current main: `92bc36e5a61446c258c558b151edcec582bf470b`.
+- Recursive Git tree: 326 entries (not truncated).
+- Python test files under `tests/` and `backend/tests/`: 94.
+- PR #231 (operator UI DOM selector integrity regression test) is merged.
+- PR #232 (`test(worker): cover bounded content schedule dispatch per cycle`) remains open and draft at head `cfcca4e0293f2d6edacb12ec181e66af6e3c9c3b`; it adds a worker/content integration regression test using an in-memory adapter. It must not be represented as merged functionality.
+- The PR #232 metadata reports the base as current main `92bc36e5a61446c258c558b151edcec582bf470b`. Its exact-head workflow state must be checked directly before review/merge. The commit-workflow lookup used in this audit only returns pull-request-triggered runs and therefore did not provide push-run evidence for main.
+- The latest verified product boundary remains unchanged: hosted CI and static tests do not establish browser acceptance, Windows/laptop acceptance, real social/provider account operation, or a successful clean-destination restore drill.
+
+Next audit action: refresh the status ledger's top-level review date and reconcile its historical sections against this current baseline; do not rewrite historical commit evidence.
