@@ -24,6 +24,7 @@ from mrhub.video_intelligence.schemas import (
 from mrhub.video_intelligence.service import (
     build_generation_prompt,
     build_prompt_from_visual_analysis,
+    build_timeline_from_visual_analysis,
     probe_video,
 )
 from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
@@ -436,6 +437,9 @@ def test_owner_scoped_prompt_synthesis_uses_only_selected_analysis_asset(monkeyp
     assert response["status"] == "composed"
     assert response["execution"] == "not_started"
     assert response["evidence"]["observation_count"] == 2
+    assert len(response["timeline"]) == 2
+    assert response["timeline"][0]["source_timestamp_seconds"] == 0.0
+    assert response["timeline"][1]["confidence"] == 0.86
     assert "Create an original 10-second video" in response["prompt"]
 
 
@@ -528,3 +532,27 @@ def test_prompt_synthesis_rejects_observation_after_source_duration():
             duration_seconds=10,
             aspect_ratio="9:16",
         )
+
+
+
+def test_timeline_does_not_apply_late_observation_to_unobserved_opening():
+    analysis = VisualAnalysisResult.model_validate({
+        "style_summary": "A visual style",
+        "observations": [{
+            "timestamp_seconds": 2.0,
+            "description": "First sampled observation",
+            "shot_scale": "medium",
+            "camera_movement": "static",
+            "confidence": 0.7,
+        }],
+    })
+    timeline = build_timeline_from_visual_analysis(
+        visual_analysis=analysis,
+        source_duration_seconds=10.0,
+        duration_seconds=10,
+    )
+    assert timeline[0]["start_seconds"] == 0.0
+    assert timeline[0]["end_seconds"] == 2.0
+    assert timeline[0]["source_timestamp_seconds"] is None
+    assert timeline[1]["start_seconds"] == 2.0
+    assert timeline[1]["source_timestamp_seconds"] == 2.0
