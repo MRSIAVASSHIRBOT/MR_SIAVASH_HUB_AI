@@ -128,3 +128,29 @@ The SQLite helper does not back up provider tokens, encryption keys, or media fi
 The Release & Update Manager may prepare branches, changelog entries, packaging improvements, and release documentation. Public release publication, official GitHub Release creation, final package publication, and final tag creation remain under the project owner's and project manager's control.
 
 Never claim cross-platform validation based only on CI. State exactly which operating systems, Python versions, and environments were exercised.
+
+
+## Superseding integration baseline — 2026-11-04 UTC
+
+This section supersedes the older repository/migration snapshot above. The current main commit is
+`a5a1002907b3ddac2b218b84312e2fd74f2d0256`, created by merging PR #223.
+
+The exact PR head `fe153ac1d9a3b57e3a3e836c54e262263b36626c` passed:
+- Backend CI (dependency audit, Ruff and backend tests).
+- CI on Python 3.11 and 3.12 (test suite, wheel/package verification and lint).
+- Defensive Python Scan.
+- Real FFmpeg/FFprobe MP4 integration on Ubuntu and Windows hosted runners.
+
+The merge commit's post-merge push workflows were still running at the time of this update, except Defensive Python Scan, which passed. Do not treat exact PR-head CI as a substitute for post-merge main CI; re-check the push runs on the exact main SHA.
+
+### Updated implementation and release implications
+
+- SQLite schema migrations now extend through version 27.
+- The backup/restore documentation now includes a coordinated database/media/key recovery procedure and a bounded read-only media integrity verifier. The verifier checks generated storage keys, file presence, size and SHA-256 without copying or deleting files. It is a consistency gate, not a backup utility or a restore drill.
+- Video rendering now has durable owner-scoped jobs, idempotency, lease-fenced worker execution, reserved output keys, atomic output registration, source media-use leases and stale orphan cleanup.
+- Real renderer execution was verified on Linux and Windows hosted CI. This does not establish target-device acceptance, production performance or clean Windows installation.
+- The renderer currently produces silent hard-cut-only MP4. Audio, transitions, captions, graphics and AI-generated footage remain outside the implemented contract. No AI video provider adapter is registered.
+
+### Release decision
+
+The project remains **not release-ready**. Outstanding gates include the actual target Windows device acceptance, coordinated restore drill (including protected key material and media), clean install/upgrade/rollback, dependency lock and license decisions, external provider/social integration acceptance, and a complete product-level operator workflow. No public release, tag or package publication is implied by the PR #223 merge.
