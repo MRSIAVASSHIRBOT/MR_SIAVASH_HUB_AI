@@ -33,6 +33,7 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
+- `DELETE /video-intelligence/analyses/{analysis_id}` — cancel queued work or request cooperative cancellation of a running analysis owned by the current user.
 
 ## Analysis scope and remaining work
 
