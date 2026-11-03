@@ -6,6 +6,7 @@ repository in a later integration layer.
 """
 
 import json
+import math
 import pathlib
 import shutil
 import subprocess
@@ -59,26 +60,57 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
             (
                 item
                 for item in streams
-                if isinstance(item, dict) and item.get("codec_type") == "video"
+                if item.get("codec_type") == "video"
             ),
-            {},
+            None,
         )
-        has_audio = any(
-            isinstance(item, dict) and item.get("codec_type") == "audio"
-            for item in streams
-        )
-        numerator, _, denominator = str(video.get("avg_frame_rate", "0/1")).partition("/")
-        fps = float(numerator) / float(denominator) if float(denominator) else None
+        if video is None:
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
+
         format_data = payload.get("format", {})
         if not isinstance(format_data, dict):
             return VideoTechnicalMetadata(metadata_status="probe_failed")
-        duration = format_data.get("duration")
+
+        # Treat ffprobe output as untrusted parser input. Reject missing, non-finite,
+        # or implausible core values rather than returning a misleading "available".
+        duration = float(format_data["duration"])
+        width = int(video["width"])
+        height = int(video["height"])
+        numerator, separator, denominator = str(video["avg_frame_rate"]).partition("/")
+        if not separator:
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
+        numerator_value = float(numerator)
+        denominator_value = float(denominator)
+        if denominator_value <= 0:
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
+        fps = numerator_value / denominator_value
+        if (
+            not math.isfinite(duration)
+            or duration <= 0
+            or duration > 86_400
+            or width <= 0
+            or height <= 0
+            or width > 16_384
+            or height > 16_384
+            or not math.isfinite(fps)
+            or fps <= 0
+            or fps > 240
+        ):
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
+
+        has_audio = any(
+            item.get("codec_type") == "audio"
+            for item in streams
+        )
+        codec = video.get("codec_name")
+        if codec is not None and (not isinstance(codec, str) or len(codec) > 64):
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
         return VideoTechnicalMetadata(
-            duration_seconds=float(duration) if duration is not None else None,
-            width=int(video["width"]) if video.get("width") else None,
-            height=int(video["height"]) if video.get("height") else None,
-            frame_rate=round(fps, 3) if fps is not None else None,
-            codec=str(video["codec_name"]) if video.get("codec_name") else None,
+            duration_seconds=duration,
+            width=width,
+            height=height,
+            frame_rate=round(fps, 3),
+            codec=codec,
             has_audio=has_audio,
             metadata_status="available",
         )
