@@ -31,19 +31,20 @@ def test_deleted_media_file_cleanup_is_durable_and_retryable(
 
     # A fresh repository instance sees the cleanup intent committed by the delete.
     restarted = MediaAssetRepository(repository.database_path)
-    restarted_path = restarted.file_path(storage_key)
+    real_restarted_path = restarted.file_path
+    restarted_path = real_restarted_path(storage_key)
     assert restarted_path.is_file()
 
     def fail_cleanup(key: str) -> Path:
         if key == storage_key:
             raise PermissionError("simulated filesystem denial")
-        return restarted.file_path(key)
+        return real_restarted_path(key)
 
     monkeypatch.setattr(restarted, "file_path", fail_cleanup)
     assert restarted.cleanup_pending_files("owner-1") == 1
     assert restarted_path.is_file()
 
-    monkeypatch.setattr(restarted, "file_path", real_file_path)
+    monkeypatch.setattr(restarted, "file_path", real_restarted_path)
     assert restarted.cleanup_pending_files("owner-1") == 0
     assert not restarted_path.exists()
 
