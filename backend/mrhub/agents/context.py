@@ -11,6 +11,7 @@ MAX_QUERY_CHARS = 200
 MAX_CONTEXT_CHARS = 6_000
 MAX_MEMORY_RESULTS = 4
 MAX_KNOWLEDGE_RESULTS = 4
+MAX_FRESHNESS_FILTER_CANDIDATES = 25
 MAX_MEMORY_ITEM_CHARS = 600
 MAX_KNOWLEDGE_ITEM_CHARS = 1_400
 _CONTEXT_PREFIX = (
@@ -66,7 +67,13 @@ class AgentContextAssembler:
         query: str,
         include_memory: bool = True,
         include_knowledge: bool = True,
+        knowledge_freshness_policy: str = "include_all",
     ) -> dict[str, Any]:
+        if knowledge_freshness_policy not in {
+            "include_all",
+            "owner_reviewed_current_only",
+        }:
+            raise ValueError("Unsupported knowledge freshness policy")
         query = query.strip()
         if not query or len(query) > MAX_QUERY_CHARS:
             raise ValueError("Query must contain 1 to 200 characters")
@@ -76,11 +83,33 @@ class AgentContextAssembler:
             if include_memory
             else []
         )
+        knowledge_search_limit = (
+            MAX_FRESHNESS_FILTER_CANDIDATES
+            if knowledge_freshness_policy == "owner_reviewed_current_only"
+            else MAX_KNOWLEDGE_RESULTS
+        )
         knowledge_results = (
-            self.knowledge.search(owner_user_id, query, MAX_KNOWLEDGE_RESULTS)
+            self.knowledge.search(owner_user_id, query, knowledge_search_limit)
             if include_knowledge
             else []
         )
+        excluded_stale_knowledge_count = 0
+        excluded_unreviewed_knowledge_count = 0
+        if knowledge_freshness_policy == "owner_reviewed_current_only":
+            eligible_knowledge = []
+            for item in knowledge_results:
+                freshness_status = item.get("freshness_status", "unknown")
+                freshness_checked_at = item.get("freshness_checked_at")
+                if freshness_status == "stale":
+                    excluded_stale_knowledge_count += 1
+                elif (
+                    freshness_status != "owner_reviewed_current"
+                    or not freshness_checked_at
+                ):
+                    excluded_unreviewed_knowledge_count += 1
+                else:
+                    eligible_knowledge.append(item)
+            knowledge_results = eligible_knowledge[:MAX_KNOWLEDGE_RESULTS]
 
         candidates: list[dict[str, Any]] = []
         for item in memory_results:
@@ -125,6 +154,9 @@ class AgentContextAssembler:
             "query_length": len(query),
             "retrieval_method": "sqlite_fts5",
             "context_enabled": True,
+            "knowledge_freshness_policy": knowledge_freshness_policy,
+            "excluded_stale_knowledge_count": excluded_stale_knowledge_count,
+            "excluded_unreviewed_knowledge_count": excluded_unreviewed_knowledge_count,
             "limits": {
                 "max_context_chars": MAX_CONTEXT_CHARS,
                 "max_memory_results": MAX_MEMORY_RESULTS,

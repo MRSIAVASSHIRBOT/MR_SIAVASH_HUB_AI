@@ -687,6 +687,9 @@
           provider_mode: providerMode,
           include_memory: form.elements.include_memory.checked,
           include_knowledge: form.elements.include_knowledge.checked,
+          knowledge_freshness_policy: String(
+            values.get("knowledge_freshness_policy") || "include_all"
+          ),
           max_turns: Number(values.get("max_turns") || 3),
           max_output_tokens: Number(values.get("max_output_tokens") || 512),
         },
@@ -700,6 +703,9 @@
         "Model: " + (selected.model || "—"),
         "نوبت‌ها: " + (execution.turns ?? 0),
         "فراخوانی ابزارها: " + (execution.tool_calls ?? 0),
+        "سیاست تازگی اسناد: " + result.knowledge_freshness_policy,
+        "اسناد stale حذف‌شده: " + (result.excluded_stale_knowledge_count ?? 0),
+        "اسناد بازبینی‌نشده حذف‌شده: " + (result.excluded_unreviewed_knowledge_count ?? 0),
         "",
         execution.answer || execution.error || "پاسخی تولید نشد.",
       ].join("\n");
