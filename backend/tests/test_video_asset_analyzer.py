@@ -2,11 +2,11 @@ import uuid
 
 import pytest
 
+from mrhub.video_intelligence import analyzer as analyzer_module
 from mrhub.video_intelligence.analyzer import (
     VideoAssetAnalysisError,
     VideoAssetAnalyzer,
 )
-from mrhub.video_intelligence import analyzer as analyzer_module
 from mrhub.video_intelligence.frames import ExtractedVideoFrame, FrameExtractionError
 from mrhub.video_intelligence.scenes import SceneDetectionError, SceneDetectionResult
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
