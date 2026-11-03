@@ -325,14 +325,24 @@ class MediaAssetRepository:
         with self.tasks._connection() as connection:
             rows = connection.execute(
                 "SELECT cleanup_id, storage_key FROM media_file_cleanup "
-                "WHERE owner_user_id = ? ORDER BY created_at LIMIT ?",
+                "WHERE owner_user_id = ? "
+                "ORDER BY attempt_count, updated_at, created_at LIMIT ?",
                 (owner_user_id, bounded_limit),
             ).fetchall()
 
         for row in rows:
             try:
                 self.file_path(str(row["storage_key"])).unlink(missing_ok=True)
-            except OSError:
+            except (OSError, ValueError):
+                # Failed entries move behind unattempted entries so a persistently
+                # unavailable file cannot starve the rest of this owner's queue.
+                with self.tasks._connection() as connection:
+                    connection.execute(
+                        "UPDATE media_file_cleanup "
+                        "SET attempt_count = attempt_count + 1, updated_at = ? "
+                        "WHERE cleanup_id = ? AND owner_user_id = ?",
+                        (self._now(), row["cleanup_id"], owner_user_id),
+                    )
                 continue
             with self.tasks._connection() as connection:
                 connection.execute(
