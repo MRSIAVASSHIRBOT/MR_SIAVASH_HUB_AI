@@ -147,6 +147,8 @@ def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(
     assert record["status"] == "unknown_outcome"
     with pytest.raises(ValueError, match="Only prepared generation jobs"):
         repository.load_for_handoff("owner-a", generation_id)
+    reconciled = repository.load_for_reconciliation("owner-a", generation_id)
+    assert reconciled["request"]["prompt"].startswith("An original")
     with repository.tasks._connection() as connection:
         row = connection.execute(
             "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
