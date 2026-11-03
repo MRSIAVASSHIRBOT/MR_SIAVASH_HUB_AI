@@ -1,7 +1,6 @@
 from uuid import UUID
 
 import pytest
-
 from fastapi import HTTPException
 
 from mrhub.api.routes import video_intelligence as video_route
@@ -153,7 +152,6 @@ def test_analysis_prompt_endpoint_returns_not_found_for_non_owner(monkeypatch):
     class FakeRepository:
         def get(self, owner_user_id, requested_id):
             assert owner_user_id == "owner-b"
-            return None
 
     monkeypatch.setattr(video_route, "_analysis_jobs", lambda: FakeRepository())
     with pytest.raises(HTTPException) as error:
