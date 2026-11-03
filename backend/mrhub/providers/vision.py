@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import math
 from dataclasses import dataclass
 from typing import Protocol
@@ -23,6 +24,7 @@ MAX_VISION_IMAGE_BYTES = 1_500_000
 MAX_VISION_TOTAL_BYTES = 12_000_000
 MAX_VISION_PROMPT_CHARS = 8_000
 MAX_VISION_OUTPUT_CHARS = 20_000
+MAX_VISION_RESPONSE_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +160,8 @@ class OllamaVisionProvider:
         ]
         try:
             with self._client() as client:
-                response = client.post(
+                with client.stream(
+                    "POST",
                     "/api/generate",
                     json={
                         "model": self.descriptor.model,
@@ -167,14 +170,21 @@ class OllamaVisionProvider:
                         "stream": False,
                         "options": {"num_predict": request.max_output_tokens},
                     },
-                )
-                response.raise_for_status()
-                payload = response.json()
+                ) as response:
+                    response.raise_for_status()
+                    body = bytearray()
+                    for chunk in response.iter_bytes():
+                        if len(body) + len(chunk) > MAX_VISION_RESPONSE_BYTES:
+                            raise ProviderUnavailableError(
+                                "Local vision model response exceeded the size limit"
+                            )
+                        body.extend(chunk)
+                payload = json.loads(body)
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError("Local vision request timed out") from exc
         except httpx.HTTPError as exc:
             raise ProviderUnavailableError("Local vision service is unavailable") from exc
-        except ValueError as exc:
+        except (ValueError, UnicodeDecodeError) as exc:
             raise ProviderUnavailableError("Local vision model returned an invalid response") from exc
 
         output = payload.get("response") if isinstance(payload, dict) else None
