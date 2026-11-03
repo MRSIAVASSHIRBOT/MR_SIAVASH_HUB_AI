@@ -566,6 +566,19 @@ class WorkerEngine:
         if current is None:
             raise WorkerError("Claimed task disappeared before dispatch")
         if current.status is TaskStatus.CANCELLED:
+            if task.task_type == "video.analysis":
+                from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+
+                analysis_jobs = VideoAnalysisJobRepository(self.database_path)
+                owner_user_id = analysis_jobs.owner_for_task(task.task_id)
+                if owner_user_id is not None:
+                    analysis_jobs.finish(
+                        task.task_id,
+                        owner_user_id,
+                        status="cancelled",
+                        error_code="cancelled_before_execution",
+                        lease=lease,
+                    )
             self._mark_cancelled(task, lease=lease)
             return current
 
