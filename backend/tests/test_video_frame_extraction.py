@@ -36,7 +36,12 @@ def test_extract_video_frames_returns_bounded_uniform_samples(monkeypatch, tmp_p
     assert [frame.timestamp_seconds for frame in result] == [0.0, 2.0, 4.0]
     assert [frame.jpeg_bytes for frame in result] == [b"jpeg-1", b"jpeg-2", b"jpeg-3"]
     assert observed["kwargs"]["shell"] is False
+    assert observed["kwargs"]["stdout"] == subprocess.DEVNULL
+    assert observed["kwargs"]["stderr"] == subprocess.DEVNULL
     assert observed["kwargs"]["timeout"] == 30
+    filter_value = observed["command"][observed["command"].index("-vf") + 1]
+    assert "min(640,ih)" in filter_value
+    assert "force_original_aspect_ratio=decrease" in filter_value
     assert observed["command"][observed["command"].index("-frames:v") + 1] == "3"
     assert "-protocol_whitelist" in observed["command"]
 
