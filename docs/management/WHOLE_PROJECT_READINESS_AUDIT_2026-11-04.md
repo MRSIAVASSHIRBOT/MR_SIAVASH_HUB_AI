@@ -70,7 +70,7 @@ Exact-head CI evidence on PR #223:
 - Defensive Python Scan: success.
 - Video Render Integration: Linux and Windows real FFmpeg/FFprobe jobs both success.
 
-Post-merge push workflows on `a5a1002907b3ddac2b218b84312e2fd74f2d0256` were running at the time of this audit. Do not describe post-merge main CI as complete until those exact commit runs finish successfully.
+All four post-merge push workflows completed successfully on `a5a1002907b3ddac2b218b84312e2fd74f2d0256`: Backend CI run `41722222701`, CI run `41722222754`, Defensive Python Scan run `41722222735`, and Video Render Integration run `41722222736`. This confirms the integrated main commit passed the repository's configured automated checks; it does not replace target-device or external-provider acceptance.
 
 ### Video renderer scope boundary
 
