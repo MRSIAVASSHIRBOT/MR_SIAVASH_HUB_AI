@@ -28,14 +28,20 @@ class AmbiguousAdapter:
         raise UnknownPublishOutcome("network response lost")
 
 
-def _scheduled_due_post(client, *, platform: str = "telegram", media_asset_id: str | None = None) -> dict[str, object]:
+def _scheduled_due_post(
+    client,
+    *,
+    platform: str = "telegram",
+    media_asset_id: str | None = None,
+    body: str = "A test post about safe publishing.",
+) -> dict[str, object]:
     draft_response = client.post(
         "/content/drafts",
         json={
             "platform": platform,
             "content_type": "caption" if platform == "instagram" else "post_text",
             "title": "Dispatcher test",
-            "body": "A test post about safe publishing.",
+            "body": body,
             "hashtags": ["#Testing"],
             "media_asset_id": media_asset_id,
         },
@@ -276,8 +282,8 @@ def test_dispatcher_rechecks_emergency_stop_before_provider_side_effect(monkeypa
 
 def test_worker_processes_at_most_one_due_content_schedule_per_cycle():
     client = authenticated_client()
-    first = _scheduled_due_post(client)
-    second = _scheduled_due_post(client)
+    first = _scheduled_due_post(client, body="First bounded worker-cycle test post.")
+    second = _scheduled_due_post(client, body="Second bounded worker-cycle test post.")
     repository = TaskRepository(get_settings().database_path)
     queued_task = TaskRecord(task_type="demo.echo", description="worker cycle integration")
     repository.create(queued_task)
