@@ -16,6 +16,8 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Deterministic, provider-neutral prompt composition.
 - Authenticated brand-profile CRUD with per-user ownership, unique names per owner, and image-asset ownership validation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
+- Durable owner-scoped analysis submission with mandatory idempotency keys, AES-GCM encrypted request payloads, lease-fenced results, and worker recovery cleanup.
+- Worker-side bounded metadata probing, up to 12 transient keyframes, and up to 24 scene-cut timestamps per source asset; extracted JPEG bytes are not persisted.
 
 ## API surface
 
@@ -28,6 +30,8 @@ All endpoints require an authenticated owner session:
 - `PUT /video-intelligence/brands/{profile_id}` — update an owned profile.
 - `DELETE /video-intelligence/brands/{profile_id}` — delete an owned profile.
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
+- `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
+- `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
 
 ## Not implemented yet
 
@@ -38,4 +42,4 @@ All endpoints require an authenticated owner session:
 
 ## Security boundaries
 
-The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Frame extraction and scene-boundary detection are internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.
+The API does not accept arbitrary filesystem paths or remote URLs as media inputs. Analysis requests are owner-scoped and encrypted at rest with the existing authenticated payload envelope. The worker revalidates ownership before accessing each asset, and result writes require the current lease fencing token. Frame extraction and scene-boundary detection remain internal-only: callers must resolve a user-owned asset through the authenticated media repository. FFmpeg is invoked without a shell, with a restricted local protocol whitelist, finite timeout, fixed environment, duration/frame/dimension limits, and bounded outputs. Expensive analysis must be submitted to the shared job engine rather than run inside an HTTP request. Provider credentials must remain server-side. Reference media must be user-provided or otherwise authorized.

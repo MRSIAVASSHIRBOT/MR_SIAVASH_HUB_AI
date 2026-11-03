@@ -86,6 +86,7 @@ class WorkerEngine:
         }
         self.handlers["agent.workflow"] = self._run_agent_workflow
         self.handlers["agent.model_run"] = self._run_agent_model_run
+        self.handlers["video.analysis"] = self._run_video_analysis
         self._initialize()
 
     def _now(self) -> datetime:
@@ -141,6 +142,16 @@ class WorkerEngine:
             task, lease=lease, lease_lost=lease_lost
         )
 
+    def _run_video_analysis(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Run bounded owner-scoped video analysis under the current worker lease."""
+        from mrhub.video_intelligence.worker import VideoAnalysisWorkerHandler
+
+        return VideoAnalysisWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
+
     def _recover_interrupted(self) -> None:
         """Recover stale jobs without replaying an ambiguous workflow step."""
         cutoff = (self._now() - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
@@ -178,13 +189,46 @@ class WorkerEngine:
                     recovered_status = TaskStatus.FAILED
                     audit_outcome = "failed"
                     reason_code = "worker_interrupted"
-                    connection.execute(
-                        """
-                        UPDATE idempotency_records SET status = 'unknown_outcome'
-                        WHERE task_id = ? AND status IN ('accepted', 'running')
-                        """,
+                    video_analysis = connection.execute(
+                        """SELECT analysis_id, owner_user_id, status FROM video_analysis_runs
+                           WHERE task_id = ?""",
                         (str(task.task_id),),
-                    )
+                    ).fetchone()
+                    if video_analysis is not None and video_analysis["status"] == "completed":
+                        recovered_status = TaskStatus.SUCCEEDED
+                        audit_outcome = "succeeded"
+                        reason_code = "video_analysis_completed_before_task_commit"
+                        connection.execute(
+                            """UPDATE idempotency_records SET status = 'completed'
+                               WHERE task_id = ? AND status IN ('accepted', 'running')""",
+                            (str(task.task_id),),
+                        )
+                    elif video_analysis is not None:
+                        connection.execute(
+                            """UPDATE video_analysis_runs
+                               SET status = 'failed', error_code = 'worker_interrupted',
+                                   updated_at = ?
+                               WHERE task_id = ? AND owner_user_id = ?
+                                 AND status IN ('accepted', 'running')""",
+                            (now, str(task.task_id), video_analysis["owner_user_id"]),
+                        )
+                        connection.execute(
+                            "DELETE FROM video_analysis_payloads WHERE analysis_id = ?",
+                            (video_analysis["analysis_id"],),
+                        )
+                        connection.execute(
+                            """UPDATE idempotency_records SET status = 'failed'
+                               WHERE task_id = ? AND status IN ('accepted', 'running')""",
+                            (str(task.task_id),),
+                        )
+                    else:
+                        connection.execute(
+                            """
+                            UPDATE idempotency_records SET status = 'unknown_outcome'
+                            WHERE task_id = ? AND status IN ('accepted', 'running')
+                            """,
+                            (str(task.task_id),),
+                        )
                 elif (
                     workflow["status"] == "running"
                     and row["execution_error_code"] == "cancellation_requested"
@@ -532,6 +576,19 @@ class WorkerEngine:
         if current is None:
             raise WorkerError("Claimed task disappeared before dispatch")
         if current.status is TaskStatus.CANCELLED:
+            if task.task_type == "video.analysis":
+                from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+
+                analysis_jobs = VideoAnalysisJobRepository(self.database_path)
+                owner_user_id = analysis_jobs.owner_for_task(task.task_id)
+                if owner_user_id is not None:
+                    analysis_jobs.finish(
+                        task.task_id,
+                        owner_user_id,
+                        status="cancelled",
+                        error_code="cancelled_before_execution",
+                        lease=lease,
+                    )
             self._mark_cancelled(task, lease=lease)
             return current
 
@@ -543,7 +600,7 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            if task.task_type in {"agent.workflow", "agent.model_run"}:
+            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis"}:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)

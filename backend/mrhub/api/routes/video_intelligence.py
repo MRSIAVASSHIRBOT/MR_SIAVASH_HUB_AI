@@ -6,15 +6,33 @@ import sqlite3
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.jobs import (
+    VideoAnalysisConflict,
+    VideoAnalysisJobRepository,
+)
 from mrhub.video_intelligence.repository import VideoBrandRepository
-from mrhub.video_intelligence.schemas import BeatInstruction, BrandIdentity, VideoTechnicalMetadata
+from mrhub.video_intelligence.schemas import (
+    BeatInstruction,
+    BrandIdentity,
+    VideoAnalysisRequest,
+    VideoTechnicalMetadata,
+)
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 router = APIRouter(
@@ -145,3 +163,61 @@ def inspect_video_asset(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Media asset not found") from exc
     return probe_video(path)
+
+
+
+def _analysis_jobs() -> VideoAnalysisJobRepository:
+    return VideoAnalysisJobRepository(get_settings().database_path)
+
+
+@router.post("/analyses", status_code=status.HTTP_202_ACCEPTED)
+def submit_video_analysis(
+    payload: VideoAnalysisRequest,
+    response: Response,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Queue bounded analysis for video assets owned by the authenticated user."""
+    media = MediaAssetRepository(get_settings().database_path)
+    for asset_value in payload.source_asset_ids:
+        try:
+            asset_id = UUID(asset_value)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid source asset ID") from exc
+        asset = media.get(user.user_id, asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Video asset not found")
+        if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
+            raise HTTPException(status_code=415, detail="Source asset is not a supported video")
+
+    try:
+        accepted, created = _analysis_jobs().submit(
+            user.user_id, payload, idempotency_key
+        )
+    except VideoAnalysisConflict as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503, detail="Video analysis encryption is not configured"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    public_result = {
+        key: value for key, value in accepted.items() if key != "task_id"
+    }
+    return {**public_result, "created": created}
+
+
+@router.get("/analyses/{analysis_id}")
+def get_video_analysis(
+    analysis_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Read analysis status and result only for the authenticated owner."""
+    analysis = _analysis_jobs().get(user.user_id, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Video analysis not found")
+    return analysis
