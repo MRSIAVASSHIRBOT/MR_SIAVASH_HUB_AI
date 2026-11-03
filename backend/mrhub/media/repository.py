@@ -162,8 +162,19 @@ class MediaAssetRepository:
                       SELECT 1 FROM content_assets child
                       WHERE child.source_asset_id = content_assets.asset_id
                   )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM media_asset_analysis_leases AS l
+                      JOIN worker_executions AS e
+                        ON e.task_id = l.task_id
+                       AND e.lease_owner = l.lease_owner
+                       AND e.execution_token = l.execution_token
+                      WHERE l.asset_id = content_assets.asset_id
+                        AND l.owner_user_id = content_assets.owner_user_id
+                        AND e.lease_expires_at > ?
+                  )
                 """,
-                (now, str(asset_id), owner_user_id),
+                (now, str(asset_id), owner_user_id, now),
             )
             if cursor.rowcount != 1:
                 return None
