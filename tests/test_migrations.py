@@ -268,7 +268,7 @@ def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypa
 
     connection = connect(tmp_path / "version-18.sqlite3")
     original = migrations.MIGRATIONS
-    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-3])
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-4])
 
     applied = SchemaMigrator(connection).migrate()
 
