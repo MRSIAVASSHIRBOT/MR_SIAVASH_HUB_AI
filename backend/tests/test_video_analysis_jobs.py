@@ -198,6 +198,13 @@ def test_cancel_running_analysis_signals_worker_and_worker_finishes_cancelled(
     }
     # The leased worker, not the API request, owns the terminal analysis write.
     assert repository.get("owner-a", analysis_id)["status"] == "running"
+    # A late success/failure must not overwrite an accepted cancellation.
+    repository.finish(
+        task_id, "owner-a", status="completed",
+        result={"unexpected": True}, lease=lease,
+    )
+    assert repository.get("owner-a", analysis_id)["status"] == "running"
+    assert repository.load_for_worker(task_id) is not None
     repository.finish(
         task_id, "owner-a", status="cancelled",
         error_code="cancelled_by_owner", lease=lease,
