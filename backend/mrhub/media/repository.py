@@ -447,7 +447,7 @@ class MediaAssetRepository:
         with self.tasks._connection() as connection:
             rows = connection.execute(
                 "SELECT cleanup_id, owner_user_id, storage_key FROM media_file_cleanup "
-                "ORDER BY attempt_count, updated_at, created_at LIMIT ?",
+                "ORDER BY attempt_count, updated_at, created_at, cleanup_id LIMIT ?",
                 (bounded_limit,),
             ).fetchall()
 
