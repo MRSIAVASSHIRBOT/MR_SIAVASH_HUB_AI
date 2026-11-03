@@ -1,6 +1,6 @@
 # Local Integration Contract
 
-**Status:** Initial health-only adapters on a feature branch. Both integrations are disabled by default. Neither adapter installs software, launches processes, executes code, invokes remote tools, routes prompts, or publishes messages.
+**Status:** Health-only adapters are implemented on `main` and disabled by default. Neither adapter installs software, launches processes, executes code, invokes remote tools, routes prompts, or publishes messages.
 
 ## Canonical internal names
 
