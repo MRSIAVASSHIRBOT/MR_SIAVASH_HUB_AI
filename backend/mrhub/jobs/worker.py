@@ -87,6 +87,7 @@ class WorkerEngine:
         self.handlers["agent.workflow"] = self._run_agent_workflow
         self.handlers["agent.model_run"] = self._run_agent_model_run
         self.handlers["video.analysis"] = self._run_video_analysis
+        self.handlers["video.render"] = self._run_video_render
         self.handlers["video.generation"] = self._run_video_generation
         self._initialize()
 
