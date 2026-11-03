@@ -108,6 +108,7 @@ def test_operator_ui_exposes_owner_scoped_video_render_controls_and_media_downlo
 
     script = client.get("/ui/app.js").text
     assert "submitVideoRender" in script
+    assert "activeVideoAnalysisCanRender" in script
     assert "refreshVideoRender" in script
     assert "cancelVideoRender" in script
     assert "Idempotency-Key" in script
