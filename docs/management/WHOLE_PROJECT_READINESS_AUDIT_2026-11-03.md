@@ -90,3 +90,18 @@ The project must not be declared complete until all applicable gates have eviden
 - **NOT RUN / BLOCKED:** checks not executed or dependent on external configuration/device access.
 
 A lower status must never be presented as a higher one. This audit does not claim Windows/device acceptance, live social publishing, external provider acceptance, desktop packaging, or production readiness.
+
+
+## Live execution update — 2026-11-03 20:12 UTC
+
+The audit branch has since been extended with a release-management baseline refresh. Its comparison to current main remains clean: 3 commits ahead, 0 behind; the changes are limited to `docs/PROJECT_STATUS.md`, this audit, and `docs/operations/release-management.md`.
+
+A new defensive capability is under review in PR #212:
+- bounded offline JSONL security-log triage;
+- exact asset authorization scope;
+- no network calls, target modifications, raw log value output, or actor identifier output;
+- unit/API/privacy tests added.
+- First CI attempt found one incorrect test fixture count (expected 8, actual 9). The assertion was corrected in commit `0703f51064ce16d0ae523325a947320f58abed5d`.
+- On the corrected head, Defensive Python Scan passed; Backend CI and the Python 3.11/3.12 CI suites were still running at this update. Do not merge until all required checks finish successfully.
+
+The current open PR queue now also includes #211 (this audit) and #212 (defensive log review), in addition to the historical #183, #186 and #210. All remain open; no merge or release was performed by this update.
