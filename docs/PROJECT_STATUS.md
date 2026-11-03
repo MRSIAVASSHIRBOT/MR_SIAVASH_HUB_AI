@@ -1,6 +1,6 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-02 (UTC)
+Last reviewed: 2026-11-04 (UTC)
 
 This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI before every merge or implementation decision.
 
@@ -390,3 +390,14 @@ The RTL operator UI can now submit a render from a completed analysis with a non
 - Keep the target-device test request deferred until the complete product candidate and acceptance package are ready.
 
 No public release or whole-product completion is claimed.
+
+
+## Current hand-off snapshot — 2026-11-04 UTC
+
+- Current main after the documentation-only readiness refresh: `320b62d0d7ef764ae7f0dbdde57a3cbaa10d3326`.
+- Application/code baseline inspected for this snapshot: `92bc36e5a61446c258c558b151edcec582bf470b`; PR #233 only refreshed readiness documentation.
+- Current repository inventory at the application baseline: 326 recursive tree entries, 94 Python test files, and 7 GitHub Actions workflow definitions.
+- PR #231 is merged (operator UI DOM selector integrity regression test).
+- PR #232 remains open/draft. Its six exact-head check runs completed successfully, but the combined commit-status endpoint reported pending at the time of review. Do not merge until that status is reconciled and the patch is reviewed.
+- PR #233 is merged (documentation-only readiness audit refresh).
+- Product acceptance remains incomplete: browser/UX acceptance, Windows target-device acceptance, controlled real provider/social-account tests, and a clean-destination database/media/key restore drill have not been established by hosted CI.
