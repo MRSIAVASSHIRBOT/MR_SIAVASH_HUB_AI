@@ -80,3 +80,7 @@ The MP4 is registered as a new private media asset, while the job success state,
 ## Bounded provider-output sink
 
 The media repository can create a private output sink for an internally generated MP4 storage key. It writes into a unique mode-0600 temporary file, enforces the configured byte ceiling on every write, and publishes the completed file atomically without replacing an existing target. Leaving the context without commit, or exceeding the byte ceiling, removes the partial file. The caller must compare the provider-reported byte count with the sink's byte count before committing and then call the independent output-finalization routine.
+
+## Validated edit specification and cut-only timeline
+
+Completed analysis results now include a versioned, validated `edit_specification` and a `timeline` built from measured source metadata and detected scene-start timestamps. The specification preserves source references, optional evidence-backed visual summaries, owner-provided brand guidance, and bounded custom directives as data; it does not claim that brand assets or custom changes have been applied to pixels. The timeline allocates the requested duration across available sources, preserves usable scene boundaries, trims only the final allocated scene where necessary, and reports any duration shortfall. Its video track is contiguous and cut-only. Audio processing, graphics, transitions beyond hard cuts, and rendering remain explicitly unimplemented. These contracts are renderer-neutral and contain no executable FFmpeg command fragments.

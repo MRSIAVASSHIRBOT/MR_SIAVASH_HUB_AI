@@ -9,6 +9,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ShortText = Annotated[str, Field(max_length=40)]
+DirectiveKey = Annotated[str, Field(min_length=1, max_length=64)]
+DirectiveValue = Annotated[str, Field(max_length=500)]
 
 
 class AnalysisMode(StrEnum):
@@ -51,7 +53,7 @@ class VideoAnalysisRequest(BaseModel):
     duration_seconds: int = Field(default=10, ge=3, le=60)
     output_aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
     include_audio_analysis: bool = True
-    custom_changes: dict[str, str] = Field(default_factory=dict, max_length=12)
+    custom_changes: dict[DirectiveKey, DirectiveValue] = Field(default_factory=dict, max_length=12)
 
     @model_validator(mode="after")
     def validate_source_assets(self) -> VideoAnalysisRequest:
