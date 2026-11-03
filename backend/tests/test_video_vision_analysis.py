@@ -73,7 +73,7 @@ def test_local_vision_analysis_uses_actual_timestamps_and_transient_frames():
     request = captured["request"]
     assert [image.timestamp_seconds for image in request.images] == [0.0, 1.5]
     assert [image.jpeg_bytes for image in request.images] == [b"jpeg-0", b"jpeg-1"]
-    assert "0: 0.000 seconds" in request.prompt
+    assert "1: 0.000 seconds" in request.prompt
     assert "2: 1.500 seconds" in request.prompt
     assert captured["settings"]["base_url"] == "http://127.0.0.1:11434"
 
