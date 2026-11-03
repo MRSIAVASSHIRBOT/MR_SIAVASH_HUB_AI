@@ -44,6 +44,10 @@ RULE_GUIDANCE: dict[str, tuple[str, str]] = {
         "high",
         "Pass subprocess arguments as a list with shell=False and validate each argument.",
     ),
+    "PY105": (
+        "high",
+        "Avoid os.system/os.popen for untrusted input; use a bounded argument-list subprocess call.",
+    ),
 }
 EXCLUDED_DIRS = frozenset({
     ".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build",
@@ -226,6 +230,33 @@ def analyze_python_source(source: str, *, path: str = "proposed.py") -> dict[str
 
 def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
+    tracked_modules = {"pickle", "yaml", "subprocess", "os", "builtins"}
+    module_aliases: dict[str, set[str]] = {name: {name} for name in tracked_modules}
+    risky_imports = {
+        "pickle": {"loads", "load"},
+        "yaml": {"load"},
+        "subprocess": {"run", "Popen", "call", "check_call", "check_output"},
+        "os": {"system", "popen"},
+        "builtins": {"eval", "exec"},
+    }
+    imported_calls: dict[str, set[str]] = {name: set() for name in tracked_modules}
+    safe_loader_names = {"SafeLoader"}
+
+    # Resolve straightforward import aliases so common defensive checks do not
+    # disappear merely because a module or imported function was renamed.
+    for imported in ast.walk(tree):
+        if isinstance(imported, ast.Import):
+            for alias in imported.names:
+                if alias.name in tracked_modules:
+                    module_aliases[alias.name].add(alias.asname or alias.name)
+        elif isinstance(imported, ast.ImportFrom) and imported.module in tracked_modules:
+            module = imported.module
+            for alias in imported.names:
+                local_name = alias.asname or alias.name
+                if module == "yaml" and alias.name == "SafeLoader":
+                    safe_loader_names.add(local_name)
+                if alias.name in risky_imports[module]:
+                    imported_calls[module].add(local_name)
 
     def add(rule_id: str, node: ast.AST, severity: str, message: str) -> None:
         findings.append(_finding(
@@ -239,34 +270,83 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if isinstance(node.func, ast.Name) and node.func.id in {"eval", "exec"}:
-            add("PY101", node, "high", "Dynamic code evaluation call requires manual security review.")
-        if isinstance(node.func, ast.Attribute):
-            if node.func.attr in {"loads", "load"} and isinstance(node.func.value, ast.Name):
-                if node.func.value.id == "pickle":
+
+        if isinstance(node.func, ast.Name):
+            called_name = node.func.id
+            if called_name in {"eval", "exec"} or called_name in imported_calls["builtins"]:
+                add("PY101", node, "high", "Dynamic code evaluation call requires manual security review.")
+                continue
+            for module in ("pickle", "yaml", "subprocess", "os"):
+                if called_name not in imported_calls[module]:
+                    continue
+                if module == "pickle":
                     add("PY102", node, "high", "Pickle deserialization can execute code; verify input trust.")
-                if node.func.value.id == "yaml" and node.func.attr == "load":
+                elif module == "yaml":
                     safe_loader = any(
                         keyword.arg == "Loader"
-                        and isinstance(keyword.value, ast.Attribute)
-                        and isinstance(keyword.value.value, ast.Name)
-                        and keyword.value.value.id == "yaml"
-                        and keyword.value.attr == "SafeLoader"
+                        and (
+                            isinstance(keyword.value, ast.Name)
+                            and keyword.value.id in safe_loader_names
+                            or isinstance(keyword.value, ast.Attribute)
+                            and isinstance(keyword.value.value, ast.Name)
+                            and keyword.value.value.id in module_aliases["yaml"]
+                            and keyword.value.attr == "SafeLoader"
+                        )
                         for keyword in node.keywords
                     )
                     if not safe_loader:
                         add("PY103", node, "medium", "YAML load call lacks an explicit SafeLoader.")
-            if (
-                node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "subprocess"
-            ):
-                shell_enabled = any(
-                    keyword.arg == "shell"
-                    and isinstance(keyword.value, ast.Constant)
-                    and keyword.value.value is True
-                    for keyword in node.keywords
+                elif module == "subprocess":
+                    if any(
+                        keyword.arg == "shell"
+                        and isinstance(keyword.value, ast.Constant)
+                        and keyword.value.value is True
+                        for keyword in node.keywords
+                    ):
+                        add("PY104", node, "high", "Subprocess call enables shell=True.")
+                elif module == "os":
+                    add("PY105", node, "high", "OS shell command API requires manual security review.")
+            continue
+
+        if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+            continue
+
+        module_name = node.func.value.id
+        function_name = node.func.attr
+
+        if module_name in module_aliases["builtins"] and function_name in {"eval", "exec"}:
+            add("PY101", node, "high", "Dynamic code evaluation call requires manual security review.")
+
+        if module_name in module_aliases["pickle"] and function_name in {"loads", "load"}:
+            add("PY102", node, "high", "Pickle deserialization can execute code; verify input trust.")
+
+        if module_name in module_aliases["yaml"] and function_name == "load":
+            safe_loader = any(
+                keyword.arg == "Loader"
+                and (
+                    isinstance(keyword.value, ast.Name)
+                    and keyword.value.id in safe_loader_names
+                    or isinstance(keyword.value, ast.Attribute)
+                    and isinstance(keyword.value.value, ast.Name)
+                    and keyword.value.value.id in module_aliases["yaml"]
+                    and keyword.value.attr == "SafeLoader"
                 )
-                if shell_enabled:
-                    add("PY104", node, "high", "Subprocess call enables shell=True.")
+                for keyword in node.keywords
+            )
+            if not safe_loader:
+                add("PY103", node, "medium", "YAML load call lacks an explicit SafeLoader.")
+
+        if module_name in module_aliases["subprocess"] and function_name in risky_imports["subprocess"]:
+            shell_enabled = any(
+                keyword.arg == "shell"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True
+                for keyword in node.keywords
+            )
+            if shell_enabled:
+                add("PY104", node, "high", "Subprocess call enables shell=True.")
+
+        if module_name in module_aliases["os"] and function_name in {"system", "popen"}:
+            add("PY105", node, "high", "OS shell command API requires manual security review.")
+
     return findings
