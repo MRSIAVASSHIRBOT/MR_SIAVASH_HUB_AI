@@ -120,3 +120,82 @@ def test_submit_fails_closed_without_encryption_key(tmp_path, monkeypatch):
             _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"),
             "request-3",
         )
+
+
+
+def test_cancel_queued_analysis_is_atomic_and_purges_encrypted_payload(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
+    )
+    repository = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a",
+        _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"),
+        "cancel-queued",
+    )
+    analysis_id = UUID(accepted["analysis_id"])
+    task_id = UUID(accepted["task_id"])
+
+    result = repository.cancel("owner-a", analysis_id)
+
+    assert result == {
+        "analysis_id": str(analysis_id),
+        "status": "cancelled",
+        "cancellation_requested": False,
+    }
+    assert repository.get("owner-a", analysis_id)["status"] == "cancelled"
+    assert repository.load_for_worker(task_id) is None
+    assert repository.tasks.get(task_id).status.value == "cancelled"
+    assert repository.cancel("owner-b", analysis_id) is None
+
+
+def test_cancel_running_analysis_signals_worker_and_worker_finishes_cancelled(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a",
+        _request("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"),
+        "cancel-running",
+    )
+    analysis_id = UUID(accepted["analysis_id"])
+    task_id = UUID(accepted["task_id"])
+    lease_expiry = "2099-01-01T00:00:00+00:00"
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, lease_owner, lease_expires_at, execution_token
+            ) VALUES (?, ?, ?, ?)""",
+            (str(task_id), "worker-b", lease_expiry, 2),
+        )
+    lease = WorkerLease(
+        task_id=str(task_id), owner="worker-b",
+        fencing_token=2, expires_at=lease_expiry,
+    )
+    assert repository.mark_running(task_id, "owner-a", lease=lease)
+
+    result = repository.cancel("owner-a", analysis_id)
+
+    assert result == {
+        "analysis_id": str(analysis_id),
+        "status": "running",
+        "cancellation_requested": True,
+    }
+    assert repository.tasks.get(task_id).status.value == "cancelled"
+    # The leased worker, not the API request, owns the terminal analysis write.
+    assert repository.get("owner-a", analysis_id)["status"] == "running"
+    repository.finish(
+        task_id, "owner-a", status="cancelled",
+        error_code="cancelled_by_owner", lease=lease,
+    )
+    assert repository.get("owner-a", analysis_id)["status"] == "cancelled"
+    assert repository.load_for_worker(task_id) is None
