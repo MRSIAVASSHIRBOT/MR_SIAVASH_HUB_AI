@@ -55,32 +55,35 @@ def test_mcp_service_accepts_real_streamable_http_client_over_loopback(tmp_path)
         _wait_for_listener(process, port)
 
         async def exercise_host() -> None:
-            async with streamable_http_client(
-                f"http://127.0.0.1:{port}/mcp"
-            ) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    tools = await session.list_tools()
-                    assert {item.name for item in tools.tools} == {
-                        "hub.list_tools",
-                        "hub.invoke_tool",
-                    }
-                    result = await session.call_tool(
-                        "hub.invoke_tool",
-                        {
-                            "name": "text.echo",
-                            "payload": {"text": "loopback acceptance"},
-                        },
-                    )
-                    assert not result.is_error
-                    response = json.loads(result.content[0].text)
-                    assert response == {
-                        "ok": True,
-                        "result": {
-                            "text": "loopback acceptance",
-                            "character_count": 19,
-                        },
-                    }
+            async with (
+                streamable_http_client(f"http://127.0.0.1:{port}/mcp") as (
+                    read_stream,
+                    write_stream,
+                ),
+                ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                tools = await session.list_tools()
+                assert {item.name for item in tools.tools} == {
+                    "hub.list_tools",
+                    "hub.invoke_tool",
+                }
+                result = await session.call_tool(
+                    "hub.invoke_tool",
+                    {
+                        "name": "text.echo",
+                        "payload": {"text": "loopback acceptance"},
+                    },
+                )
+                assert not result.is_error
+                response = json.loads(result.content[0].text)
+                assert response == {
+                    "ok": True,
+                    "result": {
+                        "text": "loopback acceptance",
+                        "character_count": 19,
+                    },
+                }
 
         asyncio.run(exercise_host())
     finally:
