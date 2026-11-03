@@ -79,7 +79,7 @@ def _prepare_worker(tmp_path, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "mrhub.video_intelligence.worker.probe_video",
+        "mrhub.video_intelligence.analyzer.probe_video",
         lambda _path: VideoTechnicalMetadata(
             duration_seconds=8.0,
             width=1280,
@@ -91,13 +91,13 @@ def _prepare_worker(tmp_path, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "mrhub.video_intelligence.worker.extract_video_frames",
+        "mrhub.video_intelligence.analyzer.extract_video_frames",
         lambda _path, **_kwargs: [
             ExtractedVideoFrame(timestamp_seconds=0.5, jpeg_bytes=b"jpeg-frame")
         ],
     )
     monkeypatch.setattr(
-        "mrhub.video_intelligence.worker.detect_scene_boundaries",
+        "mrhub.video_intelligence.analyzer.detect_scene_boundaries",
         lambda _path, **_kwargs: SceneDetectionResult(
             scene_start_times=(0.0, 3.0), truncated=False
         ),
@@ -150,7 +150,7 @@ def test_worker_releases_asset_lock_when_scene_detection_fails(
         raise SceneDetectionError("detection_timeout")
 
     monkeypatch.setattr(
-        "mrhub.video_intelligence.worker.detect_scene_boundaries",
+        "mrhub.video_intelligence.analyzer.detect_scene_boundaries",
         fail_scene_detection,
     )
 
