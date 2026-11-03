@@ -74,10 +74,11 @@ def test_upload_uses_one_buffer_and_releases_admission_slot(monkeypatch):
     monkeypatch.setattr(media_routes, "_UPLOAD_SEMAPHORE", semaphore)
 
     class FakeRequest:
-        headers = {
-            "content-type": "image/png",
-            "content-length": "8",
-        }
+        def __init__(self):
+            self.headers = {
+                "content-type": "image/png",
+                "content-length": "8",
+            }
 
         async def stream(self):
             yield b"\x89PNG\r\n\x1a\n"
@@ -113,7 +114,8 @@ def test_upload_rejects_excess_concurrency_with_429(monkeypatch):
     monkeypatch.setattr(media_routes, "_UPLOAD_SEMAPHORE", semaphore)
 
     class FakeRequest:
-        headers = {"content-type": "image/png"}
+        def __init__(self):
+            self.headers = {"content-type": "image/png"}
 
         async def stream(self):
             pytest.fail("A rejected upload must not consume the request body")
@@ -140,7 +142,8 @@ def test_upload_keeps_admission_slot_until_storage_thread_finishes_on_cancel(mon
     monkeypatch.setattr(media_routes, "_UPLOAD_SEMAPHORE", semaphore)
 
     class FakeRequest:
-        headers = {"content-type": "image/png", "content-length": "8"}
+        def __init__(self):
+            self.headers = {"content-type": "image/png", "content-length": "8"}
 
         async def stream(self):
             yield b"\x89PNG\r\n\x1a\n"
