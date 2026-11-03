@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.payload_envelope import EncryptedPayload, decrypt_payload, encrypt_payload, load_payload_key
+from mrhub.jobs.payload_envelope import (\n    EncryptedPayload,\n    decrypt_payload,\n    encrypt_payload,\n    load_payload_key,\n)
 from mrhub.video_intelligence.generation import VideoGenerationRequest
 
 
