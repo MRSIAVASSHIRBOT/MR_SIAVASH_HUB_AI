@@ -211,6 +211,24 @@ def submit_video_analysis(
     return {**public_result, "created": created}
 
 
+@router.delete("/analyses/{analysis_id}")
+def cancel_video_analysis(
+    analysis_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Cancel queued analysis or request cooperative cancellation of running work."""
+    try:
+        result = _analysis_jobs().cancel(user.user_id, analysis_id)
+    except VideoAnalysisConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Video analysis cannot be cancelled in its current state",
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Video analysis not found")
+    return result
+
+
 @router.get("/analyses/{analysis_id}")
 def get_video_analysis(
     analysis_id: UUID,
