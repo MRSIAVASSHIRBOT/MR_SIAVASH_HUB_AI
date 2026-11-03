@@ -60,7 +60,9 @@ def submit_model_run(
     existing = idempotency.get(scope, idempotency_key)
     if existing is not None:
         if existing.request_digest != request_digest:
-            raise HTTPException(status_code=409, detail="Idempotency key was used for another request")
+            raise HTTPException(
+                status_code=409, detail="Idempotency key was used for another request"
+            )
         if existing.workflow_id:
             return {
                 "workflow_id": existing.workflow_id,
@@ -154,7 +156,9 @@ def submit_model_run(
                 "status": "accepted",
                 "idempotent_replay": True,
             }
-        raise HTTPException(status_code=409, detail="Idempotency key conflicts with another run") from exc
+        raise HTTPException(
+            status_code=409, detail="Idempotency key conflicts with another run"
+        ) from exc
 
     return {
         "workflow_id": str(workflow_id),
@@ -206,7 +210,9 @@ def get_model_run(
                         "execution": result.get("execution"),
                     }
             except (PayloadEnvelopeError, TypeError, ValueError):
-                raise HTTPException(status_code=503, detail="Encrypted model-run result is unavailable")
+                raise HTTPException(
+                    status_code=503, detail="Encrypted model-run result is unavailable"
+                )
     return response
 
 
@@ -222,4 +228,7 @@ def cancel_model_run(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Model run not found") from exc
     except WorkflowRecoveryError as exc:
-        raise HTTPException(status_code=409, detail="Model run cannot be cancelled in its current state") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Model run cannot be cancelled in its current state",
+        ) from exc
