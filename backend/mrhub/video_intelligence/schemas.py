@@ -1,5 +1,7 @@
 """Validated contracts for video style analysis and prompt generation."""
 
+# ruff: noqa: I001 -- retain standard-library-first grouping for typing and Pydantic.
+
 from __future__ import annotations
 
 from enum import StrEnum
