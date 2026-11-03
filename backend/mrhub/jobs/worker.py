@@ -649,6 +649,12 @@ class WorkerEngine:
                 or approval.get("decision") != "approved"
                 or approval.get("action_fingerprint") != action_fingerprint(task)
             ):
+                if task.task_type == "video.generation":
+                    from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+                    VideoGenerationJobRepository(self.database_path).fail_unapproved_task(
+                        task.task_id
+                    )
                 return self._finish_failure(task, "approval_missing_or_stale", lease=lease)
 
         current = self.repository.get(task.task_id)
