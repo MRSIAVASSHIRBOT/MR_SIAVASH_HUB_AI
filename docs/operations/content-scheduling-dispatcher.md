@@ -19,15 +19,19 @@ The schedule's idempotency key is passed to the adapter, but it only prevents re
 
 ## Current integration boundary
 
-This is a dispatcher and worker-injection contract, not a configured social integration. No production Telegram or Instagram adapter is registered by default, and the application does not start a background worker automatically. Actual publishing requires platform-specific adapter implementations, secure credentials, and an explicit worker runner configured with those adapters.
+The dispatcher is integrated into `WorkerEngine` through its optional content-schedule hook. When a worker is explicitly constructed, it loads only the provider adapters whose complete credentials are configured. It processes at most one due content schedule per explicit `run_once()` call; application startup does not start a background publishing loop. Without complete provider configuration, no adapter is registered and schedules fail closed with `provider_not_configured` when dispatched.
 
 ## Telegram adapter
 
-A Telegram Bot API adapter is now available. Configure `MRH_TELEGRAM_BOT_TOKEN` and `MRH_TELEGRAM_CHAT_ID` in the runtime environment (never commit real values). When both settings are present, `WorkerEngine` creates the adapter automatically; it still performs scheduled work only when its explicit `run_once()` method is called. No background loop starts during application startup.
+A Telegram Bot API adapter is available. Configure `MRH_TELEGRAM_BOT_TOKEN` and `MRH_TELEGRAM_CHAT_ID` in the runtime environment (never commit real values). When both settings are present, `WorkerEngine` creates the adapter automatically; it still performs scheduled work only when its explicit `run_once()` method is called. No background loop starts during application startup.
 
-The adapter publishes text and hashtags using `sendMessage`. Telegram does not support a provider idempotency key for this operation, so a transport timeout is treated as `unknown_outcome`, not automatically retried. HTTP 429 responses are retryable; definitive non-retryable 4xx rejection is recorded as failure. Unit tests use mocked HTTP responses and do not contact Telegram.
+The adapter publishes text and hashtags using `sendMessage`, and approved JPEG/PNG/MP4 assets using `sendPhoto` or `sendVideo`. Telegram does not support a provider idempotency key for these operations, so a transport timeout is treated as `unknown_outcome`, not automatically retried. HTTP 429 responses are retryable; definitive non-retryable 4xx rejection is recorded as failure. Unit tests use mocked HTTP responses and do not contact Telegram.
 
-Instagram is not enabled by this adapter. Its publishing flow requires an Instagram professional account, Graph API credentials, and an externally reachable media URL; the current local-only asset endpoint is not a valid public media URL. Do not configure Instagram publishing until that media/credential path is implemented and tested.
+## Instagram image adapter
+
+An Instagram Graph API image adapter is available and is constructed by the same explicit adapter factory when all of `MRH_INSTAGRAM_ACCESS_TOKEN`, `MRH_INSTAGRAM_USER_ID`, and `MRH_INSTAGRAM_GRAPH_API_VERSION` are configured. The dispatcher supports approved JPEG/PNG assets by creating a short-lived signed HTTPS media URL using `MRH_PUBLIC_MEDIA_BASE_URL` and `MRH_PUBLIC_MEDIA_SIGNING_KEY`. The public-media origin must route to the application's signed public-media endpoint and must be reachable by Meta's servers; a local path or loopback URL is never passed to the Graph API.
+
+This is an opt-in image-publishing path, not a guarantee of account eligibility or public-host reachability. It does not support Reels/video publishing. Perform the controlled professional-account test in `instagram-publishing.md` before enabling real schedules. The two-step Graph API flow has no general exactly-once guarantee; ambiguous outcomes are quarantined and must be reconciled before retry.
 
 
 ## Approved media attachments for Telegram
