@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import tempfile
 from contextlib import closing
@@ -114,6 +115,110 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
                     path.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+
+
+
+_MEDIA_STORAGE_KEY_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:mp4|mov|jpg|png|webp|mp3|wav)$"
+)
+
+
+def verify_media_assets(database: str | Path) -> dict[str, Any]:
+    """Read-only verification of registered media files against SQLite metadata.
+
+    The verifier never copies, deletes, follows symlinks, or returns storage keys.
+    Stop API/worker writers before using it as a backup consistency gate.
+    """
+    database_path = Path(database).expanduser().resolve(strict=True)
+    if not database_path.is_file():
+        raise BackupError("Media verification source must be a regular database file")
+    media_root = database_path.parent / "content_assets"
+    try:
+        with closing(
+            sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
+        ) as connection:
+            rows = connection.execute(
+                "SELECT storage_key, file_size, content_hash FROM content_assets "
+                "ORDER BY storage_key"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise BackupError("Media asset registry could not be read") from exc
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "registered_assets": len(rows),
+        "verified_assets": 0,
+        "missing_assets": 0,
+        "size_mismatched_assets": 0,
+        "hash_mismatched_assets": 0,
+        "invalid_entries": 0,
+        "unregistered_entries": 0,
+    }
+    registered_keys: set[str] = set()
+    root_is_safe = not media_root.is_symlink()
+    try:
+        resolved_root = media_root.resolve(strict=False)
+    except OSError:
+        resolved_root = media_root.absolute()
+        root_is_safe = False
+
+    for storage_key, expected_size, expected_hash in rows:
+        key = storage_key if isinstance(storage_key, str) else ""
+        if not _MEDIA_STORAGE_KEY_PATTERN.fullmatch(key) or not root_is_safe:
+            result["invalid_entries"] += 1
+            continue
+        registered_keys.add(key)
+        candidate = media_root / key
+        try:
+            if candidate.is_symlink():
+                result["invalid_entries"] += 1
+                continue
+            resolved = candidate.resolve(strict=True)
+        except FileNotFoundError:
+            result["missing_assets"] += 1
+            continue
+        except OSError:
+            result["invalid_entries"] += 1
+            continue
+        if resolved.parent != resolved_root or not resolved.is_file():
+            result["invalid_entries"] += 1
+            continue
+
+        valid = True
+        try:
+            if resolved.stat().st_size != int(expected_size):
+                result["size_mismatched_assets"] += 1
+                valid = False
+            if _sha256(resolved) != expected_hash:
+                result["hash_mismatched_assets"] += 1
+                valid = False
+        except (OSError, TypeError, ValueError):
+            result["invalid_entries"] += 1
+            continue
+        if valid:
+            result["verified_assets"] += 1
+
+    if media_root.exists() and root_is_safe:
+        try:
+            for entry in media_root.iterdir():
+                if entry.name not in registered_keys:
+                    result["unregistered_entries"] += 1
+        except OSError:
+            result["invalid_entries"] += 1
+
+    result["ok"] = all(
+        result[key] == 0
+        for key in (
+            "missing_assets",
+            "size_mismatched_assets",
+            "hash_mismatched_assets",
+            "invalid_entries",
+            "unregistered_entries",
+        )
+    )
+    return result
+
 
 
 def restore_database(backup: str | Path, destination: str | Path) -> dict[str, Any]:
