@@ -738,6 +738,7 @@ MIGRATIONS = (
                 analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE RESTRICT,
                 status TEXT NOT NULL CHECK (status IN ('accepted', 'running', 'completed', 'failed', 'cancelled')),
                 output_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE SET NULL,
+                output_storage_key TEXT NOT NULL UNIQUE CHECK (length(output_storage_key) = 40),
                 error_code TEXT CHECK (error_code IS NULL OR length(error_code) <= 80),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
