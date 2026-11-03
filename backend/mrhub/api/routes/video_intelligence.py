@@ -39,12 +39,28 @@ from mrhub.video_intelligence.schemas import (
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
+from mrhub.video_intelligence.generation import VideoGenerationRequest
+from mrhub.video_intelligence.generation_jobs import (
+    VideoGenerationConflict,
+    VideoGenerationJobRepository,
+)
 
 router = APIRouter(
     prefix="/video-intelligence",
     tags=["video-intelligence"],
     dependencies=[Depends(require_user)],
 )
+
+
+class GenerationSubmissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1, max_length=80)
+    model: str = Field(min_length=1, max_length=120)
+    prompt: str = Field(min_length=1, max_length=20_000)
+    aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
+    duration_seconds: int = Field(ge=3, le=60)
+    resolution: str = Field(default="720p", pattern=r"^(720p|1080p)$")
 
 
 class PromptCompositionRequest(BaseModel):
@@ -98,6 +114,72 @@ def list_video_generation_providers(
         "generation_available": bool(providers),
         "reason_code": None if providers else "provider_unavailable",
         "execution": "not_started",
+    }
+
+
+@router.post("/analyses/{analysis_id}/generations", status_code=status.HTTP_202_ACCEPTED)
+def submit_video_generation(
+    analysis_id: UUID,
+    payload: GenerationSubmissionRequest,
+    response: Response,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Queue an owned generation only when its exact provider/model is configured."""
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    try:
+        provider = video_generation_registry.get(payload.provider, payload.model)
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "provider_unavailable", "execution": "not_started"},
+        ) from exc
+    capability = provider.capability
+    if (
+        payload.duration_seconds > capability.max_duration_seconds
+        or payload.aspect_ratio not in capability.supported_aspect_ratios
+        or payload.resolution == "1080p" and capability.max_resolution != "1080p"
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "provider_capability_mismatch"},
+        )
+    request = VideoGenerationRequest(
+        prompt=payload.prompt,
+        aspect_ratio=payload.aspect_ratio,
+        duration_seconds=payload.duration_seconds,
+        resolution=payload.resolution,
+        idempotency_key=idempotency_key,
+    )
+    jobs = VideoGenerationJobRepository(get_settings().database_path)
+    try:
+        accepted, created = jobs.submit(
+            user.user_id, analysis_id, payload.provider, payload.model, request
+        )
+        generation_id = UUID(str(accepted["generation_id"]))
+        if created:
+            queued = jobs.enqueue(user.user_id, generation_id)
+            if queued is None:
+                raise ValueError("Generation job disappeared before enqueue")
+            accepted = {**accepted, "status": "queued", "task_id": queued["task_id"]}
+    except VideoGenerationConflict as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503, detail="Video generation encryption is not configured"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return {
+        "generation_id": accepted["generation_id"],
+        "status": accepted["status"],
+        "provider": payload.provider,
+        "model": payload.model,
+        "created": created,
+        "execution": "queued" if created else "existing",
     }
 
 
