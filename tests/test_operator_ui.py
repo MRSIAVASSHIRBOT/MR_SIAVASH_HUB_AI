@@ -88,3 +88,27 @@ def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
     assert 'api("/agent/model-runs?limit=20")' in script
     assert "metadata.selected_provider" in script
     assert "run.outcome" in script
+
+
+def test_operator_ui_exposes_owner_scoped_video_render_controls():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    for element_id in (
+        "video-render-submit",
+        "video-render-refresh",
+        "video-render-cancel",
+        "video-render-message",
+        "video-render-result",
+    ):
+        assert f'id="{element_id}"' in page.text
+
+    assert "Idempotency-Key" in script.text
+    assert "/video-intelligence/renders/" in script.text
+    assert "/content/assets/" in script.text
+    assert "downloadRenderedVideo" in script.text
+    assert "mrh_video_render_pending_key" in script.text
+    assert "mrh_video_render_analysis_id" in script.text
