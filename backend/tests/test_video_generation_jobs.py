@@ -247,3 +247,55 @@ def test_successful_generation_registers_private_output_asset_atomically(
     )
     assert replay["asset_id"] == asset_id
     assert len(media.list_assets("owner-a")) == 1
+
+
+
+def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"q" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    repository.transition("owner-a", generation_id, "queued")
+    repository.transition(
+        "owner-a", generation_id, "submitting", provider_job_id="provider-job-2"
+    )
+    repository.transition("owner-a", generation_id, "running")
+
+    from mrhub.media.repository import MediaAssetRepository
+    from mrhub.video_intelligence import service
+
+    media = MediaAssetRepository(repository.database_path)
+    asset_id, storage_key, output_path = media.new_output_target()
+    output_path.write_bytes(b"video bytes")
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=10.0,
+            width=720,
+            height=1280,
+            metadata_status="available",
+        ),
+    )
+    result = VideoGenerationResult(
+        provider="other-provider",
+        model="renderer-v1",
+        provider_job_id="provider-job-2",
+        status=GenerationStatus.SUCCEEDED,
+        output_bytes=11,
+        duration_seconds=10.0,
+        width=720,
+        height=1280,
+    )
+    with pytest.raises(ValueError, match="Provider result does not match"):
+        repository.complete_with_output(
+            "owner-a", generation_id, asset_id, storage_key,
+            output_path, "generated-video.mp4", result,
+        )
+    assert repository.get("owner-a", generation_id)["status"] == "running"
+    assert media.get("owner-a", UUID(asset_id)) is None
