@@ -27,9 +27,14 @@ class VideoAnalysisWorkerHandler:
     def __call__(
         self, task: TaskRecord, *, lease: WorkerLease, lease_lost: Event
     ) -> dict[str, object]:
-        loaded = self.jobs.load_for_worker(task.task_id)
+        try:
+            loaded = self.jobs.load_for_worker(task.task_id)
+        except (ValueError, TypeError):
+            owner = self.jobs.owner_for_task(task.task_id)
+            return self._fail(task, owner, lease, "analysis_payload_unavailable")
         if loaded is None:
-            return self._fail(task, None, lease, "analysis_payload_unavailable")
+            owner = self.jobs.owner_for_task(task.task_id)
+            return self._fail(task, owner, lease, "analysis_payload_unavailable")
         owner_user_id, analysis_id, payload = loaded
         try:
             request = VideoAnalysisRequest.model_validate(payload)
