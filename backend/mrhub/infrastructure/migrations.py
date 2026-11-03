@@ -692,6 +692,20 @@ MIGRATIONS = (
             ),
         ),
     ),
+    Migration.build(
+        25,
+        "durable_video_generation_task_handoff",
+        (
+            """CREATE TABLE IF NOT EXISTS video_generation_task_links (
+                generation_id TEXT PRIMARY KEY REFERENCES video_generation_jobs(generation_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL,
+                UNIQUE(generation_id, owner_user_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_generation_task_links_task ON video_generation_task_links(task_id, owner_user_id)",
+        ),
+    ),
 )
 
 
