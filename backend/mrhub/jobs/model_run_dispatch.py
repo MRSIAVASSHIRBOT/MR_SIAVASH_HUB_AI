@@ -9,6 +9,7 @@ from threading import Event
 from uuid import UUID
 
 from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
+from mrhub.agents.registry import build_default_agent_registry
 from mrhub.api.routes.models import build_model_router
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
@@ -77,6 +78,7 @@ class ModelRunWorkerHandler:
                 prefer_local=provider_mode == "local",
                 max_turns=request_data["max_turns"],
                 max_output_tokens=request_data["max_output_tokens"],
+                max_runtime_seconds=request_data.get("max_runtime_seconds", 30),
             )
         except (PayloadEnvelopeError, KeyError, TypeError, ValueError):
             self._fail_closed(task, lease)
@@ -104,7 +106,9 @@ class ModelRunWorkerHandler:
                 include_stub=False,
                 max_timeout_seconds=30.0,
             )
-            orchestrator = AgentOrchestrator(model_router, build_tool_registry())
+            tool_registry = build_tool_registry()
+            agent_registry = build_default_agent_registry(tool_registry)
+            orchestrator = AgentOrchestrator(model_router, tool_registry, agent_registry)
         except (ValueError, TypeError, LookupError, ProviderError, OSError):
             self.recovery.fail_step(
                 workflow_id, attempt, "model_setup_failed", lease=lease

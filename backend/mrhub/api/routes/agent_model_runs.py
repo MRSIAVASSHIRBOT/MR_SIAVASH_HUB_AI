@@ -114,6 +114,7 @@ def submit_model_run(
             prefer_local=payload.provider_mode == "local",
             max_turns=payload.max_turns,
             max_output_tokens=payload.max_output_tokens,
+            max_runtime_seconds=payload.max_runtime_seconds,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -125,7 +126,8 @@ def submit_model_run(
             for key in (
                 "reference", "source_ref", "trust_classification",
                 "freshness_status", "freshness_checked_at",
-                "document_hash", "chunk_hash",
+                "freshness_review_expired", "freshness_review_max_age_days",
+                "content_integrity_verified", "document_hash", "chunk_hash",
             )
             if passage.get(key) is not None
         }
@@ -151,6 +153,12 @@ def submit_model_run(
                 "excluded_stale_knowledge_count": context.get("excluded_stale_knowledge_count", 0),
                 "excluded_unreviewed_knowledge_count": context.get(
                     "excluded_unreviewed_knowledge_count", 0
+                ),
+                "excluded_expired_knowledge_count": context.get(
+                    "excluded_expired_knowledge_count", 0
+                ),
+                "freshness_review_max_age_days": context.get(
+                    "freshness_review_max_age_days", 30
                 ),
             },
         },
@@ -198,6 +206,12 @@ def submit_model_run(
         "excluded_stale_knowledge_count": context.get("excluded_stale_knowledge_count", 0),
         "excluded_unreviewed_knowledge_count": context.get(
             "excluded_unreviewed_knowledge_count", 0
+        ),
+        "excluded_expired_knowledge_count": context.get(
+            "excluded_expired_knowledge_count", 0
+        ),
+        "freshness_review_max_age_days": context.get(
+            "freshness_review_max_age_days", 30
         ),
     }
 

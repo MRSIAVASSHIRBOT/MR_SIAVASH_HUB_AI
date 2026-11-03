@@ -87,6 +87,16 @@ class MixedFreshnessKnowledge:
                 "chunk_hash": "2" * 64,
                 "content": "evidence missing a review timestamp",
             },
+            {
+                "citation_ref": "knowledge://documents/expired-review#chunk-0",
+                "source_ref": "local-note:expired-review",
+                "trust_classification": "user_supplied",
+                "freshness_status": "owner_reviewed_current",
+                "freshness_checked_at": "2025-01-01T00:00:00+00:00",
+                "document_hash": "3" * 64,
+                "chunk_hash": "4" * 64,
+                "content": "evidence with an expired owner freshness review",
+            },
         ]
 
 
@@ -109,6 +119,9 @@ def test_current_only_policy_excludes_stale_and_unreviewed_knowledge():
     assert result["knowledge_freshness_policy"] == "owner_reviewed_current_only"
     assert result["excluded_stale_knowledge_count"] == 1
     assert result["excluded_unreviewed_knowledge_count"] == 2
+    assert result["excluded_expired_knowledge_count"] == 1
+    assert result["freshness_review_max_age_days"] == 30
+    assert "expired owner freshness review" not in result["context_block"]
     assert "stale evidence" not in result["context_block"]
     assert "unknown evidence" not in result["context_block"]
     assert "owner-reviewed evidence" in result["context_block"]
@@ -176,3 +189,92 @@ def test_current_only_policy_searches_past_the_default_four_chunk_limit():
     )
     assert result["excluded_stale_knowledge_count"] == 4
     assert result["excluded_unreviewed_knowledge_count"] == 0
+
+
+
+def test_include_all_marks_old_owner_review_as_expired_but_keeps_it_visible():
+    class ExpiredCurrentKnowledge:
+        def search(self, owner_user_id: str, query: str, limit: int):
+            return [{
+                "citation_ref": "knowledge://documents/old-current#chunk-0",
+                "source_ref": "local-note:old-current",
+                "trust_classification": "user_supplied",
+                "freshness_status": "owner_reviewed_current",
+                "freshness_checked_at": "2025-01-01T00:00:00+00:00",
+                "document_hash": "a" * 64,
+                "chunk_hash": "b" * 64,
+                "content": "old owner-reviewed evidence remains visible under include_all",
+            }]
+
+    assembler = AgentContextAssembler.__new__(AgentContextAssembler)
+    assembler.memory = EmptyMemory()
+    assembler.knowledge = ExpiredCurrentKnowledge()
+
+    result = assembler.assemble(
+        "owner-a",
+        query="review",
+        include_memory=False,
+        include_knowledge=True,
+        knowledge_freshness_policy="include_all",
+    )
+
+    assert result["passage_count"] == 1
+    assert result["passages"][0]["freshness_review_expired"] is True
+    assert result["passages"][0]["freshness_review_max_age_days"] == 30
+    assert "old owner-reviewed evidence" in result["context_block"]
+
+
+
+class AtCandidateLimitKnowledge:
+    def search(self, owner_user_id: str, query: str, limit: int):
+        assert limit == 25
+        return [
+            {
+                "citation_ref": f"knowledge://documents/stale-{index}#chunk-0",
+                "source_ref": f"local-note:stale-{index}",
+                "trust_classification": "user_supplied",
+                "freshness_status": "stale",
+                "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+                "document_hash": "a" * 64,
+                "chunk_hash": "b" * 64,
+                "content": "stale candidate",
+            }
+            for index in range(limit)
+        ]
+
+
+def test_current_only_policy_reports_when_candidate_search_reaches_its_bound():
+    assembler = AgentContextAssembler.__new__(AgentContextAssembler)
+    assembler.memory = EmptyMemory()
+    assembler.knowledge = AtCandidateLimitKnowledge()
+
+    result = assembler.assemble(
+        "owner-a",
+        query="review",
+        include_memory=False,
+        include_knowledge=True,
+        knowledge_freshness_policy="owner_reviewed_current_only",
+    )
+
+    assert result["knowledge_candidates_scanned"] == 25
+    assert result["knowledge_candidate_limit"] == 25
+    assert result["knowledge_candidates_may_be_truncated"] is True
+    assert result["excluded_stale_knowledge_count"] == 25
+    assert result["passages"] == []
+
+
+def test_context_reports_disabled_knowledge_retrieval_without_truncation():
+    assembler = AgentContextAssembler.__new__(AgentContextAssembler)
+    assembler.memory = EmptyMemory()
+    assembler.knowledge = EmptyMemory()
+
+    result = assembler.assemble(
+        "owner-a",
+        query="review",
+        include_memory=False,
+        include_knowledge=False,
+    )
+
+    assert result["knowledge_candidates_scanned"] == 0
+    assert result["knowledge_candidate_limit"] == 0
+    assert result["knowledge_candidates_may_be_truncated"] is False

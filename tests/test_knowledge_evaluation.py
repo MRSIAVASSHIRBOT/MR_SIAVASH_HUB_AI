@@ -24,3 +24,22 @@ def test_synthetic_knowledge_retrieval_corpus_returns_expected_source_at_rank_on
             f"got {results[0]['title']!r}"
         )
         assert results[0]["citation_ref"].startswith("knowledge://documents/")
+        assert results[0]["content_integrity_verified"] is True
+
+
+
+def test_reference_retrieval_benchmark_reports_repeatable_quality_metrics():
+    from mrhub.knowledge.evaluation import run_reference_evaluation
+
+    report = run_reference_evaluation()
+
+    assert report["benchmark"] == "synthetic_fixture_corpus"
+    assert report["cases_evaluated"] == 5
+    assert report["fixture_documents"] == 5
+    assert report["precision_at_k"] == 1 / 3
+    assert report["recall_at_k"] == 1.0
+    assert report["mean_reciprocal_rank"] == 1.0
+    assert report["hit_rate"] == 1.0
+    assert report["retrieved_source_text_included"] is False
+    assert report["network_accessed"] is False
+    assert report["production_quality_claim"] is False

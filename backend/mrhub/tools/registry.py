@@ -62,6 +62,13 @@ class ToolRegistry:
         except KeyError as exc:
             raise LookupError("Tool is not registered") from exc
 
+    def scoped(self, allowed_names: frozenset[str] | set[str]) -> ToolRegistry:
+        """Return a registry restricted to reviewed names while preserving policy."""
+        scoped_registry = ToolRegistry(self._policy)
+        for name in sorted(allowed_names):
+            scoped_registry.register(self.get(name))
+        return scoped_registry
+
     def catalog(self) -> list[dict[str, object]]:
         return [
             {
