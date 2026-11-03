@@ -61,7 +61,10 @@ def test_command_uses_numeric_cut_data_and_silent_output(tmp_path):
         temporary_output=output,
     )
 
-    assert command.count("-i") == 2
+    input_positions = [index for index, value in enumerate(command) if value == "-i"]
+    assert len(input_positions) == 2
+    for position in input_positions:
+        assert command[position - 2 : position] == ["-protocol_whitelist", "file,pipe"]
     assert "-an" in command
     assert "-map" in command
     assert "concat=n=2:v=1:a=0[outv]" in command[command.index("-filter_complex") + 1]
