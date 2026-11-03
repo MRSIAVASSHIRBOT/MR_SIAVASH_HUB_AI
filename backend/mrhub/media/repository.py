@@ -273,8 +273,8 @@ class MediaAssetRepository:
             else:
                 rows = connection.execute(
                     "SELECT storage_key FROM content_assets "
-                    "WHERE asset_id = ? OR source_asset_id = ?",
-                    (str(asset_id), str(asset_id)),
+                    "WHERE owner_user_id = ? AND (asset_id = ? OR source_asset_id = ?)",
+                    (owner_user_id, str(asset_id), str(asset_id)),
                 ).fetchall()
                 keys = [item["storage_key"] for item in rows]
                 # Persist cleanup intent in the same transaction as metadata deletion.
