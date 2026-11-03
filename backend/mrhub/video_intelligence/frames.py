@@ -132,18 +132,33 @@ def extract_video_frames(
             if not frame_paths or len(frame_paths) > max_frames:
                 raise FrameExtractionError("no_frames_extracted")
 
-            frames: list[ExtractedVideoFrame] = []
+            # Check sizes before allocating frame contents in memory. The
+            # aggregate budget is evaluated over metadata first, so a rejected
+            # batch is never materialized as a collection of large byte strings.
+            frame_sizes: list[int] = []
             total_bytes = 0
-            for index, frame_path in enumerate(frame_paths):
+            for frame_path in frame_paths:
+                try:
+                    frame_size = frame_path.stat().st_size
+                except OSError as exc:
+                    raise FrameExtractionError("frame_read_failed") from exc
+                if frame_size <= 0 or frame_size > _MAX_FRAME_BYTES:
+                    raise FrameExtractionError("frame_size_out_of_range")
+                total_bytes += frame_size
+                if total_bytes > _MAX_TOTAL_FRAME_BYTES:
+                    raise FrameExtractionError("total_frame_size_exceeded")
+                frame_sizes.append(frame_size)
+
+            frames: list[ExtractedVideoFrame] = []
+            for index, (frame_path, frame_size) in enumerate(zip(frame_paths, frame_sizes)):
                 try:
                     frame_bytes = frame_path.read_bytes()
                 except OSError as exc:
                     raise FrameExtractionError("frame_read_failed") from exc
-                if not frame_bytes or len(frame_bytes) > _MAX_FRAME_BYTES:
-                    raise FrameExtractionError("frame_size_out_of_range")
-                total_bytes += len(frame_bytes)
-                if total_bytes > _MAX_TOTAL_FRAME_BYTES:
-                    raise FrameExtractionError("total_frame_size_exceeded")
+                # Recheck after reading to handle a file that changed between stat
+                # and read; reject before retaining it in the result collection.
+                if len(frame_bytes) != frame_size:
+                    raise FrameExtractionError("frame_changed_during_read")
                 timestamp = min(index / sampling_rate, duration_seconds)
                 frames.append(
                     ExtractedVideoFrame(

@@ -110,3 +110,49 @@ def test_extract_video_frames_maps_timeout_to_stable_error(monkeypatch, tmp_path
     with pytest.raises(frames.FrameExtractionError) as error:
         frames.extract_video_frames(source, duration_seconds=5)
     assert error.value.reason_code == "extraction_timeout"
+
+
+
+def test_extract_video_frames_enforces_aggregate_size_before_read(monkeypatch, tmp_path):
+    source = _source(tmp_path)
+    monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+
+    def fake_run(command, **_kwargs):
+        output = Path(command[-1])
+        for index in range(1, 10):
+            output.with_name(f"frame-{index:02d}.jpg").write_bytes(
+                b"x" * 1_400_000
+            )
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(frames.subprocess, "run", fake_run)
+
+    with pytest.raises(frames.FrameExtractionError) as error:
+        frames.extract_video_frames(source, duration_seconds=60, max_frames=12)
+    assert error.value.reason_code == "total_frame_size_exceeded"
+
+
+def test_extract_video_frames_rejects_nonzero_ffmpeg_exit(monkeypatch, tmp_path):
+    source = _source(tmp_path)
+    monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(
+        frames.subprocess, "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, b"", b""),
+    )
+
+    with pytest.raises(frames.FrameExtractionError) as error:
+        frames.extract_video_frames(source, duration_seconds=5)
+    assert error.value.reason_code == "extraction_failed"
+
+
+def test_extract_video_frames_rejects_empty_output(monkeypatch, tmp_path):
+    source = _source(tmp_path)
+    monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(
+        frames.subprocess, "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, b"", b""),
+    )
+
+    with pytest.raises(frames.FrameExtractionError) as error:
+        frames.extract_video_frames(source, duration_seconds=5)
+    assert error.value.reason_code == "no_frames_extracted"
