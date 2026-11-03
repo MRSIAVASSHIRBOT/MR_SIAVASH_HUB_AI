@@ -44,6 +44,10 @@ class VideoGenerationWorkerHandler:
 
         capability = provider.capability
         if (capability.provider, capability.model) != (provider_name, model_name):
+            self.jobs.transition_under_lease(
+                owner, generation_id, "failed", lease=lease,
+                error_code="provider_capability_mismatch",
+            )
             raise ValueError("Configured provider capability changed")
 
         request_data = dict(loaded["request"])
@@ -69,7 +73,7 @@ class VideoGenerationWorkerHandler:
 
         try:
             submission = provider.submit(request)
-        except Exception as exc:
+        except Exception:
             # Once submit was entered, the remote side effect may have happened.
             # Never resubmit automatically; retain the encrypted request for
             # a provider-specific reconciliation operation.
@@ -93,6 +97,16 @@ class VideoGenerationWorkerHandler:
             self.jobs.transition_under_lease(
                 owner, generation_id, "unknown_outcome", lease=lease,
                 error_code="provider_submission_identity_mismatch",
+            )
+            return {
+                "generation_id": str(generation_id),
+                "status": "unknown_outcome",
+            }
+        if submission.status is GenerationStatus.UNKNOWN_OUTCOME:
+            self.jobs.transition_under_lease(
+                owner, generation_id, "unknown_outcome", lease=lease,
+                provider_job_id=submission.provider_job_id,
+                error_code="provider_reported_unknown_outcome",
             )
             return {
                 "generation_id": str(generation_id),
