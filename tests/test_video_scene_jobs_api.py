@@ -70,6 +70,7 @@ def test_scene_job_api_queues_runs_and_returns_sanitized_result(monkeypatch):
     }
     assert "storage_key" not in result.json()
     assert "owner_user_id" not in result.json()
+    assert "task_id" not in result.json()
 
 
 def test_scene_job_api_validates_bounds_and_media_type():
