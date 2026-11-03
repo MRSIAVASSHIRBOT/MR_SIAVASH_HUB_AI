@@ -81,3 +81,10 @@ This verifier is a local consistency gate, not a media backup/copy utility and
 not a substitute for an actual restore drill. Verification is bounded to 10,000 registered assets, 10,000 directory entries, and 100 MB per asset; larger registries or implausible metadata fail closed and require an explicitly planned offline verification procedure. The API and worker must remain
 quiescent while the database and media directory are checked and copied, so the
 two components represent the same recovery point.
+
+
+## Automated clean-destination recovery regression
+
+The automated suite now exercises a clean-destination recovery path for the database and media directory together: it creates an owner account, uploads a bounded media fixture, closes the source application, backs up and restores SQLite to a new directory, copies the sibling media directory, runs `verify_media_assets`, then starts a fresh application against the restored database and verifies owner login, asset listing, and authenticated byte-for-byte download.
+
+This regression test is automated evidence for the local recovery contract. It does not replace the documented Windows target-device drill, protected recovery-key procedure, encrypted off-device backup, or operator acceptance record.
