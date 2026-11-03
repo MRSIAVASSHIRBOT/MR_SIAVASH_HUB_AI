@@ -1,9 +1,10 @@
 """Shared bounded health probing for optional local integrations."""
 
-import httpx
 import ipaddress
 import re
 from urllib.parse import urlsplit, urlunsplit
+
+import httpx
 
 
 INTEGRATION_CONTRACT_VERSION = "1.0"
