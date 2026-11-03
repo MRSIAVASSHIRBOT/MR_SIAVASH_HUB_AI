@@ -228,7 +228,7 @@ def get_scene_job(
     )
     if job is None:
         raise HTTPException(status_code=404, detail="Scene job not found")
-    return job
+    return {key: value for key, value in job.items() if key != "task_id"}
 
 
 @router.post("/scene-jobs/{job_id}/cancel")
@@ -246,8 +246,10 @@ def cancel_scene_job(
     repository.initialize()
     try:
         JobEngine(repository).cancel(UUID(str(job["task_id"])))
-    except InvalidTaskTransition as exc:
-        raise HTTPException(status_code=409, detail="Scene job is already terminal") from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Scene job not found") from exc
+    except (InvalidTaskTransition, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail="Scene job state changed; reload and retry") from exc
     updated = jobs.get(user.user_id, job_id)
     if updated is None:
         raise HTTPException(status_code=404, detail="Scene job not found")
