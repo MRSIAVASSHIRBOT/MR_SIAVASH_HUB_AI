@@ -26,35 +26,37 @@ def test_mcp_service_refuses_to_start_when_disabled(monkeypatch):
         mcp_service.main()
 
 
-def test_mcp_service_refuses_non_loopback_bind(monkeypatch):
+@pytest.mark.parametrize("host", ["0.0.0.0", "localhost", "hub.local"])
+def test_mcp_service_refuses_non_numeric_loopback_bind(host, monkeypatch):
     monkeypatch.setattr(
-        mcp_service, "get_settings", lambda: _settings(mcp_host="0.0.0.0")
+        mcp_service, "get_settings", lambda: _settings(mcp_host=host)
     )
     monkeypatch.setattr(
         mcp_service,
         "create_mcp_server",
-        lambda: pytest.fail("server must not be created for a non-loopback bind"),
+        lambda: pytest.fail("server must not be created for a non-numeric loopback bind"),
     )
 
-    with pytest.raises(SystemExit, match="loopback address"):
+    with pytest.raises(SystemExit, match="numeric loopback address"):
         mcp_service.main()
 
 
-def test_mcp_service_starts_explicitly_with_bounded_transport(monkeypatch):
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1"])
+def test_mcp_service_starts_explicitly_with_bounded_transport(host, monkeypatch):
     calls = {}
 
     class FakeServer:
         def run(self, **kwargs):
             calls.update(kwargs)
 
-    monkeypatch.setattr(mcp_service, "get_settings", lambda: _settings())
+    monkeypatch.setattr(mcp_service, "get_settings", lambda: _settings(mcp_host=host))
     monkeypatch.setattr(mcp_service, "create_mcp_server", FakeServer)
 
     mcp_service.main()
 
     assert calls == {
         "transport": "streamable-http",
-        "host": "127.0.0.1",
+        "host": host,
         "port": 8765,
         "streamable_http_path": "/mcp",
         "stateless_http": True,
