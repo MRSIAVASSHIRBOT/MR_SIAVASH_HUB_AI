@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
     decrypt_payload,
@@ -152,6 +153,145 @@ class VideoGenerationJobRepository:
             "model": model,
             "execution": "not_started",
         }, True
+
+    def enqueue(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
+        """Atomically bind a prepared generation to one durable worker task."""
+        task = TaskRecord(
+            task_type="video.generation",
+            risk_class=RiskClass.LOW,
+            description="Owner-requested video generation provider handoff",
+        )
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            job = connection.execute(
+                """SELECT status FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if job is None:
+                return None
+            existing = connection.execute(
+                """SELECT task_id FROM video_generation_task_links
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if existing is not None:
+                return {"generation_id": str(generation_id), "task_id": existing["task_id"], "status": str(job["status"]), "created": False}
+            if job["status"] != "prepared":
+                raise ValueError("Only prepared generation jobs can be enqueued")
+            connection.execute(
+                """INSERT INTO tasks (
+                    task_id, task_type, status, risk_class, created_at, updated_at, description
+                ) VALUES (?, ?, 'queued', ?, ?, ?, ?)""",
+                (str(task.task_id), task.task_type, task.risk_class.value,
+                 task.created_at.isoformat(), task.updated_at.isoformat(), task.description),
+            )
+            connection.execute(
+                """INSERT INTO video_generation_task_links (
+                    generation_id, owner_user_id, task_id, created_at
+                ) VALUES (?, ?, ?, ?)""",
+                (str(generation_id), owner_user_id, str(task.task_id), now),
+            )
+            connection.execute(
+                """UPDATE video_generation_jobs SET status = 'queued', updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = 'prepared'""",
+                (now, str(generation_id), owner_user_id),
+            )
+        return {"generation_id": str(generation_id), "task_id": str(task.task_id), "status": "queued", "created": True}
+
+    def load_for_worker(self, task_id: UUID) -> dict[str, object] | None:
+        """Decrypt one queued job only through its linked durable task."""
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                """SELECT l.owner_user_id, l.generation_id, j.provider, j.model,
+                          j.status, p.envelope_version, p.nonce_b64, p.ciphertext_b64
+                   FROM video_generation_task_links AS l
+                   JOIN video_generation_jobs AS j
+                     ON j.generation_id = l.generation_id
+                    AND j.owner_user_id = l.owner_user_id
+                   JOIN video_generation_payloads AS p
+                     ON p.generation_id = j.generation_id
+                    AND p.owner_user_id = j.owner_user_id
+                   WHERE l.task_id = ?""",
+                (str(task_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["status"] != "queued":
+            raise ValueError("Only queued generation jobs can be dispatched")
+        generation_id = str(row["generation_id"])
+        owner_user_id = str(row["owner_user_id"])
+        payload = decrypt_payload(
+            EncryptedPayload(
+                version=int(row["envelope_version"]),
+                nonce_b64=str(row["nonce_b64"]),
+                ciphertext_b64=str(row["ciphertext_b64"]),
+            ),
+            workflow_id=generation_id,
+            task_id=generation_id,
+            owner_user_id=owner_user_id,
+            key=load_payload_key(),
+        )
+        return {
+            "owner_user_id": owner_user_id,
+            "generation_id": generation_id,
+            "provider": str(row["provider"]),
+            "model": str(row["model"]),
+            "request": payload,
+        }
+
+    def transition_under_lease(
+        self,
+        owner_user_id: str,
+        generation_id: UUID,
+        target: str,
+        *,
+        lease: WorkerLease,
+        provider_job_id: str | None = None,
+        error_code: str | None = None,
+    ) -> dict[str, object] | None:
+        """Change a generation state only while its task fencing token is current."""
+        if lease.task_id == "" or not lease.owner or lease.fencing_token < 1:
+            raise ValueError("A valid worker lease is required")
+        now = self._now()
+        allowed = {"queued": {"submitting", "failed"}, "submitting": {"running", "unknown_outcome", "failed"}}
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            link = connection.execute(
+                """SELECT task_id FROM video_generation_task_links
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if link is None or link["task_id"] != lease.task_id:
+                raise ValueError("Worker lease does not own this generation task")
+            current = connection.execute(
+                """SELECT status FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if current is None:
+                return None
+            if target not in allowed.get(str(current["status"]), set()):
+                raise ValueError("Invalid fenced generation state transition")
+            cursor = connection.execute(
+                """UPDATE video_generation_jobs SET status = ?,
+                       provider_job_id = COALESCE(?, provider_job_id),
+                       error_code = ?, updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ? AND status = ?
+                     AND EXISTS (
+                       SELECT 1 FROM worker_executions e
+                       WHERE e.task_id = ? AND e.lease_owner = ?
+                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                     )""",
+                (target, provider_job_id, error_code, now, str(generation_id),
+                 owner_user_id, current["status"], lease.task_id, lease.owner,
+                 lease.fencing_token, now),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Worker lease lost before generation state update")
+        return self.get(owner_user_id, generation_id)
+
 
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
