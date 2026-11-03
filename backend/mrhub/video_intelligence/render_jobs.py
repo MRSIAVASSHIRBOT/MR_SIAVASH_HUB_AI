@@ -61,6 +61,8 @@ class VideoRenderJobRepository:
             ).encode("utf-8")
         ).hexdigest()
         render_id = uuid4()
+        output_asset_id = uuid4()
+        output_storage_key = f"{output_asset_id}.mp4"
         task = TaskRecord(
             task_type="video.render",
             risk_class=RiskClass.LOW,
@@ -101,9 +103,12 @@ class VideoRenderJobRepository:
             connection.execute(
                 """INSERT INTO video_render_runs (
                     render_id, task_id, owner_user_id, analysis_id, status,
-                    output_asset_id, error_code, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, 'accepted', NULL, NULL, ?, ?)""",
-                (str(render_id), str(task.task_id), owner_user_id, str(analysis_id), now, now),
+                    output_asset_id, output_storage_key, error_code, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, 'accepted', NULL, ?, NULL, ?, ?)""",
+                (
+                    str(render_id), str(task.task_id), owner_user_id, str(analysis_id),
+                    output_storage_key, now, now,
+                ),
             )
             connection.execute(
                 """INSERT INTO idempotency_records (
@@ -152,16 +157,21 @@ class VideoRenderJobRepository:
 
     def load_for_worker(
         self, task_id: UUID
-    ) -> tuple[str, UUID, UUID] | None:
+    ) -> tuple[str, UUID, UUID, str] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
-                """SELECT render_id, owner_user_id, analysis_id
+                """SELECT render_id, owner_user_id, analysis_id, output_storage_key
                    FROM video_render_runs WHERE task_id = ?""",
                 (str(task_id),),
             ).fetchone()
         if row is None:
             return None
-        return str(row["owner_user_id"]), UUID(row["render_id"]), UUID(row["analysis_id"])
+        return (
+            str(row["owner_user_id"]),
+            UUID(row["render_id"]),
+            UUID(row["analysis_id"]),
+            str(row["output_storage_key"]),
+        )
 
     def owner_for_task(self, task_id: UUID) -> str | None:
         with self.tasks._connection() as connection:
