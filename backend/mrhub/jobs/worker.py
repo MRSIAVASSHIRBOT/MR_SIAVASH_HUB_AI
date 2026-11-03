@@ -86,6 +86,7 @@ class WorkerEngine:
         }
         self.handlers["agent.workflow"] = self._run_agent_workflow
         self.handlers["agent.model_run"] = self._run_agent_model_run
+        self.handlers["video.analysis"] = self._run_video_analysis
         self._initialize()
 
     def _now(self) -> datetime:
@@ -138,6 +139,16 @@ class WorkerEngine:
         from mrhub.jobs.model_run_dispatch import ModelRunWorkerHandler
 
         return ModelRunWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
+
+    def _run_video_analysis(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Run bounded owner-scoped video analysis under the current worker lease."""
+        from mrhub.video_intelligence.worker import VideoAnalysisWorkerHandler
+
+        return VideoAnalysisWorkerHandler(self.repository)(
             task, lease=lease, lease_lost=lease_lost
         )
 
@@ -543,7 +554,7 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            if task.task_type in {"agent.workflow", "agent.model_run"}:
+            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis"}:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)
