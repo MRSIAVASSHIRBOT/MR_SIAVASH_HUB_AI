@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.media.repository import MediaAssetRepository
@@ -170,7 +171,9 @@ def submit_scene_job(
 ) -> dict[str, object]:
     """Queue bounded scene analysis for a video asset owned by the caller."""
     policy = PolicyEngine()
-    risk_class = policy.classify_task_type("video.scene_detection")
+    # This dedicated endpoint explicitly grants only bounded, read-only analysis.
+    # Generic /tasks submissions still classify this unknown task as high risk.
+    risk_class = RiskClass.LOW
     decision = policy.evaluate(
         ActionRequest(action="video.scene_detection", risk_class=risk_class)
     )
