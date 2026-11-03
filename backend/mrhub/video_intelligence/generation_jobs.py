@@ -236,7 +236,7 @@ class VideoGenerationJobRepository:
             current = str(row["status"])
             if target not in allowed[current]:
                 raise ValueError(f"Invalid generation transition: {current} -> {target}")
-            if target in {"succeeded", "failed", "cancelled", "unknown_outcome"}:
+            if target in {"succeeded", "failed", "cancelled"}:
                 connection.execute(
                     """DELETE FROM video_generation_payloads
                        WHERE generation_id = ? AND owner_user_id = ?""",
