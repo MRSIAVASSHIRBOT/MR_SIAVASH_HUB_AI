@@ -22,6 +22,11 @@ from mrhub.config import get_settings
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.generation import VideoGenerationRequest
+from mrhub.video_intelligence.generation_jobs import (
+    VideoGenerationConflict,
+    VideoGenerationJobRepository,
+)
 from mrhub.video_intelligence.jobs import (
     VideoAnalysisConflict,
     VideoAnalysisJobRepository,
@@ -39,11 +44,6 @@ from mrhub.video_intelligence.schemas import (
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
-from mrhub.video_intelligence.generation import VideoGenerationRequest
-from mrhub.video_intelligence.generation_jobs import (
-    VideoGenerationConflict,
-    VideoGenerationJobRepository,
-)
 
 router = APIRouter(
     prefix="/video-intelligence",
