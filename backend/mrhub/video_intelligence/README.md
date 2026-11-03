@@ -33,7 +33,7 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
-- `POST /video-intelligence/analyses/{analysis_id}/prompt` — synthesize an original, bounded editing prompt from one selected asset's validated Vision observations; optional owner-scoped brand profile and custom constraints are supported. This composes a prompt only and does not invoke a generation provider or render a video.
+- `POST /video-intelligence/analyses/{analysis_id}/prompt` — synthesize an original, bounded editing prompt from one selected asset's validated Vision observations; optional owner-scoped brand profile and custom constraints are supported. This composes a prompt only and does not invoke a generation provider or render a video.\n- `POST /video-intelligence/timeline-drafts` — persist an editable timeline for an asset in the current owner's completed analysis.\n- `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned timeline draft.\n- `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
 - `DELETE /video-intelligence/analyses/{analysis_id}` — cancel queued work or request cooperative cancellation of a running analysis owned by the current user.
 
 ## Analysis scope and remaining work
@@ -44,7 +44,7 @@ Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-mo
 
 The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
-Audio transcription, OCR, dedicated motion analysis, operator UI, production generation handoff, and end-to-end rendering remain unimplemented. Prompt synthesis from validated semantic observations is available as a deterministic, owner-scoped API operation; it does not call a generation model or produce an MP4. Windows/Ollama execution still requires validation on the target machine.
+Audio transcription, OCR, dedicated motion analysis, operator UI, production generation handoff, and end-to-end rendering remain unimplemented. Prompt synthesis from validated semantic observations is available as a deterministic, owner-scoped API operation; it does not call a generation model or produce an MP4. Editable timeline drafts can be persisted separately, with bounded intervals, owner isolation, and optimistic version checks. Timeline editing does not start rendering. Windows/Ollama execution still requires validation on the target machine.
 
 ## Security boundaries
 
