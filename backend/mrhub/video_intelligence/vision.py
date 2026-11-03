@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -92,7 +91,11 @@ def _parse_response(output: str) -> VisualBatchResult:
     """Parse one bounded JSON response; reject prose or unexpected structures."""
     candidate = output.strip()
     if candidate.startswith("```"):
-        candidate = re.sub(r"^\`\`\`(?:json)?\\s*|\\s*\`\`\`$", "", candidate, flags=re.IGNORECASE)
+        candidate = candidate[3:].lstrip()
+        if candidate[:4].lower() == "json":
+            candidate = candidate[4:].lstrip()
+        if candidate.endswith("```"):
+            candidate = candidate[:-3].rstrip()
     payload: Any = json.loads(candidate)
     if not isinstance(payload, dict):
         raise ValueError("vision_response_invalid")
