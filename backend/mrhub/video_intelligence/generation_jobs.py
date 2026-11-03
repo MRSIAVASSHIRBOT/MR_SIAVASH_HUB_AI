@@ -257,7 +257,13 @@ class VideoGenerationJobRepository:
 
         if result.status is not GenerationStatus.SUCCEEDED:
             raise ValueError("Only successful provider results can register media")
-        if not output_filename or len(output_filename) > 255 or Path(output_filename).name != output_filename:
+        if (
+            not output_filename
+            or output_filename in {".", ".."}
+            or len(output_filename) > 255
+            or Path(output_filename).name != output_filename
+            or any(ord(character) < 32 for character in output_filename)
+        ):
             raise ValueError("Generated output filename is invalid")
         media = MediaAssetRepository(self.database_path)
         expected_path = media.file_path(storage_key)
@@ -368,9 +374,9 @@ class VideoGenerationJobRepository:
         allowed = {
             "prepared": {"queued", "cancelled"},
             "queued": {"submitting", "cancelled"},
-            "submitting": {"running", "succeeded", "failed", "unknown_outcome", "cancelled"},
-            "running": {"succeeded", "failed", "unknown_outcome", "cancelled"},
-            "unknown_outcome": {"running", "succeeded", "failed", "cancelled"},
+            "submitting": {"running", "failed", "unknown_outcome", "cancelled"},
+            "running": {"failed", "unknown_outcome", "cancelled"},
+            "unknown_outcome": {"running", "failed", "cancelled"},
             "succeeded": set(),
             "failed": set(),
             "cancelled": set(),
