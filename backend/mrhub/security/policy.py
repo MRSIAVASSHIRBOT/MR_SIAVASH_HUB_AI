@@ -38,7 +38,6 @@ class PolicyEngine:
         "analysis.summarize",
         "content.draft",
         "memory.search",
-        "video.scene_detection",
     })
 
     def classify_task_type(self, task_type: str) -> RiskClass:
