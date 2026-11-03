@@ -202,6 +202,7 @@ class VideoSceneJobRepository:
 
         return {
             "job_id": row["job_id"],
+            "task_id": row["task_id"],
             "source_asset_id": row["source_asset_id"],
             "threshold": row["threshold"],
             "max_scene_changes": row["max_scene_changes"],
