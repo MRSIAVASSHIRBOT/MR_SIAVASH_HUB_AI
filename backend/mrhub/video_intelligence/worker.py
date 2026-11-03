@@ -10,10 +10,10 @@ from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
+from mrhub.video_intelligence.analyzer import VideoAssetAnalysisError, VideoAssetAnalyzer
 from mrhub.video_intelligence.edit_spec import build_edit_specification
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.schemas import VideoAnalysisRequest
-from mrhub.video_intelligence.analyzer import VideoAssetAnalysisError, VideoAssetAnalyzer
 from mrhub.video_intelligence.timeline import build_video_timeline
 from mrhub.video_intelligence.vision import analyze_sampled_frames
 
