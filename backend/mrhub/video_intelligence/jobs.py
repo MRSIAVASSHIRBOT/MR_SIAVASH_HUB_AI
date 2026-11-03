@@ -162,6 +162,90 @@ class VideoAnalysisJobRepository:
             "error_code": row["error_code"],
         }
 
+    def cancel(self, owner_user_id: str, analysis_id: UUID) -> dict[str, object] | None:
+        """Request cancellation without allowing a stale worker to overwrite the outcome.
+
+        Queued work is cancelled atomically and its encrypted payload is purged.
+        Running work is signalled through the task state; the leased worker owns
+        the final analysis transition after it reaches a safe cancellation point.
+        """
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT r.analysis_id, r.task_id, r.status, t.status AS task_status
+                   FROM video_analysis_runs AS r
+                   JOIN tasks AS t ON t.task_id = r.task_id
+                   WHERE r.analysis_id = ? AND r.owner_user_id = ?""",
+                (str(analysis_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            analysis_status = str(row["status"])
+            task_status = str(row["task_status"])
+            if analysis_status in {"completed", "failed", "cancelled"}:
+                return {
+                    "analysis_id": str(analysis_id),
+                    "status": analysis_status,
+                    "cancellation_requested": False,
+                }
+
+            if task_status == "queued" and analysis_status == "accepted":
+                connection.execute(
+                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'queued'",
+                    (now, row["task_id"]),
+                )
+                connection.execute(
+                    """UPDATE video_analysis_runs
+                       SET status = 'cancelled', error_code = 'cancelled_before_execution',
+                           updated_at = ?
+                       WHERE analysis_id = ? AND owner_user_id = ? AND status = 'accepted'""",
+                    (now, str(analysis_id), owner_user_id),
+                )
+                connection.execute(
+                    "DELETE FROM video_analysis_payloads WHERE analysis_id = ? AND owner_user_id = ?",
+                    (str(analysis_id), owner_user_id),
+                )
+                connection.execute(
+                    """UPDATE idempotency_records SET status = 'failed'
+                       WHERE scope = ? AND task_id = ? AND status = 'accepted'""",
+                    (self._scope(owner_user_id), row["task_id"]),
+                )
+                return {
+                    "analysis_id": str(analysis_id),
+                    "status": "cancelled",
+                    "cancellation_requested": False,
+                }
+
+            if task_status == "running" and analysis_status in {"accepted", "running"}:
+                cursor = connection.execute(
+                    "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'running'",
+                    (now, row["task_id"]),
+                )
+                if cursor.rowcount == 1:
+                    return {
+                        "analysis_id": str(analysis_id),
+                        "status": analysis_status,
+                        "cancellation_requested": True,
+                    }
+                # A concurrent worker transition won the race. Re-read rather
+                # than claiming cancellation was accepted without changing state.
+                latest = connection.execute(
+                    """SELECT r.status, t.status AS task_status
+                       FROM video_analysis_runs AS r JOIN tasks AS t ON t.task_id = r.task_id
+                       WHERE r.analysis_id = ? AND r.owner_user_id = ?""",
+                    (str(analysis_id), owner_user_id),
+                ).fetchone()
+                if latest is not None and latest["status"] in {"completed", "failed", "cancelled"}:
+                    return {
+                        "analysis_id": str(analysis_id),
+                        "status": str(latest["status"]),
+                        "cancellation_requested": False,
+                    }
+
+            raise VideoAnalysisConflict("Analysis is not in a cancellable state")
+
     def owner_for_task(self, task_id: UUID) -> str | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
