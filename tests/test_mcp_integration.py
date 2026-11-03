@@ -34,6 +34,19 @@ async def test_mcp_bridge_lists_and_invokes_registered_safe_hub_tool():
 
 
 @pytest.mark.anyio
+async def test_mcp_bridge_uses_explicitly_injected_falsey_registry():
+    class FalseyRegistry(ToolRegistry):
+        def __bool__(self):
+            return False
+
+    registry = FalseyRegistry()
+    server = create_mcp_server(registry)
+    async with Client(server) as client:
+        result = await client.call_tool("hub.list_tools", {})
+    assert json.loads(result.content[0].text) == []
+
+
+@pytest.mark.anyio
 async def test_mcp_bridge_returns_stable_errors_for_unknown_tools_and_invalid_input():
     server = create_mcp_server(build_tool_registry())
     async with Client(server) as client:
