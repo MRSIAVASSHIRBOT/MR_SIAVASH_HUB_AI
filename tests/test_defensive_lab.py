@@ -305,3 +305,13 @@ def test_security_lab_api_requires_authentication():
     )
 
     assert response.status_code == 401
+
+
+
+def test_scope_rejects_authorizations_longer_than_thirty_days():
+    with pytest.raises(ScopeValidationError, match="30-day"):
+        DefensiveReviewScope(
+            authorization_reference="ticket-long",
+            authorized_assets=("repo:owned-project",),
+            expires_at=datetime.now(UTC) + timedelta(days=31),
+        )
