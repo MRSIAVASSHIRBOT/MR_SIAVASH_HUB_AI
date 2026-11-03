@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
+from mrhub.api.routes import video_intelligence as video_routes
 from mrhub.config import get_settings
 from mrhub.main import create_app
 
@@ -321,3 +322,43 @@ def test_readiness_rejects_stale_worker_heartbeat(tmp_path, monkeypatch) -> None
         assert response.json()["detail"] == "Worker process is not ready"
     finally:
         get_settings.cache_clear()
+
+
+def test_video_render_cancel_endpoint_is_authenticated_and_owner_scoped(monkeypatch):
+    render_id = "3f79d4b1-6b95-4b39-9c4e-62d6f2ac8d41"
+
+    class RenderJobs:
+        def cancel(self, owner_user_id, requested_render_id):
+            assert owner_user_id
+            assert str(requested_render_id) == render_id
+            return {
+                "render_id": render_id,
+                "status": "running",
+                "cancellation_requested": True,
+            }
+
+    monkeypatch.setattr(video_routes, "_render_jobs", lambda: RenderJobs())
+    client = authenticated_client()
+    response = client.delete(f"/video-intelligence/renders/{render_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "render_id": render_id,
+        "status": "running",
+        "cancellation_requested": True,
+    }
+
+
+def test_video_render_cancel_endpoint_hides_foreign_or_missing_render(monkeypatch):
+    class RenderJobs:
+        def cancel(self, owner_user_id, requested_render_id):
+            return None
+
+    monkeypatch.setattr(video_routes, "_render_jobs", lambda: RenderJobs())
+    client = authenticated_client()
+    response = client.delete(
+        "/video-intelligence/renders/3f79d4b1-6b95-4b39-9c4e-62d6f2ac8d41"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Video render not found"
