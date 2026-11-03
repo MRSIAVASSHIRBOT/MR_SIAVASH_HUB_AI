@@ -218,6 +218,15 @@ class VideoAnalysisJobRepository:
                     "cancellation_requested": False,
                 }
 
+            if task_status == "cancelled" and analysis_status in {"accepted", "running"}:
+                # Idempotent repeat while the worker is still reaching a safe
+                # cancellation point.
+                return {
+                    "analysis_id": str(analysis_id),
+                    "status": analysis_status,
+                    "cancellation_requested": True,
+                }
+
             if task_status == "running" and analysis_status in {"accepted", "running"}:
                 cursor = connection.execute(
                     "UPDATE tasks SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'running'",
