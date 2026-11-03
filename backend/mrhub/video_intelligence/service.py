@@ -6,9 +6,9 @@ repository in a later integration layer.
 """
 
 import json
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
