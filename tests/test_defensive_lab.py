@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from client_helpers import authenticated_client
 
 from mrhub.security.defensive_lab import (
     DefensiveReviewScope,
@@ -207,3 +208,100 @@ def test_dependency_manifest_exact_pin_is_not_flagged_but_ranges_are():
     assert result["packages_reviewed"] == 3
     assert [item["line"] for item in result["findings"]] == [2, 3]
     assert all(item["rule_id"] == "DEP001" for item in result["findings"])
+
+
+
+def test_authenticated_config_review_api_enforces_scope_and_returns_safe_evidence():
+    client = authenticated_client()
+    response = client.post(
+        "/security-lab/config-review",
+        json={
+            "scope": {
+                "authorization_reference": "ticket-123",
+                "authorized_assets": ["repo:owned-project"],
+                "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+                "review_mode": "offline_static_only",
+            },
+            "asset": "repo:owned-project",
+            "filename": "settings.env",
+            "text": "debug = true\n",
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["scope_validated"] is True
+    assert result["asset"] == "repo:owned-project"
+    assert result["findings"][0]["rule_id"] == "CFG001"
+    assert result["configuration_values_included"] is False
+    assert result["network_requests_made"] is False
+    assert result["targets_modified"] is False
+
+
+def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
+    client = authenticated_client()
+    response = client.post(
+        "/security-lab/dependency-review",
+        json={
+            "scope": {
+                "authorization_reference": "ticket-123",
+                "authorized_assets": ["repo:owned-project"],
+                "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+                "review_mode": "offline_static_only",
+            },
+            "asset": "repo:other-project",
+            "filename": "requirements.txt",
+            "text": "fastapi>=0.115\n",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason_code"] == "authorization_scope_denied"
+
+
+def test_authenticated_dependency_review_api_is_offline_and_reports_unpinned_packages():
+    client = authenticated_client()
+    response = client.post(
+        "/security-lab/dependency-review",
+        json={
+            "scope": {
+                "authorization_reference": "ticket-123",
+                "authorized_assets": ["repo:owned-project"],
+                "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+                "review_mode": "offline_static_only",
+            },
+            "asset": "repo:owned-project",
+            "filename": "requirements.txt",
+            "text": "fastapi>=0.115\n",
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["findings"][0]["rule_id"] == "DEP001"
+    assert result["vulnerability_database_consulted"] is False
+    assert result["network_requests_made"] is False
+    assert result["packages_installed"] is False
+    assert result["targets_modified"] is False
+
+
+def test_security_lab_api_requires_authentication():
+    from fastapi.testclient import TestClient
+
+    from mrhub.main import create_app
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/security-lab/config-review",
+        json={
+            "scope": {
+                "authorization_reference": "ticket-123",
+                "authorized_assets": ["repo:owned-project"],
+                "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+            },
+            "asset": "repo:owned-project",
+            "text": "debug = true",
+        },
+    )
+
+    assert response.status_code == 401
