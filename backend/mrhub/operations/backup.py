@@ -117,8 +117,6 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
                     pass
 
 
-
-
 _MEDIA_STORAGE_KEY_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:mp4|mov|jpg|png|webp|mp3|wav)$"
 )
