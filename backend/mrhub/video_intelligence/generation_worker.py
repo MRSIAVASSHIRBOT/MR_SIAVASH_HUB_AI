@@ -103,10 +103,7 @@ class VideoGenerationWorkerHandler:
                 provider_job_id=submission.provider_job_id,
                 error_code="provider_reported_unknown_outcome",
             )
-            return {
-                "generation_id": str(generation_id),
-                "status": "unknown_outcome",
-            }
+            raise ValueError("provider_reported_unknown_outcome")
         if submission.status in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             self.jobs.transition_under_lease(
                 owner, generation_id, "failed", lease=lease,
