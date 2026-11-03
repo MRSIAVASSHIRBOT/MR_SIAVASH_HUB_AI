@@ -132,6 +132,15 @@ def test_render_output_registration_completes_job_atomically(tmp_path, monkeypat
         task_id=task_id,
         render_id=render_id,
         lease=lease,
+        task_result={
+            "render_id": str(render_id),
+            "status": "completed",
+            "output_asset_id": output_id,
+            "duration_seconds": 3.0,
+            "width": 1920,
+            "height": 1080,
+            "file_size": output_path.stat().st_size,
+        },
     )
 
     assert record["asset_id"] == output_id
@@ -168,6 +177,7 @@ def test_render_output_registration_rejects_stale_worker_lease(tmp_path, monkeyp
             task_id=task_id,
             render_id=render_id,
             lease=stale_lease,
+            task_result={"status": "completed"},
         )
     except ValueError as exc:
         assert "lease" in str(exc).lower()
