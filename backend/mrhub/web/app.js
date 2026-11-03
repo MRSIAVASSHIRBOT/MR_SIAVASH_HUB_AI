@@ -9,9 +9,24 @@
   let pendingModelRunIdempotencyKey = null;
   let pendingModelRunPayloadFingerprint = null;
   let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
+  let activeVideoRenderId = sessionStorage.getItem("mrh_video_render_id");
+  let activeVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_analysis_id");
+  let pendingVideoRenderKey = sessionStorage.getItem("mrh_video_render_pending_key");
+  let pendingVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_pending_analysis_id");
+  let activeVideoRenderStatus = null;
+  let activeVideoRenderAssetId = null;
+  let canSubmitVideoRender = false;
   if (!token) {
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_id");
+    sessionStorage.removeItem("mrh_video_render_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_pending_key");
+    sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
     activeVideoAnalysisId = null;
+    activeVideoRenderId = null;
+    activeVideoRenderAnalysisId = null;
+    pendingVideoRenderKey = null;
+    pendingVideoRenderAnalysisId = null;
   }
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
@@ -44,6 +59,8 @@
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem("mrh_video_analysis_id");
     activeVideoAnalysisId = null;
+    canSubmitVideoRender = false;
+    clearVideoRenderState();
     pendingVideoAnalysisKey = null;
     pendingVideoAnalysisFingerprint = null;
     videoPromptResults = [];
@@ -371,6 +388,36 @@
     message("#workspace-message", failures ? `به‌روزرسانی انجام شد؛ ${failures} بخش در دسترس نبود.` : "وضعیت به‌روز شد.", failures ? "error" : "success");
   }
 
+  async function downloadMediaAsset(assetId, filename = "media") {
+    if (!token) throw new Error("نشست فعال برای دریافت رسانه وجود ندارد.");
+    const response = await fetch(
+      "/content/assets/" + encodeURIComponent(assetId) + "/file",
+      {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+      }
+    );
+    if (response.status === 401 || response.status === 403) endSession();
+    if (!response.ok) {
+      throw new Error("دریافت رسانه ناموفق بود (HTTP " + response.status + ")");
+    }
+    const blob = await response.blob();
+    if (!blob.size || blob.size > 100_000_000) {
+      throw new Error("اندازهٔ فایل رسانه خارج از محدودهٔ مجاز است.");
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const link = element("a", "");
+    link.href = objectUrl;
+    link.download = filename || "media";
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
   async function loadMediaAssets() {
     const response = await api("/content/assets?limit=100");
     mediaAssetsCache = Array.isArray(response.assets) ? response.assets : [];
@@ -397,6 +444,17 @@
         asset.media_type,
         `${sizeMb} MB · ${asset.processing_status} · ${asset.asset_id}`
       );
+      const download = element("button", "دانلود رسانه", "button button-quiet");
+      download.type = "button";
+      download.addEventListener("click", async () => {
+        try {
+          await downloadMediaAsset(asset.asset_id, asset.original_filename || "media");
+          message("#media-message", "دانلود رسانه آغاز شد.", "success");
+        } catch (error) {
+          message("#media-message", error.message, "error");
+        }
+      });
+      card.append(download);
       card.append(deleteButton("حذف رسانه", async () => {
         if (!window.confirm("این فایل رسانه‌ای حذف شود؟ اگر در تاریخچهٔ پیش‌نویس استفاده شده باشد، حذف رد می‌شود.")) return;
         try {
@@ -506,13 +564,175 @@
       const semanticLabel = semantic ? semantic.status : "unavailable";
       container.append(element(
         "p",
-        `تحلیل معنایی: ${semanticLabel}. تحلیل صوتی و رندر ویدئو در این نسخه اجرا نمی‌شوند.`,
+        `تحلیل معنایی: ${semanticLabel}. تحلیل صوتی در این مسیر اجرا نمی‌شود؛ رندر MP4 بی‌صدا و برش مستقیم در بخش جداگانه در دسترس است.`,
         "muted"
       ));
     } else if (analysis.error_code) {
       container.append(element("p", `کد خطا: ${analysis.error_code}`, "message error"));
     }
     $("#video-analysis-refresh").disabled = !activeVideoAnalysisId;
+    const timeline = result && result.timeline;
+    canSubmitVideoRender = analysis.status === "completed"
+      && timeline && Array.isArray(timeline.video_track) && timeline.video_track.length > 0;
+    $("#video-render-submit").disabled = !canSubmitVideoRender
+      || ["accepted", "running"].includes(activeVideoRenderStatus);
+  }
+
+  function clearVideoRenderState() {
+    activeVideoRenderId = null;
+    activeVideoRenderAnalysisId = null;
+    activeVideoRenderStatus = null;
+    activeVideoRenderAssetId = null;
+    pendingVideoRenderKey = null;
+    pendingVideoRenderAnalysisId = null;
+    sessionStorage.removeItem("mrh_video_render_id");
+    sessionStorage.removeItem("mrh_video_render_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_pending_key");
+    sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+    $("#video-render-result").replaceChildren();
+    $("#video-render-refresh").disabled = true;
+    $("#video-render-cancel").disabled = true;
+    $("#video-render-submit").disabled = !canSubmitVideoRender;
+    message("#video-render-message", "");
+  }
+
+  const videoRenderStatusLabels = {
+    accepted: "در صف اجرا",
+    running: "در حال رندر",
+    completed: "رندر تکمیل شد",
+    failed: "رندر ناموفق",
+    cancelled: "لغو شد",
+  };
+
+  function renderVideoRender(render) {
+    activeVideoRenderStatus = render.status || null;
+    activeVideoRenderAssetId = render.output_asset_id || null;
+    const container = $("#video-render-result");
+    container.replaceChildren();
+    const statusText = videoRenderStatusLabels[render.status] || render.status || "نامشخص";
+    container.append(recordCard(
+      "وضعیت رندر",
+      statusText,
+      "شناسه: " + (render.render_id || activeVideoRenderId || "—")
+        + " · آخرین به‌روزرسانی: " + (render.updated_at || "نامشخص")
+    ));
+    if (render.error_code) {
+      container.append(element("p", "کد خطا: " + render.error_code, "message error"));
+    }
+    if (render.status === "completed" && activeVideoRenderAssetId) {
+      const download = element("button", "دریافت فایل MP4", "button button-primary");
+      download.type = "button";
+      download.addEventListener("click", downloadRenderedVideo);
+      container.append(download);
+      container.append(element("p", "شناسهٔ رسانهٔ خروجی: " + activeVideoRenderAssetId, "muted"));
+    }
+    const active = ["accepted", "running"].includes(render.status);
+    $("#video-render-refresh").disabled = !activeVideoRenderId;
+    $("#video-render-cancel").disabled = !active;
+    $("#video-render-submit").disabled = !canSubmitVideoRender || active;
+  }
+
+  async function refreshVideoRender() {
+    if (!activeVideoRenderId) {
+      message("#video-render-message", "هنوز درخواست رندری ثبت نشده است.", "error");
+      return;
+    }
+    try {
+      const render = await api("/video-intelligence/renders/" + encodeURIComponent(activeVideoRenderId));
+      renderVideoRender(render);
+      const statusText = render.status === "completed"
+        ? "فایل MP4 آمادهٔ دریافت است."
+        : render.status === "failed"
+          ? "رندر ناموفق بود: " + (render.error_code || "خطای نامشخص")
+          : render.status === "cancelled"
+            ? "رندر لغو شد."
+            : "وضعیت فعلی: " + (videoRenderStatusLabels[render.status] || render.status) + ".";
+      message("#video-render-message", statusText, render.status === "failed" ? "error" : "success");
+    } catch (error) {
+      message("#video-render-message", error.message, "error");
+    }
+  }
+
+  async function submitVideoRender() {
+    if (!activeVideoAnalysisId || !canSubmitVideoRender) {
+      message("#video-render-message", "ابتدا تحلیل کامل با Timeline معتبر لازم است.", "error");
+      return;
+    }
+    if (!pendingVideoRenderKey || pendingVideoRenderAnalysisId !== activeVideoAnalysisId) {
+      if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
+        message("#video-render-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
+        return;
+      }
+      pendingVideoRenderKey = window.crypto.randomUUID();
+      pendingVideoRenderAnalysisId = activeVideoAnalysisId;
+      sessionStorage.setItem("mrh_video_render_pending_key", pendingVideoRenderKey);
+      sessionStorage.setItem("mrh_video_render_pending_analysis_id", pendingVideoRenderAnalysisId);
+    }
+    const button = $("#video-render-submit");
+    button.disabled = true;
+    message("#video-render-message", "در حال ثبت Job رندر در صف Worker…");
+    try {
+      const accepted = await api(
+        "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/renders",
+        { method: "POST", headers: { "Idempotency-Key": pendingVideoRenderKey } }
+      );
+      activeVideoRenderId = accepted.render_id;
+      activeVideoRenderAnalysisId = activeVideoAnalysisId;
+      sessionStorage.setItem("mrh_video_render_id", activeVideoRenderId);
+      sessionStorage.setItem("mrh_video_render_analysis_id", activeVideoRenderAnalysisId);
+      pendingVideoRenderKey = null;
+      pendingVideoRenderAnalysisId = null;
+      sessionStorage.removeItem("mrh_video_render_pending_key");
+      sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+      renderVideoRender(accepted);
+      message(
+        "#video-render-message",
+        accepted.created === false
+          ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
+          : "درخواست ثبت شد. Worker باید فعال باشد تا رندر اجرا شود.",
+        "success"
+      );
+      await refreshVideoRender();
+    } catch (error) {
+      message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
+    } finally {
+      button.disabled = !canSubmitVideoRender || ["accepted", "running"].includes(activeVideoRenderStatus);
+    }
+  }
+
+  async function cancelVideoRender() {
+    if (!activeVideoRenderId) return;
+    if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
+    const button = $("#video-render-cancel");
+    button.disabled = true;
+    try {
+      const result = await api(
+        "/video-intelligence/renders/" + encodeURIComponent(activeVideoRenderId),
+        { method: "DELETE" }
+      );
+      renderVideoRender(result);
+      await refreshVideoRender();
+      if (result.cancellation_requested) {
+        message(
+          "#video-render-message",
+          "درخواست لغو ثبت شد؛ Worker پس از مشاهدهٔ آن عملیات را نهایی می‌کند.",
+          "success"
+        );
+      }
+    } catch (error) {
+      message("#video-render-message", error.message, "error");
+      button.disabled = false;
+    }
+  }
+
+  async function downloadRenderedVideo() {
+    if (!activeVideoRenderAssetId) return;
+    try {
+      await downloadMediaAsset(activeVideoRenderAssetId, "mrhub-render.mp4");
+      message("#video-render-message", "دانلود فایل MP4 آغاز شد.", "success");
+    } catch (error) {
+      message("#video-render-message", error.message, "error");
+    }
   }
 
   async function refreshVideoAnalysis() {
@@ -523,6 +743,11 @@
     try {
       const analysis = await api(`/video-intelligence/analyses/${encodeURIComponent(activeVideoAnalysisId)}`);
       renderVideoAnalysis(analysis);
+      if (activeVideoRenderId && activeVideoRenderAnalysisId === activeVideoAnalysisId) {
+        await refreshVideoRender();
+      } else if (activeVideoRenderId && activeVideoRenderAnalysisId !== activeVideoAnalysisId) {
+        clearVideoRenderState();
+      }
       const statusText = analysis.status === "completed"
         ? "تحلیل پایان یافت. وضعیت تحلیل معنایی را بررسی کنید."
         : analysis.status === "failed"
@@ -575,6 +800,8 @@
       });
       activeVideoAnalysisId = accepted.analysis_id;
       sessionStorage.setItem("mrh_video_analysis_id", activeVideoAnalysisId);
+      canSubmitVideoRender = false;
+      clearVideoRenderState();
       pendingVideoAnalysisKey = null;
       pendingVideoAnalysisFingerprint = null;
       videoPromptResults = [];
@@ -806,6 +1033,9 @@
       if (activeVideoAnalysisId) {
         $("#video-analysis-refresh").disabled = false;
         await refreshVideoAnalysis();
+      } else {
+        canSubmitVideoRender = false;
+        clearVideoRenderState();
       }
     } catch (error) {
       message("#workspace-message", error.message, "error");
@@ -870,6 +1100,9 @@
 
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
   $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
+  $("#video-render-submit").addEventListener("click", submitVideoRender);
+  $("#video-render-refresh").addEventListener("click", refreshVideoRender);
+  $("#video-render-cancel").addEventListener("click", cancelVideoRender);
   $("#video-compose-prompt").addEventListener("click", composeVideoPrompt);
   $("#video-prompt-source").addEventListener("change", renderSelectedVideoPrompt);
   $("#video-copy-prompt").addEventListener("click", copyVideoPrompt);
