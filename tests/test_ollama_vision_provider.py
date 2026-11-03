@@ -86,6 +86,15 @@ def test_vision_request_enforces_image_count_and_aggregate_bytes():
             images=(VisionImage(timestamp_seconds=0, jpeg_bytes=b"jpeg"),),
         )
 
+    with pytest.raises(ValueError):
+        VisionRequest(
+            prompt="x",
+            images=tuple(
+                VisionImage(timestamp_seconds=index, jpeg_bytes=b"x" * 1_400_000)
+                for index in range(9)
+            ),
+        )
+
 
 def test_ollama_vision_maps_timeout_to_sanitized_error():
     def handler(_request):
