@@ -46,7 +46,7 @@ class MediaAssetRepository:
         return datetime.now(UTC).isoformat()
 
     @staticmethod
-    def _digest(content: bytes) -> str:
+    def _digest(content: bytes | bytearray) -> str:
         return hashlib.sha256(content).hexdigest()
 
     @staticmethod
@@ -82,7 +82,7 @@ class MediaAssetRepository:
         return asset_id, key, self.file_path(key)
 
     def store_upload(
-        self, owner_user_id: str, filename: str, media_type: str, content: bytes
+        self, owner_user_id: str, filename: str, media_type: str, content: bytes | bytearray
     ) -> dict[str, object]:
         if media_type not in _EXTENSIONS:
             raise ValueError("Unsupported media type")
