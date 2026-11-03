@@ -37,7 +37,27 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
     skipped_large = 0
     truncated = False
 
-    for current, directories, filenames in os.walk(resolved_root, followlinks=False):
+    def report_walk_error(error: OSError) -> None:
+        nonlocal truncated
+        truncated = True
+        error_path = Path(error.filename) if error.filename else resolved_root
+        try:
+            relative = error_path.relative_to(resolved_root).as_posix()
+        except ValueError:
+            relative = "."
+        findings.append({
+            "rule_id": "PY003",
+            "severity": "warning",
+            "path": relative or ".",
+            "line": 1,
+            "message": "Directory could not be traversed; repository inventory is incomplete.",
+        })
+
+    for current, directories, filenames in os.walk(
+        resolved_root,
+        followlinks=False,
+        onerror=report_walk_error,
+    ):
         directories[:] = sorted(
             name for name in directories
             if name not in EXCLUDED_DIRS and not (Path(current) / name).is_symlink()
@@ -155,12 +175,12 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id == "subprocess"
             ):
-                    shell_enabled = any(
-                        keyword.arg == "shell"
-                        and isinstance(keyword.value, ast.Constant)
-                        and keyword.value.value is True
-                        for keyword in node.keywords
-                    )
-                    if shell_enabled:
-                        add("PY104", node, "high", "Subprocess call enables shell=True.")
+                shell_enabled = any(
+                    keyword.arg == "shell"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is True
+                    for keyword in node.keywords
+                )
+                if shell_enabled:
+                    add("PY104", node, "high", "Subprocess call enables shell=True.")
     return findings

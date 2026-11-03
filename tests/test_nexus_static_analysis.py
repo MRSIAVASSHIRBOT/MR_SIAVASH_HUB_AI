@@ -64,7 +64,6 @@ def test_static_analysis_rejects_invalid_root_and_limits(tmp_path: Path):
         analyze_python_repository(tmp_path, max_files=MAX_FILES + 1)
 
 
-
 def test_static_analysis_marks_inventory_truncated_at_file_budget(tmp_path: Path):
     (tmp_path / "a.py").write_text("value = 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("value = 2\n", encoding="utf-8")
@@ -82,7 +81,7 @@ def test_static_analysis_marks_inventory_truncated_at_file_budget(tmp_path: Path
 
 def test_static_analysis_counts_oversized_candidates_against_file_budget(tmp_path: Path):
     (tmp_path / "a-large.py").write_bytes(b"x" * (MAX_FILE_BYTES + 1))
-    (tmp_path / "b-small.py").write_text("value = 1\\n", encoding="utf-8")
+    (tmp_path / "b-small.py").write_text("value = 1\n", encoding="utf-8")
 
     result = analyze_python_repository(tmp_path, max_files=1)
 
@@ -94,3 +93,28 @@ def test_static_analysis_counts_oversized_candidates_against_file_budget(tmp_pat
     assert result["source_code_included"] is False
     assert result["targets_executed"] is False
     assert result["files_modified"] is False
+
+
+def test_static_analysis_marks_inventory_incomplete_when_directory_walk_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from mrhub.nexus import static_analysis
+
+    blocked_directory = tmp_path / "restricted"
+
+    def failing_walk(root, *, followlinks, onerror):
+        onerror(PermissionError(13, "permission denied", str(blocked_directory)))
+        yield str(root), [], ["visible.py"]
+
+    (tmp_path / "visible.py").write_text("value = 1\n", encoding="utf-8")
+    monkeypatch.setattr(static_analysis.os, "walk", failing_walk)
+
+    result = analyze_python_repository(tmp_path)
+
+    assert result["files_scanned"] == 1
+    assert result["truncated"] is True
+    finding = next(item for item in result["findings"] if item["rule_id"] == "PY003")
+    assert finding["path"] == "restricted"
+    assert finding["severity"] == "warning"
+    assert "incomplete" in finding["message"]
