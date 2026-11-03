@@ -217,7 +217,6 @@ def test_agent_run_can_exclude_stale_knowledge_from_model_evidence(monkeypatch):
     assert "freshness policy agent-run fixture evidence" not in provider.requests[0].input_text
 
 
-
 def test_retrieved_prompt_injection_cannot_authorize_model_proposed_tool(monkeypatch):
     client = authenticated_client()
     hostile = (
