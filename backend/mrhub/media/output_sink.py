@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Self
 from uuid import uuid4
 
 
@@ -79,7 +80,7 @@ class BoundedOutputSink:
         """Closing without commit is an abort, never a partial publication."""
         self.abort()
 
-    def __enter__(self) -> BoundedOutputSink:
+    def __enter__(self) -> Self:
         if self._closed:
             raise ValueError("Output sink is closed")
         return self
