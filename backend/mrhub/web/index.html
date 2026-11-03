@@ -290,6 +290,21 @@
           <p id="video-analysis-message" class="message" role="status" aria-live="polite"></p>
           <div id="video-analysis-result" class="record-list"></div>
 
+          <section class="video-render-panel" aria-labelledby="video-render-heading">
+            <div class="section-heading">
+              <h4 id="video-render-heading">رندر و دریافت MP4</h4>
+              <span class="status-pill status-muted">بی‌صدا · برش مستقیم</span>
+            </div>
+            <p class="muted">پس از تکمیل تحلیل و ایجاد Timeline معتبر، می‌توانید رندر محلی را در صف Worker قرار دهید. خروجی فعلی بدون صدا و با برش مستقیم ساخته می‌شود.</p>
+            <div class="button-row">
+              <button id="video-render-submit" class="button button-primary" type="button" disabled>شروع رندر MP4</button>
+              <button id="video-render-refresh" class="button button-quiet" type="button" disabled>بررسی وضعیت رندر</button>
+              <button id="video-render-cancel" class="button button-quiet" type="button" disabled>لغو رندر</button>
+            </div>
+            <p id="video-render-message" class="message" role="status" aria-live="polite"></p>
+            <div id="video-render-result" class="record-list"></div>
+          </section>
+
           <div class="video-prompt-composer">
             <div class="section-heading"><h4>ساخت Prompt از تحلیل معنایی معتبر</h4></div>
             <div class="form-grid">
