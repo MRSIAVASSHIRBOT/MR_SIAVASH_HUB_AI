@@ -1,6 +1,6 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-02 (UTC)
+Last reviewed: 2026-11-04 (UTC)
 
 This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI before every merge or implementation decision.
 
@@ -351,3 +351,37 @@ The product remains broader than video. Important cross-domain gaps include:
 ### Reporting boundary
 
 Implementation, automated tests, runtime verification, owner acceptance, and production readiness remain separate statuses. No Windows/laptop test, live social publish, external provider acceptance, desktop package acceptance, or production-readiness claim is made by this refresh. Do not request owner-device access until the whole-project pre-device gates and the complete test package are ready.
+
+
+## Current whole-project execution refresh — 2026-11-04
+
+**Current main:** `067177554ac923864981c11f80628e92aea0aa70`  
+**Current whole-project audit:** [PR #211](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/211), documentation-only, draft, not merged.
+
+This refresh supersedes the older open-PR queue and video-only status snapshots above. Those entries remain historical evidence and must not be used as the current merge queue.
+
+### Active reviewed work packages
+
+| PR | Workstream | Latest observed exact head | Validation at this observation | State |
+|---|---|---|---|---|
+| #212 | Defensive structured log review | `c164847a84c11269643831752f344ca2183d536a` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
+| #213 | Backup/restore operator runbook | `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
+| #214 | API/worker emergency-stop and resume smoke test | `413164eb2b1021d8da1eb0c845a99e2422d49bd4` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
+| #215 | Per-provider-request Agent input budget | `6c2aedaecd9195913507369568dcf99207dbc222` | Backend CI, CI, Defensive Python Scan passed | Draft/open; not merged |
+| #216 | Bounded, read-only media asset integrity verifier | `baacd5b7be3ecb34dfa061587295f24047edd9e6` | Backend CI and Defensive Python Scan passed; CI still in progress | Draft/open; not merged |
+| #217 | Alias-aware NEXUS AST checks and OS shell API detection | `ba96dfa7e28f82b31d7d561bf7978155821543af` | Earlier head failed Ruff FLY002 in a test fixture; fixture was corrected on this latest head and checks are awaiting rerun | Draft/open; not merged |
+
+### Verified technical progress
+
+- The workflow smoke test exercises the authenticated emergency-stop API and a separate worker process. Work submitted while stopped remains queued; explicit authenticated resume permits it to complete. This does not prove cancellation of already-running external side effects or Windows service behavior.
+- Agent orchestration now checks the serialized prompt against the per-call provider input contract before constructing the provider request. An oversized prompt returns a stable budget result without provider dispatch.
+- The media verifier compares generated storage keys, registered size, and SHA-256 metadata without copying or deleting files. It rejects symlinked roots and unsafe entries, limits verification to 10,000 registered assets and 10,000 directory entries, and refuses to hash files larger than 100 MB. A truncated result is not a successful verification.
+- NEXUS remains read-only. The pending change recognizes common import aliases for selected risky Python APIs and adds an advisory finding for `os.system` and `os.popen`. It does not execute or modify analyzed code.
+
+### Integration and release boundary
+
+- All six work packages above remain unmerged. No new merge authorization has been issued.
+- Exact-head CI results apply only to the SHA listed for each PR; a later commit requires new checks.
+- Main has not advanced from the recorded baseline during this refresh. No successful CI run on current main is inferred from PR checks.
+- The FFmpeg renderer, operational AI-video provider, live social publishing acceptance, full database-plus-media restore drill, Windows install/upgrade/rollback, and complete UI acceptance remain open gates.
+- Do not request owner-device access until the whole-project pre-device acceptance package is ready.
