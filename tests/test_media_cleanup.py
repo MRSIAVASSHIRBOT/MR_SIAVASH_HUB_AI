@@ -455,3 +455,22 @@ def test_delete_and_analysis_use_acquisition_are_serialized(tmp_path: Path):
         assert repository.get("owner-1", asset_id) is None
         assert repository.cleanup_pending_files("owner-1") == 0
         assert not path.exists()
+
+
+
+def test_begin_processing_is_blocked_while_video_analysis_use_is_active(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    lease = _active_worker_lease(repository)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=lease) is True
+    assert repository.begin_processing("owner-1", asset_id) is None
+    assert repository.get("owner-1", asset_id)["processing_status"] == "stored"
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=lease) is True
+    assert repository.begin_processing("owner-1", asset_id) is not None
