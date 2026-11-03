@@ -83,6 +83,25 @@ def _validate_logo(owner_user_id: str, brand: BrandIdentity) -> None:
         raise HTTPException(status_code=422, detail="Logo must reference an image owned by this user")
 
 
+@router.get("/generation/providers")
+def list_video_generation_providers(
+    _user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return configured generation adapters without probing or starting work."""
+    # Intentionally empty until an adapter is explicitly configured and reviewed.
+    from mrhub.video_intelligence.generation_registry import VideoGenerationRegistry
+
+    registry = VideoGenerationRegistry()
+    providers = [item.model_dump(mode="json") for item in registry.catalog()]
+    return {
+        "providers": providers,
+        "count": len(providers),
+        "generation_available": bool(providers),
+        "reason_code": None if providers else "provider_unavailable",
+        "execution": "not_started",
+    }
+
+
 @router.post("/prompts/compose")
 def compose_prompt(
     payload: PromptCompositionRequest,
