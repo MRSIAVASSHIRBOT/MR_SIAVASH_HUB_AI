@@ -20,12 +20,12 @@ def _scope(
     return DefensiveReviewScope(
         authorization_reference="ticket-123",
         authorized_assets=(asset,),
-        expires_at=expires_at or dt.datetime.now(dt.dt.UTC) + dt.dt.timedelta(days=1),
+        expires_at=expires_at or dt.dt.datetime.now(dt.UTC) + dt.timedelta(days=1),
     )
 
 
 def test_scope_requires_explicit_assets_and_current_authorization():
-    now = dt.datetime(2026, 11, 2, tzinfo=dt.UTC)
+    now = dt.dt.datetime(2026, 11, 2, tzinfo=dt.UTC)
     scope = DefensiveReviewScope(
         authorization_reference="ticket-123",
         authorized_assets=("repo:owned-project",),
@@ -43,13 +43,13 @@ def test_scope_rejects_duplicate_or_blank_asset_identifiers():
         DefensiveReviewScope(
             authorization_reference="ticket-123",
             authorized_assets=("repo:owned-project", "repo:owned-project"),
-            expires_at=datetime(2026, 11, 3, tzinfo=dt.UTC),
+            expires_at=dt.datetime(2026, 11, 3, tzinfo=dt.UTC),
         )
     with pytest.raises(ValueError):
         DefensiveReviewScope(
             authorization_reference="   ",
             authorized_assets=("repo:owned-project",),
-            expires_at=datetime(2026, 11, 3, tzinfo=dt.UTC),
+            expires_at=dt.datetime(2026, 11, 3, tzinfo=dt.UTC),
         )
 
 
@@ -119,7 +119,7 @@ def test_configuration_audit_requires_current_exact_asset_scope():
         )
 
     expired_scope = _scope(
-        expires_at=datetime.now(dt.UTC) - dt.timedelta(seconds=1)
+        expires_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1)
     )
     with pytest.raises(ScopeValidationError, match="expired"):
         audit_configuration_text(
@@ -219,7 +219,7 @@ def test_authenticated_config_review_api_enforces_scope_and_returns_safe_evidenc
             "scope": {
                 "authorization_reference": "ticket-123",
                 "authorized_assets": ["repo:owned-project"],
-                "expires_at": (datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
+                "expires_at": (dt.datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
                 "review_mode": "offline_static_only",
             },
             "asset": "repo:owned-project",
@@ -258,7 +258,7 @@ def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
             "scope": {
                 "authorization_reference": "ticket-123",
                 "authorized_assets": ["repo:owned-project"],
-                "expires_at": (datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
+                "expires_at": (dt.datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
                 "review_mode": "offline_static_only",
             },
             "asset": "repo:other-project",
@@ -291,7 +291,7 @@ def test_authenticated_dependency_review_api_is_offline_and_reports_unpinned_pac
             "scope": {
                 "authorization_reference": "ticket-123",
                 "authorized_assets": ["repo:owned-project"],
-                "expires_at": (datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
+                "expires_at": (dt.datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
                 "review_mode": "offline_static_only",
             },
             "asset": "repo:owned-project",
@@ -333,7 +333,7 @@ def test_security_lab_api_requires_authentication():
             "scope": {
                 "authorization_reference": "ticket-123",
                 "authorized_assets": ["repo:owned-project"],
-                "expires_at": (datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
+                "expires_at": (dt.datetime.now(dt.UTC) + dt.timedelta(days=1)).isoformat(),
             },
             "asset": "repo:owned-project",
             "text": "debug = true",
@@ -348,7 +348,7 @@ def test_scope_rejects_authorizations_longer_than_thirty_days():
     scope = DefensiveReviewScope(
         authorization_reference="ticket-long",
         authorized_assets=("repo:owned-project",),
-        expires_at=datetime.now(dt.UTC) + dt.timedelta(days=31),
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=31),
     )
     with pytest.raises(ScopeValidationError, match="30-day"):
         scope.assert_current()
