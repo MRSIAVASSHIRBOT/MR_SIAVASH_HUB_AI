@@ -119,7 +119,7 @@ jobs:
           if grep -E '^(\+\+\+ b/|--- a/)(\.github(/|$)|AGENTS\.md$|SECURITY(/|$)|\.git(/|$))' "$PATCH"; then
             echo "::error::Agent proposal touches protected workflow/policy paths"; exit 1
           fi
-          git apply --check --binary "$PATCH"
+          git apply --check --index --binary "$PATCH"
           echo "valid=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply proposal and create review PR
@@ -131,8 +131,7 @@ jobs:
           set -euo pipefail
           BRANCH="automation/continuous-development-${GITHUB_RUN_ID}"
           git switch -c "$BRANCH"
-          git apply --binary "$RUNNER_TEMP/agent-proposal/agent.patch"
-          git add -A
+          git apply --index --binary "$RUNNER_TEMP/agent-proposal/agent.patch"
           if git diff --cached --quiet; then
             echo "No applicable changes; nothing to publish."
             exit 0
