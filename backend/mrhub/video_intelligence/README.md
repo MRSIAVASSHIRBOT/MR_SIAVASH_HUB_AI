@@ -41,9 +41,9 @@ The durable Worker always reports technical metadata, sampled keyframe timestamp
 
 Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-model>`, and optionally `MRH_LOCAL_VISION_TIMEOUT_SECONDS=120`. Ollama must be running on the configured loopback-only `MRH_LOCAL_INFERENCE_BASE_URL`. No model is downloaded automatically, and there is no remote fallback. If vision is disabled or unavailable, the job completes with an explicit semantic-analysis status rather than fabricated descriptions.
 
-The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
+The dashboard provides an authenticated workflow to select owned video assets, submit an idempotent analysis job, manually refresh its status, inspect technical/semantic results, and compose/copy one prompt per source asset. The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
-Audio transcription, OCR, dedicated motion analysis, automatic brand-profile application, operator UI, production generation handoff, and end-to-end rendering remain unimplemented. Prompt composition returns text and timeline metadata only; it never invokes a generator. Windows/Ollama execution still requires validation on the target machine.
+Audio transcription, OCR, dedicated motion analysis, automatic brand-profile application, advanced operator controls, production generation handoff, and end-to-end rendering remain unimplemented. Prompt composition returns text and timeline metadata only; it never invokes a generator. Windows/Ollama execution still requires validation on the target machine.
 
 ## Security boundaries
 
