@@ -136,3 +136,7 @@ The content draft API provides owner-scoped draft/version management, deduplicat
 ## Defensive Python static analysis
 
 Bandit runs a report-only scan of the application package on pull requests, pushes to `main`, and a weekly schedule. It complements (and does not replace) NEXUS static checks, Ruff, tests, and dependency auditing. See `docs/security/bandit.md` for scope and operational guidance.
+
+## Engineering governance
+
+The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
