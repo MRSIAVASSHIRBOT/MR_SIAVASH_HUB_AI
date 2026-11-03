@@ -36,7 +36,6 @@ jobs:
         env:
           MODEL: openrouter/cohere/north-mini-code:free
           OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$OPENROUTER_API_KEY" ]; then
             echo "::error::Repository secret MR_SIAVASH_HUB_AI is missing or empty."
