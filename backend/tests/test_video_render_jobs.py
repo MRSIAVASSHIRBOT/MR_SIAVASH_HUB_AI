@@ -113,6 +113,10 @@ def test_render_output_registration_completes_job_atomically(tmp_path, monkeypat
             ) VALUES (?, ?, ?, ?)""",
             (str(task_id), "render-worker", expiry, 7),
         )
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
     lease = WorkerLease(
         task_id=str(task_id),
         owner="render-worker",
