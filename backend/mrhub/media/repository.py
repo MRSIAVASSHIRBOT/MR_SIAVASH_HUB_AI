@@ -243,6 +243,8 @@ class MediaAssetRepository:
     def delete(self, owner_user_id: str, asset_id: UUID) -> list[str] | None:
         now = self._now()
         with self.tasks._connection() as connection:
+            # Serialize the state check with begin_processing before deciding to delete.
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT source_asset_id, processing_status FROM content_assets "
                 "WHERE asset_id = ? AND owner_user_id = ?",
