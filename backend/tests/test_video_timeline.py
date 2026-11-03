@@ -52,6 +52,8 @@ def test_timeline_splits_source_at_scene_boundaries_and_trims_to_target():
     assert [clip.transition_in for clip in timeline.video_track] == [
         "none", "cut", "cut"
     ]
+    assert timeline.audio_analysis_status == "not_requested"
+    assert timeline.audio_render_status == "not_implemented"
     assert timeline.render_status == "not_implemented"
 
 
@@ -92,7 +94,8 @@ def test_timeline_contract_rejects_gaps_and_overlaps():
             requested_duration_seconds=6,
             actual_duration_seconds=6,
             duration_shortfall_seconds=0,
-            audio_track_status="not_requested",
+            audio_analysis_status="not_requested",
+            audio_render_status="not_implemented",
             timeline_status="validated_cut_only",
             render_status="not_implemented",
             video_track=[
