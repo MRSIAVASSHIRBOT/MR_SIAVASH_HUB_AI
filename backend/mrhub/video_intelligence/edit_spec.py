@@ -75,7 +75,9 @@ class EditSpecification(BaseModel):
     brand_guidance: BrandGuidance
     custom_edit_guidance: CustomEditGuidance
     audio_plan_status: Literal["not_requested", "requested_not_implemented"]
-    timeline_status: Literal["scene_map_prepared_timeline_not_built"] = (
+    timeline_status: Literal[
+        "scene_map_prepared_timeline_not_built", "validated_cut_only"
+    ] = (
         "scene_map_prepared_timeline_not_built"
     )
     render_status: Literal["not_implemented"] = "not_implemented"
