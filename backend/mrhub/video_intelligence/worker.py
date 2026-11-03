@@ -93,7 +93,7 @@ class VideoAnalysisWorkerHandler:
                 "keyframe_timestamps": [frame.timestamp_seconds for frame in frames],
                 "scene_start_timestamps": list(scenes.scene_start_times),
                 "scene_boundaries_truncated": scenes.truncated,
-                "semantic_visual_analysis": "not_performed",
+                "semantic_visual_analysis": semantic,
                 "audio_analysis": (
                     "requested_but_not_performed"
                     if request.include_audio_analysis else "not_requested"
