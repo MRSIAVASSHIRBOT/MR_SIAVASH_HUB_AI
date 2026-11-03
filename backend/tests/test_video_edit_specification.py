@@ -8,7 +8,14 @@ from mrhub.video_intelligence.schemas import AnalysisMode, BrandIdentity, VideoA
 def _asset_result():
     return {
         "asset_id": "asset-123",
-        "technical_metadata": {"metadata_status": "available"},
+        "technical_metadata": {
+            "metadata_status": "available",
+            "width": 1920,
+            "height": 1080,
+            "frame_rate": 30.0,
+            "codec": "h264",
+            "has_audio": True,
+        },
         "analysis_window_seconds": 12.0,
         "scene_start_timestamps": [0.0, 3.5, 8.0],
         "scene_boundaries_truncated": False,
@@ -46,6 +53,11 @@ def test_faithful_edit_spec_preserves_reference_and_prepares_brand_guidance():
     assert specification.output_aspect_ratio == "16:9"
     assert specification.requested_output_duration_seconds == 12
     assert specification.sources[0].scene_start_timestamps == [0.0, 3.5, 8.0]
+    assert specification.sources[0].width == 1920
+    assert specification.sources[0].height == 1080
+    assert specification.sources[0].frame_rate == 30.0
+    assert specification.sources[0].codec == "h264"
+    assert specification.sources[0].has_audio is True
     assert specification.sources[0].visual_style_summary.startswith("Measured cinematic")
     assert specification.brand_guidance.status == "guidance_prepared"
     assert specification.brand_guidance.logo_asset_id == "logo-123"
