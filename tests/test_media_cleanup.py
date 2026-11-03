@@ -1,9 +1,15 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID
 
 import pytest
 
-from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
+from mrhub.media.repository import (
+    MediaAssetBusy,
+    MediaAssetOwnershipConflict,
+    MediaAssetRepository,
+)
 
 
 def _repository(tmp_path: Path) -> MediaAssetRepository:
@@ -155,7 +161,77 @@ def test_source_cleanup_query_is_scoped_to_asset_owner(tmp_path: Path) -> None:
             ),
         )
 
-    deleted_keys = repository.delete("owner-1", source_id)
+    source_path = repository.file_path(str(source["storage_key"]))
+    foreign_asset_id = UUID(foreign_id)
 
-    assert str(source["storage_key"]) in deleted_keys
-    assert foreign_key not in deleted_keys
+    with pytest.raises(MediaAssetOwnershipConflict):
+        repository.delete("owner-1", source_id)
+
+    # The transaction must roll back before ON DELETE CASCADE can remove another
+    # owner's derivative metadata or enqueue its storage key for the wrong owner.
+    assert repository.get("owner-1", source_id) is not None
+    assert repository.get("owner-2", foreign_asset_id) is not None
+    assert source_path.is_file()
+    assert foreign_path.is_file()
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert repository.cleanup_pending_files("owner-2") == 0
+
+
+def test_cleanup_queue_is_owner_scoped_and_idempotent(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    repository.tasks.create_auth_user("owner-2", "other", "test-salt", "test-hash")
+    asset = repository.store_upload(
+        "owner-1", "sample.png", "image/png", b"test-image-content"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.delete("owner-1", asset_id) is None
+
+    # A different owner cannot drain this owner's cleanup queue.
+    assert repository.cleanup_pending_files("owner-2") == 0
+    assert path.is_file()
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not path.exists()
+    assert repository.cleanup_pending_files("owner-1") == 0
+
+
+def test_delete_and_begin_processing_are_serialized(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "sample.mp4", "video/mp4", b"fake-mp4-content"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    storage_key = str(asset["storage_key"])
+    path = repository.file_path(storage_key)
+    barrier = Barrier(2)
+
+    def begin_processing():
+        barrier.wait()
+        return repository.begin_processing("owner-1", asset_id)
+
+    def delete_asset():
+        barrier.wait()
+        try:
+            return ("deleted", repository.delete("owner-1", asset_id))
+        except MediaAssetBusy:
+            return ("busy", None)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        processing_future = executor.submit(begin_processing)
+        deletion_future = executor.submit(delete_asset)
+        processing = processing_future.result(timeout=10)
+        deletion_status, deleted_keys = deletion_future.result(timeout=10)
+
+    if processing is not None:
+        assert deletion_status == "busy"
+        assert repository.get("owner-1", asset_id) is not None
+        assert path.is_file()
+        assert repository.cleanup_pending_files("owner-1") == 0
+    else:
+        assert deletion_status == "deleted"
+        assert deleted_keys == [storage_key]
+        assert repository.get("owner-1", asset_id) is None
+        assert repository.cleanup_pending_files("owner-1") == 0
+        assert not path.exists()
