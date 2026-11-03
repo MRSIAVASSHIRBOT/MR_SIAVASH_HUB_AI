@@ -23,6 +23,7 @@ from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.jobs import (
+    VideoAnalysisCapacityExceeded,
     VideoAnalysisConflict,
     VideoAnalysisJobRepository,
 )
@@ -189,6 +190,8 @@ def submit_video_analysis(
             raise HTTPException(status_code=404, detail="Video asset not found")
         if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
             raise HTTPException(status_code=415, detail="Source asset is not a supported video")
+        if asset["processing_status"] not in {"stored", "processed"}:
+            raise HTTPException(status_code=409, detail="Source asset is not ready for analysis")
 
     try:
         accepted, created = _analysis_jobs().submit(
@@ -196,6 +199,8 @@ def submit_video_analysis(
         )
     except VideoAnalysisConflict as exc:
         raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except VideoAnalysisCapacityExceeded as exc:
+        raise HTTPException(status_code=429, detail="Video analysis capacity is temporarily full") from exc
     except PayloadEnvelopeError as exc:
         raise HTTPException(
             status_code=503, detail="Video analysis encryption is not configured"
