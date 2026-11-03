@@ -61,3 +61,68 @@ def test_asset_cannot_be_deleted_while_transcode_is_in_progress(tmp_path: Path) 
         repository.delete("owner-1", asset_id)
 
     assert repository.get("owner-1", asset_id) is not None
+
+def test_deleting_transcoded_derivative_queues_its_file_for_cleanup(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = repository.store_upload(
+        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
+    )
+    source_id = UUID(str(source["asset_id"]))
+    assert repository.begin_processing("owner-1", source_id) is not None
+
+    output_id, output_key, output_path = repository.new_output_target()
+    output_path.write_bytes(b"fake-transcoded-video")
+    repository.register_transcoded_output(
+        "owner-1",
+        source_id,
+        output_id,
+        output_key,
+        output_path,
+        "source-processed.mp4",
+    )
+
+    deleted_keys = repository.delete("owner-1", UUID(output_id))
+
+    assert deleted_keys == [output_key]
+    assert repository.get("owner-1", UUID(output_id)) is None
+    restored_source = repository.get("owner-1", source_id)
+    assert restored_source is not None
+    assert restored_source["processing_status"] == "stored"
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not output_path.exists()
+
+
+def test_deleting_source_queues_source_and_derivative_files(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = repository.store_upload(
+        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
+    )
+    source_id = UUID(str(source["asset_id"]))
+    assert repository.begin_processing("owner-1", source_id) is not None
+
+    output_id, output_key, output_path = repository.new_output_target()
+    output_path.write_bytes(b"fake-transcoded-video")
+    repository.register_transcoded_output(
+        "owner-1",
+        source_id,
+        output_id,
+        output_key,
+        output_path,
+        "source-processed.mp4",
+    )
+    source_path = repository.file_path(str(source["storage_key"]))
+    assert source_path.is_file()
+    assert output_path.is_file()
+
+    deleted_keys = repository.delete("owner-1", source_id)
+
+    assert set(deleted_keys) == {str(source["storage_key"]), output_key}
+    assert repository.get("owner-1", source_id) is None
+    assert repository.get("owner-1", UUID(output_id)) is None
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not source_path.exists()
+    assert not output_path.exists()
