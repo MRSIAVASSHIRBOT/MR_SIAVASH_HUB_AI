@@ -145,7 +145,8 @@ def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(
         "owner-a", generation_id, "unknown_outcome", error_code="provider_timeout"
     )
     assert record["status"] == "unknown_outcome"
-    assert repository.load_for_handoff("owner-a", generation_id) is None
+    with pytest.raises(ValueError, match="Only prepared generation jobs"):
+        repository.load_for_handoff("owner-a", generation_id)
     with repository.tasks._connection() as connection:
         row = connection.execute(
             "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
