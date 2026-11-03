@@ -388,6 +388,36 @@
     message("#workspace-message", failures ? `به‌روزرسانی انجام شد؛ ${failures} بخش در دسترس نبود.` : "وضعیت به‌روز شد.", failures ? "error" : "success");
   }
 
+  async function downloadMediaAsset(assetId, filename = "media") {
+    if (!token) throw new Error("نشست فعال برای دریافت رسانه وجود ندارد.");
+    const response = await fetch(
+      "/content/assets/" + encodeURIComponent(assetId) + "/file",
+      {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+      }
+    );
+    if (response.status === 401 || response.status === 403) endSession();
+    if (!response.ok) {
+      throw new Error("دریافت رسانه ناموفق بود (HTTP " + response.status + ")");
+    }
+    const blob = await response.blob();
+    if (!blob.size || blob.size > 100_000_000) {
+      throw new Error("اندازهٔ فایل رسانه خارج از محدودهٔ مجاز است.");
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    const link = element("a", "");
+    link.href = objectUrl;
+    link.download = filename || "media";
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
   async function loadMediaAssets() {
     const response = await api("/content/assets?limit=100");
     mediaAssetsCache = Array.isArray(response.assets) ? response.assets : [];
@@ -414,6 +444,17 @@
         asset.media_type,
         `${sizeMb} MB · ${asset.processing_status} · ${asset.asset_id}`
       );
+      const download = element("button", "دانلود رسانه", "button button-quiet");
+      download.type = "button";
+      download.addEventListener("click", async () => {
+        try {
+          await downloadMediaAsset(asset.asset_id, asset.original_filename || "media");
+          message("#media-message", "دانلود رسانه آغاز شد.", "success");
+        } catch (error) {
+          message("#media-message", error.message, "error");
+        }
+      });
+      card.append(download);
       card.append(deleteButton("حذف رسانه", async () => {
         if (!window.confirm("این فایل رسانه‌ای حذف شود؟ اگر در تاریخچهٔ پیش‌نویس استفاده شده باشد، حذف رد می‌شود.")) return;
         try {
@@ -661,6 +702,7 @@
 
   async function cancelVideoRender() {
     if (!activeVideoRenderId) return;
+    if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
     const button = $("#video-render-cancel");
     button.disabled = true;
     try {
@@ -684,34 +726,9 @@
   }
 
   async function downloadRenderedVideo() {
-    if (!activeVideoRenderAssetId || !token) return;
+    if (!activeVideoRenderAssetId) return;
     try {
-      const response = await fetch(
-        "/content/assets/" + encodeURIComponent(activeVideoRenderAssetId) + "/file",
-        {
-          headers: { Authorization: "Bearer " + token },
-          cache: "no-store",
-          credentials: "omit",
-          redirect: "error",
-        }
-      );
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) endSession();
-        throw new Error("دریافت فایل ناموفق بود (HTTP " + response.status + ")");
-      }
-      const blob = await response.blob();
-      if (!blob.size || blob.size > 100_000_000) {
-        throw new Error("اندازهٔ فایل خروجی خارج از محدودهٔ مجاز است.");
-      }
-      const objectUrl = URL.createObjectURL(blob);
-      const link = element("a", "");
-      link.href = objectUrl;
-      link.download = "mrhub-render.mp4";
-      link.hidden = true;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      await downloadMediaAsset(activeVideoRenderAssetId, "mrhub-render.mp4");
       message("#video-render-message", "دانلود فایل MP4 آغاز شد.", "success");
     } catch (error) {
       message("#video-render-message", error.message, "error");
