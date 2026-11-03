@@ -9,7 +9,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 ShortText = Annotated[str, Field(max_length=40)]
 
 
