@@ -137,6 +137,9 @@
             <span class="status-pill status-muted">اجرا توسط Worker</span>
           </div>
           <p class="muted">این گزینه درخواست را در صف ثبت می‌کند و صفحه منتظر اجرای مدل نمی‌ماند. وضعیت و نتیجه فقط با دکمهٔ به‌روزرسانی دریافت می‌شود؛ هیچ polling خودکاری انجام نمی‌شود.</p>
+          <label>شناسهٔ اجرای صف‌شده (برای بازیابی پس از بارگذاری مجدد)
+            <input id="agent-queued-workflow-id" maxlength="36" placeholder="پس از ثبت درخواست به‌صورت خودکار پر می‌شود">
+          </label>
           <div class="button-row">
             <button id="agent-queue-button" class="button button-secondary" type="button">قرار دادن اجرا در صف</button>
             <button id="agent-queued-refresh-button" class="button button-quiet" type="button" disabled>به‌روزرسانی وضعیت</button>
