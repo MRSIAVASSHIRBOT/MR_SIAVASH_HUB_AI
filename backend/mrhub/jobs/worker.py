@@ -262,7 +262,7 @@ class WorkerEngine:
                                          AND status = 'submitting'""",
                                     (now, generation["generation_id"], generation["owner_user_id"]),
                                 )
-                                recovered_status = TaskStatus.WAITING_APPROVAL
+                                recovered_status = TaskStatus.FAILED
                                 audit_outcome = "recovery_required"
                                 reason_code = "video_generation_submission_unknown_outcome"
                             elif generation_status == "running":
@@ -270,7 +270,7 @@ class WorkerEngine:
                                 audit_outcome = "succeeded"
                                 reason_code = "video_generation_handoff_recorded_before_task_commit"
                             elif generation_status == "unknown_outcome":
-                                recovered_status = TaskStatus.WAITING_APPROVAL
+                                recovered_status = TaskStatus.FAILED
                                 audit_outcome = "recovery_required"
                                 reason_code = "video_generation_submission_requires_reconciliation"
                             elif generation_status in {"failed", "cancelled", "succeeded"}:
