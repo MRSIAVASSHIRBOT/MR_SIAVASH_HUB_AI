@@ -71,6 +71,8 @@ class VideoAnalysisWorkerHandler:
                 return self._fail(task, owner_user_id, lease, "asset_not_found")
             if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
                 return self._fail(task, owner_user_id, lease, "asset_type_unsupported")
+            if asset["processing_status"] not in {"stored", "processed"}:
+                return self._fail(task, owner_user_id, lease, "asset_not_ready")
             try:
                 acquired = self.media.acquire_analysis_use(
                     owner_user_id, asset_id, lease=lease

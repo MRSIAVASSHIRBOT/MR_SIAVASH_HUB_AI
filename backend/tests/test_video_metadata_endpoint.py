@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from mrhub.api.routes import video_intelligence
 from mrhub.security.auth import AuthenticatedUser
-from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
+from mrhub.video_intelligence.schemas import BrandIdentity, VideoTechnicalMetadata
 
 
 def test_video_metadata_endpoint_uses_only_owner_scoped_video_asset(monkeypatch, tmp_path):
@@ -105,3 +105,60 @@ def test_video_metadata_endpoint_rejects_non_video_assets(monkeypatch, tmp_path)
             AuthenticatedUser(user_id="owner-a", username="owner"),
         )
     assert error.value.status_code == 415
+
+
+def test_analysis_brand_logo_must_be_owner_scoped_image(monkeypatch, tmp_path):
+    logo_id = uuid4()
+    calls = {}
+
+    class FakeMediaRepository:
+        def __init__(self, _database_path):
+            pass
+
+        def get(self, owner_user_id, asset_id):
+            calls["owner_user_id"] = owner_user_id
+            calls["asset_id"] = asset_id
+
+    monkeypatch.setattr(
+        video_intelligence,
+        "get_settings",
+        lambda: SimpleNamespace(database_path=tmp_path / "app.sqlite"),
+    )
+    monkeypatch.setattr(video_intelligence, "MediaAssetRepository", FakeMediaRepository)
+
+    with pytest.raises(HTTPException) as error:
+        video_intelligence._validate_logo(
+            "owner-a",
+            BrandIdentity(brand_name="Example", logo_asset_id=str(logo_id)),
+        )
+
+    assert error.value.status_code == 422
+    assert calls == {"owner_user_id": "owner-a", "asset_id": logo_id}
+
+
+def test_analysis_brand_logo_rejects_non_image_assets(monkeypatch, tmp_path):
+    logo_id = uuid4()
+
+    class FakeMediaRepository:
+        def __init__(self, _database_path):
+            pass
+
+        def get(self, owner_user_id, asset_id):
+            assert owner_user_id == "owner-a"
+            assert asset_id == logo_id
+            return {"media_type": "video/mp4"}
+
+    monkeypatch.setattr(
+        video_intelligence,
+        "get_settings",
+        lambda: SimpleNamespace(database_path=tmp_path / "app.sqlite"),
+    )
+    monkeypatch.setattr(video_intelligence, "MediaAssetRepository", FakeMediaRepository)
+
+    with pytest.raises(HTTPException) as error:
+        video_intelligence._validate_logo(
+            "owner-a",
+            BrandIdentity(brand_name="Example", logo_asset_id=str(logo_id)),
+        )
+
+    assert error.value.status_code == 422
