@@ -58,12 +58,12 @@ The bridge currently exposes only tools already registered in the process. The i
 
 ## Validation
 
-The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services:
+The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services. Startup tests also verify the disabled-by-default guard, reject non-loopback binds, and assert bounded transport settings:
 
 ```powershell
 python -m pip install -e ".[dev,mcp]"
-pytest tests/test_mcp_integration.py
-ruff check backend/mrhub/integrations/mcp_server.py backend/mrhub/mcp_service.py tests/test_mcp_integration.py
+pytest tests/test_mcp_integration.py tests/test_mcp_service.py
+ruff check backend/mrhub/integrations/mcp_server.py backend/mrhub/mcp_service.py tests/test_mcp_integration.py tests/test_mcp_service.py
 ```
 
 A real host acceptance test is still required before enabling MCP in a deployment. No production host has been connected or tested by this change.
