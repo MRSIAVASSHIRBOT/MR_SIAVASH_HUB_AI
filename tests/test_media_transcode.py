@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 import threading
 from pathlib import Path
 from uuid import uuid4
@@ -176,3 +177,82 @@ def test_upload_keeps_admission_slot_until_storage_thread_finishes_on_cancel(mon
         semaphore.release()
 
     asyncio.run(exercise_cancellation())
+
+
+
+def test_transcode_bounds_decoder_resources_and_discards_process_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    input_path = tmp_path / "input.mp4"
+    input_path.write_bytes(b"fake mp4")
+    output_path = tmp_path / "output.mp4"
+    asset_id = uuid4()
+    observed = {}
+
+    class FakeRepository:
+        storage_root = tmp_path
+
+        def get(self, owner_user_id: str, requested_asset_id):
+            assert owner_user_id == "local-owner"
+            assert requested_asset_id == asset_id
+            return {
+                "source_asset_id": None,
+                "media_type": "video/mp4",
+                "storage_key": "input.mp4",
+                "original_filename": "input.mp4",
+            }
+
+        def file_path(self, storage_key: str) -> Path:
+            assert storage_key == "input.mp4"
+            return input_path
+
+        def new_output_target(self):
+            return "output-id", "output.mp4", output_path
+
+        def begin_processing(self, owner_user_id: str, requested_asset_id):
+            return {"asset_id": str(requested_asset_id)}
+
+        def register_transcoded_output(self, *_args):
+            return {
+                "asset_id": "output-id",
+                "storage_key": "output.mp4",
+                "media_type": "video/mp4",
+                "original_filename": "output.mp4",
+            }
+
+        def fail_processing(self, *_args):
+            pytest.fail("A successful fake transcode must not mark processing failed")
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["kwargs"] = kwargs
+        Path(command[-1]).write_bytes(b"transcoded-video")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(media_routes, "_repository", FakeRepository)
+    monkeypatch.setattr(media_routes.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(media_routes.subprocess, "run", fake_run)
+    monkeypatch.setattr(media_routes, "_audit", lambda *_args: None)
+    monkeypatch.setattr(
+        media_routes, "_FFMPEG_SEMAPHORE", threading.BoundedSemaphore(1)
+    )
+
+    result = media_routes.transcode_video(
+        asset_id,
+        AuthenticatedUser(user_id="local-owner", username="owner"),
+    )
+
+    command = observed["command"]
+    kwargs = observed["kwargs"]
+    assert result["status"] == "succeeded"
+    assert command[command.index("-max_pixels") + 1] == "33554432"
+    assert command.index("-max_pixels") < command.index("-i")
+    scale_filter = command[command.index("-vf") + 1]
+    assert "min(1280,iw)" in scale_filter
+    assert "min(1280,ih)" in scale_filter
+    assert "force_divisible_by=2" in scale_filter
+    assert kwargs["stdout"] == subprocess.DEVNULL
+    assert kwargs["stderr"] == subprocess.DEVNULL
+    assert "capture_output" not in kwargs
+    assert kwargs["shell"] is False
+    assert kwargs["timeout"] == 120
