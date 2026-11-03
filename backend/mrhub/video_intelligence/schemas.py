@@ -25,7 +25,7 @@ class BeatInstruction(BaseModel):
     transition_to_next: str = Field(default="clean cinematic cut", max_length=240)
 
     @model_validator(mode="after")
-    def validate_interval(self) -> "BeatInstruction":
+    def validate_interval(self) -> BeatInstruction:
         if self.end_seconds <= self.start_seconds:
             raise ValueError("Beat end must be after its start")
         return self
