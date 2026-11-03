@@ -35,6 +35,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
         "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
         "content_publish_schedules", "media_file_cleanup", "media_asset_analysis_leases",
+        "video_render_runs",
     } <= {
         row["name"]
         for row in connection.execute(
