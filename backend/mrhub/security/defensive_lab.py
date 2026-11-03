@@ -1,4 +1,5 @@
 """Offline defensive configuration review with explicit authorization scope."""
+
 import hashlib
 import re
 from datetime import UTC, datetime, timedelta
