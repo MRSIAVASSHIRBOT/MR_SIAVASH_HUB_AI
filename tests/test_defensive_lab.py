@@ -379,8 +379,8 @@ def test_structured_log_review_correlates_events_without_returning_actor_identif
 
     assert result["mode"] == "offline_structured_security_log_review"
     assert result["scope_validated"] is True
-    assert result["lines_reviewed"] == 8
-    assert result["structured_records"] == 8
+    assert result["lines_reviewed"] == 9
+    assert result["structured_records"] == 9
     assert result["network_requests_made"] is False
     assert result["targets_modified"] is False
     assert result["actor_identifiers_included"] is False
