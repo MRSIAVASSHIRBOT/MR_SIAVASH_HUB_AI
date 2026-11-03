@@ -9,7 +9,7 @@ from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
-from mrhub.media.repository import MediaAssetRepository
+from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
 from mrhub.video_intelligence.frames import FrameExtractionError, extract_video_frames
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
@@ -71,57 +71,88 @@ class VideoAnalysisWorkerHandler:
             if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
                 return self._fail(task, owner_user_id, lease, "asset_type_unsupported")
             try:
-                path = self.media.file_path(str(asset["storage_key"]))
-            except ValueError:
-                return self._fail(task, owner_user_id, lease, "asset_path_invalid")
+                acquired = self.media.acquire_analysis_use(
+                    owner_user_id, asset_id, lease=lease
+                )
+            except MediaAssetBusy:
+                return self._fail(task, owner_user_id, lease, "asset_busy")
+            if not acquired:
+                if lease_lost.is_set():
+                    return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+                return self._fail(
+                    task, owner_user_id, lease, "asset_not_ready_or_locked"
+                )
 
-            metadata = probe_video(path)
-            if metadata.metadata_status != "available" or metadata.duration_seconds is None:
-                return self._fail(task, owner_user_id, lease, "video_probe_failed")
-            duration = min(float(metadata.duration_seconds), float(request.duration_seconds))
-            if duration < 0.1:
-                return self._fail(task, owner_user_id, lease, "video_duration_invalid")
             try:
-                frames = extract_video_frames(path, duration_seconds=duration, max_frames=12)
-                scenes = detect_scene_boundaries(path, duration_seconds=duration)
-            except FrameExtractionError as exc:
-                return self._fail(task, owner_user_id, lease, exc.reason_code)
-            except SceneDetectionError as exc:
-                return self._fail(task, owner_user_id, lease, exc.reason_code)
+                try:
+                    path = self.media.file_path(str(asset["storage_key"]))
+                except ValueError:
+                    return self._fail(task, owner_user_id, lease, "asset_path_invalid")
 
-            semantic = analyze_sampled_frames(
-                frames,
-                enabled=settings.local_vision_enabled,
-                model=settings.local_vision_model,
-                base_url=settings.local_inference_base_url,
-                timeout_seconds=settings.local_vision_timeout_seconds,
-            )
-            if lease_lost.is_set():
-                return {"analysis_id": str(analysis_id), "status": "lease_lost"}
-            current = self.tasks.get(task.task_id)
-            if current is None or current.status is TaskStatus.CANCELLED:
-                if current is not None:
-                    self.jobs.finish(
-                        task.task_id, owner_user_id, status="cancelled",
-                        error_code="cancelled_during_vision_analysis", lease=lease,
+                metadata = probe_video(path)
+                if (
+                    metadata.metadata_status != "available"
+                    or metadata.duration_seconds is None
+                    or not math.isfinite(float(metadata.duration_seconds))
+                    or float(metadata.duration_seconds) <= 0
+                ):
+                    return self._fail(task, owner_user_id, lease, "video_probe_failed")
+                duration = min(
+                    float(metadata.duration_seconds), float(request.duration_seconds)
+                )
+                if not math.isfinite(duration) or duration < 0.1:
+                    return self._fail(task, owner_user_id, lease, "video_duration_invalid")
+                try:
+                    frames = extract_video_frames(
+                        path, duration_seconds=duration, max_frames=12
                     )
-                return {"analysis_id": str(analysis_id), "status": "cancelled"}
+                    scenes = detect_scene_boundaries(
+                        path, duration_seconds=duration
+                    )
+                except FrameExtractionError as exc:
+                    return self._fail(task, owner_user_id, lease, exc.reason_code)
+                except SceneDetectionError as exc:
+                    return self._fail(task, owner_user_id, lease, exc.reason_code)
 
-            semantic_results.append({"asset_id": str(asset_id), **semantic})
-            results.append({
-                "asset_id": str(asset_id),
-                "technical_metadata": metadata.model_dump(mode="json"),
-                "analysis_window_seconds": round(duration, 3),
-                "keyframe_count": len(frames),
-                "keyframe_timestamps": [frame.timestamp_seconds for frame in frames],
-                "scene_start_timestamps": list(scenes.scene_start_times),
-                "scene_boundaries_truncated": scenes.truncated,
-                "semantic_visual_analysis": semantic,
-                "audio_analysis": (
-                    "requested_but_not_performed"
-                    if request.include_audio_analysis else "not_requested"
-                ),
-            })
+                semantic = analyze_sampled_frames(
+                    frames,
+                    enabled=settings.local_vision_enabled,
+                    model=settings.local_vision_model,
+                    base_url=settings.local_inference_base_url,
+                    timeout_seconds=settings.local_vision_timeout_seconds,
+                )
+                if lease_lost.is_set():
+                    return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+                current = self.tasks.get(task.task_id)
+                if current is None or current.status is TaskStatus.CANCELLED:
+                    if current is not None:
+                        self.jobs.finish(
+                            task.task_id, owner_user_id, status="cancelled",
+                            error_code="cancelled_during_vision_analysis", lease=lease,
+                        )
+                    return {"analysis_id": str(analysis_id), "status": "cancelled"}
+
+                semantic_results.append({"asset_id": str(asset_id), **semantic})
+                results.append({
+                    "asset_id": str(asset_id),
+                    "technical_metadata": metadata.model_dump(mode="json"),
+                    "analysis_window_seconds": round(duration, 3),
+                    "keyframe_count": len(frames),
+                    "keyframe_timestamps": [
+                        frame.timestamp_seconds for frame in frames
+                    ],
+                    "scene_start_timestamps": list(scenes.scene_start_times),
+                    "scene_boundaries_truncated": scenes.truncated,
+                    "semantic_visual_analysis": semantic,
+                    "audio_analysis": (
+                        "requested_but_not_performed"
+                        if request.include_audio_analysis else "not_requested"
+                    ),
+                })
+            finally:
+                self.media.release_analysis_use(
+                    owner_user_id, asset_id, lease=lease
+                )
 
         if lease_lost.is_set():
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
