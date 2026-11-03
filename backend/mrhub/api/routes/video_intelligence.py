@@ -163,6 +163,7 @@ def inspect_video_asset(
         raise HTTPException(status_code=404, detail="Media asset not found") from exc
     return probe_video(path)
 
+
 @router.post("/assets/{asset_id}/scene-jobs", status_code=status.HTTP_202_ACCEPTED)
 def submit_scene_job(
     asset_id: UUID,
@@ -209,7 +210,9 @@ def submit_scene_job(
         metadata={"task_type": "video.scene_detection", "risk_class": risk_class.value},
     )
     return {
-        **accepted,
+        "job_id": accepted["job_id"],
+        "status": accepted["status"],
+        "created_at": accepted["created_at"],
         "message": "Scene analysis was added to the shared worker queue",
     }
 
