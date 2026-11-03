@@ -37,6 +37,10 @@ from mrhub.video_intelligence.prompt_from_analysis import (
     PromptCompositionUnavailable,
     compose_prompts_from_analysis,
 )
+from mrhub.video_intelligence.render_jobs import (
+    VideoRenderConflict,
+    VideoRenderJobRepository,
+)
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
@@ -506,3 +510,44 @@ def update_timeline_draft(
     if draft is None:
         raise HTTPException(status_code=404, detail="Timeline draft not found")
     return draft
+
+
+def _render_jobs() -> VideoRenderJobRepository:
+    return VideoRenderJobRepository(get_settings().database_path)
+
+
+@router.post("/analyses/{analysis_id}/renders", status_code=status.HTTP_202_ACCEPTED)
+def submit_video_render(
+    analysis_id: UUID,
+    response: Response,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Queue a silent cut-only MP4 render from a completed owned analysis."""
+    try:
+        accepted, created = _render_jobs().submit(
+            user.user_id, analysis_id, idempotency_key
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Video analysis not found") from exc
+    except VideoRenderConflict as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return {
+        key: value for key, value in accepted.items() if key != "task_id"
+    } | {"created": created}
+
+
+@router.get("/renders/{render_id}")
+def get_video_render(
+    render_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Read render status only for the authenticated owner."""
+    render = _render_jobs().get(user.user_id, render_id)
+    if render is None:
+        raise HTTPException(status_code=404, detail="Video render not found")
+    return render
