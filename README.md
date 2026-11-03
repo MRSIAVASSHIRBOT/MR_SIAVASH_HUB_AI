@@ -153,3 +153,7 @@ mrhub-mcp
 ```
 
 The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools` and `hub.invoke_tool`; every invocation goes through the existing Hub registry and policy engine without implicit permission grants. It currently exposes only registered built-in tools (initially the deterministic `text.echo`). It does not launch stdio subprocesses or connect to arbitrary MCP servers. See [MCP Tool Bridge](docs/integrations/mcp-tool-bridge.md) for security boundaries and validation.
+
+## Engineering governance
+
+The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
