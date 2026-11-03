@@ -194,6 +194,13 @@ class WorkerEngine:
                            WHERE task_id = ?""",
                         (str(task.task_id),),
                     ).fetchone()
+                    if video_analysis is not None:
+                        # The execution lease has expired, so no matching asset-use
+                        # lock can still protect an active analysis attempt.
+                        connection.execute(
+                            "DELETE FROM media_asset_analysis_leases WHERE task_id = ?",
+                            (str(task.task_id),),
+                        )
                     if video_analysis is not None and video_analysis["status"] == "completed":
                         recovered_status = TaskStatus.SUCCEEDED
                         audit_outcome = "succeeded"
