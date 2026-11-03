@@ -263,16 +263,16 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_21_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_22_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
     original = migrations.MIGRATIONS
-    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-3])
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-4])
 
     applied = SchemaMigrator(connection).migrate()
 
-    assert applied == [migration.version for migration in original[:-3]]
+    assert applied == [migration.version for migration in original[:-4]]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
     ).fetchone()[0] == 18
@@ -286,10 +286,10 @@ def test_migrations_19_to_21_upgrade_an_existing_v18_database(tmp_path, monkeypa
     ).fetchone() is None
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [19, 20, 21]
+    assert SchemaMigrator(connection).migrate() == [19, 20, 21, 22]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 21
+    ).fetchone()[0] == 22
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
@@ -309,6 +309,10 @@ def test_migrations_19_to_21_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'video_analysis_payloads'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_render_runs'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
