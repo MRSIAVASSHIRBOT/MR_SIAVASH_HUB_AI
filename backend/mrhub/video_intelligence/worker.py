@@ -125,6 +125,16 @@ class VideoAnalysisWorkerHandler:
 
         if lease_lost.is_set():
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
+        # Recheck after the final asset and before persisting the aggregate result.
+        # This closes the race where cancellation arrives after the per-asset check.
+        current = self.tasks.get(task.task_id)
+        if current is None or current.status is TaskStatus.CANCELLED:
+            if current is not None:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_by_owner", lease=lease,
+                )
+            return {"analysis_id": str(analysis_id), "status": "cancelled"}
         semantic_states = [item["status"] for item in semantic_results]
         if semantic_states and all(state == "completed" for state in semantic_states):
             semantic_status = "completed"
