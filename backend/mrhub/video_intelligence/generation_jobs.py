@@ -158,7 +158,7 @@ class VideoGenerationJobRepository:
         """Atomically bind a prepared generation to one durable worker task."""
         task = TaskRecord(
             task_type="video.generation",
-            risk_class=RiskClass.LOW,
+            risk_class=RiskClass.HIGH,
             description="Owner-requested video generation provider handoff",
         )
         now = self._now()
@@ -183,7 +183,7 @@ class VideoGenerationJobRepository:
             connection.execute(
                 """INSERT INTO tasks (
                     task_id, task_type, status, risk_class, created_at, updated_at, description
-                ) VALUES (?, ?, 'queued', ?, ?, ?, ?)""",
+                ) VALUES (?, ?, 'waiting_approval', ?, ?, ?, ?)""",
                 (str(task.task_id), task.task_type, task.risk_class.value,
                  task.created_at.isoformat(), task.updated_at.isoformat(), task.description),
             )
