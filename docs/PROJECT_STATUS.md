@@ -323,7 +323,7 @@ This section supersedes older repository and PR snapshots above. The detailed cu
 - **Merged integration:** PR #223, squash merge `a5a1002907b3ddac2b218b84312e2fd74f2d0256`; 25 changed files.
 - **Exact PR head validated:** `fe153ac1d9a3b57e3a3e836c54e262263b36626c`.
 - **Exact-head evidence:** Backend CI, CI Python 3.11/3.12, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows all passed.
-- **Post-merge main checks:** push-triggered Backend CI, CI and Video Render Integration were still running at the time of this snapshot. Defensive Python Scan on the merge commit passed. Re-check these runs before claiming main-commit CI completion.
+- **Post-merge main checks:** all four push-triggered workflows passed on merge commit `a5a1002907b3ddac2b218b84312e2fd74f2d0256`: Backend CI run `41722222701`, CI run `41722222754`, Defensive Python Scan run `41722222735`, and Video Render Integration run `41722222736`.
 - **Repository inventory:** 325 recursive tree entries (not truncated), 94 Python test files, 19 backend domain packages, seven GitHub Actions workflows, schema migrations through version 27.
 
 ### Newly integrated capabilities
