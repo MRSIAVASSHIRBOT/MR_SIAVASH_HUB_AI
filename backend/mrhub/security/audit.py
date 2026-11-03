@@ -35,6 +35,12 @@ class AuditLogger:
         "new_status",
         "decision",
         "reason_code",
+        "provider_mode",
+        "status",
+        "selected_provider",
+        "turns",
+        "tool_calls",
+        "context_passage_count",
     })
 
     def __init__(self, repository: TaskRepository) -> None:

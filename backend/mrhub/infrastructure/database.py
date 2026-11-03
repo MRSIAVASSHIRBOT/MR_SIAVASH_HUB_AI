@@ -186,6 +186,57 @@ class TaskRepository:
             for row in rows
         ]
 
+    @staticmethod
+    def _agent_model_run_record(row: sqlite3.Row) -> dict[str, object]:
+        return {
+            "run_id": row["subject_id"],
+            "outcome": row["outcome"],
+            "created_at": row["created_at"],
+            "metadata": json.loads(row["metadata_json"]),
+        }
+
+    def list_agent_model_runs(
+        self, owner_user_id: str, limit: int = 20
+    ) -> list[dict[str, object]]:
+        """Return only model-run audit records belonging to the authenticated owner."""
+        bounded_limit = max(1, min(limit, 100))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT subject_id, outcome, created_at, metadata_json
+                FROM audit_events
+                WHERE event_type = 'agent.model_run'
+                  AND subject_type = 'agent_run'
+                  AND actor_type = 'user'
+                  AND actor_id = ?
+                ORDER BY created_at DESC, event_id DESC
+                LIMIT ?
+                """,
+                (owner_user_id, bounded_limit),
+            ).fetchall()
+        return [self._agent_model_run_record(row) for row in rows]
+
+    def get_agent_model_run(
+        self, owner_user_id: str, run_id: str
+    ) -> dict[str, object] | None:
+        """Return one model-run record only when it belongs to the authenticated owner."""
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT subject_id, outcome, created_at, metadata_json
+                FROM audit_events
+                WHERE event_type = 'agent.model_run'
+                  AND subject_type = 'agent_run'
+                  AND actor_type = 'user'
+                  AND actor_id = ?
+                  AND subject_id = ?
+                ORDER BY created_at DESC, event_id DESC
+                LIMIT 1
+                """,
+                (owner_user_id, run_id),
+            ).fetchone()
+        return self._agent_model_run_record(row) if row is not None else None
+
     def auth_user_exists(self) -> bool:
         with self._connection() as connection:
             return connection.execute("SELECT 1 FROM auth_users LIMIT 1").fetchone() is not None
