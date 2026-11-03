@@ -63,7 +63,8 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         for row in connection.execute("PRAGMA table_info(media_file_cleanup)")
     }
     assert {
-        "cleanup_id", "owner_user_id", "storage_key", "created_at", "updated_at"
+        "cleanup_id", "owner_user_id", "storage_key", "attempt_count",
+        "created_at", "updated_at"
     } <= cleanup_columns
     # Cleanup intents must survive account deletion, so this table intentionally
     # has no cascading foreign key to auth_users.
