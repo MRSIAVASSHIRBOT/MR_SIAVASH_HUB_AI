@@ -60,15 +60,15 @@ The bridge currently exposes only tools already registered in the process. The i
 
 ## Validation
 
-The optional test suite uses the SDK's in-memory client/server transport and test doubles; it does not open a network listener or contact third-party services. Startup tests verify the disabled-by-default guard, reject all hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, validate port bounds, and assert the actual stateless transport and request-body limit:
+The test suite includes both SDK in-memory tests and a process-level acceptance test. The latter starts the actual `mrhub.mcp_service` entry point as a separate local process, connects with the official Streamable HTTP client over numeric loopback, initializes a protocol session, discovers the exposed tools, and invokes only the deterministic `text.echo` tool. It does not contact third-party services. Other startup tests verify the disabled-by-default guard, reject hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, validate port bounds, and assert the stateless transport and request-body limit:
 
 ```powershell
 python -m pip install -e ".[dev,mcp]"
-pytest tests/test_mcp_integration.py tests/test_mcp_service.py
-ruff check backend/mrhub/integrations/mcp_server.py backend/mrhub/mcp_service.py tests/test_mcp_integration.py tests/test_mcp_service.py
+pytest tests/test_mcp_integration.py tests/test_mcp_service.py tests/test_mcp_process_acceptance.py
+ruff check backend/mrhub/integrations/mcp_server.py backend/mrhub/mcp_service.py tests/test_mcp_integration.py tests/test_mcp_service.py tests/test_mcp_process_acceptance.py
 ```
 
-A real host acceptance test is still required before enabling MCP in a deployment. No production host has been connected or tested by this change.
+The automated process-level test validates the Hub's actual MCP host and transport on loopback. A separate deployment-specific acceptance test is still required before exposing or enabling the service in a shared or production environment; no third-party MCP host or production deployment has been connected or tested by this change.
 
 ## Upstream review and limitations
 
