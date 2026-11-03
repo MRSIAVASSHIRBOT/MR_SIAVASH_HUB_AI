@@ -330,7 +330,6 @@ def test_child_tool_calls_consume_the_parent_tool_budget():
     assert result["tools_executed"] is True
 
 
-
 def test_orchestrator_returns_budget_result_when_single_provider_prompt_exceeds_limit():
     from mrhub.providers.base import MAX_PROVIDER_INPUT_CHARS
 
