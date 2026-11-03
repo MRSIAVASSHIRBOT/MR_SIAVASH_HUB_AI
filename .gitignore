@@ -36,3 +36,4 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+.mrhub-runtime.json
