@@ -20,8 +20,8 @@ A configured `MRH_WORKFLOW_PAYLOAD_KEY` is mandatory. It must be a URL-safe Base
 
 ## Read and cancel
 
-- `GET /agent/model-runs/{workflow_id}` returns metadata only to the owning user. The encrypted result is decrypted only after a successful or cancelled terminal workflow state.
-- `POST /agent/model-runs/{workflow_id}/cancel` cancels queued work immediately or requests cooperative cancellation of a running model loop.
+- `GET /agent/model-run-workflows/{workflow_id}` returns metadata only to the owning user. The encrypted result is decrypted only after a successful or cancelled terminal workflow state.
+- `POST /agent/model-run-workflows/{workflow_id}/cancel` cancels queued work immediately or requests cooperative cancellation of a running model loop.
 - A cancellation request cannot forcibly interrupt a provider call already in progress. The worker observes the request at safe boundaries and records the resulting execution state.
 
 The API never returns ciphertext, encryption keys, prompts from another owner, or internal worker exception text.
