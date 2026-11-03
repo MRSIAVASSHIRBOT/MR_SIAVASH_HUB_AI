@@ -30,7 +30,6 @@ All endpoints require an authenticated owner session:
 - `POST /video-intelligence/prompts/compose` — returns a composed prompt; it does not invoke a model or render a video.
 - `GET /video-intelligence/generation/providers` — lists explicitly registered generation adapters without probing or starting work. It currently returns `provider_unavailable`; no generation provider is configured.
 - `POST /video-intelligence/analyses/{analysis_id}/generations` — create an owner-scoped generation request only for an explicitly registered provider/model. The durable task starts in `waiting_approval`; the owner must approve the exact task through `POST /tasks/{task_id}/approval` before the pull worker can claim it.
-- `POST /video-intelligence/analyses/{analysis_id}/generations` — create an owner-scoped generation request only for an explicitly registered provider/model. The durable task starts in `waiting_approval`; the owner must approve the exact task through `POST /tasks/{task_id}/approval` before the pull worker can claim it.
 - `GET /video-intelligence/brands` — list the current owner's brand profiles.
 - `POST /video-intelligence/brands` — create an owner-scoped brand profile.
 - `GET /video-intelligence/brands/{profile_id}` — retrieve an owned profile.
