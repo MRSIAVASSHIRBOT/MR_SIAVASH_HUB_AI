@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.leases import WorkerLease
 
 MAX_UPLOAD_BYTES = 25_000_000
 MAX_OUTPUT_BYTES = 100_000_000
@@ -161,8 +162,19 @@ class MediaAssetRepository:
                       SELECT 1 FROM content_assets child
                       WHERE child.source_asset_id = content_assets.asset_id
                   )
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM media_asset_analysis_leases AS l
+                      JOIN worker_executions AS e
+                        ON e.task_id = l.task_id
+                       AND e.lease_owner = l.lease_owner
+                       AND e.execution_token = l.execution_token
+                      WHERE l.asset_id = content_assets.asset_id
+                        AND l.owner_user_id = content_assets.owner_user_id
+                        AND e.lease_expires_at > ?
+                  )
                 """,
-                (now, str(asset_id), owner_user_id),
+                (now, str(asset_id), owner_user_id, now),
             )
             if cursor.rowcount != 1:
                 return None
@@ -244,6 +256,96 @@ class MediaAssetRepository:
         assert row is not None
         return self._record(row)
 
+    def acquire_analysis_use(
+        self,
+        owner_user_id: str,
+        asset_id: UUID,
+        *,
+        lease: WorkerLease,
+    ) -> bool:
+        """Acquire an asset-use lock only for the exact live worker lease."""
+        if not owner_user_id.strip() or not lease.task_id.strip():
+            raise ValueError("Owner and worker task identifiers are required")
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            asset = connection.execute(
+                """SELECT media_type, processing_status FROM content_assets
+                   WHERE asset_id = ? AND owner_user_id = ?""",
+                (str(asset_id), owner_user_id),
+            ).fetchone()
+            if asset is None:
+                return False
+            if asset["media_type"] not in {"video/mp4", "video/quicktime"}:
+                return False
+            if asset["processing_status"] == "processing":
+                raise MediaAssetBusy("Media asset is currently being processed")
+            if asset["processing_status"] not in {"stored", "processed"}:
+                return False
+
+            active_worker = connection.execute(
+                """SELECT 1 FROM worker_executions
+                   WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
+                     AND lease_expires_at > ?""",
+                (lease.task_id, lease.owner, lease.fencing_token, now),
+            ).fetchone()
+            if active_worker is None:
+                return False
+
+            # Expired/superseded attempts cannot keep an asset busy indefinitely.
+            connection.execute(
+                """DELETE FROM media_asset_analysis_leases
+                   WHERE asset_id = ? AND owner_user_id = ?
+                     AND NOT EXISTS (
+                       SELECT 1 FROM worker_executions AS e
+                       WHERE e.task_id = media_asset_analysis_leases.task_id
+                         AND e.lease_owner = media_asset_analysis_leases.lease_owner
+                         AND e.execution_token = media_asset_analysis_leases.execution_token
+                         AND e.lease_expires_at > ?
+                     )""",
+                (str(asset_id), owner_user_id, now),
+            )
+            connection.execute(
+                """INSERT OR IGNORE INTO media_asset_analysis_leases (
+                    lease_id, asset_id, owner_user_id, task_id,
+                    lease_owner, execution_token, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid4()), str(asset_id), owner_user_id, lease.task_id,
+                    lease.owner, lease.fencing_token, now,
+                ),
+            )
+            row = connection.execute(
+                """SELECT 1 FROM media_asset_analysis_leases
+                   WHERE asset_id = ? AND owner_user_id = ? AND task_id = ?
+                     AND lease_owner = ? AND execution_token = ?""",
+                (
+                    str(asset_id), owner_user_id, lease.task_id,
+                    lease.owner, lease.fencing_token,
+                ),
+            ).fetchone()
+        return row is not None
+
+    def release_analysis_use(
+        self,
+        owner_user_id: str,
+        asset_id: UUID,
+        *,
+        lease: WorkerLease,
+    ) -> bool:
+        """Release only the lock held by this exact worker fencing token."""
+        with self.tasks._connection() as connection:
+            cursor = connection.execute(
+                """DELETE FROM media_asset_analysis_leases
+                   WHERE asset_id = ? AND owner_user_id = ? AND task_id = ?
+                     AND lease_owner = ? AND execution_token = ?""",
+                (
+                    str(asset_id), owner_user_id, lease.task_id,
+                    lease.owner, lease.fencing_token,
+                ),
+            )
+        return cursor.rowcount == 1
+
     def delete(self, owner_user_id: str, asset_id: UUID) -> list[str] | None:
         now = self._now()
         with self.tasks._connection() as connection:
@@ -258,6 +360,24 @@ class MediaAssetRepository:
                 return None
             if row["processing_status"] == "processing":
                 raise MediaAssetBusy("Media asset is currently being processed")
+            active_analysis_use = connection.execute(
+                """SELECT 1
+                   FROM media_asset_analysis_leases AS l
+                   JOIN worker_executions AS e
+                     ON e.task_id = l.task_id
+                    AND e.lease_owner = l.lease_owner
+                    AND e.execution_token = l.execution_token
+                   WHERE l.owner_user_id = ?
+                     AND (l.asset_id = ? OR l.asset_id IN (
+                       SELECT asset_id FROM content_assets
+                       WHERE source_asset_id = ? AND owner_user_id = ?
+                     ))
+                     AND e.lease_expires_at > ?
+                   LIMIT 1""",
+                (owner_user_id, str(asset_id), str(asset_id), owner_user_id, now),
+            ).fetchone()
+            if active_analysis_use is not None:
+                raise MediaAssetBusy("Media asset is in use by video analysis")
             if row["source_asset_id"] is None:
                 foreign_child = connection.execute(
                     "SELECT 1 FROM content_assets "
