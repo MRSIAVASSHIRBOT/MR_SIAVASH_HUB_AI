@@ -10,7 +10,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mrhub.agents.registry import AgentRegistry
-from mrhub.providers.base import ProviderError, ProviderRequest
+from mrhub.providers.base import (
+    MAX_PROVIDER_INPUT_CHARS,
+    ProviderError,
+    ProviderRequest,
+)
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
 
@@ -120,6 +124,14 @@ class AgentOrchestrator:
                 return self._result(
                     "budget_exhausted", transcript, selection, turn - 1, tool_calls,
                     error_code="total_input_budget_exceeded",
+                )
+            # The per-call provider contract is stricter than the root run budget.
+            # Check before Pydantic construction so an oversized catalog or growing
+            # transcript becomes a sanitized budget result, not an uncaught validation error.
+            if len(prompt) > MAX_PROVIDER_INPUT_CHARS:
+                return self._result(
+                    "budget_exhausted", transcript, selection, turn - 1, tool_calls,
+                    error_code="provider_input_budget_exceeded",
                 )
 
             try:
