@@ -151,3 +151,8 @@ def test_visual_schema_rejects_extra_fields_and_duplicate_timestamps():
             "extra": "not allowed",
             "observations": [],
         })
+
+    duplicated = json.loads(_visual_json())
+    duplicated["observations"][1]["timestamp_seconds"] = 0.0
+    with pytest.raises(ValueError):
+        VisualAnalysisResult.model_validate(duplicated)
