@@ -39,6 +39,13 @@ class VideoRenderWorkerHandler:
         output_path = None
         acquired_assets: list[UUID] = []
         try:
+            current_task = self.tasks.get(task.task_id)
+            if current_task is None or current_task.status is TaskStatus.CANCELLED:
+                self.jobs.finish(
+                    task.task_id, owner_user_id, status="cancelled",
+                    error_code="cancelled_before_render", lease=lease,
+                )
+                return {"render_id": str(render_id), "status": "cancelled"}
             analysis = self.analyses.get(owner_user_id, analysis_id)
             if analysis is None or analysis["status"] != "completed":
                 raise ValueError("source_analysis_unavailable")
