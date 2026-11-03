@@ -34,7 +34,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads", "capability_candidates",
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
         "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
-        "content_publish_schedules", "media_file_cleanup",
+        "content_publish_schedules", "media_file_cleanup", "video_scene_jobs",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -71,6 +71,20 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     assert connection.execute(
         "PRAGMA foreign_key_list(media_file_cleanup)"
     ).fetchall() == []
+    scene_job_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(video_scene_jobs)")
+    }
+    assert {
+        "job_id", "task_id", "owner_user_id", "source_asset_id",
+        "threshold", "max_scene_changes", "created_at",
+    } <= scene_job_columns
+    scene_job_foreign_keys = {
+        (row["from"], row["table"], row["on_delete"])
+        for row in connection.execute("PRAGMA foreign_key_list(video_scene_jobs)")
+    }
+    assert ("owner_user_id", "auth_users", "CASCADE") in scene_job_foreign_keys
+    assert ("source_asset_id", "content_assets", "SET NULL") in scene_job_foreign_keys
+
     cleanup_index = connection.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_media_file_cleanup_owner_retry'"
@@ -263,16 +277,16 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_and_20_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_through_21_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
     original = migrations.MIGRATIONS
-    monkeypatch.setattr(migrations, "MIGRATIONS", original[:-2])
+    monkeypatch.setattr(migrations, "MIGRATIONS", original[:18])
 
     applied = SchemaMigrator(connection).migrate()
 
-    assert applied == [migration.version for migration in original[:-2]]
+    assert applied == [migration.version for migration in original[:18]]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
     ).fetchone()[0] == 18
@@ -284,12 +298,16 @@ def test_migrations_19_and_20_upgrade_an_existing_v18_database(tmp_path, monkeyp
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'video_brand_profiles'"
     ).fetchone() is None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_scene_jobs'"
+    ).fetchone() is None
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [19, 20]
+    assert SchemaMigrator(connection).migrate() == [19, 20, 21]
     assert connection.execute(
         "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 20
+    ).fetchone()[0] == 21
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'media_file_cleanup'"
@@ -301,6 +319,10 @@ def test_migrations_19_and_20_upgrade_an_existing_v18_database(tmp_path, monkeyp
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table' "
         "AND name = 'video_brand_profiles'"
+    ).fetchone() is not None
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'video_scene_jobs'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
