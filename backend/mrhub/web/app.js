@@ -10,12 +10,14 @@
   let pendingModelRunPayloadFingerprint = null;
   let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
   let activeVideoAnalysisStatus = null;
+  let activeVideoAnalysisCanRender = false;
   let activeVideoRenderId = sessionStorage.getItem("mrh_video_render_id");
   if (!token) {
     sessionStorage.removeItem("mrh_video_analysis_id");
     sessionStorage.removeItem("mrh_video_render_id");
     activeVideoAnalysisId = null;
     activeVideoAnalysisStatus = null;
+    activeVideoAnalysisCanRender = false;
     activeVideoRenderId = null;
   }
   let pendingVideoAnalysisKey = null;
@@ -503,6 +505,11 @@
 
     activeVideoAnalysisStatus = analysis.status || null;
     const result = analysis.result;
+    activeVideoAnalysisCanRender = analysis.status === "completed"
+      && result
+      && result.timeline
+      && Array.isArray(result.timeline.video_track)
+      && result.timeline.video_track.length > 0;
     const semantic = result && result.semantic_visual_analysis;
     const canCompose = analysis.status === "completed"
       && semantic && semantic.status === "completed"
@@ -560,7 +567,7 @@
       container.append(element("p", `کد خطا: ${analysis.error_code}`, "message error"));
     }
     $("#video-analysis-refresh").disabled = !activeVideoAnalysisId;
-    $("#video-render-submit").disabled = analysis.status !== "completed"
+    $("#video-render-submit").disabled = !activeVideoAnalysisCanRender
       || (Boolean(activeVideoRenderId) && !activeVideoRenderStatus)
       || ["accepted", "running"].includes(activeVideoRenderStatus);
   }
@@ -652,8 +659,8 @@
   }
 
   async function submitVideoRender() {
-    if (!activeVideoAnalysisId || activeVideoAnalysisStatus !== "completed") {
-      message("#video-render-message", "ابتدا باید تحلیل ویدئو با موفقیت تکمیل شود.", "error");
+    if (!activeVideoAnalysisId || !activeVideoAnalysisCanRender) {
+      message("#video-render-message", "ابتدا باید تحلیل کامل با timeline معتبر و حداقل یک برش ویدئویی داشته باشید.", "error");
       return;
     }
     const fingerprint = activeVideoAnalysisId;
@@ -765,6 +772,7 @@
       });
       activeVideoAnalysisId = accepted.analysis_id;
       activeVideoAnalysisStatus = accepted.status || "accepted";
+      activeVideoAnalysisCanRender = false;
       sessionStorage.setItem("mrh_video_analysis_id", activeVideoAnalysisId);
       activeVideoRenderId = null;
       activeVideoRenderStatus = null;
