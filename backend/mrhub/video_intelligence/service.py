@@ -12,7 +12,8 @@ import shutil
 import subprocess
 from typing import Any
 
-from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
+from mrhub.video_intelligence.schemas import BrandIdentity, VideoTechnicalMetadata
+from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 
 _PROBE_TIMEOUT_SECONDS = 12
 _MAX_PROBE_OUTPUT_BYTES = 64 * 1024
@@ -148,3 +149,114 @@ def build_generation_prompt(
         f"Final frame: {final_frame or 'End on a clean, readable frame with a deliberate visual hold.'}\n"
         "Recreate visual techniques and pacing only. Do not reproduce protected logos, text, characters, footage, or distinctive copyrighted compositions."
     )
+
+
+
+def build_prompt_from_visual_analysis(
+    *,
+    visual_analysis: VisualAnalysisResult,
+    source_duration_seconds: float,
+    duration_seconds: int,
+    aspect_ratio: str,
+    brand: BrandIdentity | None = None,
+    custom_changes: dict[str, str] | None = None,
+    sound_design: str | None = None,
+    final_frame: str | None = None,
+) -> str:
+    """Turn validated frame observations into an original, bounded edit prompt.
+
+    Observation timestamps are mapped proportionally onto the requested output
+    duration. The function describes high-level visual techniques only and does
+    not attempt to reproduce source subjects, exact layouts, logos, or text.
+    """
+    if not math.isfinite(source_duration_seconds) or source_duration_seconds <= 0:
+        raise ValueError("source_duration_seconds must be positive and finite")
+    if not 3 <= duration_seconds <= 60:
+        raise ValueError("duration_seconds must be between 3 and 60")
+    if not visual_analysis.observations:
+        raise ValueError("At least one visual observation is required")
+
+    mapped: list[tuple[float, Any]] = []
+    for observation in visual_analysis.observations:
+        position = min(
+            float(duration_seconds),
+            max(0.0, observation.timestamp_seconds / source_duration_seconds * duration_seconds),
+        )
+        mapped.append((round(position, 3), observation))
+    mapped.sort(key=lambda item: item[0])
+
+    # Collapse timestamp collisions after proportional mapping. The highest
+    # confidence observation wins; ties preserve the earlier source ordering.
+    unique: list[tuple[float, Any]] = []
+    for position, observation in mapped:
+        if unique and position <= unique[-1][0]:
+            if observation.confidence > unique[-1][1].confidence:
+                unique[-1] = (unique[-1][0], observation)
+            continue
+        unique.append((position, observation))
+
+    beats: list[dict[str, Any]] = []
+    for index, (position, observation) in enumerate(unique):
+        start = 0.0 if index == 0 else position
+        end = unique[index + 1][0] if index + 1 < len(unique) else float(duration_seconds)
+        if end <= start:
+            continue
+        details = [
+            observation.description,
+            f"shot scale: {observation.shot_scale}",
+            f"camera movement: {observation.camera_movement}",
+        ]
+        if observation.composition:
+            details.append(f"composition: {observation.composition}")
+        if observation.lighting:
+            details.append(f"lighting: {observation.lighting}")
+        if observation.color_notes:
+            details.append("color direction: " + ", ".join(observation.color_notes))
+        details.append(
+            "Translate these observations into an original scene; do not copy the source subject, "
+            "exact framing, protected text, logos, or distinctive composition."
+        )
+        beats.append({
+            "start_seconds": round(start, 3),
+            "end_seconds": round(end, 3),
+            "generation_instruction": "; ".join(details)[:1200],
+            "transition_to_next": "clean cinematic cut with rhythm appropriate to the scene",
+        })
+
+    if not beats:
+        raise ValueError("No valid timeline intervals could be composed")
+
+    brand_colors = brand.colors if brand else []
+    typography = (
+        ", ".join(brand.font_preferences)
+        if brand and brand.font_preferences
+        else None
+    )
+    prompt = build_generation_prompt(
+        style_summary=visual_analysis.style_summary,
+        beats=beats,
+        duration_seconds=duration_seconds,
+        aspect_ratio=aspect_ratio,
+        brand_name=brand.brand_name if brand else None,
+        colors=brand_colors,
+        typography=typography,
+        sound_design=sound_design,
+        final_frame=final_frame,
+    )
+    if brand and brand.tone:
+        prompt += f"\nBrand tone: {brand.tone[:240]}."
+    if brand and brand.handle:
+        prompt += f"\nBrand handle, only if a closing credit is requested: {brand.handle[:80]}."
+    if custom_changes:
+        changes = [
+            f"- {str(key)[:40]}: {str(value)[:240]}"
+            for key, value in list(custom_changes.items())[:12]
+        ]
+        if changes:
+            prompt += "\nAdditional user constraints:\n" + "\n".join(changes)
+    prompt += (
+        "\nEvidence note: this scenario is derived only from validated visual observations "
+        "at sampled timestamps. Audio was not analyzed; do not infer dialogue, lyrics, or "
+        "sound events from the visual reference."
+    )
+    return prompt
