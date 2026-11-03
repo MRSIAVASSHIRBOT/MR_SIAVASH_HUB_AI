@@ -5,8 +5,6 @@ It probes only server-owned asset paths supplied by the authenticated media
 repository in a later integration layer.
 """
 
-from __future__ import annotations
-
 import json
 import shutil
 import subprocess
