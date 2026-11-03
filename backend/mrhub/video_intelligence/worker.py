@@ -10,6 +10,7 @@ from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MediaAssetRepository
+from mrhub.video_intelligence.edit_spec import build_edit_specification
 from mrhub.video_intelligence.frames import FrameExtractionError, extract_video_frames
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
@@ -158,6 +159,7 @@ class VideoAnalysisWorkerHandler:
             "brand_profile_applied": False,
             "custom_changes_applied": False,
             "assets": results,
+            "edit_specification": build_edit_specification(request, results).model_dump(mode="json"),
         }
         self.jobs.finish(task.task_id, owner_user_id, status="completed", result=result, lease=lease)
         return {"analysis_id": str(analysis_id), "status": "completed", "asset_count": len(results)}
