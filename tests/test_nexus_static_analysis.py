@@ -142,19 +142,17 @@ def test_source_analysis_reports_confidence_and_remediation_without_execution():
 
 
 def test_static_analysis_detects_common_import_aliases_and_os_shell_apis():
-    source = "\n".join([
-        "import pickle as serializer",
-        "from subprocess import run as run_command",
-        "import os as operating_system",
-        "from yaml import load as parse_yaml",
-        "from yaml import SafeLoader as SafeYamlLoader",
-        "serializer.loads(payload)",
-        "run_command(command, shell=True)",
-        "operating_system.system(command)",
-        "parse_yaml(document)",
-        "parse_yaml(document, Loader=SafeYamlLoader)",
-        "",
-    ])
+    source = """import pickle as serializer
+from subprocess import run as run_command
+import os as operating_system
+from yaml import load as parse_yaml
+from yaml import SafeLoader as SafeYamlLoader
+serializer.loads(payload)
+run_command(command, shell=True)
+operating_system.system(command)
+parse_yaml(document)
+parse_yaml(document, Loader=SafeYamlLoader)
+"""
     result = analyze_python_source(source, path="src/aliased_imports.py")
 
     rules = [item["rule_id"] for item in result["findings"]]
@@ -164,7 +162,6 @@ def test_static_analysis_detects_common_import_aliases_and_os_shell_apis():
     assert rules.count("PY105") == 1
     assert result["code_executed"] is False
     assert result["source_code_included"] is False
-
 
 def test_static_analysis_detects_os_system_and_os_popen_without_aliases():
     result = analyze_python_source(
