@@ -1,7 +1,7 @@
 """Shared bounded health probing for optional local integrations."""
 
-from ipaddress import ip_address
-from re import fullmatch
+import ipaddress
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -14,7 +14,7 @@ def _valid_local_path(value: str, *, allow_root: bool = True) -> bool:
     """Accept plain URL path segments only; reject encoded or ambiguous separators."""
     if not value.startswith("/") or value.startswith("//"):
         return False
-    if not fullmatch(r"/[A-Za-z0-9._~/-]*", value):
+    if not re.fullmatch(r"/[A-Za-z0-9._~/-]*", value):
         return False
     if not allow_root and value == "/":
         return False
@@ -36,7 +36,7 @@ def validate_loopback_base_url(value: str | None) -> str | None:
             return None
         if parsed.port is not None and not 1 <= parsed.port <= 65535:
             return None
-        if not ip_address(parsed.hostname).is_loopback:
+        if not ipaddress.ip_address(parsed.hostname).is_loopback:
             return None
         if parsed.path and not _valid_local_path(parsed.path):
             return None
