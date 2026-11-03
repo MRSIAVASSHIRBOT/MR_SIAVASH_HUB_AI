@@ -51,6 +51,8 @@ class VideoAnalysisRequest(BaseModel):
     duration_seconds: int = Field(default=10, ge=3, le=60)
     output_aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
     include_audio_analysis: bool = True
+    # Remote vision is opt-in per analysis; local inference remains preferred.
+    allow_remote_vision: bool = False
     custom_changes: dict[str, str] = Field(default_factory=dict, max_length=12)
 
 
