@@ -1,3 +1,4 @@
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -6,6 +7,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from mrhub.domain.tasks import RiskClass, TaskRecord
+from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import (
     MediaAssetBusy,
     MediaAssetOwnershipConflict,
@@ -285,3 +288,234 @@ def test_failed_cleanup_items_do_not_starve_unattempted_entries(
     # the 100 repeatedly failing items on the next bounded pass.
     assert repository.cleanup_pending_files("owner-1", limit=100) == 100
     assert not real_file_path(untouched_key).exists()
+
+
+def _active_worker_lease(
+    repository: MediaAssetRepository, token: int = 1
+) -> WorkerLease:
+    task = TaskRecord(
+        task_type="video.analysis",
+        risk_class=RiskClass.LOW,
+        description="asset-use lease test",
+    )
+    repository.tasks.create(task)
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, lease_owner, lease_expires_at, execution_token
+            ) VALUES (?, ?, ?, ?)""",
+            (str(task.task_id), "worker-test", expires_at, token),
+        )
+    return WorkerLease(
+        task_id=str(task.task_id),
+        owner="worker-test",
+        fencing_token=token,
+        expires_at=expires_at,
+    )
+
+
+def test_analysis_use_lock_blocks_delete_until_exact_lease_is_released(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+    lease = _active_worker_lease(repository)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=lease) is True
+    with (
+        pytest.raises(sqlite3.IntegrityError),
+        repository.tasks._connection() as connection,
+    ):
+        connection.execute(
+            "DELETE FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
+            (str(asset_id), "owner-1"),
+        )
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", asset_id)
+    assert repository.get("owner-1", asset_id) is not None
+    assert path.is_file()
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=lease) is True
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.cleanup_pending_files("owner-1") == 0
+    assert not path.exists()
+
+
+def test_analysis_use_lock_blocks_transcoding_until_released(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    lease = _active_worker_lease(repository)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=lease) is True
+    assert repository.begin_processing("owner-1", asset_id) is None
+    assert repository.get("owner-1", asset_id)["processing_status"] == "stored"
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=lease) is True
+    assert repository.begin_processing("owner-1", asset_id) is not None
+
+
+def test_expired_lock_still_blocks_delete_until_stale_worker_recovery(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    path = repository.file_path(str(asset["storage_key"]))
+    lease = _active_worker_lease(repository)
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=lease) is True
+
+    expired_at = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET lease_expires_at = ? WHERE task_id = ?",
+            (expired_at, lease.task_id),
+        )
+
+    # Lease expiry alone is insufficient evidence that an FFmpeg child has
+    # stopped reading. Recovery, not the delete path, clears this orphaned lock.
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", asset_id)
+    assert repository.get("owner-1", asset_id) is not None
+    assert path.is_file()
+
+
+def test_stale_worker_token_cannot_release_newer_analysis_lock(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    first_lease = _active_worker_lease(repository, token=1)
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=first_lease)
+
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """UPDATE worker_executions
+               SET execution_token = 2, lease_expires_at = ?
+               WHERE task_id = ?""",
+            (expires_at, first_lease.task_id),
+        )
+        connection.execute(
+            """UPDATE media_asset_analysis_leases
+               SET execution_token = 2
+               WHERE asset_id = ? AND owner_user_id = ? AND task_id = ?""",
+            (str(asset_id), "owner-1", first_lease.task_id),
+        )
+    second_lease = WorkerLease(
+        task_id=first_lease.task_id,
+        owner=first_lease.owner,
+        fencing_token=2,
+        expires_at=expires_at,
+    )
+
+    # The record now belongs to the newer execution token. A stale worker
+    # cannot release it even though it knows the same task and owner.
+    assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is False
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", asset_id)
+
+    # Only the current fenced execution can release the transferred record.
+    assert repository.release_analysis_use("owner-1", asset_id, lease=second_lease) is True
+    assert repository.delete("owner-1", asset_id) == [str(asset["storage_key"])]
+    assert repository.cleanup_pending_files("owner-1") == 0
+
+
+def test_deleting_source_is_blocked_when_its_derivative_is_under_analysis(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    source = repository.store_upload(
+        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
+    )
+    source_id = UUID(str(source["asset_id"]))
+    assert repository.begin_processing("owner-1", source_id) is not None
+
+    output_id, output_key, output_path = repository.new_output_target()
+    output_path.write_bytes(b"fake-transcoded-video")
+    repository.register_transcoded_output(
+        "owner-1", source_id, output_id, output_key, output_path, "source-processed.mp4"
+    )
+    derivative_id = UUID(output_id)
+    lease = _active_worker_lease(repository)
+
+    assert repository.acquire_analysis_use("owner-1", derivative_id, lease=lease)
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", source_id)
+
+    assert repository.get("owner-1", source_id) is not None
+    assert repository.get("owner-1", derivative_id) is not None
+    assert output_path.is_file()
+
+
+def test_delete_and_analysis_lock_acquisition_are_serialized(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "analysis.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    storage_key = str(asset["storage_key"])
+    path = repository.file_path(storage_key)
+    lease = _active_worker_lease(repository)
+    barrier = Barrier(2)
+
+    def acquire():
+        barrier.wait()
+        return repository.acquire_analysis_use("owner-1", asset_id, lease=lease)
+
+    def delete_asset():
+        barrier.wait()
+        try:
+            return ("deleted", repository.delete("owner-1", asset_id))
+        except MediaAssetBusy:
+            return ("busy", None)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        acquired_future = executor.submit(acquire)
+        delete_future = executor.submit(delete_asset)
+        acquired = acquired_future.result(timeout=10)
+        delete_status, deleted_keys = delete_future.result(timeout=10)
+
+    if acquired:
+        assert delete_status == "busy"
+        assert repository.get("owner-1", asset_id) is not None
+        assert path.is_file()
+        assert repository.release_analysis_use("owner-1", asset_id, lease=lease)
+    else:
+        assert delete_status == "deleted"
+        assert deleted_keys == [storage_key]
+        assert repository.get("owner-1", asset_id) is None
+        assert repository.cleanup_pending_files("owner-1") == 0
+        assert not path.exists()
+
+def test_analysis_use_lease_is_exclusive_across_worker_executions(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    asset = repository.store_upload(
+        "owner-1", "exclusive.mp4", "video/mp4", b"video-analysis-fixture"
+    )
+    asset_id = UUID(str(asset["asset_id"]))
+    first_lease = _active_worker_lease(repository, token=1)
+    second_lease = _active_worker_lease(repository, token=1)
+
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    # Retrying the same execution is idempotent, but a second worker cannot
+    # concurrently acquire the same asset under a different task/lease.
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease) is False
+
+    with pytest.raises(MediaAssetBusy, match="video analysis"):
+        repository.delete("owner-1", asset_id)
+
+    assert repository.release_analysis_use("owner-1", asset_id, lease=first_lease) is True
+    assert repository.acquire_analysis_use("owner-1", asset_id, lease=second_lease) is True
+    assert repository.release_analysis_use("owner-1", asset_id, lease=second_lease) is True
