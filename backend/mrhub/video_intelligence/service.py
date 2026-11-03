@@ -47,13 +47,32 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
     if result.returncode != 0 or len(result.stdout) > _MAX_PROBE_OUTPUT_BYTES:
         return VideoTechnicalMetadata(metadata_status="probe_failed")
     try:
-        payload: dict[str, Any] = json.loads(result.stdout)
+        payload: Any = json.loads(result.stdout)
+        if not isinstance(payload, dict):
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
         streams = payload.get("streams", [])
-        video = next((item for item in streams if item.get("codec_type") == "video"), {})
-        has_audio = any(item.get("codec_type") == "audio" for item in streams)
+        if not isinstance(streams, list) or not all(
+            isinstance(item, dict) for item in streams
+        ):
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
+        video = next(
+            (
+                item
+                for item in streams
+                if isinstance(item, dict) and item.get("codec_type") == "video"
+            ),
+            {},
+        )
+        has_audio = any(
+            isinstance(item, dict) and item.get("codec_type") == "audio"
+            for item in streams
+        )
         numerator, _, denominator = str(video.get("avg_frame_rate", "0/1")).partition("/")
         fps = float(numerator) / float(denominator) if float(denominator) else None
-        duration = payload.get("format", {}).get("duration")
+        format_data = payload.get("format", {})
+        if not isinstance(format_data, dict):
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
+        duration = format_data.get("duration")
         return VideoTechnicalMetadata(
             duration_seconds=float(duration) if duration is not None else None,
             width=int(video["width"]) if video.get("width") else None,
