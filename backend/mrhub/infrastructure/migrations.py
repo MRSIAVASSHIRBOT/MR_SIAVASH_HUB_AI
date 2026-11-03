@@ -612,6 +612,57 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_analysis_payloads_task ON video_analysis_payloads(task_id)",
         ),
     ),
+    Migration.build(
+        22,
+        "durable_owner_scoped_video_generation_jobs",
+        (
+            """CREATE TABLE IF NOT EXISTS video_generation_jobs (
+                generation_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                source_analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE RESTRICT,
+                provider TEXT NOT NULL CHECK (length(provider) BETWEEN 1 AND 80),
+                model TEXT NOT NULL CHECK (length(model) BETWEEN 1 AND 120),
+                status TEXT NOT NULL CHECK (status IN (
+                    'prepared', 'queued', 'submitting', 'running', 'succeeded',
+                    'failed', 'cancelled', 'unknown_outcome'
+                )),
+                provider_job_id TEXT CHECK (provider_job_id IS NULL OR length(provider_job_id) <= 255),
+                progress_percent INTEGER CHECK (
+                    progress_percent IS NULL OR progress_percent BETWEEN 0 AND 100
+                ),
+                output_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE SET NULL,
+                output_bytes INTEGER CHECK (output_bytes IS NULL OR output_bytes BETWEEN 1 AND 100000000),
+                output_duration_seconds REAL CHECK (
+                    output_duration_seconds IS NULL OR output_duration_seconds BETWEEN 0 AND 60
+                ),
+                output_width INTEGER CHECK (output_width IS NULL OR output_width BETWEEN 1 AND 3840),
+                output_height INTEGER CHECK (output_height IS NULL OR output_height BETWEEN 1 AND 3840),
+                error_code TEXT CHECK (error_code IS NULL OR length(error_code) <= 80),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(generation_id, owner_user_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS video_generation_payloads (
+                generation_id TEXT PRIMARY KEY REFERENCES video_generation_jobs(generation_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                envelope_version INTEGER NOT NULL CHECK (envelope_version > 0),
+                nonce_b64 TEXT NOT NULL,
+                ciphertext_b64 TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS video_generation_idempotency (
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 255),
+                request_digest TEXT NOT NULL CHECK (length(request_digest) = 64),
+                generation_id TEXT NOT NULL REFERENCES video_generation_jobs(generation_id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(owner_user_id, idempotency_key)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_generation_owner_created ON video_generation_jobs(owner_user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_video_generation_status_updated ON video_generation_jobs(status, updated_at)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_video_generation_provider_job ON video_generation_jobs(provider, model, provider_job_id) WHERE provider_job_id IS NOT NULL",
+        ),
+    ),
 )
 
  
