@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.providers.types import ModelDescriptor
 
-
 MAX_PROVIDER_INPUT_CHARS = 32_000
 
 
