@@ -1,5 +1,8 @@
+import shutil
+import subprocess
 from importlib.resources import files
 
+import pytest
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
@@ -88,3 +91,45 @@ def test_operator_ui_exposes_bounded_agent_run_controls_and_result_panels():
     assert 'api("/agent/model-runs?limit=20")' in script
     assert "metadata.selected_provider" in script
     assert "run.outcome" in script
+
+
+def test_operator_ui_exposes_owner_scoped_video_render_controls():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    for element_id in (
+        "video-render-submit",
+        "video-render-refresh",
+        "video-render-cancel",
+        "video-render-message",
+        "video-render-result",
+    ):
+        assert f'id="{element_id}"' in page.text
+
+    assert "Idempotency-Key" in script.text
+    assert "/video-intelligence/renders/" in script.text
+    assert "/content/assets/" in script.text
+    assert "downloadRenderedVideo" in script.text
+    assert "downloadMediaAsset" in script.text
+    assert "mrh_video_render_pending_key" in script.text
+    assert "mrh_video_render_analysis_id" in script.text
+    assert 'credentials: "omit"' in script.text
+    assert 'cache: "no-store"' in script.text
+
+
+def test_operator_ui_javascript_parses_with_node_when_available():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable in this test environment")
+    script = files("mrhub").joinpath("web/app.js")
+    result = subprocess.run(
+        [node, "--check", str(script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
