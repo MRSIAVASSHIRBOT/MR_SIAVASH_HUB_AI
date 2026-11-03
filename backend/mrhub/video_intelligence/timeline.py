@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import math
 from typing import Literal
 
@@ -55,7 +56,7 @@ class VideoTimeline(BaseModel):
         clips = self.video_track
         if clips[0].timeline_start_seconds != 0:
             raise ValueError("Timeline must begin at zero")
-        for previous, current in zip(clips, clips[1:]):
+        for previous, current in itertools.pairwise(clips):
             if not math.isclose(
                 previous.timeline_end_seconds,
                 current.timeline_start_seconds,
