@@ -686,8 +686,10 @@ MIGRATIONS = (
         24,
         "global_media_file_cleanup_retry_index",
         (
-            "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_global_retry "
-            "ON media_file_cleanup(attempt_count, updated_at, created_at, cleanup_id)",
+            (
+                "CREATE INDEX IF NOT EXISTS idx_media_file_cleanup_global_retry "
+                "ON media_file_cleanup(attempt_count, updated_at, created_at, cleanup_id)"
+            ),
         ),
     ),
 )
