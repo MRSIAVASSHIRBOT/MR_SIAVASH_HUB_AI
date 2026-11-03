@@ -7,14 +7,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.repository import VideoBrandRepository
-from mrhub.video_intelligence.schemas import BrandIdentity
+from mrhub.video_intelligence.schemas import BeatInstruction, BrandIdentity
 from mrhub.video_intelligence.service import build_generation_prompt
 
 router = APIRouter(
@@ -25,15 +25,23 @@ router = APIRouter(
 
 
 class PromptCompositionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     style_summary: str = Field(min_length=1, max_length=1000)
-    beats: list[dict[str, object]] = Field(default_factory=list, max_length=20)
+    beats: list[BeatInstruction] = Field(default_factory=list, max_length=20)
     duration_seconds: int = Field(default=10, ge=3, le=60)
     aspect_ratio: str = Field(default="9:16", pattern=r"^(9:16|16:9|1:1|4:5)$")
     brand_name: str | None = Field(default=None, max_length=80)
-    colors: list[str] = Field(default_factory=list, max_length=8)
+    colors: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=8)
     typography: str | None = Field(default=None, max_length=240)
     sound_design: str | None = Field(default=None, max_length=500)
     final_frame: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_timeline(self) -> "PromptCompositionRequest":
+        if any(beat.end_seconds > self.duration_seconds for beat in self.beats):
+            raise ValueError("Beat timeline cannot exceed the requested duration")
+        return self
 
 
 def _brands() -> VideoBrandRepository:
