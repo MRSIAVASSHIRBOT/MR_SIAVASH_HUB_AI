@@ -4,11 +4,16 @@ from uuid import UUID, uuid4
 import pytest
 
 from mrhub.domain.tasks import TaskRecord
-from mrhub.video_intelligence.generation import VideoGenerationRequest
+from mrhub.video_intelligence.generation import (
+    GenerationStatus,
+    VideoGenerationRequest,
+    VideoGenerationResult,
+)
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
     VideoGenerationJobRepository,
 )
+from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
 
 def _repository(tmp_path):
@@ -173,3 +178,126 @@ def test_generation_payload_key_is_required(tmp_path, monkeypatch):
         repository.submit(
             "owner-a", analysis_id, "local", "renderer-v1", _request()
         )
+
+
+
+def test_successful_generation_registers_private_output_asset_atomically(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"o" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    repository.transition("owner-a", generation_id, "queued")
+    repository.transition(
+        "owner-a", generation_id, "submitting", provider_job_id="provider-job-1"
+    )
+    repository.transition("owner-a", generation_id, "running", progress_percent=80)
+    with pytest.raises(ValueError):
+        repository.transition("owner-a", generation_id, "succeeded")
+
+    from mrhub.media.repository import MediaAssetRepository
+    from mrhub.video_intelligence import service
+
+    media = MediaAssetRepository(repository.database_path)
+    asset_id, storage_key, output_path = media.new_output_target()
+    content = b"bounded mp4 test fixture"
+    output_path.write_bytes(content)
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=10.0,
+            width=720,
+            height=1280,
+            metadata_status="available",
+        ),
+    )
+    result = VideoGenerationResult(
+        provider="local",
+        model="renderer-v1",
+        provider_job_id="provider-job-1",
+        status=GenerationStatus.SUCCEEDED,
+        output_bytes=len(content),
+        duration_seconds=10.0,
+        width=720,
+        height=1280,
+    )
+    asset = repository.complete_with_output(
+        "owner-a", generation_id, asset_id, storage_key,
+        output_path, "generated-video.mp4", result,
+    )
+    assert asset["asset_id"] == asset_id
+    assert asset["owner_user_id"] == "owner-a"
+    assert asset["processing_status"] == "processed"
+    assert asset["processing_profile"] == "video_ai_generated"
+    job = repository.get("owner-a", generation_id)
+    assert job["status"] == "succeeded"
+    assert job["output_asset_id"] == asset_id
+    assert job["output_bytes"] == len(content)
+    assert job["output_width"] == 720
+    assert repository.load_for_handoff("owner-a", generation_id) is None
+
+    replay = repository.complete_with_output(
+        "owner-a", generation_id, asset_id, storage_key,
+        output_path, "generated-video.mp4", result,
+    )
+    assert replay["asset_id"] == asset_id
+    assert len(media.list_assets("owner-a")) == 1
+
+
+
+def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"q" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    repository.transition("owner-a", generation_id, "queued")
+    repository.transition(
+        "owner-a", generation_id, "submitting", provider_job_id="provider-job-2"
+    )
+    repository.transition("owner-a", generation_id, "running")
+
+    from mrhub.media.repository import MediaAssetRepository
+    from mrhub.video_intelligence import service
+
+    media = MediaAssetRepository(repository.database_path)
+    asset_id, storage_key, output_path = media.new_output_target()
+    output_path.write_bytes(b"video bytes")
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=10.0,
+            width=720,
+            height=1280,
+            metadata_status="available",
+        ),
+    )
+    result = VideoGenerationResult(
+        provider="other-provider",
+        model="renderer-v1",
+        provider_job_id="provider-job-2",
+        status=GenerationStatus.SUCCEEDED,
+        output_bytes=11,
+        duration_seconds=10.0,
+        width=720,
+        height=1280,
+    )
+    with pytest.raises(ValueError, match="Provider result does not match"):
+        repository.complete_with_output(
+            "owner-a", generation_id, asset_id, storage_key,
+            output_path, "generated-video.mp4", result,
+        )
+    assert repository.get("owner-a", generation_id)["status"] == "running"
+    assert media.get("owner-a", UUID(asset_id)) is None

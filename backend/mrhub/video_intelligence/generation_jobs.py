@@ -18,7 +18,11 @@ from mrhub.jobs.payload_envelope import (
     encrypt_payload,
     load_payload_key,
 )
-from mrhub.video_intelligence.generation import VideoGenerationRequest
+from mrhub.video_intelligence.generation import (
+    GenerationStatus,
+    VideoGenerationRequest,
+    VideoGenerationResult,
+)
 
 
 class VideoGenerationConflict(ValueError):
@@ -237,6 +241,126 @@ class VideoGenerationJobRepository:
             "request": payload,
         }
 
+    def complete_with_output(
+        self,
+        owner_user_id: str,
+        generation_id: UUID,
+        output_asset_id: str,
+        storage_key: str,
+        output_path: Path,
+        output_filename: str,
+        result: VideoGenerationResult,
+    ) -> dict[str, object] | None:
+        """Validate and atomically register a generated MP4 against its owner job."""
+        from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
+        from mrhub.video_intelligence.service import probe_video
+
+        if result.status is not GenerationStatus.SUCCEEDED:
+            raise ValueError("Only successful provider results can register media")
+        if (
+            not output_filename
+            or output_filename in {".", ".."}
+            or len(output_filename) > 255
+            or Path(output_filename).name != output_filename
+            or any(ord(character) < 32 for character in output_filename)
+        ):
+            raise ValueError("Generated output filename is invalid")
+        media = MediaAssetRepository(self.database_path)
+        expected_path = media.file_path(storage_key)
+        if expected_path.resolve() != output_path.resolve():
+            raise ValueError("Generated output path does not match its internal storage key")
+        if not output_path.is_file():
+            raise ValueError("Generated output file is missing")
+        size = output_path.stat().st_size
+        if size <= 0 or size > MAX_OUTPUT_BYTES or size != result.output_bytes:
+            raise ValueError("Generated output size does not match bounded provider metadata")
+
+        metadata = probe_video(output_path)
+        if (
+            metadata.metadata_status != "available"
+            or metadata.duration_seconds is None
+            or metadata.width is None
+            or metadata.height is None
+        ):
+            raise ValueError("Generated output failed independent media validation")
+        duration = float(metadata.duration_seconds)
+        if (
+            duration <= 0
+            or duration > 60
+            or metadata.width != result.width
+            or metadata.height != result.height
+            or abs(duration - float(result.duration_seconds)) > max(0.25, duration * 0.05)
+        ):
+            raise ValueError("Generated output metadata does not match provider result")
+
+        digest = hashlib.sha256()
+        with output_path.open("rb") as file:
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            job = connection.execute(
+                """SELECT provider, model, status, provider_job_id, output_asset_id
+                   FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if job is None:
+                return None
+            if (
+                job["provider"] != result.provider
+                or job["model"] != result.model
+                or job["provider_job_id"] != result.provider_job_id
+            ):
+                raise ValueError("Provider result does not match the selected generation job")
+            if job["status"] == "succeeded":
+                if job["output_asset_id"] != output_asset_id:
+                    raise ValueError("Generation job already has a different output asset")
+                existing = connection.execute(
+                    """SELECT * FROM content_assets
+                       WHERE asset_id = ? AND owner_user_id = ?""",
+                    (output_asset_id, owner_user_id),
+                ).fetchone()
+                return MediaAssetRepository._record(existing) if existing is not None else None
+            if job["status"] not in {"submitting", "running", "unknown_outcome"}:
+                raise ValueError("Generation job is not eligible for output registration")
+
+            connection.execute(
+                """INSERT INTO content_assets (
+                    asset_id, owner_user_id, source_asset_id, original_filename,
+                    media_type, storage_key, file_size, content_hash,
+                    processing_status, processing_profile, error_code, created_at, updated_at
+                ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'processed',
+                          'video_ai_generated', NULL, ?, ?)""",
+                (
+                    output_asset_id, owner_user_id, output_filename, storage_key,
+                    size, digest.hexdigest(), now, now,
+                ),
+            )
+            connection.execute(
+                """UPDATE video_generation_jobs
+                   SET status = 'succeeded', output_asset_id = ?, output_bytes = ?,
+                       output_duration_seconds = ?, output_width = ?, output_height = ?,
+                       progress_percent = 100, error_code = NULL, updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (
+                    output_asset_id, size, duration, metadata.width, metadata.height,
+                    now, str(generation_id), owner_user_id,
+                ),
+            )
+            connection.execute(
+                """DELETE FROM video_generation_payloads
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            )
+            asset = connection.execute(
+                """SELECT * FROM content_assets
+                   WHERE asset_id = ? AND owner_user_id = ?""",
+                (output_asset_id, owner_user_id),
+            ).fetchone()
+        return MediaAssetRepository._record(asset) if asset is not None else None
+
     def transition(
         self,
         owner_user_id: str,
@@ -250,9 +374,9 @@ class VideoGenerationJobRepository:
         allowed = {
             "prepared": {"queued", "cancelled"},
             "queued": {"submitting", "cancelled"},
-            "submitting": {"running", "succeeded", "failed", "unknown_outcome", "cancelled"},
-            "running": {"succeeded", "failed", "unknown_outcome", "cancelled"},
-            "unknown_outcome": {"running", "succeeded", "failed", "cancelled"},
+            "submitting": {"running", "failed", "unknown_outcome", "cancelled"},
+            "running": {"failed", "unknown_outcome", "cancelled"},
+            "unknown_outcome": {"running", "failed", "cancelled"},
             "succeeded": set(),
             "failed": set(),
             "cancelled": set(),
