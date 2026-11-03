@@ -9,6 +9,10 @@
   let pendingModelRunIdempotencyKey = null;
   let pendingModelRunPayloadFingerprint = null;
   let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
+  if (!token) {
+    sessionStorage.removeItem("mrh_video_analysis_id");
+    activeVideoAnalysisId = null;
+  }
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
   let videoPromptResults = [];
@@ -862,7 +866,7 @@
   $("#video-prompt-source").addEventListener("change", renderSelectedVideoPrompt);
   $("#video-copy-prompt").addEventListener("click", copyVideoPrompt);
 
-    $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
+  $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
   $("#media-refresh-button").addEventListener("click", () =>
     loadMediaAssets().catch((error) => message("#media-message", error.message, "error"))
   );
