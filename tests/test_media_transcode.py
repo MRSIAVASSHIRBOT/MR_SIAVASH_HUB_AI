@@ -247,6 +247,10 @@ def test_transcode_bounds_decoder_resources_and_discards_process_output(
     assert result["status"] == "succeeded"
     assert command[command.index("-max_pixels") + 1] == "33554432"
     assert command.index("-max_pixels") < command.index("-i")
+    scale_filter = command[command.index("-vf") + 1]
+    assert "min(1280,iw)" in scale_filter
+    assert "min(1280,ih)" in scale_filter
+    assert "force_divisible_by=2" in scale_filter
     assert kwargs["stdout"] == subprocess.DEVNULL
     assert kwargs["stderr"] == subprocess.DEVNULL
     assert "capture_output" not in kwargs
