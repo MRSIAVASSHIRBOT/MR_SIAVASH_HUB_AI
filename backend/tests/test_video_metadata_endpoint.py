@@ -319,3 +319,33 @@ def test_get_and_update_timeline_draft_are_owner_scoped(monkeypatch):
     assert calls["get"] == ("owner-a", draft_id)
     assert calls["update"] == ("owner-a", draft_id, 1)
 
+
+def test_generation_submission_fails_closed_without_registered_provider(monkeypatch):
+    from fastapi import Response
+
+    from mrhub.api.routes.video_intelligence import (
+        GenerationSubmissionRequest,
+        submit_video_generation,
+    )
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    def unavailable(_provider, _model):
+        raise LookupError("provider is not registered")
+
+    monkeypatch.setattr(video_generation_registry, "get", unavailable)
+    with pytest.raises(HTTPException) as error:
+        submit_video_generation(
+            uuid4(),
+            GenerationSubmissionRequest(
+                provider="unconfigured",
+                model="unconfigured-model",
+                prompt="An original visual sequence",
+                aspect_ratio="9:16",
+                duration_seconds=10,
+            ),
+            Response(),
+            AuthenticatedUser(user_id="owner-a", username="owner"),
+            "generation-idempotency-key",
+        )
+    assert error.value.status_code == 503
+    assert error.value.detail["code"] == "provider_unavailable"
