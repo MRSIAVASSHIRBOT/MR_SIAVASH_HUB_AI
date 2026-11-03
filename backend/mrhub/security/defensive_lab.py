@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+MAX_AUTHORIZATION_LIFETIME_DAYS = 30
 
 
 class ScopeValidationError(ValueError):
@@ -36,8 +39,10 @@ class DefensiveReviewScope(BaseModel):
     @classmethod
     def assets_must_be_unique_and_nonblank(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         normalized = tuple(item.strip() for item in value)
-        if any(not item for item in normalized):
-            raise ValueError("authorized assets must not be blank")
+        if any(not item or len(item) > 200 for item in normalized):
+            raise ValueError("authorized assets must be nonblank and at most 200 characters")
+        if any(any(ord(character) < 32 for character in item) for item in normalized):
+            raise ValueError("authorized assets must not contain control characters")
         if len(set(normalized)) != len(normalized):
             raise ValueError("authorized assets must be unique")
         return normalized
@@ -48,8 +53,12 @@ class DefensiveReviewScope(BaseModel):
             raise ScopeValidationError("Current time must be timezone-aware")
         if self.expires_at.tzinfo is None or self.expires_at.utcoffset() is None:
             raise ScopeValidationError("Authorization expiry must be timezone-aware")
-        if self.expires_at.astimezone(UTC) <= current.astimezone(UTC):
+        expires_at = self.expires_at.astimezone(UTC)
+        current_utc = current.astimezone(UTC)
+        if expires_at <= current_utc:
             raise ScopeValidationError("Defensive review authorization has expired")
+        if expires_at > current_utc + timedelta(days=MAX_AUTHORIZATION_LIFETIME_DAYS):
+            raise ScopeValidationError("Defensive review authorization exceeds the 30-day limit")
 
     def assert_asset(self, asset: str, now: datetime | None = None) -> str:
         self.assert_current(now)
