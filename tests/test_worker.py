@@ -639,7 +639,6 @@ def test_worker_summary_includes_recovery_metrics_without_private_task_data(tmp_
     assert "PRIVATE TASK DESCRIPTION MUST NOT APPEAR" not in str(summary)
 
 
-
 def test_worker_fails_closed_when_heartbeat_raises_database_error(tmp_path, monkeypatch):
     _repository, worker = make_worker(tmp_path)
     lease = WorkerLease(
