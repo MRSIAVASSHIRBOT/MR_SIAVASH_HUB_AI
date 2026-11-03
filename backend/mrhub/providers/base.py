@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from mrhub.providers.types import ModelDescriptor
 
 
+MAX_PROVIDER_INPUT_CHARS = 32_000
+
+
 class ProviderError(Exception):
     """Base provider error carrying only a stable, non-sensitive code."""
 
@@ -29,7 +32,7 @@ class ProviderTimeoutError(ProviderError):
 class ProviderRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    input_text: str = Field(min_length=1, max_length=32_000)
+    input_text: str = Field(min_length=1, max_length=MAX_PROVIDER_INPUT_CHARS)
     max_output_tokens: int = Field(default=1024, ge=1, le=8192)
 
 
