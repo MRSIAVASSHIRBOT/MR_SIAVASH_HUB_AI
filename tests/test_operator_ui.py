@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 from importlib.resources import files
@@ -133,3 +134,17 @@ def test_operator_ui_javascript_parses_with_node_when_available():
         timeout=10,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_operator_ui_static_id_selectors_resolve_and_ids_are_unique():
+    html = files("mrhub").joinpath("web/index.html").read_text(encoding="utf-8")
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    html_ids = re.findall(r'\bid=["\']([^"\']+)["\']', html)
+    duplicate_ids = sorted({item for item in html_ids if html_ids.count(item) > 1})
+    assert not duplicate_ids, f"Duplicate operator UI IDs: {duplicate_ids}"
+
+    declared_ids = set(html_ids)
+    selected_ids = set(re.findall(r'\$\(["\']#([A-Za-z][\w-]*)["\']\)', script))
+    missing_ids = sorted(selected_ids - declared_ids)
+    assert not missing_ids, f"Operator UI selectors reference missing IDs: {missing_ids}"
