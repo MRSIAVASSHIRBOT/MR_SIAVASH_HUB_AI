@@ -1,6 +1,8 @@
 from pydantic import ValidationError
 
 from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
+from mrhub.api.routes.video_intelligence import PromptCompositionRequest, compose_prompt
+from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
 
 
@@ -63,3 +65,19 @@ def test_probe_video_does_not_accept_nonexistent_path(tmp_path, monkeypatch):
     monkeypatch.setattr("mrhub.video_intelligence.service.shutil.which", lambda _name: "/usr/bin/ffprobe")
     result = probe_video(tmp_path / "missing.mp4")
     assert result.metadata_status == "probe_failed"
+
+
+def test_authenticated_prompt_composition_returns_draft_without_execution():
+    payload = PromptCompositionRequest(
+        style_summary="Original cinematic 3D motion",
+        beats=[{"start_seconds": 0, "end_seconds": 5, "generation_instruction": "Reveal an original object"}],
+        duration_seconds=10,
+        brand_name="MR_SIAVASH_IR_BOT",
+    )
+    result = compose_prompt(
+        payload,
+        AuthenticatedUser(user_id="owner-1", username="owner"),
+    )
+    assert result["status"] == "composed"
+    assert result["execution"] == "not_started"
+    assert "MR_SIAVASH_IR_BOT" in result["prompt"]
