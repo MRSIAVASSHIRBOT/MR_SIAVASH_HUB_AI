@@ -127,8 +127,8 @@ This backlog converts the audit into ordered work packages. It is a plan and evi
 | ID | Work package | Dependencies | Deliverables | Acceptance gate | Initial state |
 |---|---|---|---|---|---|
 | WP-00 | Mainline and change control | None | Current audit, branch/PR inventory, one status vocabulary, exact-SHA evidence | Every integration starts from current main; no stale branch or unreviewed migration is replayed | IN_PROGRESS |
-| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | PLANNED |
-| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | PLANNED |
+| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | IN_PROGRESS (source review + runbook PR #213) |
+| WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | IN_PROGRESS (runtime test PR #214) |
 | WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | PLANNED |
 | WP-04 | Memory and knowledge integrity | WP-03 | Source-content verification, provenance checks, bounded context assembly and retrieval evaluation | Owner isolation, deletion/export, provenance, stale-source behavior and prompt-injection boundaries pass tests | PLANNED |
 | WP-05 | Tools and MCP governance | WP-02, WP-03 | Compatibility/integrity checks, least-privilege grants, tool lifecycle and audit coverage | Invalid schemas, denied grants, timeout, oversized output and untrusted tool results fail closed | PLANNED |
@@ -173,3 +173,14 @@ The current `backend/mrhub/operations/backup.py` implementation is intentionally
 
 
 Live queue refresh: PR #213 was opened from current main for the coordinated media/database and key-recovery runbook. The open historical/documentation queue now includes #183, #186, #210, #211, #212, and #213. The current main SHA remains `067177554ac923864981c11f80628e92aea0aa70`; none of these PRs is merged. PR #212's current exact-head Backend CI and Defensive Python Scan are successful; its Python 3.11/3.12 CI workflow was still running when this note was added. PR #213's validation workflows were also running.
+
+### 8.7 Workflow lifecycle and integration evidence refresh
+
+- Source review confirms that the worker service is explicitly opt-in and pull-driven. The service polls `WorkerEngine.run_once()`; each cycle handles at most one task and at most one due content schedule. API startup does not implicitly start a worker.
+- The durable emergency-stop flag gates new task claims and schedule dispatch. It is not a process-kill signal and cannot roll back an in-flight external operation. Queued work remains queued until explicit authenticated resume.
+- Existing unit/integration coverage exercises stop persistence, in-flight behavior, workflow cancellation races, stale-lease fencing, and ambiguous external side-effect recovery.
+- PR #214 adds the missing real-process smoke path: stop via authenticated API, enqueue a deterministic workflow, verify it remains queued across worker polls, explicitly resume, then verify completion. This is pending exact-head CI and is not yet runtime-verified evidence.
+- PR #212 now has successful exact-head Backend CI, CI, and Defensive Python Scan on `c164847a84c11269643831752f344ca2183d536a`.
+- PR #213 now has successful exact-head Backend CI, CI, and Defensive Python Scan on `b7c9ecc374e9b2e5151bfe3440b486ea3bb604d6`; the runbook itself remains unexercised on the target Windows device.
+- PR #214 exact head is `413164eb2b1021d8da1eb0c845a99e2422d49bd4`; its workflows have not yet been returned by the Actions API at this observation.
+- Main remains `067177554ac923864981c11f80628e92aea0aa70`. No PR in this delivery batch has been merged.
