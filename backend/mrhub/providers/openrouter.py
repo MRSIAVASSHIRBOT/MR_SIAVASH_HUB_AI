@@ -27,6 +27,7 @@ class OpenRouterProvider:
         base_url: str = "https://openrouter.ai/api/v1",
         timeout_seconds: float = 30.0,
         transport: httpx.BaseTransport | None = None,
+        vision_enabled: bool = False,
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid remote model name")
@@ -41,7 +42,7 @@ class OpenRouterProvider:
         self.descriptor = ModelDescriptor(
             provider="openrouter",
             model=model.strip(),
-            capability=ModelCapability(text=True),
+            capability=ModelCapability(text=True, vision=vision_enabled),
             available=True,
             local=False,
             priority=50,
@@ -103,13 +104,26 @@ class OpenRouterProvider:
             return ProviderHealth(available=False, reason_code="provider_unavailable")
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        if request.images and not self.descriptor.capability.vision:
+            raise ProviderConfigurationError("Vision is not enabled for this remote model")
+        message_content: object = request.input_text
+        if request.images:
+            message_content = [{"type": "text", "text": request.input_text}] + [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{item.mime_type};base64,{item.data_base64}"
+                    },
+                }
+                for item in request.images
+            ]
         try:
             with self._client() as client:
                 response = client.post(
                     "chat/completions",
                     json={
                         "model": self.descriptor.model,
-                        "messages": [{"role": "user", "content": request.input_text}],
+                        "messages": [{"role": "user", "content": message_content}],
                         "max_tokens": request.max_output_tokens,
                         "stream": False,
                     },
