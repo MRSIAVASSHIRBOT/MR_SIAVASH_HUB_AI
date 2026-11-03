@@ -194,6 +194,13 @@ class WorkerEngine:
                            WHERE task_id = ?""",
                         (str(task.task_id),),
                     ).fetchone()
+                    if video_analysis is not None:
+                        # This row is being recovered only after the worker lease
+                        # expired; no attempt with this fencing token remains active.
+                        connection.execute(
+                            "DELETE FROM media_asset_analysis_leases WHERE task_id = ?",
+                            (str(task.task_id),),
+                        )
                     if video_analysis is not None and video_analysis["status"] == "completed":
                         recovered_status = TaskStatus.SUCCEEDED
                         audit_outcome = "succeeded"
