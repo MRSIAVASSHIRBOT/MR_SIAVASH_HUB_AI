@@ -48,6 +48,11 @@ if (Test-Path $runtimeFile) {
             $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($entry.Pid)" -ErrorAction SilentlyContinue
             if ($proc -and $proc.CommandLine -and $proc.CommandLine.Contains($entry.Match)) {
                 Stop-Process -Id $entry.Pid -Force -ErrorAction SilentlyContinue
+                Wait-Process -Id $entry.Pid -Timeout 10 -ErrorAction SilentlyContinue
+                $remaining = Get-CimInstance Win32_Process -Filter "ProcessId = $($entry.Pid)" -ErrorAction SilentlyContinue
+                if ($remaining -and $remaining.CommandLine -and $remaining.CommandLine.Contains($entry.Match)) {
+                    throw "Previous $($entry.Match) process did not exit; refusing to start a duplicate service."
+                }
             }
         }
     }

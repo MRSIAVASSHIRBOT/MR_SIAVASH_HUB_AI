@@ -17,7 +17,14 @@ foreach ($target in $targets) {
         $allStopped = $false
         continue
     }
-    Stop-Process -Id $target.Pid -ErrorAction Stop
+    Stop-Process -Id $target.Pid -ErrorAction SilentlyContinue
+    Wait-Process -Id $target.Pid -Timeout 10 -ErrorAction SilentlyContinue
+    $remaining = Get-CimInstance Win32_Process -Filter "ProcessId = $($target.Pid)" -ErrorAction SilentlyContinue
+    if ($remaining -and $remaining.CommandLine -and $remaining.CommandLine.Contains($target.Match)) {
+        Write-Warning "$($target.Label): process is still running after the shutdown timeout."
+        $allStopped = $false
+        continue
+    }
     Write-Host "$($target.Label): stopped."
 }
 if ($allStopped) {
