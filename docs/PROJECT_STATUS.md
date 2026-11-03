@@ -313,3 +313,41 @@ There are 13 open PRs at this snapshot:
 ### Verification limitations
 
 This is a metadata and changed-path audit, not a code-level approval. No source-level review or combined test run is implied by the workflow results above. Checks marked passed apply only to the exact PR head and named workflow. No PR was merged, closed, force-pushed, or deleted as part of this snapshot. Windows target-device acceptance, clean install/upgrade/rollback/restore, and live external-provider acceptance remain separate gates.
+
+
+## Whole-project refresh — 2026-11-03 20:03 UTC
+
+**Current main:** `067177554ac923864981c11f80628e92aea0aa70`  
+**Whole-project audit:** [PR #211](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/211), based directly on this main SHA.
+
+This addendum supersedes earlier live-queue counts and video-only snapshots above; earlier entries remain historical records.
+
+### Newly confirmed integration state
+
+- PR #207 (owner-scoped editable timeline drafts) and PR #209 (bounded owner-scoped video asset analyzer) are merged.
+- PR #209 exact head `bfc2179391cbaaced378040b1889f3d1268a8b8d` has successful Backend CI, CI, and Defensive Python Scan runs.
+- PR #208 remains merged; durable generation approval/handoff is not evidence of an operational AI-video provider.
+- The latest main combined-status query returned no status records. No CI pass on the current main SHA is claimed here.
+- The recursive repository tree contains 319 entries, including 92 Python test files, 19 backend domain directories, and six GitHub Actions workflow files. These are inventory counts, not completeness claims.
+
+### Current open PR queue
+
+- #183 — historical project audit ledger; its base/snapshot is stale and must not be treated as the current status source.
+- #186 — FFmpeg renderer; do not merge as-is. Rebuild render-only changes on current main, preserve migrations 22–26, allocate the next unused migration after rechecking, and add a fenced source-media-use lease for the entire render interval.
+- #210 — historical video integration status; based on the previous main SHA and superseded as the master status by #211.
+- #211 — current whole-project readiness audit; documentation-only, draft, not merged.
+
+### Whole-project remaining work
+
+The product remains broader than video. Important cross-domain gaps include:
+- scheduled workflow triggers and defined stop semantics for already-running synchronous/external operations;
+- independent publisher/source-content verification and continued provider/context budget controls;
+- external HTTPS media origin and controlled Telegram/Instagram provider acceptance;
+- NEXUS isolated test execution only after explicit user authorization, broader analysis coverage, and Discovery source connectors/provenance;
+- approved advisory-snapshot/CVE review, log analysis, and scoped authorized asset inventory in the defensive lab;
+- target-device restore drill and separately protected media/encryption-key backup;
+- clean Windows install/upgrade/rollback, full operator-UI acceptance, and packaging/release verification.
+
+### Reporting boundary
+
+Implementation, automated tests, runtime verification, owner acceptance, and production readiness remain separate statuses. No Windows/laptop test, live social publish, external provider acceptance, desktop package acceptance, or production-readiness claim is made by this refresh. Do not request owner-device access until the whole-project pre-device gates and the complete test package are ready.
