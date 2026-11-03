@@ -93,11 +93,16 @@ def submit_model_run(
         ) from exc
 
     query = (payload.context_query or payload.goal)[:200]
+    context_options: dict[str, object] = {
+        "query": query,
+        "include_memory": payload.include_memory,
+        "include_knowledge": payload.include_knowledge,
+    }
+    freshness_policy = getattr(payload, "knowledge_freshness_policy", None)
+    if freshness_policy is not None:
+        context_options["knowledge_freshness_policy"] = freshness_policy
     context = AgentContextAssembler(settings.database_path).assemble(
-        user.user_id,
-        query=query,
-        include_memory=payload.include_memory,
-        include_knowledge=payload.include_knowledge,
+        user.user_id, **context_options
     )
     evidence = json.dumps(
         context["passages"], ensure_ascii=False, separators=(",", ":")
