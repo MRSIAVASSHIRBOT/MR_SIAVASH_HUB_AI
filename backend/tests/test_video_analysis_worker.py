@@ -134,7 +134,7 @@ def test_video_analysis_worker_releases_asset_lease_after_analyzer_failure(
     )
 
     with pytest.raises(ValueError, match="Video analysis execution failed"):
-        handler(task, lease=lease, lease_lost=__import__("threading").Event())
+        handler(task, lease=lease, lease_lost=Event())
 
     record = jobs.get("owner-a", UUID(accepted["analysis_id"]))
     assert record is not None
