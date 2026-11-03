@@ -127,7 +127,7 @@ This backlog converts the audit into ordered work packages. It is a plan and evi
 | ID | Work package | Dependencies | Deliverables | Acceptance gate | Initial state |
 |---|---|---|---|---|---|
 | WP-00 | Mainline and change control | None | Current audit, branch/PR inventory, one status vocabulary, exact-SHA evidence | Every integration starts from current main; no stale branch or unreviewed migration is replayed | IN_PROGRESS |
-| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | IN_PROGRESS (source review + runbook PR #213) |
+| WP-01 | Backup and restore reliability | WP-00 | Database restore drill, media inventory/backup procedure, separately protected key-material recovery procedure, operator runbook | Checksums and SQLite integrity pass; restore to a clean destination succeeds; media/key recovery is explicitly tested without placing secrets in the database backup or repository | IN_PROGRESS (runbook PR #213 + media integrity verifier PR #216) |
 | WP-02 | Workflow and Job Engine lifecycle | WP-00 | Explicit scheduled-trigger decision; lifecycle contract for stop/cancel/pause/resume; recovery tests for in-flight external effects | Worker lease/fencing, cancellation and ambiguous side-effect behavior pass fault-injection and multi-process tests; no blind replay | IN_PROGRESS (runtime test PR #214; exact-head CI pending) |
 | WP-03 | AI Core and provider governance | WP-00, WP-02 | Model/context/output budgets, provider capability matrix, explicit opt-in configuration and safe failure semantics | Deterministic stub and configured real adapters are separately tested; no silent provider fallback; bounded timeout/output/cost behavior is verified | IN_PROGRESS (provider prompt budget fix PR #215) |
 | WP-04 | Memory and knowledge integrity | WP-03 | Source-content verification, provenance checks, bounded context assembly and retrieval evaluation | Owner isolation, deletion/export, provenance, stale-source behavior and prompt-injection boundaries pass tests | PLANNED |
@@ -193,3 +193,10 @@ Source review found a mismatch between the root Agent run input budget (up to 64
 PR #215 centralizes the provider input limit and adds a pre-dispatch check that returns `budget_exhausted/provider_input_budget_exceeded` without calling the provider. It includes a regression test and operator documentation. The first exact-head Backend CI run exposed a Ruff import-spacing issue; that was corrected. Current head is `6c2aedaecd9195913507369568dcf99207dbc222`, with Backend CI, CI, and Defensive Python Scan queued/pending. This is not yet integrated or runtime-verified.
 
 PR #214 adds process-level emergency-stop/resume coverage to the separate-process API/worker smoke test. All three workflows (Backend CI, CI, Defensive Python Scan) passed on exact head `413164eb2b1021d8da1eb0c845a99e2422d49bd4`.
+
+
+### 8.9 Media recovery verification progress
+
+PR #216 adds a read-only `verify_media_assets(database_path)` consistency gate for the sibling `content_assets/` directory. It compares each registered storage key, file size, and SHA-256 digest; rejects unsafe/symlinked paths; and counts unregistered entries without exposing asset identifiers or contents. It does not copy or delete media and requires API/worker writers to be stopped for a meaningful backup-point check.
+
+PR #216 exact head: `33f75abf6e1a1b015153f8223ea0bff9af3d6d28`. Backend CI and Defensive Python Scan are in progress; CI is pending. It is not yet tested or integrated.
