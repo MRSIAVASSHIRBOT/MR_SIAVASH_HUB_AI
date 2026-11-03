@@ -38,7 +38,8 @@ from mrhub.video_intelligence.timeline_drafts import (
     TimelineDraftUpdate,
     TimelineBeat,
     VideoTimelineDraftRepository,
-)\nfrom mrhub.video_intelligence.service import (
+)
+from mrhub.video_intelligence.service import (
     build_generation_prompt,
     build_prompt_from_visual_analysis,
     build_timeline_from_visual_analysis,
