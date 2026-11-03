@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from mrhub.agents.context import AgentContextAssembler
+from mrhub.agents.orchestrator import AgentLoopRequest
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.agent_run import AgentRunRequest
 from mrhub.api.routes.models import build_model_router
@@ -102,6 +103,18 @@ def submit_model_run(
     evidence = json.dumps(
         context["passages"], ensure_ascii=False, separators=(",", ":")
     )
+    try:
+        AgentLoopRequest(
+            goal=payload.goal,
+            retrieved_context=evidence,
+            prefer_local=payload.provider_mode == "local",
+            max_turns=payload.max_turns,
+            max_output_tokens=payload.max_output_tokens,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="Agent input exceeds the supported bounds"
+        ) from exc
     context_sources = [
         {
             key: passage.get(key)
