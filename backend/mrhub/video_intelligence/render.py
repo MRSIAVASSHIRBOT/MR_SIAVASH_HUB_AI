@@ -83,8 +83,6 @@ def build_ffmpeg_command(
         "-hide_banner",
         "-loglevel",
         "error",
-        "-protocol_whitelist",
-        "file,pipe",
         "-max_pixels",
         "33554432",
         "-threads",
@@ -103,7 +101,7 @@ def build_ffmpeg_command(
             raise VideoRenderError("render_source_missing")
         if not source.is_file():
             raise VideoRenderError("render_source_file_missing")
-        command.extend(["-i", str(source)])
+        command.extend(["-protocol_whitelist", "file,pipe", "-i", str(source)])
         label = f"v{index}"
         labels.append(f"[{label}]")
         filter_parts.append(
