@@ -272,3 +272,29 @@ def test_prompt_options_require_draft_id_and_version_together():
         AnalysisPromptOptions(
             timeline_draft_id="33333333-3333-4333-8333-333333333333"
         )
+
+
+
+def test_timeline_draft_can_be_loaded_by_analysis_and_asset_scope(tmp_path):
+    repository = _repository(tmp_path)
+    created = _create(repository)
+
+    found = repository.get_for_analysis_asset(
+        "owner-a",
+        UUID("11111111-1111-4111-8111-111111111111"),
+        UUID("22222222-2222-4222-8222-222222222222"),
+    )
+
+    assert found is not None
+    assert found["draft_id"] == created["draft_id"]
+    assert found["version"] == 1
+    assert repository.get_for_analysis_asset(
+        "owner-b",
+        UUID("11111111-1111-4111-8111-111111111111"),
+        UUID("22222222-2222-4222-8222-222222222222"),
+    ) is None
+    assert repository.get_for_analysis_asset(
+        "owner-a",
+        UUID("99999999-9999-4999-8999-999999999999"),
+        UUID("22222222-2222-4222-8222-222222222222"),
+    ) is None

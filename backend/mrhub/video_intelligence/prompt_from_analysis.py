@@ -316,6 +316,7 @@ def compose_prompts_from_analysis(
             "prompt": prompt,
             "duration_seconds": duration_seconds,
             "beat_count": len(beats),
+            "beats": [beat.model_dump(mode="json") for beat in beats],
             "timeline": timeline,
             "scene_cut_count": len(scene_cut_timestamps),
             "scene_boundaries_truncated": boundaries_truncated,

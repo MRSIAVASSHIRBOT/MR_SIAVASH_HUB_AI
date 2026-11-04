@@ -138,6 +138,21 @@ class VideoTimelineDraftRepository:
             ).fetchone()
         return self._record(row) if row is not None else None
 
+    def get_for_analysis_asset(
+        self,
+        owner_user_id: str,
+        analysis_id: UUID,
+        asset_id: UUID,
+    ) -> dict[str, object] | None:
+        """Find the owner's saved draft for one exact analysis asset."""
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                """SELECT * FROM video_timeline_drafts
+                   WHERE owner_user_id = ? AND analysis_id = ? AND asset_id = ?""",
+                (owner_user_id, str(analysis_id), str(asset_id)),
+            ).fetchone()
+        return self._record(row) if row is not None else None
+
     def update(
         self,
         owner_user_id: str,

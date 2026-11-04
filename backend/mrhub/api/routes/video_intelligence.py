@@ -530,6 +530,21 @@ def create_timeline_draft(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/timeline-drafts")
+def get_timeline_draft_for_analysis_asset(
+    analysis_id: UUID,
+    asset_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Find the authenticated owner's draft for one exact analysis asset."""
+    draft = _timeline_drafts().get_for_analysis_asset(
+        user.user_id, analysis_id, asset_id
+    )
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Timeline draft not found")
+    return draft
+
+
 @router.get("/timeline-drafts/{draft_id}")
 def get_timeline_draft(
     draft_id: UUID,
