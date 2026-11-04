@@ -1,18 +1,18 @@
 # Remaining Work Dependency Map
 
-Reviewed against `main` at `e561da2b7641fc4ba78d6e90710998b8fd78b2d1` on 2026-11-03.
+Reviewed against `main` at `3134fb50d47f7ab87934971a27e2ba90c85263d8` on 2026-11-04.
 
 This plan defines seven remaining delivery workstreams. They are ordered by dependency and risk, not by visual feature appeal. A workstream is complete only when its acceptance gates are met on the exact proposed commit. Green CI alone is not a production-readiness claim.
 
 ## 1. Retrieval safety and Agent context integration
 
-**Existing foundation:** owner-scoped memory and source-backed knowledge APIs, FTS5 retrieval, citation references, and a bounded context assembler.
+**Existing foundation:** owner-scoped memory and source-backed knowledge APIs, FTS5 retrieval, citation references, bounded context assembly, owner-declared freshness metadata, source/chunk integrity checks, repeatable synthetic retrieval metrics, and context integration into both synchronous `POST /agent/run` and queued `POST /agent/model-runs`. Retrieved passages are carried as untrusted evidence; they do not grant tool authority.
 
 **Remaining work**
-- Build a synthetic prompt-injection corpus covering retrieved documents, hostile instructions, misleading source labels, and conflicting evidence.
-- Add explicit source trust/freshness metadata and deterministic context-budget accounting.
-- Test owner/scope isolation, stale-source behavior, citation preservation, truncation, and refusal to treat retrieved text as tool authority.
-- Integrate context into an actual model-driven orchestration path only after the standalone gates pass.
+- Add independent publisher/source-content verification beyond local hashes and owner-declared freshness labels.
+- Expand prompt-injection and conflicting-evidence evaluations with a representative corpus, not only synthetic fixtures.
+- Keep deterministic context-budget, owner-isolation, stale-source, citation-preservation, truncation, and policy-separation regressions across both synchronous and durable Agent paths.
+- Evaluate vector retrieval only if measured FTS5 quality is insufficient.
 
 **Depends on:** existing memory, knowledge, provider router, and policy boundaries.
 
@@ -20,13 +20,13 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 2. Model-driven Agent Orchestrator
 
-**Existing foundation:** provider registry/router, agent planning and tool validation, workflow execution, context assembly, and audit events.
+**Existing foundation:** bounded `AgentOrchestrator` model → proposal → policy-checked tool → observation loop; strict proposal schemas; registered specialist delegation; server-side ToolRegistry validation and policy checks; bounded turns, runtime, input size, tool calls and delegations; retrieved context treated as untrusted; and worker-owned durable model-run submission with encrypted request/result storage.
 
 **Remaining work**
-- Implement a bounded model → proposal → policy-check → tool execution → observation loop.
-- Enforce per-step and total token/time/tool budgets, maximum turns, cancellation, and deterministic termination.
-- Keep model output non-authoritative; each tool call is independently schema-validated and policy-authorized.
-- Record redacted decision traces and provider/model identity without logging secrets or private payloads.
+- Define durable per-turn checkpoints only if resumability is required; the current model/tool loop is intentionally one non-replayable workflow step.
+- Strengthen failure-injection tests around cancellation and lease loss during provider calls and external tool effects. Synchronous provider calls cannot be forcibly interrupted; late results must not dispatch new tools.
+- Keep decision traces redacted and preserve provider/model identity without logging secrets or private payloads.
+- Expand representative integration tests for tool denial, approval-required outcomes, budget exhaustion, delegation, cancellation and unknown outcomes.
 
 **Depends on:** workstream 1 and existing Job/Workflow Engine.
 
@@ -34,13 +34,13 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 3. Complete the content/media publishing vertical
 
-**Existing foundation:** owner-scoped drafts and revisions, explicit approval, durable schedules, worker dispatch, local media storage/transcoding, and opt-in Telegram text publishing.
+**Existing foundation:** owner-scoped drafts/revisions, explicit approval, durable schedules and worker dispatch; opt-in Telegram text and photo/video media adapters; opt-in Instagram Graph API image publishing; signed public-media URL generation; owner-scoped media storage; bounded FFmpeg processing and local rendering.
 
 **Remaining work**
-- Add media-aware Telegram publishing only with size/type limits and tested upload handling.
-- Implement Instagram only after professional-account Graph API configuration and a secure, externally reachable media delivery design exist.
-- Add provider-specific reconciliation for ambiguous outcomes, schedule deduplication, and operator-visible failure states.
-- Keep generated media providers optional and approval-gated.
+- Complete public HTTPS media-origin configuration, edge controls, Graph API scopes/credentials, and a controlled real-account acceptance test.
+- Add/verify provider-specific reconciliation for ambiguous social-publishing outcomes, schedule deduplication and operator-visible failure states.
+- Connect versioned editable timeline drafts to immutable render-job snapshots; currently the render route consumes the original analysis timeline, not the edited draft.
+- Keep external generation providers optional, reviewed, disabled by default and approval-gated; no video-generation adapter is currently registered.
 
 **Depends on:** existing asset store, schedule dispatcher, approval policy, and secret configuration.
 
@@ -48,13 +48,12 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 4. Workflow operations and emergency-stop control
 
-**Existing foundation:** durable jobs/workflows, lease fencing, cancellation, safe resume, recovery, heartbeat readiness, and operator reconciliation.
+**Existing foundation:** durable jobs/workflows, lease fencing, cancellation, safe resume, stale recovery, heartbeat readiness, authenticated emergency-stop and schedule-pause controls, and operator reconciliation. Current stop controls prevent new claims/dispatch.
 
 **Remaining work**
-- Add an explicit emergency-stop state that prevents new dispatch and blocks resumption until an owner clears it.
-- Define behavior for in-flight synchronous handlers and external operations already submitted.
-- Add race tests for stop-vs-claim, stop-vs-resume, stop-vs-retry, and stale worker lease ownership.
-- Document recovery and operator procedures.
+- Define and test behavior for in-flight synchronous handlers and external operations already submitted; stop is not a claim that arbitrary provider calls can be forcibly interrupted.
+- Add race tests for stop-vs-claim, stop-vs-resume, stop-vs-retry and stale worker ownership.
+- Document operator recovery procedures and verify them in a separate-process deployment drill.
 
 **Depends on:** Job/Workflow Engine and operator console.
 
@@ -62,11 +61,12 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 5. NEXUS Developer Agent (read-only first)
 
+**Existing foundation:** bounded read-only Python repository inventory and AST analysis, alias-aware import/shell API checks, evidence-linked findings, and review-only patch proposals with syntax checks, AST risk deltas and remediation guidance. No target code is executed and patches are not auto-applied.
+
 **Remaining work**
-- Build repository inventory and static read-only analysis over explicitly selected repositories/directories.
-- Produce findings with file/line evidence, confidence, and remediation suggestions.
-- [x] Add review-only patch proposals with syntax checks, AST risk deltas, confidence, line evidence, and remediation guidance; never apply automatically.
-- Run tests only in an isolated, resource-bounded environment after an explicit user action.
+- Run proposed tests only after explicit user action in an isolated, resource-bounded environment.
+- Broaden language/dependency coverage and validate performance on larger repositories.
+- Keep repository scope explicit and prohibit implicit network access or arbitrary shell execution.
 
 **Depends on:** Agent Orchestrator, capability registry, audit trail, and safe file access.
 
@@ -88,11 +88,13 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 7. Packaging, backup/restore, and release readiness
 
+**Existing foundation:** SQLite backup/restore helpers with checksum and integrity verification, media integrity verification, versioned migrations, Windows local launcher scripts, packaged UI verification in CI, and release-readiness runbooks.
+
 **Remaining work**
-- Define a supported local installation and upgrade path for the target Windows environment.
-- Add backup/restore procedures covering SQLite, media assets, and the workflow encryption key as separate protected material.
-- Add restore drills, migration checks, rollback guidance, and health checks.
+- Demonstrate a target-machine restore drill covering SQLite, media assets and the separately protected workflow encryption key.
+- Complete a clean Windows install/upgrade/rollback and health-check acceptance run.
 - Measure resource use on the actual target laptop; do not infer local-model compatibility from generic estimates.
+- Define dependency locking, license selection, release version/tag policy and owner-approved publication.
 - Keep loopback-only networking as the default; multi-worker or public deployment requires shared rate limiting, trusted-proxy configuration, and separate security review.
 
 **Depends on:** stable core services and completed operational runbooks.
