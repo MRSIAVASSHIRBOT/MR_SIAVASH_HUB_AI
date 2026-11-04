@@ -151,6 +151,64 @@ async def test_mcp_bridge_does_not_infer_missing_permission_grants():
     assert called == []
 
 
+@pytest.mark.anyio
+async def test_mcp_revalidates_shared_policy_after_agent_plan():
+    class RevocablePolicy(PolicyEngine):
+        def __init__(self):
+            self.calls = 0
+
+        def evaluate(self, request):
+            self.calls += 1
+            if self.calls == 1:
+                return PolicyResult(
+                    decision=PolicyDecision.ALLOW,
+                    reason="Allowed during agent planning",
+                )
+            return PolicyResult(
+                decision=PolicyDecision.DENY,
+                reason="Revoked before MCP invocation",
+            )
+
+    policy = RevocablePolicy()
+    registry = ToolRegistry(policy=policy)
+    called = []
+
+    registry.register(
+        ToolDefinition(
+            name="custom.revocable",
+            description="A tool used to verify invocation-time policy revalidation.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: called.append(True) or {"ok": True},
+        )
+    )
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    agent = AgentCore(router, registry)
+
+    plan = agent.plan(
+        AgentPlanRequest(
+            goal="Plan a tool that may be revoked before invocation",
+            tools=[{"name": "custom.revocable", "payload": {}}],
+        )
+    )
+    assert plan["execution_ready"] is True
+
+    server = create_mcp_server(registry)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "hub.invoke_tool",
+            {"name": "custom.revocable", "payload": {}},
+        )
+
+    assert json.loads(result.content[0].text) == {
+        "ok": False,
+        "error_code": "policy_denied",
+    }
+    assert policy.calls == 2
+    assert called == []
+
+
 def test_mcp_bridge_does_not_expose_handler_exception_details():
     registry = ToolRegistry()
 
