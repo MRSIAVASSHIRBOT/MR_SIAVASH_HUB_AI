@@ -56,11 +56,10 @@ class VideoGenerationWorkerHandler:
                 raise ValueError("Configured provider capability changed")
             raise ValueError("provider_capability_changed_during_reconciliation")
 
-        request_data = dict(loaded["request"])
-        request_data["idempotency_key"] = str(generation_id)
-        request = VideoGenerationRequest.model_validate(request_data)
-
         if job_status == "queued":
+            request_data = dict(loaded["request"])
+            request_data["idempotency_key"] = str(generation_id)
+            request = VideoGenerationRequest.model_validate(request_data)
             if (
                 request.duration_seconds > capability.max_duration_seconds
                 or request.resolution not in {"720p", "1080p"}
