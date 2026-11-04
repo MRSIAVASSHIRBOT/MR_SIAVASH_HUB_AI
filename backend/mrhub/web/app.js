@@ -1014,7 +1014,11 @@
       addField("دستور بصری Beat", "generation_instruction", beat.generation_instruction, "textarea", { maxlength: 1200, rows: 3, required: true });
       addField("انتقال به Beat بعدی", "transition_to_next", beat.transition_to_next || "clean cinematic cut", "text", { maxlength: 240 });
       card.dataset.confidence = beat.confidence === null || beat.confidence === undefined ? "" : String(beat.confidence);
-      const remove = deleteButton("حذف Beat", () => {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button-quiet";
+      remove.textContent = "حذف Beat";
+      remove.addEventListener("click", () => {
         card.remove();
         renumberVideoStoryboardBeats();
       });
