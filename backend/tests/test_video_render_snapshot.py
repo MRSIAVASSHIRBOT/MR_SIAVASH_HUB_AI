@@ -7,7 +7,6 @@ from pydantic import ValidationError
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.timeline import VideoTimeline
 
-
 OWNER = "owner-a"
 ANALYSIS_ID = UUID("11111111-1111-4111-8111-111111111111")
 DRAFT_ID = UUID("33333333-3333-4333-8333-333333333333")
