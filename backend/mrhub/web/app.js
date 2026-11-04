@@ -890,7 +890,6 @@
     renderVideoStoryboardEditor(savedDraft ? savedDraft.beats : selected.beats);
     $("#video-storyboard-panel").hidden = false;
     $("#video-storyboard-new").disabled = false;
-    $("#video-storyboard-add-beat").disabled = false;
     $("#video-storyboard-save").disabled = false;
     $("#video-storyboard-compose").disabled = false;
   }
