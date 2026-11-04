@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`  
+**Audited main SHA:** `589a038d09271ddbcb2e8c07fbbce983499c882a`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -39,7 +39,7 @@ These counts describe repository structure and test inventory. They are not evid
 | Workflow and Job Engine | Durable tasks, worker leases/fencing, checkpoint recovery, pause/resume, cancellation, emergency stop; PR #223 includes API/worker process-level emergency-stop/resume smoke coverage | Scheduled triggers, stronger fault injection around in-flight synchronous/external effects, multi-worker and long-running recovery semantics |
 | Tools and MCP | Built-in manifests, schema validation, policy grants, audit events, optional loopback MCP bridge | Compatibility/integrity testing, connector lifecycle and a reviewed extension ecosystem; no implicit authority grants |
 | Content and social | Draft/review/approval, durable schedules, Telegram text/media and opt-in Instagram image adapter foundations | Controlled real-account publishing/reconciliation, provider scopes, external HTTPS origin, edge controls, log hygiene and failure recovery |
-| Video and media | Owner-scoped media registry; bounded probing/analysis; editable timeline drafts; durable render jobs; migration 27; owner-scoped render API and cancellation; reserved output identity; fenced media-use leases; stale output/partial cleanup; RTL UI submission/status/cancel/download | Current renderer is silent and hard-cut-only. Audio, transitions, captions, graphics, motion effects and AI-generated footage remain unimplemented. Real-device acceptance and full product workflow acceptance remain open; no operational AI video provider is registered |
+| Video and media | Owner-scoped media registry; bounded probing/analysis; editable timeline drafts; PR #271 saved-storyboard prompt composition and dashboard editor; PR #272 immutable renderer-snapshot value object; durable analysis-only render jobs through migration 27 | PR #273 proposes migrations 28–29, persisted immutable snapshots, atomic draft-aware render submission and Worker snapshot consumption; it remains under exact-head review and is not in main. Route-level tests, dashboard render submission and target-device acceptance remain open. Renderer remains silent and hard-cut-only; no operational AI video provider is registered |
 | NEXUS | Read-only Python AST analysis, import-alias awareness, advisory rules PY101–PY105 including `os.system`/`os.popen`, review-only patch proposals | Broader language/dependency coverage, performance validation on large repositories and explicitly authorized isolated test execution; analyzer must not execute target code |
 | Discovery and research | Roadmap and module boundaries | Source connectors, attributed research records, provenance, untrusted-content handling and end-to-end retrieval are not yet evidenced as complete |
 | Defensive Cybersecurity Lab | Scoped offline configuration and requirements review, authenticated metadata-only review API, structured-log triage | Approved advisory/CVE snapshot workflow and authorized asset inventory with scope/evidence tests; keep all operations defensive and non-destructive |
@@ -301,3 +301,36 @@ PR #266 is merged. It adds a mandatory provider-neutral `find_by_idempotency_key
 This is a provider contract gate, not a reconciliation worker or active integration. No provider adapter is registered. No end-to-end operation yet calls `find_by_idempotency_key`, persists a recovered provider job reference, polls status, or finalizes an output asset from a reconciled remote job. The next generation milestone must implement those steps as a separate owner-scoped, non-replayable reconciliation flow and test lookup hit, miss, timeout, provider identity mismatch, lease loss and terminal output registration.
 
 Post-merge workflows on `cbc12c0adf3994f28c49ca3ac4ff447ec029bade` were queued when this snapshot was prepared; do not report them as green until they complete.
+
+## 9. Video storyboard and snapshot-render follow-up — 2026-11-04 UTC
+
+This section supersedes the earlier video-gap description in section 7. The current main baseline is `589a038d09271ddbcb2e8c07fbbce983499c882a`.
+
+### Verified merged behavior
+
+- **PR #271** merged as `e9055ebef035931a36b277b3ce5d76ee58ff60c4`. Saved owner-scoped storyboard drafts can be selected for prompt composition after draft/analysis/asset/version validation. The dashboard supports draft listing, creation, editing, saving and explicit prompt composition. Composition is text-only and does not call a generation provider, enqueue a generation job or invoke FFmpeg.
+- **PR #272** merged as `45c06562999a46861f89fca1438bd5b7776a850a`. It adds a strict immutable renderer-timeline snapshot value object with canonical JSON, SHA-256, owner/analysis/draft revision binding and revision-sensitive idempotency.
+- Main migration inventory remains at version 27. The snapshot persistence migrations described below are proposed on PR #273 and must not be counted as main capabilities before merge.
+
+### PR #273 — persistence and Worker integration candidate
+
+PR #273 is open and not merged. Its current branch proposes:
+- migration 28 for paired renderer timeline/hash fields and immutable owner-scoped snapshot storage, with restrictive retention relationships;
+- migration 29 for render-job snapshot linkage;
+- source asset membership and measured per-asset source-duration validation;
+- atomic snapshot, task, render record and idempotency persistence;
+- Worker loading and validation of the immutable snapshot, with fail-closed behavior and no fallback to mutable analysis data;
+- regression tests for owner isolation, version fencing, source bounds, immutable storage, snapshot-backed rendering and atomic rollback.
+
+The PR description and live GitHub metadata must be rechecked before merge. Exact-head checks were pending during this audit update. Do not infer success from earlier commits or branch history. The merge gate is Python 3.11/3.12, Backend CI, Defensive Python Scan, Linux and Windows FFmpeg integration on the exact current head, followed by code review.
+
+### Remaining verified gaps
+
+1. Route-level acceptance tests for the draft-aware render endpoint, including owner isolation, analysis mismatch, invalid stored renderer timeline, response shape and status mapping.
+2. Dashboard control to submit a render from a saved renderer-compatible timeline. The existing dashboard editor is not evidence that this render action is exposed.
+3. Target-device workflow acceptance using real media, including edits after snapshot creation, idempotent replay, cancellation, output publication and download.
+4. The local renderer remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and generated AI footage are not implemented.
+5. Video-generation provider reconciliation remains separate. PR #266 establishes a required read-only provider lookup contract only; no provider adapter is registered and no reconciliation worker/API is active.
+
+The audit is not a production-readiness declaration. Target-device/browser verification, external-account acceptance, install/upgrade/rollback and database/media/encryption-key restore drills remain separate release gates.
+
