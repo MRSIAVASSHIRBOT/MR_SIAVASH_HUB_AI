@@ -955,16 +955,21 @@ def test_snapshot_backed_worker_renders_frozen_draft_timeline(
         timeline=edited_timeline,
         analysis_source_asset_ids=[str(source_id)],
     )
-    snapshot, created = VideoRenderSnapshotRepository(database).create(snapshot)
-    assert created is True
 
     jobs = VideoRenderJobRepository(database)
-    accepted, _ = jobs.submit(
+    accepted, created = jobs.submit(
         "owner-a",
         analysis_id,
         "snapshot-render-key",
-        snapshot_id=snapshot.snapshot_id,
+        snapshot=snapshot,
     )
+    assert created is True
+    assert accepted["snapshot_id"] == str(snapshot.snapshot_id)
+    persisted = VideoRenderSnapshotRepository(database).get(
+        "owner-a", UUID(accepted["snapshot_id"])
+    )
+    assert persisted is not None
+    assert persisted.timeline_sha256 == snapshot.timeline_sha256
     task_id = UUID(accepted["task_id"])
     render_id = UUID(accepted["render_id"])
     media = MediaAssetRepository(database)
