@@ -11,8 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.video_intelligence.schemas import BeatInstruction
 from mrhub.video_intelligence.service import build_generation_prompt
-from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 from mrhub.video_intelligence.timeline_drafts import TimelineDraftUpdate
+from mrhub.video_intelligence.visual_schemas import VisualAnalysisResult
 
 
 class PromptCompositionUnavailable(ValueError):
@@ -115,18 +115,24 @@ def compose_prompts_from_analysis(
         if not _is_finite_number(window) or not 0 < window <= 60:
             raise PromptCompositionUnavailable("analysis_result_invalid", "Analysis duration is invalid")
         duration_seconds = max(3, min(60, math.ceil(window)))
-        selected_draft = draft_override if isinstance(draft_override, dict) and draft_override.get("asset_id") == asset_id else None
+        selected_draft = (
+            draft_override
+            if isinstance(draft_override, dict) and draft_override.get("asset_id") == asset_id
+            else None
+        )
         if selected_draft is not None:
             try:
                 draft_version = selected_draft.get("version")
                 if isinstance(draft_version, bool) or not isinstance(draft_version, int):
                     raise ValueError("Invalid draft version")
-                validated_draft = TimelineDraftUpdate.model_validate({
-                    "expected_version": draft_version,
-                    "duration_seconds": selected_draft.get("duration_seconds"),
-                    "aspect_ratio": selected_draft.get("aspect_ratio"),
-                    "beats": selected_draft.get("beats"),
-                })
+                validated_draft = TimelineDraftUpdate.model_validate(
+                    {
+                        "expected_version": draft_version,
+                        "duration_seconds": selected_draft.get("duration_seconds"),
+                        "aspect_ratio": selected_draft.get("aspect_ratio"),
+                        "beats": selected_draft.get("beats"),
+                    }
+                )
             except (ValueError, TypeError):
                 raise PromptCompositionUnavailable(
                     "timeline_draft_invalid", "Saved timeline draft failed validation"
@@ -242,7 +248,11 @@ def compose_prompts_from_analysis(
             style_summary=safe_style_summary,
             beats=[beat.model_dump(mode="json") for beat in beats],
             duration_seconds=duration_seconds,
-            aspect_ratio=validated_draft.aspect_ratio if selected_draft is not None else options.aspect_ratio,
+            aspect_ratio=(
+                validated_draft.aspect_ratio
+                if selected_draft is not None
+                else options.aspect_ratio
+            ),
             brand_name=options.brand_name,
             colors=options.colors,
             typography=options.typography,
@@ -276,6 +286,13 @@ def compose_prompts_from_analysis(
             "scene_cut_count": len(scene_cut_timestamps),
             "scene_boundaries_truncated": boundaries_truncated,
             "semantic_summary": visual.style_summary,
-            **({"draft_id": selected_draft["draft_id"], "draft_version": selected_draft["version"]} if selected_draft is not None else {}),
+            **(
+                {
+                    "draft_id": selected_draft["draft_id"],
+                    "draft_version": selected_draft["version"],
+                }
+                if selected_draft is not None
+                else {}
+            ),
         })
     return prompts
