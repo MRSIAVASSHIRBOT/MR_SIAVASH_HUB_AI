@@ -295,6 +295,72 @@ def test_workflow_step_commit_is_fenced_against_expired_owner(tmp_path):
     assert decision.decision == "reconcile"
 
 
+def test_task_linked_workflow_cannot_start_without_worker_lease(tmp_path):
+    database_path = tmp_path / "workflow-start-requires-lease.sqlite3"
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    recovery = WorkflowRecoveryRepository(database_path)
+    task = TaskRecord(task_type="agent.workflow", description="lease required")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+
+    with pytest.raises(RecoveryRequired, match="lease is required"):
+        recovery.start_run(workflow_id)
+
+    stored = recovery.get_run(workflow_id)
+    assert stored is not None and stored["status"] == "queued"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["start_step", "complete_step", "fail_step", "mark_interrupted", "finish_run"],
+)
+def test_task_linked_workflow_mutations_require_worker_lease(tmp_path, mutation):
+    database_path = tmp_path / f"workflow-{mutation}-requires-lease.sqlite3"
+    tasks = TaskRepository(database_path)
+    tasks.initialize()
+    recovery = WorkflowRecoveryRepository(database_path)
+    task = TaskRecord(task_type="agent.workflow", description="lease required")
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
+        task=task,
+    )
+    jobs = JobEngine(tasks)
+    jobs.transition(task.task_id, TaskStatus.RUNNING)
+    lease = LeaseManager(database_path).acquire(str(task.task_id), "test-worker")
+    assert lease is not None
+    recovery.start_run(workflow_id, lease=lease)
+
+    attempt = None
+    if mutation in {"complete_step", "fail_step", "mark_interrupted"}:
+        attempt = recovery.start_step(workflow_id, 1, lease=lease)
+
+    with pytest.raises(RecoveryRequired, match="lease is required"):
+        if mutation == "start_step":
+            recovery.start_step(workflow_id, 1)
+        elif mutation == "complete_step":
+            assert attempt is not None
+            recovery.complete_step(workflow_id, attempt, "b" * 64)
+        elif mutation == "fail_step":
+            assert attempt is not None
+            recovery.fail_step(workflow_id, attempt, "test_failure")
+        elif mutation == "mark_interrupted":
+            recovery.mark_interrupted(workflow_id)
+        else:
+            recovery.finish_run(workflow_id, "failed")
+
+    stored = recovery.get_run(workflow_id)
+    assert stored is not None and stored["status"] == "running"
+    assert stored["steps"][0]["status"] == (
+        "pending" if mutation == "start_step" or mutation == "finish_run" else "running"
+    )
+    assert recovery.latest_checkpoint(workflow_id) is None
+
+
 def test_job_engine_rejects_terminal_transition_from_stale_workflow_lease(tmp_path):
     database_path = tmp_path / "job-lease-fence.sqlite3"
     tasks = TaskRepository(database_path)
@@ -385,7 +451,11 @@ def test_running_cancellation_persists_intent_until_worker_finalizes(tmp_path):
     )
     tasks = TaskRepository(repository.database_path)
     JobEngine(tasks).transition(task.task_id, TaskStatus.RUNNING)
-    repository.start_run(workflow_id)
+    lease = LeaseManager(repository.database_path).acquire(
+        str(task.task_id), "cancellation-test-worker"
+    )
+    assert lease is not None
+    repository.start_run(workflow_id, lease=lease)
 
     result = repository.request_cancellation(
         workflow_id, owner_user_id="owner-a"
