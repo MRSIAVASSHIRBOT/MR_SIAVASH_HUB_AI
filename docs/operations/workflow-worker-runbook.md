@@ -23,6 +23,12 @@ A missing or invalid key is a hard configuration error. Do not replace it with a
 
 **Worker readiness:** `/ready` reports `worker: running` only when a fresh heartbeat exists. By default, API readiness remains database-only so deployments that intentionally run API without a worker still work. Set `MRH_REQUIRE_WORKER_FOR_READINESS=true` when queued jobs require a worker; in that mode `/ready` returns 503 if the heartbeat is absent or older than `MRH_WORKER_HEARTBEAT_TIMEOUT_SECONDS` (default 15). A forced kill may leave a stale `running` row, but its heartbeat ages out and is not considered healthy.
 
+### Bounded dispatch cycle
+
+Each explicit worker polling cycle is bounded: it claims and executes at most one queued task, then attempts at most one due content-publishing schedule. A cycle may therefore publish one due schedule even when no queued task was available. It does not batch-drain the content schedule table. The worker service repeats these cycles at its configured polling interval; the API does not start them.
+
+The durable emergency-stop switch blocks both new task claims and content-schedule dispatch. It does not roll back a handler or provider call that was already in flight when the stop was requested. Content schedules are revalidated against the approved draft version and content hash immediately before publication. A provider-confirmed transient rejection may be retried within the bounded attempt policy; an ambiguous provider outcome is quarantined as `unknown_outcome` and must not be automatically replayed.
+
 ## Durable media cleanup
 
 When the opt-in worker process starts, it also starts a separate maintenance thread that retries the durable media-file cleanup queue every 30 seconds. Each pass is globally bounded to 100 entries across owners. Successful unlink operations remove their queue rows; failures remain durable, have their retry count advanced, and move behind untouched entries so one inaccessible file cannot starve the queue.
@@ -53,4 +59,4 @@ Before deploying beyond a local/test environment:
 - Verify cancellation, stale lease fencing, and crash recovery with integration tests.
 - Verify the actual API and worker processes share the intended database and encryption key.
 - Configure monitoring for queue age, expired leases, recovery-required workflows, and worker process liveness.
-- Keep the feature PR unmerged until the owner approves the release and the worker-heartbeat design is complete.
+- Treat hosted CI as automated evidence only; complete target-runtime, recovery, monitoring, and owner acceptance gates before any production release.
