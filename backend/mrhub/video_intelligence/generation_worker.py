@@ -9,6 +9,8 @@ from mrhub.jobs.leases import WorkerLease
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
+    VideoGenerationResult,
+    VideoGenerationSubmission,
 )
 from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
 from mrhub.video_intelligence.generation_registry import video_generation_registry
@@ -112,6 +114,12 @@ class VideoGenerationWorkerHandler:
 
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
+        if not isinstance(submission, VideoGenerationSubmission):
+            self.jobs.transition_under_lease(
+                owner, generation_id, "unknown_outcome", lease=lease,
+                error_code="provider_submission_contract_invalid",
+            )
+            raise ValueError("provider_submission_contract_invalid")
         if (
             submission.provider != provider_name
             or submission.model != model_name
@@ -171,6 +179,8 @@ class VideoGenerationWorkerHandler:
                     "status": "unknown_outcome",
                     "reason_code": "provider_submission_not_discoverable",
                 }
+            if not isinstance(submission, VideoGenerationSubmission):
+                raise ValueError("provider_reconciliation_contract_invalid")
             if (
                 submission.provider != provider_name
                 or submission.model != model_name
@@ -205,6 +215,8 @@ class VideoGenerationWorkerHandler:
             result = provider.get_status(provider_job_id)
         except Exception:  # noqa: BLE001 - provider status failures are retryable
             raise ValueError("provider_status_lookup_failed") from None
+        if not isinstance(result, VideoGenerationResult):
+            raise ValueError("provider_status_contract_invalid")
         if (
             result.provider != provider_name
             or result.model != model_name
