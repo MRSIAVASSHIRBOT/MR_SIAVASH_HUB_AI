@@ -63,7 +63,9 @@ def test_remote_generation_uses_configured_provider_explicitly(
             },
         )
 
-    def build_router() -> ModelRouter:
+    def build_router(*, provider_mode="all", include_stub=True) -> ModelRouter:
+        assert provider_mode == "remote"
+        assert include_stub is False
         router = ModelRouter()
         router.register_provider(
             OpenRouterProvider(
@@ -95,7 +97,9 @@ def test_remote_failure_returns_sanitized_error_without_local_fallback(
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, text="provider internals and secret details")
 
-    def build_router() -> ModelRouter:
+    def build_router(*, provider_mode="all", include_stub=True) -> ModelRouter:
+        assert provider_mode == "remote"
+        assert include_stub is False
         router = ModelRouter()
         router.register_provider(
             OpenRouterProvider(
