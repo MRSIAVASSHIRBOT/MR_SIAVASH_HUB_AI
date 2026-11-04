@@ -713,6 +713,7 @@
   function lockVideoStoryboardControls() {
     const nodes = [
       $("#video-analysis-submit"),
+      $("#video-render-submit"),
       $("#video-prompt-source"),
       $("#video-storyboard-draft-select"),
       $("#video-storyboard-add-beat"),
