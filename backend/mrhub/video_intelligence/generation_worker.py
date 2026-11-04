@@ -1,4 +1,5 @@
 """Lease-fenced provider submission for durable video-generation tasks."""
+
 from __future__ import annotations
 
 from threading import Event
@@ -38,7 +39,10 @@ class VideoGenerationWorkerHandler:
             provider = video_generation_registry.get(provider_name, model_name)
         except LookupError:
             self.jobs.transition_under_lease(
-                owner, generation_id, "failed", lease=lease,
+                owner,
+                generation_id,
+                "failed",
+                lease=lease,
                 error_code="provider_unavailable",
             )
             raise ValueError("Generation provider is unavailable")
@@ -46,7 +50,10 @@ class VideoGenerationWorkerHandler:
         capability = provider.capability
         if (capability.provider, capability.model) != (provider_name, model_name):
             self.jobs.transition_under_lease(
-                owner, generation_id, "failed", lease=lease,
+                owner,
+                generation_id,
+                "failed",
+                lease=lease,
                 error_code="provider_capability_mismatch",
             )
             raise ValueError("Configured provider capability changed")
@@ -57,18 +64,20 @@ class VideoGenerationWorkerHandler:
         if (
             request.duration_seconds > capability.max_duration_seconds
             or request.resolution not in {"720p", "1080p"}
-            or request.resolution == "1080p" and capability.max_resolution != "1080p"
+            or request.resolution == "1080p"
+            and capability.max_resolution != "1080p"
             or request.aspect_ratio not in capability.supported_aspect_ratios
         ):
             self.jobs.transition_under_lease(
-                owner, generation_id, "failed", lease=lease,
+                owner,
+                generation_id,
+                "failed",
+                lease=lease,
                 error_code="provider_capability_mismatch",
             )
             raise ValueError("Generation request exceeds provider capability")
 
-        self.jobs.transition_under_lease(
-            owner, generation_id, "submitting", lease=lease
-        )
+        self.jobs.transition_under_lease(owner, generation_id, "submitting", lease=lease)
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
 
@@ -80,7 +89,10 @@ class VideoGenerationWorkerHandler:
             # a provider-specific reconciliation operation.
             if not lease_lost.is_set():
                 self.jobs.transition_under_lease(
-                    owner, generation_id, "unknown_outcome", lease=lease,
+                    owner,
+                    generation_id,
+                    "unknown_outcome",
+                    lease=lease,
                     error_code="provider_submission_outcome_unknown",
                 )
             raise ValueError("provider_submission_outcome_unknown")
@@ -93,27 +105,39 @@ class VideoGenerationWorkerHandler:
             or not submission.provider_job_id
         ):
             self.jobs.transition_under_lease(
-                owner, generation_id, "unknown_outcome", lease=lease,
+                owner,
+                generation_id,
+                "unknown_outcome",
+                lease=lease,
                 error_code="provider_submission_identity_mismatch",
             )
             raise ValueError("provider_submission_identity_mismatch")
         if submission.status is GenerationStatus.UNKNOWN_OUTCOME:
             self.jobs.transition_under_lease(
-                owner, generation_id, "unknown_outcome", lease=lease,
+                owner,
+                generation_id,
+                "unknown_outcome",
+                lease=lease,
                 provider_job_id=submission.provider_job_id,
                 error_code="provider_reported_unknown_outcome",
             )
             raise ValueError("provider_reported_unknown_outcome")
         if submission.status in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             self.jobs.transition_under_lease(
-                owner, generation_id, "failed", lease=lease,
+                owner,
+                generation_id,
+                "failed",
+                lease=lease,
                 provider_job_id=submission.provider_job_id,
                 error_code="provider_rejected_generation",
             )
             return {"generation_id": str(generation_id), "status": "failed"}
 
         self.jobs.transition_under_lease(
-            owner, generation_id, "running", lease=lease,
+            owner,
+            generation_id,
+            "running",
+            lease=lease,
             provider_job_id=submission.provider_job_id,
         )
         return {

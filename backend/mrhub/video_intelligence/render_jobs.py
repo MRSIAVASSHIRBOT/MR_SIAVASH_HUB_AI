@@ -42,9 +42,7 @@ class VideoRenderJobRepository:
         key = idempotency_key.strip()
         if not key or len(key) > 255:
             raise ValueError("Idempotency-Key must contain 1 to 255 characters")
-        analysis = VideoAnalysisJobRepository(self.database_path).get(
-            owner_user_id, analysis_id
-        )
+        analysis = VideoAnalysisJobRepository(self.database_path).get(owner_user_id, analysis_id)
         if analysis is None:
             raise LookupError("analysis_not_found")
         if analysis["status"] != "completed" or not isinstance(analysis.get("result"), dict):
@@ -95,9 +93,13 @@ class VideoRenderJobRepository:
                     task_id, task_type, status, risk_class, created_at, updated_at, description
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(task.task_id), task.task_type, task.status.value,
-                    task.risk_class.value, task.created_at.isoformat(),
-                    task.updated_at.isoformat(), task.description,
+                    str(task.task_id),
+                    task.task_type,
+                    task.status.value,
+                    task.risk_class.value,
+                    task.created_at.isoformat(),
+                    task.updated_at.isoformat(),
+                    task.description,
                 ),
             )
             connection.execute(
@@ -106,8 +108,13 @@ class VideoRenderJobRepository:
                     output_asset_id, output_storage_key, error_code, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, 'accepted', NULL, ?, NULL, ?, ?)""",
                 (
-                    str(render_id), str(task.task_id), owner_user_id, str(analysis_id),
-                    output_storage_key, now, now,
+                    str(render_id),
+                    str(task.task_id),
+                    owner_user_id,
+                    str(analysis_id),
+                    output_storage_key,
+                    now,
+                    now,
                 ),
             )
             connection.execute(
@@ -155,9 +162,7 @@ class VideoRenderJobRepository:
             "updated_at": row["updated_at"],
         }
 
-    def cancel(
-        self, owner_user_id: str, render_id: UUID
-    ) -> dict[str, object] | None:
+    def cancel(self, owner_user_id: str, render_id: UUID) -> dict[str, object] | None:
         """Cancel queued work atomically or signal a running leased worker."""
         now = self._now()
         with self.tasks._connection() as connection:
@@ -241,9 +246,7 @@ class VideoRenderJobRepository:
                 "cancellation_requested": False,
             }
 
-    def load_for_worker(
-        self, task_id: UUID
-    ) -> tuple[str, UUID, UUID, str] | None:
+    def load_for_worker(self, task_id: UUID) -> tuple[str, UUID, UUID, str] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT render_id, owner_user_id, analysis_id, output_storage_key
@@ -267,9 +270,7 @@ class VideoRenderJobRepository:
             ).fetchone()
         return str(row["owner_user_id"]) if row is not None else None
 
-    def mark_running(
-        self, task_id: UUID, owner_user_id: str, *, lease: WorkerLease
-    ) -> bool:
+    def mark_running(self, task_id: UUID, owner_user_id: str, *, lease: WorkerLease) -> bool:
         if lease.task_id != str(task_id):
             raise ValueError("Worker lease does not belong to this render task")
         now = self._now()
@@ -282,14 +283,26 @@ class VideoRenderJobRepository:
                        WHERE e.task_id = ? AND e.lease_owner = ?
                          AND e.execution_token = ? AND e.lease_expires_at > ?
                      )""",
-                (now, str(task_id), owner_user_id, str(task_id),
-                 lease.owner, lease.fencing_token, now),
+                (
+                    now,
+                    str(task_id),
+                    owner_user_id,
+                    str(task_id),
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                ),
             )
         return cursor.rowcount == 1
 
     def finish(
-        self, task_id: UUID, owner_user_id: str, *, status: str,
-        lease: WorkerLease, output_asset_id: str | None = None,
+        self,
+        task_id: UUID,
+        owner_user_id: str,
+        *,
+        status: str,
+        lease: WorkerLease,
+        output_asset_id: str | None = None,
         error_code: str | None = None,
     ) -> bool:
         if status not in {"completed", "failed", "cancelled"}:
@@ -307,9 +320,18 @@ class VideoRenderJobRepository:
                        WHERE e.task_id = ? AND e.lease_owner = ?
                          AND e.execution_token = ? AND e.lease_expires_at > ?
                      )""",
-                (status, output_asset_id, error_code[:80] if error_code else None,
-                 now, str(task_id), owner_user_id, str(task_id),
-                 lease.owner, lease.fencing_token, now),
+                (
+                    status,
+                    output_asset_id,
+                    error_code[:80] if error_code else None,
+                    now,
+                    str(task_id),
+                    owner_user_id,
+                    str(task_id),
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                ),
             )
             if cursor.rowcount != 1:
                 return False
@@ -318,7 +340,8 @@ class VideoRenderJobRepository:
                    WHERE scope = ? AND task_id = ?""",
                 (
                     "completed" if status == "completed" else "failed",
-                    self._scope(owner_user_id), str(task_id),
+                    self._scope(owner_user_id),
+                    str(task_id),
                 ),
             )
         return True

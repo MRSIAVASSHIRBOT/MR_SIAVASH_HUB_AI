@@ -31,9 +31,7 @@ def invoke_tool(tool_name: str, request: ToolInvokeRequest) -> dict[str, object]
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Tool input validation failed") from exc
     except ToolPolicyError as exc:
-        status_code = (
-            409 if exc.decision is PolicyDecision.REQUIRE_APPROVAL else 403
-        )
+        status_code = 409 if exc.decision is PolicyDecision.REQUIRE_APPROVAL else 403
         raise HTTPException(
             status_code=status_code,
             detail={

@@ -53,9 +53,17 @@ RULE_GUIDANCE: dict[str, tuple[str, str]] = {
         "Keep TLS certificate verification enabled; configure a trusted CA bundle instead of disabling verification.",
     ),
 }
-EXCLUDED_DIRS = frozenset({
-    ".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build",
-})
+EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "node_modules",
+        "dist",
+        "build",
+    }
+)
 
 
 class StaticAnalysisError(ValueError):
@@ -89,13 +97,15 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
             relative = error_path.relative_to(resolved_root).as_posix()
         except ValueError:
             relative = "."
-        findings.append(_finding(
-            "PY003",
-            "warning",
-            relative or ".",
-            1,
-            "Directory could not be traversed; repository inventory is incomplete.",
-        ))
+        findings.append(
+            _finding(
+                "PY003",
+                "warning",
+                relative or ".",
+                1,
+                "Directory could not be traversed; repository inventory is incomplete.",
+            )
+        )
 
     for current, directories, filenames in os.walk(
         resolved_root,
@@ -103,7 +113,8 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
         onerror=report_walk_error,
     ):
         directories[:] = sorted(
-            name for name in directories
+            name
+            for name in directories
             if name not in EXCLUDED_DIRS and not (Path(current) / name).is_symlink()
         )
         for filename in sorted(filenames):
@@ -119,48 +130,56 @@ def analyze_python_repository(root: str | Path, *, max_files: int = MAX_FILES) -
                 size = path.stat().st_size
                 if size > MAX_FILE_BYTES:
                     skipped_large += 1
-                    findings.append(_finding(
-                        "PY000",
-                        "info",
-                        relative,
-                        1,
-                        "File skipped because it exceeds the analysis size limit.",
-                    ))
+                    findings.append(
+                        _finding(
+                            "PY000",
+                            "info",
+                            relative,
+                            1,
+                            "File skipped because it exceeds the analysis size limit.",
+                        )
+                    )
                     continue
                 source = path.read_text(encoding="utf-8")
             except (OSError, UnicodeError):
-                findings.append(_finding(
-                    "PY001",
-                    "warning",
-                    str(path.relative_to(resolved_root)),
-                    1,
-                    "File could not be read as UTF-8; contents were not exposed.",
-                ))
+                findings.append(
+                    _finding(
+                        "PY001",
+                        "warning",
+                        str(path.relative_to(resolved_root)),
+                        1,
+                        "File could not be read as UTF-8; contents were not exposed.",
+                    )
+                )
                 continue
 
             scanned += 1
             try:
                 tree = ast.parse(source, filename=relative)
             except SyntaxError as exc:
-                findings.append(_finding(
-                    "PY002",
-                    "warning",
-                    relative,
-                    max(1, exc.lineno or 1),
-                    "Python syntax could not be parsed.",
-                ))
+                findings.append(
+                    _finding(
+                        "PY002",
+                        "warning",
+                        relative,
+                        max(1, exc.lineno or 1),
+                        "Python syntax could not be parsed.",
+                    )
+                )
                 inventory.append({"path": relative, "bytes": size, "parse_status": "syntax_error"})
                 continue
 
-            inventory.append({
-                "path": relative,
-                "bytes": size,
-                "parse_status": "ok",
-                "top_level_definitions": sum(
-                    isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                    for node in tree.body
-                ),
-            })
+            inventory.append(
+                {
+                    "path": relative,
+                    "bytes": size,
+                    "parse_status": "ok",
+                    "top_level_definitions": sum(
+                        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                        for node in tree.body
+                    ),
+                }
+            )
             findings.extend(_check_tree(tree, relative))
         if truncated:
             break
@@ -243,7 +262,18 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         "os": {"system", "popen"},
         "builtins": {"eval", "exec"},
         "requests": {"request", "get", "post", "put", "patch", "delete", "head", "options"},
-        "httpx": {"Client", "AsyncClient", "request", "get", "post", "put", "patch", "delete", "head", "options"},
+        "httpx": {
+            "Client",
+            "AsyncClient",
+            "request",
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+            "head",
+            "options",
+        },
     }
     imported_calls: dict[str, set[str]] = {name: set() for name in tracked_modules}
     safe_loader_names = {"SafeLoader"}
@@ -265,13 +295,15 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                     imported_calls[module].add(local_name)
 
     def add(rule_id: str, node: ast.AST, severity: str, message: str) -> None:
-        findings.append(_finding(
-            rule_id,
-            severity,
-            relative,
-            max(1, getattr(node, "lineno", 1)),
-            message,
-        ))
+        findings.append(
+            _finding(
+                rule_id,
+                severity,
+                relative,
+                max(1, getattr(node, "lineno", 1)),
+                message,
+            )
+        )
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -280,13 +312,23 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         if isinstance(node.func, ast.Name):
             called_name = node.func.id
             if called_name in {"eval", "exec"} or called_name in imported_calls["builtins"]:
-                add("PY101", node, "high", "Dynamic code evaluation call requires manual security review.")
+                add(
+                    "PY101",
+                    node,
+                    "high",
+                    "Dynamic code evaluation call requires manual security review.",
+                )
                 continue
             for module in ("pickle", "yaml", "subprocess", "os", "requests", "httpx"):
                 if called_name not in imported_calls[module]:
                     continue
                 if module == "pickle":
-                    add("PY102", node, "high", "Pickle deserialization can execute code; verify input trust.")
+                    add(
+                        "PY102",
+                        node,
+                        "high",
+                        "Pickle deserialization can execute code; verify input trust.",
+                    )
                 elif module == "yaml":
                     safe_loader = any(
                         keyword.arg == "Loader"
@@ -311,14 +353,24 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                     ):
                         add("PY104", node, "high", "Subprocess call enables shell=True.")
                 elif module == "os":
-                    add("PY105", node, "high", "OS shell command API requires manual security review.")
+                    add(
+                        "PY105",
+                        node,
+                        "high",
+                        "OS shell command API requires manual security review.",
+                    )
                 elif module in {"requests", "httpx"} and any(
                     keyword.arg == "verify"
                     and isinstance(keyword.value, ast.Constant)
                     and keyword.value.value is False
                     for keyword in node.keywords
                 ):
-                    add("PY106", node, "high", "HTTP client explicitly disables TLS certificate verification.")
+                    add(
+                        "PY106",
+                        node,
+                        "high",
+                        "HTTP client explicitly disables TLS certificate verification.",
+                    )
             continue
 
         if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
@@ -328,10 +380,20 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         function_name = node.func.attr
 
         if module_name in module_aliases["builtins"] and function_name in {"eval", "exec"}:
-            add("PY101", node, "high", "Dynamic code evaluation call requires manual security review.")
+            add(
+                "PY101",
+                node,
+                "high",
+                "Dynamic code evaluation call requires manual security review.",
+            )
 
         if module_name in module_aliases["pickle"] and function_name in {"loads", "load"}:
-            add("PY102", node, "high", "Pickle deserialization can execute code; verify input trust.")
+            add(
+                "PY102",
+                node,
+                "high",
+                "Pickle deserialization can execute code; verify input trust.",
+            )
 
         if module_name in module_aliases["yaml"] and function_name == "load":
             safe_loader = any(
@@ -349,7 +411,10 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             if not safe_loader:
                 add("PY103", node, "medium", "YAML load call lacks an explicit SafeLoader.")
 
-        if module_name in module_aliases["subprocess"] and function_name in risky_imports["subprocess"]:
+        if (
+            module_name in module_aliases["subprocess"]
+            and function_name in risky_imports["subprocess"]
+        ):
             shell_enabled = any(
                 keyword.arg == "shell"
                 and isinstance(keyword.value, ast.Constant)
@@ -372,6 +437,11 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 for keyword in node.keywords
             )
         ):
-            add("PY106", node, "high", "HTTP client explicitly disables TLS certificate verification.")
+            add(
+                "PY106",
+                node,
+                "high",
+                "HTTP client explicitly disables TLS certificate verification.",
+            )
 
     return findings

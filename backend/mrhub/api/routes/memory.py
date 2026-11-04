@@ -1,4 +1,5 @@
 """Explicit owner-scoped memory CRUD, export, and lexical search."""
+
 from __future__ import annotations
 
 import re
@@ -18,7 +19,9 @@ from mrhub.security.auth import AuthenticatedUser
 router = APIRouter(prefix="/memory", tags=["memory"], dependencies=[Depends(require_user)])
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
+    re.compile(
+        r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"
+    ),
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
@@ -153,7 +156,7 @@ def search_memory(
 
 @router.delete("/expired")
 def delete_expired_memory(
-    user: Annotated[AuthenticatedUser, Depends(require_user)]
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, int]:
     deleted = _repository().delete_expired(user.user_id)
     _audit(user, "memory.expired_deleted", None, "expired_memory_deleted")
@@ -180,9 +183,7 @@ def update_memory(
     if any(value is None and key != "expires_at" for key, value in submitted.items()):
         raise HTTPException(status_code=422, detail="Only expiry may be explicitly cleared")
     changes = {
-        key: value
-        for key, value in submitted.items()
-        if value is not None or key == "expires_at"
+        key: value for key, value in submitted.items() if value is not None or key == "expires_at"
     }
     if not changes:
         raise HTTPException(status_code=422, detail="At least one non-null field is required")

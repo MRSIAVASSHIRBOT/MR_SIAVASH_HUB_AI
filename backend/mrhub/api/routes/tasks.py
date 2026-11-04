@@ -51,10 +51,12 @@ def create_task(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> TaskRecord:
     risk_class = policy.classify_task_type(payload.task_type)
-    decision = policy.evaluate(ActionRequest(
-        action="task.submit",
-        risk_class=risk_class,
-    ))
+    decision = policy.evaluate(
+        ActionRequest(
+            action="task.submit",
+            risk_class=risk_class,
+        )
+    )
     if decision.decision is PolicyDecision.DENY:
         raise HTTPException(status_code=403, detail=decision.reason)
 

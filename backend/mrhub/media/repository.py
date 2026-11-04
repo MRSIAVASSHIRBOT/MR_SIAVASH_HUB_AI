@@ -1,4 +1,5 @@
 """Private media asset metadata and file storage with generated path keys."""
+
 from __future__ import annotations
 
 import hashlib
@@ -189,9 +190,7 @@ class MediaAssetRepository:
             ).fetchone()
         return self._record(row) if row is not None else None
 
-    def fail_processing(
-        self, owner_user_id: str, asset_id: UUID, error_code: str
-    ) -> None:
+    def fail_processing(self, owner_user_id: str, asset_id: UUID, error_code: str) -> None:
         with self.tasks._connection() as connection:
             connection.execute(
                 """
@@ -320,8 +319,13 @@ class MediaAssetRepository:
                     lease_owner, execution_token, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(uuid4()), str(asset_id), owner_user_id, lease.task_id,
-                    lease.owner, lease.fencing_token, now,
+                    str(uuid4()),
+                    str(asset_id),
+                    owner_user_id,
+                    lease.task_id,
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
                 ),
             )
         return True
@@ -340,8 +344,11 @@ class MediaAssetRepository:
                    WHERE asset_id = ? AND owner_user_id = ? AND task_id = ?
                      AND lease_owner = ? AND execution_token = ?""",
                 (
-                    str(asset_id), owner_user_id, lease.task_id,
-                    lease.owner, lease.fencing_token,
+                    str(asset_id),
+                    owner_user_id,
+                    lease.task_id,
+                    lease.owner,
+                    lease.fencing_token,
                 ),
             )
         return cursor.rowcount == 1
@@ -394,8 +401,14 @@ class MediaAssetRepository:
                 ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'processed',
                           'video_render_cut_v1', NULL, ?, ?)""",
                 (
-                    str(asset_uuid), owner_user_id, output_filename, storage_key,
-                    size, digest.hexdigest(), now, now,
+                    str(asset_uuid),
+                    owner_user_id,
+                    output_filename,
+                    storage_key,
+                    size,
+                    digest.hexdigest(),
+                    now,
+                    now,
                 ),
             )
             completed = connection.execute(
@@ -409,8 +422,16 @@ class MediaAssetRepository:
                          AND e.lease_expires_at > ?
                      )""",
                 (
-                    str(asset_uuid), now, str(render_id), str(task_id), owner_user_id,
-                    storage_key, str(task_id), lease.owner, lease.fencing_token, now,
+                    str(asset_uuid),
+                    now,
+                    str(render_id),
+                    str(task_id),
+                    owner_user_id,
+                    storage_key,
+                    str(task_id),
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
                 ),
             )
             if completed.rowcount != 1:
@@ -435,7 +456,11 @@ class MediaAssetRepository:
                      AND lease_expires_at > ?""",
                 (
                     json.dumps(task_result, ensure_ascii=False, sort_keys=True),
-                    now, str(task_id), lease.owner, lease.fencing_token, now,
+                    now,
+                    str(task_id),
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
                 ),
             )
             if execution_updated.rowcount != 1:
@@ -522,10 +547,7 @@ class MediaAssetRepository:
                     "INSERT OR IGNORE INTO media_file_cleanup "
                     "(cleanup_id, owner_user_id, storage_key, created_at, updated_at) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    [
-                        (str(uuid4()), owner_user_id, key, now, now)
-                        for key in keys
-                    ],
+                    [(str(uuid4()), owner_user_id, key, now, now) for key in keys],
                 )
                 connection.execute(
                     "DELETE FROM content_assets WHERE asset_id = ? AND owner_user_id = ?",
@@ -537,10 +559,7 @@ class MediaAssetRepository:
                 "INSERT OR IGNORE INTO media_file_cleanup "
                 "(cleanup_id, owner_user_id, storage_key, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                [
-                    (str(uuid4()), owner_user_id, key, now, now)
-                    for key in keys
-                ],
+                [(str(uuid4()), owner_user_id, key, now, now) for key in keys],
             )
         return keys
 
@@ -575,8 +594,7 @@ class MediaAssetRepository:
                 continue
             with self.tasks._connection() as connection:
                 connection.execute(
-                    "DELETE FROM media_file_cleanup "
-                    "WHERE cleanup_id = ? AND owner_user_id = ?",
+                    "DELETE FROM media_file_cleanup WHERE cleanup_id = ? AND owner_user_id = ?",
                     (cleanup_id, owner_user_id),
                 )
 

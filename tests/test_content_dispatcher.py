@@ -142,7 +142,6 @@ def test_dispatcher_rejects_stale_draft_approval() -> None:
     }
 
 
-
 class InspectingInstagramAdapter:
     def __init__(self):
         self.draft = None
@@ -202,7 +201,6 @@ def test_instagram_dispatcher_passes_short_lived_signed_media_url(monkeypatch):
     assert response.content.startswith(bytes([137, 80, 78, 71, 13, 10, 26, 10]))
 
 
-
 def test_signed_media_rejects_tampered_signature_before_asset_lookup(monkeypatch):
     import time
     from uuid import uuid4
@@ -211,9 +209,7 @@ def test_signed_media_rejects_tampered_signature_before_asset_lookup(monkeypatch
     client = authenticated_client()
     asset_id = str(uuid4())
     expires = int(time.time()) + 120
-    response = client.get(
-        f"/public/media/{asset_id}?expires={expires}&signature={'0' * 64}"
-    )
+    response = client.get(f"/public/media/{asset_id}?expires={expires}&signature={'0' * 64}")
     assert response.status_code == 403
     assert response.json()["detail"] == "invalid_media_signature"
 
@@ -228,12 +224,8 @@ def test_signed_media_rejects_expired_and_overlong_expiry_before_asset_lookup(mo
     signature = "0" * 64
     now = int(time.time())
 
-    expired = client.get(
-        f"/public/media/{asset_id}?expires={now}&signature={signature}"
-    )
-    too_far = client.get(
-        f"/public/media/{asset_id}?expires={now + 905}&signature={signature}"
-    )
+    expired = client.get(f"/public/media/{asset_id}?expires={now}&signature={signature}")
+    too_far = client.get(f"/public/media/{asset_id}?expires={now + 905}&signature={signature}")
     assert expired.status_code == 403
     assert expired.json()["detail"] == "media_url_expired"
     assert too_far.status_code == 403
@@ -243,6 +235,7 @@ def test_signed_media_rejects_expired_and_overlong_expiry_before_asset_lookup(mo
 def test_dispatcher_rechecks_emergency_stop_before_provider_side_effect(monkeypatch):
     client = authenticated_client()
     schedule = _scheduled_due_post(client)
+
     class CountingAdapter:
         def __init__(self):
             self.calls = 0
@@ -319,7 +312,6 @@ def test_worker_processes_at_most_one_due_content_schedule_per_cycle():
     assert published.status_code == 200
     published_ids = {item["schedule_id"] for item in published.json()["schedules"]}
     assert {first["schedule_id"], second["schedule_id"]}.issubset(published_ids)
-
 
 
 def test_dispatcher_does_not_report_late_confirmation_after_recovery_quarantine() -> None:

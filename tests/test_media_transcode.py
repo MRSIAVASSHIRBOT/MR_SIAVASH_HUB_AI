@@ -69,7 +69,6 @@ def test_transcode_releases_ffmpeg_slot_when_setup_fails(
     semaphore.release()
 
 
-
 def test_upload_uses_one_buffer_and_releases_admission_slot(monkeypatch):
     semaphore = threading.BoundedSemaphore(1)
     monkeypatch.setattr(media_routes, "_UPLOAD_SEMAPHORE", semaphore)
@@ -135,7 +134,6 @@ def test_upload_rejects_excess_concurrency_with_429(monkeypatch):
     semaphore.release()
 
 
-
 def test_upload_keeps_admission_slot_until_storage_thread_finishes_on_cancel(monkeypatch):
     semaphore = threading.BoundedSemaphore(1)
     started = threading.Event()
@@ -177,7 +175,6 @@ def test_upload_keeps_admission_slot_until_storage_thread_finishes_on_cancel(mon
         semaphore.release()
 
     asyncio.run(exercise_cancellation())
-
 
 
 def test_transcode_bounds_decoder_resources_and_discards_process_output(
@@ -233,9 +230,7 @@ def test_transcode_bounds_decoder_resources_and_discards_process_output(
     monkeypatch.setattr(media_routes.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
     monkeypatch.setattr(media_routes.subprocess, "run", fake_run)
     monkeypatch.setattr(media_routes, "_audit", lambda *_args: None)
-    monkeypatch.setattr(
-        media_routes, "_FFMPEG_SEMAPHORE", threading.BoundedSemaphore(1)
-    )
+    monkeypatch.setattr(media_routes, "_FFMPEG_SEMAPHORE", threading.BoundedSemaphore(1))
 
     result = media_routes.transcode_video(
         asset_id,

@@ -96,10 +96,7 @@ def detect_scene_boundaries(
     retained. This is deterministic FFmpeg scene-score detection, not semantic
     scene understanding.
     """
-    if (
-        not math.isfinite(duration_seconds)
-        or not 0.1 <= duration_seconds <= _MAX_DURATION_SECONDS
-    ):
+    if not math.isfinite(duration_seconds) or not 0.1 <= duration_seconds <= _MAX_DURATION_SECONDS:
         raise ValueError("duration_seconds must be finite and between 0.1 and 60")
     if not math.isfinite(threshold) or not 0.05 <= threshold <= 0.95:
         raise ValueError("threshold must be between 0.05 and 0.95")
@@ -138,19 +135,29 @@ def detect_scene_boundaries(
             binary,
             "-nostdin",
             "-hide_banner",
-            "-loglevel", "error",
-            "-protocol_whitelist", "file,pipe",
-            "-max_pixels", str(_MAX_DECODED_PIXELS),
-            "-i", str(source),
-            "-t", f"{duration_seconds:.3f}",
-            "-map", "0:v:0",
+            "-loglevel",
+            "error",
+            "-protocol_whitelist",
+            "file,pipe",
+            "-max_pixels",
+            str(_MAX_DECODED_PIXELS),
+            "-i",
+            str(source),
+            "-t",
+            f"{duration_seconds:.3f}",
+            "-map",
+            "0:v:0",
             "-an",
             "-sn",
             "-dn",
-            "-vf", filter_expression,
-            "-frames:v", str(output_frame_limit),
-            "-threads", "1",
-            "-f", "framehash",
+            "-vf",
+            filter_expression,
+            "-frames:v",
+            str(output_frame_limit),
+            "-threads",
+            "1",
+            "-f",
+            "framehash",
             "-",
         ]
         environment = {
@@ -188,9 +195,7 @@ def detect_scene_boundaries(
             raise SceneDetectionError("scene_timestamp_out_of_range")
         if valid_timestamps and timestamp < valid_timestamps[-1] - 0.001:
             raise SceneDetectionError("scene_timestamps_not_monotonic")
-        if timestamp > 0 and (
-            not valid_timestamps or timestamp - valid_timestamps[-1] > 0.001
-        ):
+        if timestamp > 0 and (not valid_timestamps or timestamp - valid_timestamps[-1] > 0.001):
             valid_timestamps.append(round(timestamp, 3))
 
     truncated = len(valid_timestamps) > max_scene_changes

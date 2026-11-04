@@ -19,6 +19,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_
 
 def engine() -> JobEngine:
     from mrhub.config import get_settings
+
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     return JobEngine(repository)

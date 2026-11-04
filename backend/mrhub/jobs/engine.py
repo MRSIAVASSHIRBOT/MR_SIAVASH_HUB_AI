@@ -18,11 +18,15 @@ class JobEngine:
     ALLOWED: ClassVar[dict[TaskStatus, set[TaskStatus]]] = {
         TaskStatus.QUEUED: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
         TaskStatus.RUNNING: {
-            TaskStatus.WAITING_APPROVAL, TaskStatus.SUCCEEDED,
-            TaskStatus.FAILED, TaskStatus.CANCELLED,
+            TaskStatus.WAITING_APPROVAL,
+            TaskStatus.SUCCEEDED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
         },
         TaskStatus.WAITING_APPROVAL: {
-            TaskStatus.QUEUED, TaskStatus.CANCELLED, TaskStatus.REJECTED,
+            TaskStatus.QUEUED,
+            TaskStatus.CANCELLED,
+            TaskStatus.REJECTED,
         },
         TaskStatus.SUCCEEDED: set(),
         TaskStatus.FAILED: set(),
@@ -47,10 +51,12 @@ class JobEngine:
             raise KeyError("Task not found")
         if target not in self.ALLOWED[current.status]:
             raise InvalidTaskTransition(f"Cannot transition {current.status} -> {target}")
-        updated = current.model_copy(update={
-            "status": target,
-            "updated_at": datetime.now(UTC),
-        })
+        updated = current.model_copy(
+            update={
+                "status": target,
+                "updated_at": datetime.now(UTC),
+            }
+        )
         if lease is None:
             saved = self.repository.update_status(task_id, current.status, updated)
         else:

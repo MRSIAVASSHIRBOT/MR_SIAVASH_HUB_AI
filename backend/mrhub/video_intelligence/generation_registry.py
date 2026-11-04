@@ -1,4 +1,5 @@
 """Explicit, in-memory registry for video-generation adapters."""
+
 from __future__ import annotations
 
 from mrhub.video_intelligence.generation import (
@@ -27,10 +28,7 @@ class VideoGenerationRegistry:
             raise LookupError("No video generation adapter is configured for this model") from exc
 
     def catalog(self) -> list[VideoGenerationCapability]:
-        return [
-            self._providers[key].capability
-            for key in sorted(self._providers)
-        ]
+        return [self._providers[key].capability for key in sorted(self._providers)]
 
 
 # Adapters are registered by explicit application configuration only.

@@ -71,9 +71,7 @@ def evaluate_retrieval(
     if not isinstance(cases, Sequence) or isinstance(cases, (str, bytes)):
         raise TypeError("cases must be a sequence")
     if not cases or len(cases) > MAX_EVALUATION_CASES:
-        raise ValueError(
-            f"cases must contain between 1 and {MAX_EVALUATION_CASES} items"
-        )
+        raise ValueError(f"cases must contain between 1 and {MAX_EVALUATION_CASES} items")
 
     results: list[dict[str, object]] = []
     precision_values: list[float] = []
@@ -85,21 +83,16 @@ def evaluate_retrieval(
     for case in cases:
         if not isinstance(case, RetrievalCase):
             raise TypeError("Every evaluation case must be a RetrievalCase")
-        if (
-            not isinstance(case.query, str)
-        ):
+        if not isinstance(case.query, str):
             raise TypeError("Each evaluation query must be a string")
         if not case.query.strip() or len(case.query) > MAX_QUERY_CHARS:
-            raise ValueError(
-                f"Each query must contain 1 to {MAX_QUERY_CHARS} characters"
-            )
+            raise ValueError(f"Each query must contain 1 to {MAX_QUERY_CHARS} characters")
 
         relevant = _validated_relevant_ids(case)
         total_relevant_ids += len(relevant)
         if total_relevant_ids > MAX_TOTAL_RELEVANT_DOCUMENT_IDS:
             raise ValueError(
-                "Total relevant document IDs exceed "
-                f"{MAX_TOTAL_RELEVANT_DOCUMENT_IDS}"
+                f"Total relevant document IDs exceed {MAX_TOTAL_RELEVANT_DOCUMENT_IDS}"
             )
 
         # KnowledgeRepository.search returns chunk hits. Collapse those hits to

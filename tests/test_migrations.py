@@ -26,29 +26,45 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
     assert {
-        "attempt_count", "recovered_at", "next_attempt_at",
-        "lease_owner", "lease_expires_at", "heartbeat_at", "execution_token",
+        "attempt_count",
+        "recovered_at",
+        "next_attempt_at",
+        "lease_owner",
+        "lease_expires_at",
+        "heartbeat_at",
+        "execution_token",
     } <= worker_columns
     assert {
-        "workflow_runs", "workflow_steps", "workflow_step_attempts",
-        "workflow_checkpoints", "idempotency_records", "agent_runs", "workflow_payloads", "capability_candidates",
-        "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
-        "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
-        "content_publish_schedules", "media_file_cleanup", "media_asset_analysis_leases",
+        "workflow_runs",
+        "workflow_steps",
+        "workflow_step_attempts",
+        "workflow_checkpoints",
+        "idempotency_records",
+        "agent_runs",
+        "workflow_payloads",
+        "capability_candidates",
+        "memory_entries",
+        "knowledge_sources",
+        "knowledge_documents",
+        "knowledge_chunks",
+        "memory_entries_fts",
+        "knowledge_chunks_fts",
+        "content_drafts",
+        "content_draft_versions",
+        "content_assets",
+        "content_publish_schedules",
+        "media_file_cleanup",
+        "media_asset_analysis_leases",
         "video_render_runs",
     } <= {
         row["name"]
-        for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        )
+        for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     }
     source_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
     }
     assert {"freshness_status", "freshness_checked_at", "freshness_checked_by"} <= source_columns
-    draft_columns = {
-        row["name"] for row in connection.execute("PRAGMA table_info(content_drafts)")
-    }
+    draft_columns = {row["name"] for row in connection.execute("PRAGMA table_info(content_drafts)")}
     version_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(content_draft_versions)")
     }
@@ -60,18 +76,19 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     }
     assert "owner_user_id" in workflow_columns
     cleanup_columns = {
-        row["name"]
-        for row in connection.execute("PRAGMA table_info(media_file_cleanup)")
+        row["name"] for row in connection.execute("PRAGMA table_info(media_file_cleanup)")
     }
     assert {
-        "cleanup_id", "owner_user_id", "storage_key", "attempt_count",
-        "created_at", "updated_at"
+        "cleanup_id",
+        "owner_user_id",
+        "storage_key",
+        "attempt_count",
+        "created_at",
+        "updated_at",
     } <= cleanup_columns
     # Cleanup intents must survive account deletion, so this table intentionally
     # has no cascading foreign key to auth_users.
-    assert connection.execute(
-        "PRAGMA foreign_key_list(media_file_cleanup)"
-    ).fetchall() == []
+    assert connection.execute("PRAGMA foreign_key_list(media_file_cleanup)").fetchall() == []
     cleanup_index = connection.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_media_file_cleanup_owner_retry'"
@@ -137,18 +154,20 @@ def test_v3_preserves_legacy_agent_workflow_rows(tmp_path):
         "SELECT workflow_id, status FROM agent_workflows WHERE workflow_id = 'legacy-1'"
     ).fetchone()
     assert tuple(row) == ("legacy-1", "succeeded")
-    assert connection.execute(
-        "SELECT 1 FROM workflow_runs WHERE workflow_id = 'legacy-1'"
-    ).fetchone() is None
+    assert (
+        connection.execute("SELECT 1 FROM workflow_runs WHERE workflow_id = 'legacy-1'").fetchone()
+        is None
+    )
     # Historical rows have no trustworthy owner identity. Migration must preserve
     # them without guessing an owner or making them visible to arbitrary users.
-    columns = {
-        item["name"] for item in connection.execute("PRAGMA table_info(agent_workflows)")
-    }
+    columns = {item["name"] for item in connection.execute("PRAGMA table_info(agent_workflows)")}
     assert "owner_user_id" in columns
-    assert connection.execute(
-        "SELECT owner_user_id FROM agent_workflows WHERE workflow_id = 'legacy-1'"
-    ).fetchone()["owner_user_id"] is None
+    assert (
+        connection.execute(
+            "SELECT owner_user_id FROM agent_workflows WHERE workflow_id = 'legacy-1'"
+        ).fetchone()["owner_user_id"]
+        is None
+    )
     connection.close()
 
 
@@ -183,12 +202,13 @@ def test_failed_migration_rolls_back_schema_and_version(tmp_path, monkeypatch):
     with pytest.raises(sqlite3.OperationalError):
         SchemaMigrator(connection).migrate()
 
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='rollback_probe'"
-    ).fetchone() is None
-    assert connection.execute(
-        "SELECT version FROM schema_migrations"
-    ).fetchall() == []
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='rollback_probe'"
+        ).fetchone()
+        is None
+    )
+    assert connection.execute("SELECT version FROM schema_migrations").fetchall() == []
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
     connection.close()
 
@@ -222,14 +242,10 @@ def test_agent_repositories_delegate_schema_to_versioned_migrations(tmp_path):
     assert [row["version"] for row in versions] == [migration.version for migration in MIGRATIONS]
     tables = {
         row["name"]
-        for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        )
+        for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     }
     assert {"agent_runs", "agent_workflows"} <= tables
-    agent_run_columns = {
-        row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")
-    }
+    agent_run_columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_runs)")}
     assert "owner_user_id" in agent_run_columns
     connection.close()
 
@@ -247,8 +263,16 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
             plan_json, tool_names_json, executed_tool_count, error_code, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            "historical-run", "a" * 64, "succeeded", None, None,
-            "{}", "[]", 0, None, "2026-01-01T00:00:00+00:00",
+            "historical-run",
+            "a" * 64,
+            "succeeded",
+            None,
+            None,
+            "{}",
+            "[]",
+            0,
+            None,
+            "2026-01-01T00:00:00+00:00",
         ),
     )
     connection.commit()
@@ -261,7 +285,6 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
     ).fetchone()
     assert row["owner_user_id"] is None
     connection.close()
-
 
 
 def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
@@ -278,111 +301,159 @@ def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypa
     applied = SchemaMigrator(connection).migrate()
 
     assert applied == [migration.version for migration in baseline]
-    assert connection.execute(
-        "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == 18
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'media_file_cleanup'"
-    ).fetchone() is None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_brand_profiles'"
-    ).fetchone() is None
+    assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 18
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'media_file_cleanup'"
+        ).fetchone()
+        is None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'video_brand_profiles'"
+        ).fetchone()
+        is None
+    )
 
     monkeypatch.setattr(migrations, "MIGRATIONS", original)
-    assert SchemaMigrator(connection).migrate() == [
-        migration.version for migration in pending
-    ]
-    assert connection.execute(
-        "SELECT MAX(version) FROM schema_migrations"
-    ).fetchone()[0] == pending[-1].version
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'media_file_cleanup'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_media_file_cleanup_owner_retry'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_brand_profiles'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_analysis_runs'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_analysis_payloads'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_generation_jobs'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_generation_payloads'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_generation_idempotency'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'media_asset_analysis_leases'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_media_asset_analysis_leases_asset'"
-    ).fetchone() is not None
+    assert SchemaMigrator(connection).migrate() == [migration.version for migration in pending]
+    assert (
+        connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+        == pending[-1].version
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'media_file_cleanup'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_media_file_cleanup_owner_retry'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'video_brand_profiles'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'video_analysis_runs'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'video_analysis_payloads'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'video_generation_jobs'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'video_generation_payloads'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'video_generation_idempotency'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'media_asset_analysis_leases'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_media_asset_analysis_leases_asset'"
+        ).fetchone()
+        is not None
+    )
     lease_foreign_keys = {
         row["table"]: row["on_delete"]
-        for row in connection.execute(
-            "PRAGMA foreign_key_list(media_asset_analysis_leases)"
-        )
+        for row in connection.execute("PRAGMA foreign_key_list(media_asset_analysis_leases)")
     }
     assert lease_foreign_keys == {
         "content_assets": "RESTRICT",
         "auth_users": "RESTRICT",
         "tasks": "RESTRICT",
     }
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_timeline_drafts'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_video_timeline_drafts_owner_updated'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_generation_task_links'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_video_generation_task_links_task'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table' "
-        "AND name = 'video_render_runs'"
-    ).fetchone() is not None
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'video_timeline_drafts'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_video_timeline_drafts_owner_updated'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'video_generation_task_links'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_video_generation_task_links_task'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'video_render_runs'"
+        ).fetchone()
+        is not None
+    )
     render_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(video_render_runs)")
     }
     assert {
-        "render_id", "task_id", "owner_user_id", "analysis_id",
-        "output_asset_id", "output_storage_key", "status",
+        "render_id",
+        "task_id",
+        "owner_user_id",
+        "analysis_id",
+        "output_asset_id",
+        "output_storage_key",
+        "status",
     } <= render_columns
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_video_render_owner_created'"
-    ).fetchone() is not None
-    assert connection.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_video_render_analysis'"
-    ).fetchone() is not None
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_video_render_owner_created'"
+        ).fetchone()
+        is not None
+    )
+    assert (
+        connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND name = 'idx_video_render_analysis'"
+        ).fetchone()
+        is not None
+    )
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
-

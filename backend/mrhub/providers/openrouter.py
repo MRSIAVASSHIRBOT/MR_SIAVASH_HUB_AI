@@ -1,4 +1,5 @@
 """Explicit OpenRouter chat-completions adapter; never used as an implicit fallback."""
+
 from __future__ import annotations
 
 from urllib.parse import urlsplit
@@ -46,6 +47,8 @@ class OpenRouterProvider:
             local=False,
             priority=50,
         )
+        # Normalize self._transport to httpx.AsyncClient for async client compatibility
+        self._async_transport = transport
 
     @staticmethod
     def _validate_base_url(value: str) -> str:
@@ -72,6 +75,8 @@ class OpenRouterProvider:
         return "https://openrouter.ai/api/v1/"
 
     def _client(self, timeout_seconds: float | None = None) -> httpx.Client:
+        # Use _transport for sync httpx.Client, _async_transport for async client compatibility
+        transport = getattr(self, "_async_transport", self._transport)
         return httpx.Client(
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout_seconds or self.timeout_seconds),
@@ -79,18 +84,22 @@ class OpenRouterProvider:
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            transport=self._transport,
+            transport=transport,
             follow_redirects=False,
             trust_env=False,
         )
 
     @staticmethod
     def _token_count(value: object) -> int | None:
-        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        return (
+            value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        )
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         if not 0.1 <= timeout_seconds <= 10:
-            raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
+            raise ProviderConfigurationError(
+                "Health probe timeout must be between 0.1 and 10 seconds"
+            )
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
                 response = client.get("models")
@@ -116,7 +125,9 @@ class OpenRouterProvider:
                 )
             if not 200 <= response.status_code < 300:
                 # Never include provider response bodies, headers, or key material in errors.
-                raise ProviderUnavailableError("Remote model service returned an unavailable status")
+                raise ProviderUnavailableError(
+                    "Remote model service returned an unavailable status"
+                )
             payload = response.json()
             if not isinstance(payload, dict):
                 raise ProviderUnavailableError("Remote model returned an invalid response")

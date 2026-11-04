@@ -22,10 +22,7 @@ class ProviderRegistry:
 
     def providers(self) -> list[ModelProvider]:
         """Return registered adapters in deterministic provider/model order."""
-        return [
-            self._providers[key]
-            for key in sorted(self._providers)
-        ]
+        return [self._providers[key] for key in sorted(self._providers)]
 
     def catalog(self):
         """Return registered descriptors in a deterministic, read-only order."""

@@ -21,11 +21,15 @@ def test_video_metadata_endpoint_uses_only_owner_scoped_video_asset(monkeypatch,
         def get(self, owner_user_id, requested_asset_id):
             calls["owner"] = owner_user_id
             calls["asset_id"] = requested_asset_id
-            return {
-                "asset_id": str(asset_id),
-                "media_type": "video/mp4",
-                "storage_key": "internal-storage-key.mp4",
-            } if owner_user_id == "owner-a" else None
+            return (
+                {
+                    "asset_id": str(asset_id),
+                    "media_type": "video/mp4",
+                    "storage_key": "internal-storage-key.mp4",
+                }
+                if owner_user_id == "owner-a"
+                else None
+            )
 
         def file_path(self, storage_key):
             calls["storage_key"] = storage_key
@@ -44,7 +48,8 @@ def test_video_metadata_endpoint_uses_only_owner_scoped_video_asset(monkeypatch,
         )
 
     monkeypatch.setattr(
-        video_intelligence, "get_settings",
+        video_intelligence,
+        "get_settings",
         lambda: SimpleNamespace(database_path=tmp_path / "app.sqlite"),
     )
     monkeypatch.setattr(video_intelligence, "MediaAssetRepository", FakeMediaRepository)
@@ -72,7 +77,8 @@ def test_video_metadata_endpoint_hides_assets_owned_by_other_users(monkeypatch, 
             return None
 
     monkeypatch.setattr(
-        video_intelligence, "get_settings",
+        video_intelligence,
+        "get_settings",
         lambda: SimpleNamespace(database_path=tmp_path / "app.sqlite"),
     )
     monkeypatch.setattr(video_intelligence, "MediaAssetRepository", FakeMediaRepository)
@@ -91,10 +97,15 @@ def test_video_metadata_endpoint_rejects_non_video_assets(monkeypatch, tmp_path)
             pass
 
         def get(self, _owner_user_id, asset_id):
-            return {"asset_id": str(asset_id), "media_type": "image/png", "storage_key": "image.png"}
+            return {
+                "asset_id": str(asset_id),
+                "media_type": "image/png",
+                "storage_key": "image.png",
+            }
 
     monkeypatch.setattr(
-        video_intelligence, "get_settings",
+        video_intelligence,
+        "get_settings",
         lambda: SimpleNamespace(database_path=tmp_path / "app.sqlite"),
     )
     monkeypatch.setattr(video_intelligence, "MediaAssetRepository", FakeMediaRepository)
@@ -246,11 +257,13 @@ def test_create_timeline_draft_requires_owner_completed_analysis_and_asset(monke
             asset_id=asset_id,
             duration_seconds=10,
             aspect_ratio="9:16",
-            beats=[{
-                "start_seconds": 0,
-                "end_seconds": 10,
-                "generation_instruction": "Create an original scene",
-            }],
+            beats=[
+                {
+                    "start_seconds": 0,
+                    "end_seconds": 10,
+                    "generation_instruction": "Create an original scene",
+                }
+            ],
         ),
         AuthenticatedUser(user_id="owner-a", username="owner"),
     )
@@ -276,11 +289,13 @@ def test_create_timeline_draft_hides_asset_outside_analysis(monkeypatch):
                 asset_id=uuid4(),
                 duration_seconds=10,
                 aspect_ratio="9:16",
-                beats=[{
-                    "start_seconds": 0,
-                    "end_seconds": 10,
-                    "generation_instruction": "Create an original scene",
-                }],
+                beats=[
+                    {
+                        "start_seconds": 0,
+                        "end_seconds": 10,
+                        "generation_instruction": "Create an original scene",
+                    }
+                ],
             ),
             AuthenticatedUser(user_id="owner-a", username="owner"),
         )
@@ -309,11 +324,13 @@ def test_get_and_update_timeline_draft_are_owner_scoped(monkeypatch):
         expected_version=1,
         duration_seconds=10,
         aspect_ratio="9:16",
-        beats=[{
-            "start_seconds": 0,
-            "end_seconds": 10,
-            "generation_instruction": "Edited original scene",
-        }],
+        beats=[
+            {
+                "start_seconds": 0,
+                "end_seconds": 10,
+                "generation_instruction": "Edited original scene",
+            }
+        ],
     )
     assert video_intelligence.update_timeline_draft(draft_id, update, user)["version"] == 2
     assert calls["get"] == ("owner-a", draft_id)

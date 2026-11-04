@@ -4,6 +4,7 @@ Run with python -m mrhub.worker_service from the repository root after
 configuring the database path and workflow payload encryption key. The API does
 not silently start background execution; operators opt into this process.
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,18 +63,14 @@ def main() -> None:
     def cleanup_loop() -> None:
         while not cleanup_stop.is_set():
             try:
-                media_repository.cleanup_pending_files_all(
-                    limit=CLEANUP_SWEEP_BATCH_SIZE
-                )
+                media_repository.cleanup_pending_files_all(limit=CLEANUP_SWEEP_BATCH_SIZE)
             except (OSError, sqlite3.Error, ValueError) as exc:
                 # Log only the exception class; never expose storage paths or data.
                 logger.warning("Media cleanup sweep failed (%s)", type(exc).__name__)
             if cleanup_stop.wait(CLEANUP_SWEEP_INTERVAL_SECONDS):
                 break
 
-    cleanup_thread = Thread(
-        target=cleanup_loop, name="mrhub-media-cleanup", daemon=True
-    )
+    cleanup_thread = Thread(target=cleanup_loop, name="mrhub-media-cleanup", daemon=True)
     cleanup_thread.start()
 
     def request_stop(_signum: int, _frame: object) -> None:

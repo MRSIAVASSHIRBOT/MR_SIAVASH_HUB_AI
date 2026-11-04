@@ -1,4 +1,5 @@
 """Owner-scoped content draft storage with deduplication and revision history."""
+
 from __future__ import annotations
 
 import hashlib
@@ -102,7 +103,9 @@ class ContentDraftRepository:
         return str(asset["asset_id"])
 
     @staticmethod
-    def _save_version(connection, record: dict[str, object], changed_by: str, created_at: str) -> None:
+    def _save_version(
+        connection, record: dict[str, object], changed_by: str, created_at: str
+    ) -> None:
         connection.execute(
             """
             INSERT INTO content_draft_versions (
@@ -128,9 +131,7 @@ class ContentDraftRepository:
             ),
         )
 
-    def find_duplicate(
-        self, owner_user_id: str, content_hash: str
-    ) -> dict[str, object] | None:
+    def find_duplicate(self, owner_user_id: str, content_hash: str) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM content_drafts WHERE owner_user_id = ? AND content_hash = ?",

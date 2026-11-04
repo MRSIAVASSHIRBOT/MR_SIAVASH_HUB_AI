@@ -34,9 +34,7 @@ class WorkerControlRepository:
             "changed_at": row["changed_at"],
         }
 
-    def set_stopped(
-        self, stopped: bool, *, reason: str | None, changed_by: str
-    ) -> dict[str, Any]:
+    def set_stopped(self, stopped: bool, *, reason: str | None, changed_by: str) -> dict[str, Any]:
         now = datetime.now(UTC).isoformat()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")

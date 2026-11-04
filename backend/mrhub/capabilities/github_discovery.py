@@ -3,6 +3,7 @@
 Only the fixed GitHub API host is contacted. Repository source code is never fetched,
 installed, imported, or executed by this discovery layer.
 """
+
 from __future__ import annotations
 
 import re
@@ -41,7 +42,9 @@ def parse_github_repository_url(source_url: str) -> tuple[str, str, str]:
         raise CapabilityValidationError("Only public github.com repository URLs are supported")
     match = _GITHUB_REPOSITORY_PATH.fullmatch(parsed.path)
     if match is None:
-        raise CapabilityValidationError("Use a repository URL in the form https://github.com/OWNER/REPO")
+        raise CapabilityValidationError(
+            "Use a repository URL in the form https://github.com/OWNER/REPO"
+        )
     owner, repository = match.groups()
     if owner in {".", ".."} or repository in {".", ".."}:
         raise CapabilityValidationError("Owner and repository names must be valid path segments")
@@ -56,47 +59,86 @@ def _metadata_response(source_url: str) -> dict[str, Any]:
     owner, repository, _canonical_url = parse_github_repository_url(source_url)
     api_url = f"https://api.github.com/repos/{owner}/{repository}"
     try:
-        with httpx.Client(
-            timeout=httpx.Timeout(5.0, connect=3.0),
-            follow_redirects=False,
-            trust_env=False,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": _USER_AGENT,
-            },
-        ) as client, client.stream("GET", api_url) as response:
+        with (
+            httpx.Client(
+                timeout=httpx.Timeout(5.0, connect=3.0),
+                follow_redirects=False,
+                trust_env=False,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "User-Agent": _USER_AGENT,
+                },
+            ) as client,
+            client.stream("GET", api_url) as response,
+        ):
             if response.status_code == 404:
-                raise GitHubDiscoveryError("repository_not_found", "Public repository not found", status_code=404)
+                raise GitHubDiscoveryError(
+                    "repository_not_found", "Public repository not found", status_code=404
+                )
             if response.status_code == 403 and response.headers.get("x-ratelimit-remaining") == "0":
-                raise GitHubDiscoveryError("github_rate_limited", "GitHub API rate limit reached; try again later", status_code=429)
+                raise GitHubDiscoveryError(
+                    "github_rate_limited",
+                    "GitHub API rate limit reached; try again later",
+                    status_code=429,
+                )
             if response.status_code == 401:
-                raise GitHubDiscoveryError("github_api_auth_required", "GitHub API refused this metadata request", status_code=502)
+                raise GitHubDiscoveryError(
+                    "github_api_auth_required",
+                    "GitHub API refused this metadata request",
+                    status_code=502,
+                )
             if response.status_code == 403:
-                raise GitHubDiscoveryError("github_api_forbidden", "GitHub API denied this metadata request", status_code=502)
+                raise GitHubDiscoveryError(
+                    "github_api_forbidden",
+                    "GitHub API denied this metadata request",
+                    status_code=502,
+                )
             if response.status_code >= 500:
-                raise GitHubDiscoveryError("github_unavailable", "GitHub API is temporarily unavailable", status_code=502)
+                raise GitHubDiscoveryError(
+                    "github_unavailable", "GitHub API is temporarily unavailable", status_code=502
+                )
             if response.status_code != 200:
-                raise GitHubDiscoveryError("github_api_error", f"GitHub API returned HTTP {response.status_code}", status_code=502)
+                raise GitHubDiscoveryError(
+                    "github_api_error",
+                    f"GitHub API returned HTTP {response.status_code}",
+                    status_code=502,
+                )
             chunks: list[bytes] = []
             total = 0
             for chunk in response.iter_bytes():
                 total += len(chunk)
                 if total > _MAX_RESPONSE_BYTES:
-                    raise GitHubDiscoveryError("metadata_response_too_large", "GitHub metadata response exceeded the size limit", status_code=502)
+                    raise GitHubDiscoveryError(
+                        "metadata_response_too_large",
+                        "GitHub metadata response exceeded the size limit",
+                        status_code=502,
+                    )
                 chunks.append(chunk)
             try:
                 payload = httpx.Response(200, content=b"".join(chunks)).json()
             except ValueError as exc:
-                raise GitHubDiscoveryError("invalid_github_response", "GitHub returned invalid metadata JSON", status_code=502) from exc
+                raise GitHubDiscoveryError(
+                    "invalid_github_response",
+                    "GitHub returned invalid metadata JSON",
+                    status_code=502,
+                ) from exc
     except GitHubDiscoveryError:
         raise
     except httpx.TimeoutException as exc:
-        raise GitHubDiscoveryError("github_timeout", "GitHub metadata request timed out", status_code=504) from exc
+        raise GitHubDiscoveryError(
+            "github_timeout", "GitHub metadata request timed out", status_code=504
+        ) from exc
     except httpx.HTTPError as exc:
-        raise GitHubDiscoveryError("github_network_error", "Could not retrieve GitHub repository metadata", status_code=502) from exc
+        raise GitHubDiscoveryError(
+            "github_network_error", "Could not retrieve GitHub repository metadata", status_code=502
+        ) from exc
     if not isinstance(payload, dict) or payload.get("full_name") is None:
-        raise GitHubDiscoveryError("invalid_github_response", "GitHub response is missing repository metadata", status_code=502)
+        raise GitHubDiscoveryError(
+            "invalid_github_response",
+            "GitHub response is missing repository metadata",
+            status_code=502,
+        )
     return payload
 
 
@@ -111,7 +153,9 @@ def _safe_public_count(value: object) -> int:
     return max(0, min(count, 2_147_483_647))
 
 
-def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> tuple[CapabilityCandidate, dict[str, Any]]:
+def discover_github_candidate(
+    source_url: str, registry: CapabilityRegistry
+) -> tuple[CapabilityCandidate, dict[str, Any]]:
     """Inspect public repo metadata and persist a review candidate; never execute code."""
     owner, repository, canonical_url = parse_github_repository_url(source_url)
     metadata = _metadata_response(canonical_url)
@@ -122,7 +166,11 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         if isinstance(spdx_id, str) and spdx_id.strip() not in {"", "NOASSERTION"}:
             license_id = spdx_id.strip()[:80]
     topics = metadata.get("topics", [])
-    capabilities = [topic for topic in topics if isinstance(topic, str)][:50] if isinstance(topics, list) else []
+    capabilities = (
+        [topic for topic in topics if isinstance(topic, str)][:50]
+        if isinstance(topics, list)
+        else []
+    )
     language = metadata.get("language")
     if isinstance(language, str) and language.strip() and len(capabilities) < 50:
         capabilities.append(f"language:{language.strip()[:70]}")
@@ -141,7 +189,11 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         )
     except CapabilityValidationError as exc:
         if "already in the catalog" in str(exc):
-            raise GitHubDiscoveryError("candidate_already_registered", "This repository is already in the capability catalog", status_code=409) from exc
+            raise GitHubDiscoveryError(
+                "candidate_already_registered",
+                "This repository is already in the capability catalog",
+                status_code=409,
+            ) from exc
         raise
     safe_metadata = {
         "full_name": display_name,

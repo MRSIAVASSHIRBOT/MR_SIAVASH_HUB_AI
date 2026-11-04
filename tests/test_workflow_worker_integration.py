@@ -1,4 +1,5 @@
 """End-to-end tests for queued, encrypted workflow execution."""
+
 from uuid import UUID
 
 from client_helpers import authenticated_client, run_worker_once
@@ -37,9 +38,7 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
         ).fetchone()
     assert owner_row is not None
     owner_user_id = owner_row["owner_user_id"]
-    encrypted = recovery.get_encrypted_payload(
-        workflow_id, owner_user_id=owner_user_id
-    )
+    encrypted = recovery.get_encrypted_payload(workflow_id, owner_user_id=owner_user_id)
     assert encrypted is not None
     assert encrypted["task_id"] == str(task_id)
     assert encrypted["ciphertext_b64"]
@@ -50,20 +49,18 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
     assert completed.status.value == "succeeded"
 
     stored_task = repository.get(task_id)
-    stored_workflow = recovery.get_run(
-        workflow_id, owner_user_id="local-owner"
-    )
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert stored_task is not None and stored_task.status.value == "succeeded"
     assert stored_workflow is not None
     assert stored_workflow["status"] == "succeeded"
     assert stored_workflow["steps"][1]["status"] == "succeeded"
-    assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id=owner_user_id
-    ) is None
+    assert recovery.get_encrypted_payload(workflow_id, owner_user_id=owner_user_id) is None
 
-    worker_result = __import__(
-        "mrhub.jobs.worker", fromlist=["WorkerEngine"]
-    ).WorkerEngine(repository).get_result(task_id)
+    worker_result = (
+        __import__("mrhub.jobs.worker", fromlist=["WorkerEngine"])
+        .WorkerEngine(repository)
+        .get_result(task_id)
+    )
     assert worker_result is not None
     assert worker_result["result"]["execution_completed"] is True
     assert worker_result["result"]["executed_tool_count"] == 1
@@ -81,9 +78,7 @@ def test_workflow_payload_is_not_readable_by_another_owner() -> None:
 
     repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
-    assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="some-other-user"
-    ) is None
+    assert recovery.get_encrypted_payload(workflow_id, owner_user_id="some-other-user") is None
 
 
 def test_queued_workflow_can_be_cancelled_by_its_owner() -> None:
@@ -130,10 +125,8 @@ def test_workflow_idempotency_replays_the_atomically_created_resource() -> None:
     assert first.status_code == 200
     assert second.status_code == 200
     assert second.json()["idempotent_replay"] is True
-    assert (
-        second.json()["workflow"]["workflow_id"]
-        == first.json()["workflow"]["workflow_id"]
-    )
+    assert second.json()["workflow"]["workflow_id"] == first.json()["workflow"]["workflow_id"]
+
 
 def test_cancellation_after_worker_claim_is_not_overwritten_or_left_active(monkeypatch) -> None:
     client = authenticated_client()
@@ -157,9 +150,7 @@ def test_cancellation_after_worker_claim_is_not_overwritten_or_left_active(monke
     from mrhub.jobs.workflow_dispatch import WorkflowWorkerHandler
 
     def cancel_before_dispatch(self, task, *, lease, lease_lost):
-        result = recovery.request_cancellation(
-            workflow_id, owner_user_id="local-owner"
-        )
+        result = recovery.request_cancellation(workflow_id, owner_user_id="local-owner")
         assert result["status"] == "cancelled"
         return {
             "workflow_id": str(workflow_id),
@@ -188,6 +179,7 @@ def test_cancellation_after_worker_claim_is_not_overwritten_or_left_active(monke
     assert execution["finished_at"] is not None
     assert execution["result_json"]
 
+
 def test_running_workflow_cancellation_is_observed_and_finalized(monkeypatch) -> None:
     client = authenticated_client()
     response = client.post(
@@ -205,15 +197,12 @@ def test_running_workflow_cancellation_is_observed_and_finalized(monkeypatch) ->
     repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
 
-
     def finish_current_step_then_observe_cancel(
         self, request, *, on_step, on_step_result, should_cancel, **kwargs
     ):
         assert should_cancel() is False
         on_step(2, "running", None)
-        cancelled = recovery.request_cancellation(
-            workflow_id, owner_user_id="local-owner"
-        )
+        cancelled = recovery.request_cancellation(workflow_id, owner_user_id="local-owner")
         assert cancelled["status"] == "cancellation_requested"
         # Model the currently running tool returning safely before the runner
         # checks the persisted cancellation request and refuses the next step.
@@ -238,9 +227,8 @@ def test_running_workflow_cancellation_is_observed_and_finalized(monkeypatch) ->
     assert stored_task is not None and stored_task.status.value == "cancelled"
     assert stored_workflow is not None and stored_workflow["status"] == "cancelled"
     assert stored_workflow["steps"][1]["status"] == "succeeded"
-    assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="local-owner"
-    ) is None
+    assert recovery.get_encrypted_payload(workflow_id, owner_user_id="local-owner") is None
+
 
 def test_cancellation_between_last_step_and_finalization_wins_over_success(monkeypatch) -> None:
     client = authenticated_client()
@@ -275,6 +263,7 @@ def test_cancellation_between_last_step_and_finalization_wins_over_success(monke
     assert stored is not None and stored["status"] == "cancelled"
     assert repository.get(task_id).status.value == "cancelled"
 
+
 def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     client = authenticated_client()
     response = client.post(
@@ -292,6 +281,7 @@ def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     # Repeating a cancellation request is safe and returns the terminal state.
     assert second.status_code == 200
     assert second.json()["status"] == "cancelled"
+
 
 def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeypatch) -> None:
     """An effect accepted before process death must not be invoked again on recovery."""

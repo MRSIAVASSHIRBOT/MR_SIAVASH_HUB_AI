@@ -3,6 +3,7 @@
 Unlike TestClient-only workflow tests, this launches the API and pull worker as
 separate OS processes sharing only the configured SQLite database and payload key.
 """
+
 from __future__ import annotations
 
 import base64
@@ -47,9 +48,7 @@ def test_api_and_worker_execute_queued_workflow_in_separate_processes(tmp_path: 
                 b"runtime-smoke-key-material-32byt"
             ).decode("ascii"),
             "MRH_ENVIRONMENT": "test",
-            "PYTHONPATH": str(root / "backend")
-            + os.pathsep
-            + env.get("PYTHONPATH", ""),
+            "PYTHONPATH": str(root / "backend") + os.pathsep + env.get("PYTHONPATH", ""),
         }
     )
     base_url = f"http://127.0.0.1:{port}"

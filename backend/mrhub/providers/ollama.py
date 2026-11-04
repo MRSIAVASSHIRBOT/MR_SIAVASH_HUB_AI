@@ -77,7 +77,9 @@ class OllamaProvider:
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         if not 0.1 <= timeout_seconds <= 10:
-            raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
+            raise ProviderConfigurationError(
+                "Health probe timeout must be between 0.1 and 10 seconds"
+            )
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
                 response = client.get("/api/tags")

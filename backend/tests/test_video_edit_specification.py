@@ -22,9 +22,7 @@ def _asset_result():
         "semantic_visual_analysis": {
             "status": "completed",
             "style_summary": "Measured cinematic framing with soft directional light.",
-            "observations": [
-                {"timestamp_seconds": 0.0, "description": "Wide opening frame."}
-            ],
+            "observations": [{"timestamp_seconds": 0.0, "description": "Wide opening frame."}],
         },
     }
 
@@ -108,7 +106,6 @@ def test_request_bounds_custom_directive_keys_and_values():
             source_asset_ids=["asset-123"],
             custom_changes={"captions": "x" * 501},
         )
-
 
 
 def test_edit_spec_excludes_scene_cut_at_or_after_analyzed_source_end():

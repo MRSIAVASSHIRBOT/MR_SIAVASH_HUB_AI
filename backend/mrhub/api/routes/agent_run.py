@@ -33,9 +33,9 @@ class AgentRunRequest(BaseModel):
     provider_mode: Literal["local", "remote"] = "local"
     include_memory: bool = True
     include_knowledge: bool = True
-    knowledge_freshness_policy: Literal[
-        "include_all", "owner_reviewed_current_only"
-    ] = "include_all"
+    knowledge_freshness_policy: Literal["include_all", "owner_reviewed_current_only"] = (
+        "include_all"
+    )
     max_turns: int = Field(default=3, ge=1, le=3)
     max_output_tokens: int = Field(default=512, ge=1, le=512)
     max_runtime_seconds: int = Field(default=30, ge=1, le=30)
@@ -89,7 +89,9 @@ def run_agent(
             max_runtime_seconds=payload.max_runtime_seconds,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Agent input exceeds the supported bounds") from exc
+        raise HTTPException(
+            status_code=422, detail="Agent input exceeds the supported bounds"
+        ) from exc
 
     worker_control = WorkerControlRepository(settings.database_path)
     tool_registry = build_tool_registry()

@@ -1,4 +1,5 @@
 """Bounded atomic file sink for provider-generated media bytes."""
+
 from __future__ import annotations
 
 import os

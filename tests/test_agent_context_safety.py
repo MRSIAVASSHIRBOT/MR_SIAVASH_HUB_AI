@@ -78,7 +78,7 @@ def test_each_source_is_capped_and_total_serialized_context_is_bounded():
 
 
 def test_serialization_overhead_and_json_escaping_are_included_in_budget():
-    hostile = 'x' * 1_400 + '\n"\t' * 1_000
+    hostile = "x" * 1_400 + '\n"\t' * 1_000
     result = make_assembler(
         memory_content="m" * 600,
         knowledge_content=hostile,
@@ -151,16 +151,18 @@ def test_manual_current_label_is_not_automatic_freshness_verification():
     class CurrentLabelKnowledge:
         def search(self, owner_user_id: str, query: str, limit: int):
             assert owner_user_id == "owner-a"
-            return [{
-                "citation_ref": "knowledge://documents/d-current#chunk-0",
-                "source_ref": "external-note:claimed-current",
-                "trust_classification": "owner_reviewed_current",
-                "freshness_status": "current",
-                "freshness_checked_at": "2026-11-02T00:00:00+00:00",
-                "document_hash": "c" * 64,
-                "chunk_hash": "d" * 64,
-                "content": "This source claims it is current.",
-            }]
+            return [
+                {
+                    "citation_ref": "knowledge://documents/d-current#chunk-0",
+                    "source_ref": "external-note:claimed-current",
+                    "trust_classification": "owner_reviewed_current",
+                    "freshness_status": "current",
+                    "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+                    "document_hash": "c" * 64,
+                    "chunk_hash": "d" * 64,
+                    "content": "This source claims it is current.",
+                }
+            ]
 
     assembler = AgentContextAssembler.__new__(AgentContextAssembler)
     assembler.memory = FakeMemory("")

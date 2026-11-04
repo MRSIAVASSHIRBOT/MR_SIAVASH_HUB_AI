@@ -21,9 +21,7 @@ def _valid_local_path(value: str, *, allow_root: bool = True) -> bool:
     if not allow_root and value == "/":
         return False
     parts = value.split("/")[1:]
-    return all(part not in {"", ".", ".."} for part in parts) or (
-        allow_root and value == "/"
-    )
+    return all(part not in {"", ".", ".."} for part in parts) or (allow_root and value == "/")
 
 
 def validate_loopback_base_url(value: str | None) -> str | None:
@@ -94,11 +92,14 @@ async def probe_loopback_service(
             "configured": False,
         }
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout_seconds, follow_redirects=False, trust_env=False
-        ) as client, client.stream(
-            "GET", f"{base}{path}", headers={"Accept": "application/json"}
-        ) as response:
+        async with (
+            httpx.AsyncClient(
+                timeout=timeout_seconds, follow_redirects=False, trust_env=False
+            ) as client,
+            client.stream(
+                "GET", f"{base}{path}", headers={"Accept": "application/json"}
+            ) as response,
+        ):
             if response.is_redirect:
                 return {
                     "contract_version": INTEGRATION_CONTRACT_VERSION,
@@ -115,9 +116,7 @@ async def probe_loopback_service(
             received = 0
             # Bound each yielded chunk to at most the remaining allowance plus
             # one byte, avoiding per-byte iteration while detecting overflow.
-            async for chunk in response.aiter_bytes(
-                chunk_size=min(1024, max_response_bytes + 1)
-            ):
+            async for chunk in response.aiter_bytes(chunk_size=min(1024, max_response_bytes + 1)):
                 received += len(chunk)
                 if received > max_response_bytes:
                     return {

@@ -110,9 +110,7 @@ def test_workflow_definition_mismatch_requires_replanning(tmp_path):
     repository = make_repository(tmp_path)
     workflow_id = make_run(repository, definition_version=2)
 
-    decision = repository.resume_decision(
-        workflow_id, "a" * 64, definition_version=1
-    )
+    decision = repository.resume_decision(workflow_id, "a" * 64, definition_version=1)
 
     assert decision.decision == "replan"
     assert decision.reason_code == "definition_version_mismatch"
@@ -144,9 +142,7 @@ def test_unknown_outcome_requires_explicit_reconciliation_before_resume(tmp_path
     workflow_id = make_run(repository)
     repository.start_run(workflow_id)
     attempt = repository.start_step(workflow_id, 1)
-    repository.fail_step(
-        workflow_id, attempt, "external_result_uncertain", unknown_outcome=True
-    )
+    repository.fail_step(workflow_id, attempt, "external_result_uncertain", unknown_outcome=True)
 
     with pytest.raises(RecoveryRequired):
         repository.start_step(workflow_id, 1)
@@ -165,9 +161,7 @@ def test_reconciled_failure_is_terminal_and_does_not_replay(tmp_path):
     workflow_id = make_run(repository)
     repository.start_run(workflow_id)
     attempt = repository.start_step(workflow_id, 1)
-    repository.fail_step(
-        workflow_id, attempt, "external_result_uncertain", unknown_outcome=True
-    )
+    repository.fail_step(workflow_id, attempt, "external_result_uncertain", unknown_outcome=True)
 
     assert repository.resolve_unknown_step(workflow_id, 1, "failed") is None
     decision = repository.resume_decision(workflow_id, "a" * 64)
@@ -255,7 +249,6 @@ def test_run_lookup_returns_only_bounded_recovery_metadata(tmp_path):
     assert len(run["steps"]) == 3
 
 
-
 def test_workflow_step_commit_is_fenced_against_expired_owner(tmp_path):
     database_path = tmp_path / "workflow-lease-fence.sqlite3"
     tasks = TaskRepository(database_path)
@@ -285,9 +278,7 @@ def test_workflow_step_commit_is_fenced_against_expired_owner(tmp_path):
     assert successor.fencing_token > old_lease.fencing_token
 
     with pytest.raises(RecoveryRequired, match="lease was lost"):
-        recovery.complete_step(
-            workflow_id, attempt, "b" * 64, lease=old_lease
-        )
+        recovery.complete_step(workflow_id, attempt, "b" * 64, lease=old_lease)
     assert recovery.latest_checkpoint(workflow_id) is None
 
     assert recovery.mark_interrupted(workflow_id, lease=successor) == 1
@@ -392,7 +383,6 @@ def test_job_engine_rejects_terminal_transition_from_stale_workflow_lease(tmp_pa
     assert stored is not None and stored.status is TaskStatus.RUNNING
 
 
-
 def test_interrupted_safe_step_becomes_retry_wait_not_unknown_outcome(tmp_path):
     repository = make_repository(tmp_path)
     workflow_id = repository.create_run(
@@ -413,7 +403,6 @@ def test_interrupted_safe_step_becomes_retry_wait_not_unknown_outcome(tmp_path):
     assert decision.next_step == 1
 
 
-
 def test_workflow_records_are_scoped_to_the_authenticated_owner(tmp_path):
     repository = make_repository(tmp_path)
     task = TaskRecord(task_type="agent.workflow", description="owned workflow")
@@ -429,19 +418,14 @@ def test_workflow_records_are_scoped_to_the_authenticated_owner(tmp_path):
     assert repository.get_run(workflow_id, owner_user_id="user-a") is not None
     assert repository.get_run(workflow_id, owner_user_id="user-b") is None
     with pytest.raises(LookupError, match="Workflow not found"):
-        repository.resume_decision(
-            workflow_id, "a" * 64, owner_user_id="user-b"
-        )
+        repository.resume_decision(workflow_id, "a" * 64, owner_user_id="user-b")
     with pytest.raises(LookupError, match="Workflow not found"):
-        repository.resolve_unknown_step(
-            workflow_id, 1, "failed", owner_user_id="user-b"
-        )
+        repository.resolve_unknown_step(workflow_id, 1, "failed", owner_user_id="user-b")
+
 
 def test_running_cancellation_persists_intent_until_worker_finalizes(tmp_path):
     repository = make_repository(tmp_path)
-    TaskRepository(repository.database_path).create_auth_user(
-        "owner-a", "owner-a", "salt", "hash"
-    )
+    TaskRepository(repository.database_path).create_auth_user("owner-a", "owner-a", "salt", "hash")
     task = TaskRecord(task_type="agent.workflow", description="cancel intent")
     workflow_id = repository.create_run(
         "a" * 64,
@@ -457,9 +441,7 @@ def test_running_cancellation_persists_intent_until_worker_finalizes(tmp_path):
     assert lease is not None
     repository.start_run(workflow_id, lease=lease)
 
-    result = repository.request_cancellation(
-        workflow_id, owner_user_id="owner-a"
-    )
+    result = repository.request_cancellation(workflow_id, owner_user_id="owner-a")
 
     assert result["status"] == "cancellation_requested"
     stored_task = tasks.get(task.task_id)

@@ -16,7 +16,9 @@ from mrhub.capabilities.registry import CapabilityRegistry, CapabilityValidation
 
 def test_parse_github_repository_url_normalizes_git_suffix():
     assert parse_github_repository_url("https://github.com/Example/Tool.git/") == (
-        "Example", "Tool", "https://github.com/Example/Tool"
+        "Example",
+        "Tool",
+        "https://github.com/Example/Tool",
     )
 
 
@@ -89,7 +91,9 @@ def test_discovery_registers_metadata_only_candidate_and_never_approves(monkeypa
         "open_issues_count": 4,
         "updated_at": "2026-10-30T12:00:00Z",
     }
-    monkeypatch.setattr("mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata)
+    monkeypatch.setattr(
+        "mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata
+    )
     registry = CapabilityRegistry(tmp_path / "discovery.sqlite3")
 
     candidate, result = discover_github_candidate("https://github.com/Example/VideoTool", registry)
@@ -120,10 +124,17 @@ def test_github_404_becomes_safe_not_found_error(monkeypatch):
             yield b"{}"
 
     class FakeClient:
-        def __init__(self, **kwargs): pass
-        def __enter__(self): return self
-        def __exit__(self, *args): return False
-        def stream(self, method, url): return FakeResponse()
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def stream(self, method, url):
+            return FakeResponse()
 
     monkeypatch.setattr("mrhub.capabilities.github_discovery.httpx.Client", FakeClient)
     with pytest.raises(GitHubDiscoveryError) as error:
@@ -139,10 +150,14 @@ def test_malformed_public_counters_are_bounded_instead_of_crashing(monkeypatch, 
         "open_issues_count": -9,
         "license": {"spdx_id": "MIT"},
     }
-    monkeypatch.setattr("mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata)
+    monkeypatch.setattr(
+        "mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata
+    )
     registry = CapabilityRegistry(tmp_path / "bad-counters.sqlite3")
 
-    _candidate, result = discover_github_candidate("https://github.com/Example/BadCounters", registry)
+    _candidate, result = discover_github_candidate(
+        "https://github.com/Example/BadCounters", registry
+    )
 
     assert result["stargazers_count"] == 0
     assert result["open_issues_count"] == 0

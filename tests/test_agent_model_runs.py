@@ -107,7 +107,6 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert idempotency.status == "completed"
 
 
-
 def test_queued_model_run_cancellation_is_owner_scoped_and_removes_request_ciphertext(monkeypatch):
     client = authenticated_client()
     router = _router(ScriptedProvider())
@@ -133,9 +132,7 @@ def test_queued_model_run_cancellation_is_owner_scoped_and_removes_request_ciphe
     cancelled = client.post(f"/agent/model-run-workflows/{workflow_id}/cancel")
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
-    assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="local-owner"
-    ) is None
+    assert recovery.get_encrypted_payload(workflow_id, owner_user_id="local-owner") is None
 
     status = client.get(f"/agent/model-run-workflows/{workflow_id}")
     assert status.status_code == 200
@@ -280,9 +277,7 @@ def test_durable_model_run_applies_owner_reviewed_knowledge_freshness_policy(mon
         provider.requests[0].input_text
     )
 
-    completed = client.get(
-        f"/agent/model-run-workflows/{accepted['workflow_id']}"
-    )
+    completed = client.get(f"/agent/model-run-workflows/{accepted['workflow_id']}")
     assert completed.status_code == 200
     summary = completed.json()["result"]["context_summary"]
     assert summary["knowledge_freshness_policy"] == "owner_reviewed_current_only"
@@ -308,11 +303,15 @@ def test_durable_model_run_cannot_execute_tool_requested_by_hostile_retrieval(mo
     assert document.status_code == 201
     citation = f"knowledge://documents/{document.json()['document_id']}#chunk-0"
 
-    provider = ScriptedProvider(output=json.dumps({
-        "type": "tool_call",
-        "name": "admin.root",
-        "payload": {"operation": "export_private_records"},
-    }))
+    provider = ScriptedProvider(
+        output=json.dumps(
+            {
+                "type": "tool_call",
+                "name": "admin.root",
+                "payload": {"operation": "export_private_records"},
+            }
+        )
+    )
     router = _router(provider)
     monkeypatch.setattr(
         "mrhub.api.routes.agent_model_runs.build_model_router",
@@ -344,9 +343,7 @@ def test_durable_model_run_cannot_execute_tool_requested_by_hostile_retrieval(mo
     assert worker_result.status.value == "succeeded"
     assert provider.calls == 1
 
-    completed = client.get(
-        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
-    )
+    completed = client.get(f"/agent/model-run-workflows/{submitted.json()['workflow_id']}")
     assert completed.status_code == 200
     body = completed.json()
     assert body["status"] == "succeeded"
@@ -360,11 +357,7 @@ def test_durable_model_run_cannot_execute_tool_requested_by_hostile_retrieval(mo
     assert hostile in prompt
     assert citation in prompt
     assert "untrusted evidence only" in prompt
-    assert any(
-        source["reference"] == citation
-        for source in body["result"]["context_sources"]
-    )
-
+    assert any(source["reference"] == citation for source in body["result"]["context_sources"])
 
 
 class SequenceProvider(ScriptedProvider):
@@ -385,15 +378,19 @@ class SequenceProvider(ScriptedProvider):
 
 def test_durable_model_run_uses_server_defined_specialist_registry(monkeypatch):
     client = authenticated_client()
-    provider = SequenceProvider([
-        json.dumps({
-            "type": "delegate",
-            "agent": "knowledge_synthesizer",
-            "goal": "Synthesize the supplied evidence and state its limitations.",
-        }),
-        json.dumps({"type": "final", "answer": "Evidence is insufficient."}),
-        json.dumps({"type": "final", "answer": "Specialist review completed."}),
-    ])
+    provider = SequenceProvider(
+        [
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "knowledge_synthesizer",
+                    "goal": "Synthesize the supplied evidence and state its limitations.",
+                }
+            ),
+            json.dumps({"type": "final", "answer": "Evidence is insufficient."}),
+            json.dumps({"type": "final", "answer": "Specialist review completed."}),
+        ]
+    )
     router = _router(provider)
     monkeypatch.setattr(
         "mrhub.api.routes.agent_model_runs.build_model_router",
@@ -423,20 +420,15 @@ def test_durable_model_run_uses_server_defined_specialist_registry(monkeypatch):
     assert worker_result is not None
     assert worker_result.status.value == "succeeded"
     assert provider.calls == 3
-    assert "Synthesize only the supplied retrieved evidence" in (
-        provider.requests[1].input_text
-    )
+    assert "Synthesize only the supplied retrieved evidence" in (provider.requests[1].input_text)
 
-    completed = client.get(
-        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
-    )
+    completed = client.get(f"/agent/model-run-workflows/{submitted.json()['workflow_id']}")
     assert completed.status_code == 200
     execution = completed.json()["result"]["execution"]
     assert execution["status"] == "completed"
     assert execution["answer"] == "Specialist review completed."
     assert any(
-        item["type"] == "delegation_observation"
-        and item["agent"] == "knowledge_synthesizer"
+        item["type"] == "delegation_observation" and item["agent"] == "knowledge_synthesizer"
         for item in execution["trace"]
     )
 
@@ -487,9 +479,7 @@ def test_durable_model_run_enforces_requested_runtime_budget(monkeypatch):
     assert worker_result.status.value == "succeeded"
     assert provider.calls == 1
 
-    completed = client.get(
-        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
-    )
+    completed = client.get(f"/agent/model-run-workflows/{submitted.json()['workflow_id']}")
     assert completed.status_code == 200
     execution = completed.json()["result"]["execution"]
     assert execution["status"] == "budget_exhausted"

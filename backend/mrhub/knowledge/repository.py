@@ -1,4 +1,5 @@
 """Owner-scoped document storage, bounded chunking, and FTS5 retrieval."""
+
 from __future__ import annotations
 
 import hashlib
@@ -260,9 +261,7 @@ class KnowledgeRepository:
             )
         return cursor.rowcount == 1
 
-    def search(
-        self, owner_user_id: str, query: str, limit: int = 10
-    ) -> list[dict[str, object]]:
+    def search(self, owner_user_id: str, query: str, limit: int = 10) -> list[dict[str, object]]:
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
@@ -362,7 +361,5 @@ class KnowledgeRepository:
         return {
             "export_version": 1,
             "exported_at": self._now(),
-            "documents": [
-                {**self._summary(row), "content": row["content"]} for row in rows
-            ],
+            "documents": [{**self._summary(row), "content": row["content"]} for row in rows],
         }

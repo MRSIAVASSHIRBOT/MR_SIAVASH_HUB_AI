@@ -82,7 +82,6 @@ def test_workflow_rejects_terminal_step_mutation(tmp_path):
         repository.record_step(workflow_id, 2, "succeeded")
 
 
-
 def test_legacy_workflow_lookup_is_scoped_to_owner(tmp_path):
     repository = AgentWorkflowRepository(tmp_path / "workflow-owner.sqlite3")
     workflow = repository.create(

@@ -3,6 +3,7 @@
 No platform adapter is enabled by default. Ambiguous provider outcomes are never retried
 automatically because the remote service may already have accepted the post.
 """
+
 from __future__ import annotations
 
 import json
@@ -181,10 +182,7 @@ class ContentScheduleDispatcher:
                 ):
                     raise ValueError("Media asset is not publishable")
                 media_path = media_repository.file_path(str(asset["storage_key"]))
-                if (
-                    not media_path.is_file()
-                    or media_path.stat().st_size != int(asset["file_size"])
-                ):
+                if not media_path.is_file() or media_path.stat().st_size != int(asset["file_size"]):
                     raise ValueError("Media asset file is missing or inconsistent")
                 if platform == "instagram":
                     if asset["media_type"] not in {"image/jpeg", "image/png"}:
@@ -204,9 +202,7 @@ class ContentScheduleDispatcher:
                     if exc.status_code == 503
                     else "public_media_url_unavailable"
                 )
-                self._finish(
-                    str(claimed["schedule_id"]), "failed", reason, now=self._now()
-                )
+                self._finish(str(claimed["schedule_id"]), "failed", reason, now=self._now())
                 return {
                     "schedule_id": str(claimed["schedule_id"]),
                     "status": "failed",
@@ -232,9 +228,7 @@ class ContentScheduleDispatcher:
 
         adapter = self.adapters.get(platform)
         if adapter is None:
-            self._finish(
-                schedule_id, "failed", "provider_not_configured", now=self._now()
-            )
+            self._finish(schedule_id, "failed", "provider_not_configured", now=self._now())
             return {
                 "schedule_id": schedule_id,
                 "status": "failed",
@@ -245,9 +239,7 @@ class ContentScheduleDispatcher:
         # This narrows the claim-to-dispatch race; it cannot cancel a provider call already
         # in flight, so operators must still treat in-flight outcomes as potentially unknown.
         if self._control.is_stopped():
-            self._finish(
-                schedule_id, "scheduled", "emergency_stop", now=self._now()
-            )
+            self._finish(schedule_id, "scheduled", "emergency_stop", now=self._now())
             return {
                 "schedule_id": schedule_id,
                 "status": "scheduled",
@@ -257,9 +249,7 @@ class ContentScheduleDispatcher:
         try:
             receipt = adapter.publish(draft, idempotency_key=idempotency_key)
         except PermanentPublishError:
-            self._finish(
-                schedule_id, "failed", "provider_rejected", now=self._now()
-            )
+            self._finish(schedule_id, "failed", "provider_rejected", now=self._now())
             return {
                 "schedule_id": schedule_id,
                 "status": "failed",
@@ -270,17 +260,21 @@ class ContentScheduleDispatcher:
                 delay = min(60, 5 * (2 ** (attempt_count - 1)))
                 retry_at = self._now() + timedelta(seconds=delay)
                 self._finish(
-                    schedule_id, "scheduled", "provider_transient",
-                    now=self._now(), next_attempt_at=retry_at,
+                    schedule_id,
+                    "scheduled",
+                    "provider_transient",
+                    now=self._now(),
+                    next_attempt_at=retry_at,
                 )
                 status = "scheduled"
             else:
-                self._finish(
-                    schedule_id, "failed", "provider_retry_exhausted", now=self._now()
-                )
+                self._finish(schedule_id, "failed", "provider_retry_exhausted", now=self._now())
                 status = "failed"
-            return {"schedule_id": schedule_id, "status": status,
-                    "reason_code": "provider_transient"}
+            return {
+                "schedule_id": schedule_id,
+                "status": status,
+                "reason_code": "provider_transient",
+            }
         except UnknownPublishOutcome:
             self._finish(
                 schedule_id, "unknown_outcome", "provider_outcome_unknown", now=self._now()

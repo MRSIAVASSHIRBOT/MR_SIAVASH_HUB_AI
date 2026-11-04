@@ -29,10 +29,14 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
 
     command = [
         binary,
-        "-v", "error",
-        "-max_streams", str(_MAX_PROBE_STREAMS),
-        "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate",
-        "-of", "json",
+        "-v",
+        "error",
+        "-max_streams",
+        str(_MAX_PROBE_STREAMS),
+        "-show_entries",
+        "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate",
+        "-of",
+        "json",
         str(path),
     ]
     try:
@@ -55,9 +59,7 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
         if not isinstance(payload, dict):
             return VideoTechnicalMetadata(metadata_status="probe_failed")
         streams = payload.get("streams", [])
-        if not isinstance(streams, list) or not all(
-            isinstance(item, dict) for item in streams
-        ):
+        if not isinstance(streams, list) or not all(isinstance(item, dict) for item in streams):
             return VideoTechnicalMetadata(metadata_status="probe_failed")
         video = next(
             (item for item in streams if item.get("codec_type") == "video"),
@@ -132,11 +134,22 @@ def build_generation_prompt(
     for index, beat in enumerate(beats, start=1):
         start = beat.get("start_seconds", "?")
         end = beat.get("end_seconds", "?")
-        description = str(beat.get("generation_instruction", "Create an original visual beat."))[:1200]
+        description = str(beat.get("generation_instruction", "Create an original visual beat."))[
+            :1200
+        ]
         transition = str(beat.get("transition_to_next", "clean cinematic cut"))[:240]
-        beat_lines.append(f"Beat {index} ({start}s–{end}s): {description} Transition: {transition}.")
-    beats_text = "\n".join(beat_lines) or "Create a concise original sequence with a clear hook, development, and resolved ending."
-    brand_line = f"Use the brand name {brand_name} only where appropriate; do not invent a logo." if brand_name else "Do not add unprovided brand marks."
+        beat_lines.append(
+            f"Beat {index} ({start}s–{end}s): {description} Transition: {transition}."
+        )
+    beats_text = (
+        "\n".join(beat_lines)
+        or "Create a concise original sequence with a clear hook, development, and resolved ending."
+    )
+    brand_line = (
+        f"Use the brand name {brand_name} only where appropriate; do not invent a logo."
+        if brand_name
+        else "Do not add unprovided brand marks."
+    )
     return (
         f"Create an original {duration_seconds}-second video in {aspect_ratio} aspect ratio.\n"
         f"Style: {style_summary[:1000]}\n"

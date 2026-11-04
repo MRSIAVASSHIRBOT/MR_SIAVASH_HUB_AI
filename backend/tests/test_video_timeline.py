@@ -46,12 +46,9 @@ def test_timeline_splits_source_at_scene_boundaries_and_trims_to_target():
     assert timeline.actual_duration_seconds == 7.0
     assert timeline.duration_shortfall_seconds == 0.0
     assert [
-        (clip.source_start_seconds, clip.source_end_seconds)
-        for clip in timeline.video_track
+        (clip.source_start_seconds, clip.source_end_seconds) for clip in timeline.video_track
     ] == [(0.0, 2.0), (2.0, 5.0), (5.0, 7.0)]
-    assert [clip.transition_in for clip in timeline.video_track] == [
-        "none", "cut", "cut"
-    ]
+    assert [clip.transition_in for clip in timeline.video_track] == ["none", "cut", "cut"]
     assert timeline.audio_analysis_status == "not_requested"
     assert timeline.audio_render_status == "not_implemented"
     assert timeline.render_status == "not_implemented"

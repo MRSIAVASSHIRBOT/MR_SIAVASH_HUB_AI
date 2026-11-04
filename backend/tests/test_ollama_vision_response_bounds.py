@@ -62,9 +62,7 @@ def test_ollama_vision_rejects_response_exceeding_byte_limit():
 def test_ollama_vision_rejects_invalid_json_within_byte_limit():
     provider = OllamaVisionProvider(
         model="vision-test",
-        transport=httpx.MockTransport(
-            lambda _request: httpx.Response(200, content=b"{not-json")
-        ),
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, content=b"{not-json")),
     )
 
     with pytest.raises(ProviderUnavailableError):

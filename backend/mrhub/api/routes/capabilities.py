@@ -1,4 +1,5 @@
 """Authenticated API for registering and reviewing capability sources."""
+
 from __future__ import annotations
 
 from typing import Annotated, Literal
@@ -31,9 +32,9 @@ class CapabilityCandidateRequest(BaseModel):
     source_url: str = Field(min_length=1, max_length=2048)
     display_name: str = Field(min_length=1, max_length=160)
     summary: str = Field(default="", max_length=1000)
-    source_kind: Literal[
-        "github_repository", "documentation", "package", "api", "other"
-    ] = "github_repository"
+    source_kind: Literal["github_repository", "documentation", "package", "api", "other"] = (
+        "github_repository"
+    )
     integration_type: Literal[
         "connector", "skill", "python_package", "http_api", "adapter", "manual"
     ] = "manual"
@@ -78,7 +79,9 @@ def discover_candidate(
     try:
         _candidate, result = discover_github_candidate(payload.source_url, get_registry())
     except GitHubDiscoveryError as exc:
-        raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)}) from exc
+        raise HTTPException(
+            status_code=exc.status_code, detail={"code": exc.code, "message": str(exc)}
+        ) from exc
     except CapabilityValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return result
@@ -87,9 +90,8 @@ def discover_candidate(
 @router.get("/candidates")
 def list_candidates(
     _user: Annotated[AuthenticatedUser, Depends(require_user)],
-    candidate_status: Literal[
-        "discovered", "reviewing", "approved", "rejected", "disabled"
-    ] | None = Query(default=None, alias="status"),
+    candidate_status: Literal["discovered", "reviewing", "approved", "rejected", "disabled"]
+    | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> dict[str, object]:
     items = get_registry().list_candidates(status=candidate_status, limit=limit)

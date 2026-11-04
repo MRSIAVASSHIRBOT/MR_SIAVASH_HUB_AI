@@ -123,7 +123,6 @@ def test_static_analysis_marks_inventory_incomplete_when_directory_walk_fails(
     assert "incomplete" in finding["message"]
 
 
-
 def test_source_analysis_reports_confidence_and_remediation_without_execution():
     result = analyze_python_source(
         "def parse(value):\n    return eval(value)\n",

@@ -3,6 +3,7 @@
 No adapter is registered by default. This module deliberately performs no network,
 subprocess, model download, billing, or rendering operation.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -95,15 +96,13 @@ class VideoGenerationProvider(Protocol):
     """Adapter contract. Implementations must bound time, bytes, and remote effects."""
 
     @property
-    def capability(self) -> VideoGenerationCapability:
-        ...
+    def capability(self) -> VideoGenerationCapability: ...
 
     def submit(self, request: VideoGenerationRequest) -> VideoGenerationSubmission:
         """Submit exactly once using the supplied idempotency key."""
         ...
 
-    def get_status(self, provider_job_id: str) -> VideoGenerationResult:
-        ...
+    def get_status(self, provider_job_id: str) -> VideoGenerationResult: ...
 
     def download_output(
         self,
@@ -119,5 +118,4 @@ class VideoGenerationProvider(Protocol):
         """
         ...
 
-    def cancel(self, provider_job_id: str) -> bool:
-        ...
+    def cancel(self, provider_job_id: str) -> bool: ...

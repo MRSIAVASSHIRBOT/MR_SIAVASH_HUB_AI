@@ -23,9 +23,9 @@ class AgentContextRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     include_memory: bool = True
     include_knowledge: bool = True
-    knowledge_freshness_policy: Literal[
-        "include_all", "owner_reviewed_current_only"
-    ] = "include_all"
+    knowledge_freshness_policy: Literal["include_all", "owner_reviewed_current_only"] = (
+        "include_all"
+    )
 
 
 @router.post("/assemble")

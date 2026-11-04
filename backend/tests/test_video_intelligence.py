@@ -48,12 +48,14 @@ def test_video_analysis_request_bounds_sources_and_duration():
 def test_prompt_builder_preserves_timeline_and_brand_constraints():
     prompt = build_generation_prompt(
         style_summary="Glossy 3D product motion with restrained camera movement",
-        beats=[{
-            "start_seconds": 0,
-            "end_seconds": 4,
-            "generation_instruction": "Reveal an original geometric product silhouette",
-            "transition_to_next": "soft light wipe",
-        }],
+        beats=[
+            {
+                "start_seconds": 0,
+                "end_seconds": 4,
+                "generation_instruction": "Reveal an original geometric product silhouette",
+                "transition_to_next": "soft light wipe",
+            }
+        ],
         duration_seconds=10,
         aspect_ratio="9:16",
         brand_name="MR_SIAVASH_IR_BOT",
@@ -73,7 +75,9 @@ def test_probe_video_returns_unavailable_or_failed_for_missing_file(tmp_path, mo
 
 
 def test_probe_video_does_not_accept_nonexistent_path(tmp_path, monkeypatch):
-    monkeypatch.setattr("mrhub.video_intelligence.service.shutil.which", lambda _name: "/usr/bin/ffprobe")
+    monkeypatch.setattr(
+        "mrhub.video_intelligence.service.shutil.which", lambda _name: "/usr/bin/ffprobe"
+    )
     result = probe_video(tmp_path / "missing.mp4")
     assert result.metadata_status == "probe_failed"
 
@@ -81,7 +85,13 @@ def test_probe_video_does_not_accept_nonexistent_path(tmp_path, monkeypatch):
 def test_authenticated_prompt_composition_returns_draft_without_execution():
     payload = PromptCompositionRequest(
         style_summary="Original cinematic 3D motion",
-        beats=[{"start_seconds": 0, "end_seconds": 5, "generation_instruction": "Reveal an original object"}],
+        beats=[
+            {
+                "start_seconds": 0,
+                "end_seconds": 5,
+                "generation_instruction": "Reveal an original object",
+            }
+        ],
         duration_seconds=10,
         brand_name="MR_SIAVASH_IR_BOT",
     )
@@ -92,7 +102,6 @@ def test_authenticated_prompt_composition_returns_draft_without_execution():
     assert result["status"] == "composed"
     assert result["execution"] == "not_started"
     assert "MR_SIAVASH_IR_BOT" in result["prompt"]
-
 
 
 def test_video_prompt_rejects_invalid_or_oversized_timeline_inputs():
@@ -106,11 +115,13 @@ def test_video_prompt_rejects_invalid_or_oversized_timeline_inputs():
         PromptCompositionRequest(
             style_summary="A bounded prompt",
             duration_seconds=5,
-            beats=[{
-                "start_seconds": 0,
-                "end_seconds": 6,
-                "generation_instruction": "Beat exceeds requested duration",
-            }],
+            beats=[
+                {
+                    "start_seconds": 0,
+                    "end_seconds": 6,
+                    "generation_instruction": "Beat exceeds requested duration",
+                }
+            ],
         )
     with pytest.raises(ValidationError):
         PromptCompositionRequest(
@@ -125,7 +136,6 @@ def test_brand_profile_text_fields_have_per_item_limits():
             brand_name="Example",
             colors=["x" * 1000],
         )
-
 
 
 def test_video_brand_profiles_are_owner_scoped():
@@ -150,16 +160,18 @@ def test_video_brand_profiles_are_owner_scoped():
 
         identifier = UUID(profile_id)
         assert repository.get("another-owner", identifier) is None
-        assert repository.update(
-            "another-owner",
-            identifier,
-            BrandIdentity(brand_name="Unauthorized rename"),
-        ) is None
+        assert (
+            repository.update(
+                "another-owner",
+                identifier,
+                BrandIdentity(brand_name="Unauthorized rename"),
+            )
+            is None
+        )
         assert repository.delete("another-owner", identifier) is False
         assert repository.get("local-owner", identifier)["brand_name"] == "Owner Brand"
     finally:
         client.close()
-
 
 
 @pytest.mark.parametrize(
@@ -171,9 +183,7 @@ def test_video_brand_profiles_are_owner_scoped():
         b'{"streams": [], "format": []}',
     ],
 )
-def test_probe_video_rejects_malformed_ffprobe_json_shapes(
-    tmp_path, monkeypatch, stdout
-):
+def test_probe_video_rejects_malformed_ffprobe_json_shapes(tmp_path, monkeypatch, stdout):
     source = tmp_path / "malformed.mp4"
     source.write_bytes(b"test")
     monkeypatch.setattr(
@@ -192,7 +202,6 @@ def test_probe_video_rejects_malformed_ffprobe_json_shapes(
     assert result.metadata_status == "probe_failed"
 
 
-
 def test_probe_video_bounds_stream_count_and_discards_unneeded_stderr(tmp_path, monkeypatch):
     source = tmp_path / "sample.mp4"
     source.write_bytes(b"fixture")
@@ -208,19 +217,21 @@ def test_probe_video_bounds_stream_count_and_discards_unneeded_stderr(tmp_path, 
         return subprocess.CompletedProcess(
             args=command,
             returncode=0,
-            stdout=json.dumps({
-                "format": {"duration": "4.5"},
-                "streams": [
-                    {
-                        "codec_type": "video",
-                        "codec_name": "h264",
-                        "width": 1280,
-                        "height": 720,
-                        "avg_frame_rate": "30/1",
-                    },
-                    {"codec_type": "audio", "codec_name": "aac"},
-                ],
-            }).encode(),
+            stdout=json.dumps(
+                {
+                    "format": {"duration": "4.5"},
+                    "streams": [
+                        {
+                            "codec_type": "video",
+                            "codec_name": "h264",
+                            "width": 1280,
+                            "height": 720,
+                            "avg_frame_rate": "30/1",
+                        },
+                        {"codec_type": "audio", "codec_name": "aac"},
+                    ],
+                }
+            ).encode(),
         )
 
     monkeypatch.setattr("mrhub.video_intelligence.service.subprocess.run", fake_run)
@@ -253,7 +264,6 @@ def test_probe_video_fails_closed_when_ffprobe_times_out(tmp_path, monkeypatch):
     assert probe_video(source).metadata_status == "probe_failed"
 
 
-
 @pytest.mark.parametrize(
     "stdout",
     [
@@ -265,9 +275,7 @@ def test_probe_video_fails_closed_when_ffprobe_times_out(tmp_path, monkeypatch):
         b'{"streams": [{"codec_type": "video", "width": 1920, "height": 1080, "avg_frame_rate": "300/1"}], "format": {"duration": "10"}}',
     ],
 )
-def test_probe_video_rejects_missing_or_implausible_core_metadata(
-    tmp_path, monkeypatch, stdout
-):
+def test_probe_video_rejects_missing_or_implausible_core_metadata(tmp_path, monkeypatch, stdout):
     source = tmp_path / "invalid-metadata.mp4"
     source.write_bytes(b"test")
     monkeypatch.setattr(

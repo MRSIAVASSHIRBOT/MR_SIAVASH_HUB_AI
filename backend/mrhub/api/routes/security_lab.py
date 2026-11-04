@@ -132,7 +132,6 @@ def review_dependency_manifest(
     return _run_review(request, current_user, dependency=True)
 
 
-
 @router.post("/log-review")
 def review_structured_security_log(
     request: OfflineReviewRequest,

@@ -1,4 +1,5 @@
 """Security tests for encrypted workflow payload envelopes."""
+
 # ruff: noqa: I001
 import base64
 
@@ -91,7 +92,6 @@ def test_non_json_and_oversized_payload_are_rejected() -> None:
         encrypt_payload({"not_finite": float("nan")}, **BINDING, key=KEY)
     with pytest.raises(PayloadEnvelopeError, match="size limit"):
         encrypt_payload({"data": "x" * 1_100_000}, **BINDING, key=KEY)
-
 
 
 def test_payload_key_loads_from_dotenv_file(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

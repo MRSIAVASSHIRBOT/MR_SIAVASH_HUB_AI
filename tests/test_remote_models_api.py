@@ -48,9 +48,7 @@ def test_remote_provider_is_catalogued_only_when_explicitly_configured(
     get_settings.cache_clear()
 
 
-def test_remote_generation_uses_configured_provider_explicitly(
-    tmp_path, monkeypatch
-) -> None:
+def test_remote_generation_uses_configured_provider_explicitly(tmp_path, monkeypatch) -> None:
     _set_remote_config(monkeypatch, tmp_path)
     client = authenticated_client()
 
@@ -58,7 +56,9 @@ def test_remote_generation_uses_configured_provider_explicitly(
         return httpx.Response(
             200,
             json={
-                "choices": [{"message": {"content": "explicit remote answer"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "explicit remote answer"}, "finish_reason": "stop"}
+                ],
                 "usage": {"prompt_tokens": 3, "completion_tokens": 4},
             },
         )

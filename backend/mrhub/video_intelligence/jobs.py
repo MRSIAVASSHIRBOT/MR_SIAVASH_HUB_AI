@@ -134,9 +134,13 @@ class VideoAnalysisJobRepository:
                     task_id, task_type, status, risk_class, created_at, updated_at, description
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(task.task_id), task.task_type, task.status.value,
-                    task.risk_class.value, task.created_at.isoformat(),
-                    task.updated_at.isoformat(), task.description,
+                    str(task.task_id),
+                    task.task_type,
+                    task.status.value,
+                    task.risk_class.value,
+                    task.created_at.isoformat(),
+                    task.updated_at.isoformat(),
+                    task.description,
                 ),
             )
             connection.execute(
@@ -145,8 +149,12 @@ class VideoAnalysisJobRepository:
                     result_json, error_code, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, 'accepted', NULL, NULL, ?, ?)""",
                 (
-                    str(analysis_id), str(task.task_id), owner_user_id,
-                    request.mode.value, now, now,
+                    str(analysis_id),
+                    str(task.task_id),
+                    owner_user_id,
+                    request.mode.value,
+                    now,
+                    now,
                 ),
             )
             connection.execute(
@@ -155,8 +163,13 @@ class VideoAnalysisJobRepository:
                     nonce_b64, ciphertext_b64, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(analysis_id), str(task.task_id), owner_user_id,
-                    envelope.version, envelope.nonce_b64, envelope.ciphertext_b64, now,
+                    str(analysis_id),
+                    str(task.task_id),
+                    owner_user_id,
+                    envelope.version,
+                    envelope.nonce_b64,
+                    envelope.ciphertext_b64,
+                    now,
                 ),
             )
             connection.execute(
@@ -322,9 +335,7 @@ class VideoAnalysisJobRepository:
         )
         return str(row["owner_user_id"]), analysis_id, payload
 
-    def mark_running(
-        self, task_id: UUID, owner_user_id: str, *, lease: WorkerLease
-    ) -> bool:
+    def mark_running(self, task_id: UUID, owner_user_id: str, *, lease: WorkerLease) -> bool:
         if lease.task_id != str(task_id):
             raise ValueError("Worker lease does not belong to this analysis task")
         now = self._now()
@@ -338,15 +349,24 @@ class VideoAnalysisJobRepository:
                          AND e.execution_token = ? AND e.lease_expires_at > ?
                      )""",
                 (
-                    now, str(task_id), owner_user_id, str(task_id),
-                    lease.owner, lease.fencing_token, now,
+                    now,
+                    str(task_id),
+                    owner_user_id,
+                    str(task_id),
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
                 ),
             )
         return cursor.rowcount == 1
 
     def finish(
-        self, task_id: UUID, owner_user_id: str, *,
-        status: str, result: dict[str, object] | None = None,
+        self,
+        task_id: UUID,
+        owner_user_id: str,
+        *,
+        status: str,
+        result: dict[str, object] | None = None,
         error_code: str | None = None,
         lease: WorkerLease,
     ) -> None:
@@ -378,11 +398,19 @@ class VideoAnalysisJobRepository:
                      )""",
                 (
                     status,
-                    json.dumps(result, ensure_ascii=False, sort_keys=True) if result is not None else None,
+                    json.dumps(result, ensure_ascii=False, sort_keys=True)
+                    if result is not None
+                    else None,
                     error_code[:80] if error_code else None,
-                    now, str(task_id), owner_user_id, str(task_id),
-                    lease.owner, lease.fencing_token, now,
-                    str(task_id), "cancelled" if status == "cancelled" else "running",
+                    now,
+                    str(task_id),
+                    owner_user_id,
+                    str(task_id),
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                    str(task_id),
+                    "cancelled" if status == "cancelled" else "running",
                 ),
             )
             if cursor.rowcount != 1:
@@ -396,6 +424,7 @@ class VideoAnalysisJobRepository:
                    WHERE scope = ? AND task_id = ?""",
                 (
                     "completed" if status == "completed" else "failed",
-                    self._scope(owner_user_id), str(task_id),
+                    self._scope(owner_user_id),
+                    str(task_id),
                 ),
             )

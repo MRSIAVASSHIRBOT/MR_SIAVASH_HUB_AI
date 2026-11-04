@@ -105,9 +105,7 @@ def _prepare_worker(tmp_path, monkeypatch):
     return tasks, media, jobs, handler, task, lease, asset_id, accepted
 
 
-def test_worker_holds_asset_lock_through_semantic_analysis_and_releases_it(
-    tmp_path, monkeypatch
-):
+def test_worker_holds_asset_lock_through_semantic_analysis_and_releases_it(tmp_path, monkeypatch):
     tasks, media, jobs, handler, task, lease, asset_id, accepted = _prepare_worker(
         tmp_path, monkeypatch
     )
@@ -132,16 +130,15 @@ def test_worker_holds_asset_lock_through_semantic_analysis_and_releases_it(
     analysis = jobs.get("owner-a", UUID(accepted["analysis_id"]))
     assert analysis is not None and analysis["status"] == "completed"
     with tasks._connection() as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM media_asset_analysis_leases"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT COUNT(*) FROM media_asset_analysis_leases").fetchone()[0]
+            == 0
+        )
     assert media.delete("owner-a", asset_id) is not None
     assert media.cleanup_pending_files("owner-a") == 0
 
 
-def test_worker_releases_asset_lock_when_scene_detection_fails(
-    tmp_path, monkeypatch
-):
+def test_worker_releases_asset_lock_when_scene_detection_fails(tmp_path, monkeypatch):
     tasks, media, _jobs, handler, task, lease, asset_id, _accepted = _prepare_worker(
         tmp_path, monkeypatch
     )
@@ -158,8 +155,9 @@ def test_worker_releases_asset_lock_when_scene_detection_fails(
         handler(task, lease=lease, lease_lost=Event())
 
     with tasks._connection() as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM media_asset_analysis_leases"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT COUNT(*) FROM media_asset_analysis_leases").fetchone()[0]
+            == 0
+        )
     assert media.delete("owner-a", asset_id) is not None
     assert media.cleanup_pending_files("owner-a") == 0

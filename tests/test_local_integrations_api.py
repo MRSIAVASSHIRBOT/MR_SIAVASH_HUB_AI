@@ -20,9 +20,7 @@ def test_local_integration_status_routes_require_authentication(tmp_path, monkey
         get_settings.cache_clear()
 
 
-def test_both_local_integrations_are_disabled_by_default_without_probing(
-    tmp_path, monkeypatch
-):
+def test_both_local_integrations_are_disabled_by_default_without_probing(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "integration-defaults.sqlite3"))
     monkeypatch.delenv("MRH_ASSISTANT_GATEWAY_ENABLED", raising=False)
     monkeypatch.delenv("MRH_CODE_ENGINE_ENABLED", raising=False)
@@ -42,11 +40,11 @@ def test_both_local_integrations_are_disabled_by_default_without_probing(
         assert assistant.status_code == 200
         assert code.status_code == 200
         assert assistant.json() == {
-            "contract_version": "1.0", "status": "disabled", "configured": False
+            "contract_version": "1.0",
+            "status": "disabled",
+            "configured": False,
         }
-        assert code.json() == {
-            "contract_version": "1.0", "status": "disabled", "configured": False
-        }
+        assert code.json() == {"contract_version": "1.0", "status": "disabled", "configured": False}
         assert "base_url" not in assistant.text
         assert "base_url" not in code.text
     finally:
@@ -67,7 +65,12 @@ def test_assistant_gateway_status_uses_shared_bounded_probe_and_sanitizes_result
 
     async def fake_probe(base_url, health_path, *, timeout_seconds, max_response_bytes):
         calls.append((base_url, health_path, timeout_seconds, max_response_bytes))
-        return {"contract_version": "1.0", "status": "reachable", "configured": True, "http_status": 200}
+        return {
+            "contract_version": "1.0",
+            "status": "reachable",
+            "configured": True,
+            "http_status": 200,
+        }
 
     monkeypatch.setattr(assistant_gateway, "probe_loopback_service", fake_probe)
     try:
@@ -85,9 +88,7 @@ def test_assistant_gateway_status_uses_shared_bounded_probe_and_sanitizes_result
         get_settings.cache_clear()
 
 
-def test_code_engine_status_uses_shared_bounded_probe_and_sanitizes_result(
-    tmp_path, monkeypatch
-):
+def test_code_engine_status_uses_shared_bounded_probe_and_sanitizes_result(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "code-status.sqlite3"))
     monkeypatch.setenv("MRH_CODE_ENGINE_ENABLED", "true")
     monkeypatch.setenv("MRH_CODE_ENGINE_BASE_URL", "http://[::1]:9123")
@@ -108,7 +109,9 @@ def test_code_engine_status_uses_shared_bounded_probe_and_sanitizes_result(
         response = authenticated_client().get("/integrations/code-engine/status")
         assert response.status_code == 200
         assert response.json() == {
-            "contract_version": "1.0", "status": "unreachable", "configured": True
+            "contract_version": "1.0",
+            "status": "unreachable",
+            "configured": True,
         }
         assert calls == [("http://[::1]:9123", "/health", 3.5, 4096)]
         assert "::1" not in response.text
@@ -116,9 +119,7 @@ def test_code_engine_status_uses_shared_bounded_probe_and_sanitizes_result(
         get_settings.cache_clear()
 
 
-def test_capability_discovery_lists_both_integrations_without_probing(
-    tmp_path, monkeypatch
-):
+def test_capability_discovery_lists_both_integrations_without_probing(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "integration-catalog.sqlite3"))
     monkeypatch.setenv("MRH_ASSISTANT_GATEWAY_ENABLED", "true")
     monkeypatch.setenv("MRH_ASSISTANT_GATEWAY_BASE_URL", "http://127.0.0.1:18789")

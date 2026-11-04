@@ -3,6 +3,7 @@
 Entries are illustrative operator estimates, not compatibility guarantees.
 No network access or model download is performed.
 """
+
 from __future__ import annotations
 
 from typing import Any

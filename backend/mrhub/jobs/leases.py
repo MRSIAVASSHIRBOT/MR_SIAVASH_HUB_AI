@@ -1,4 +1,5 @@
 """Durable SQLite worker leases with monotonically increasing fencing tokens."""
+
 from __future__ import annotations
 
 import sqlite3

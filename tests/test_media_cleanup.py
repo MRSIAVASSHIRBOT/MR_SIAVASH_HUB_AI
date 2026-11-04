@@ -26,9 +26,7 @@ def test_deleted_media_file_cleanup_is_durable_and_retryable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = _repository(tmp_path)
-    asset = repository.store_upload(
-        "owner-1", "sample.png", "image/png", b"test-image-content"
-    )
+    asset = repository.store_upload("owner-1", "sample.png", "image/png", b"test-image-content")
     asset_id = UUID(str(asset["asset_id"]))
     storage_key = str(asset["storage_key"])
     real_file_path = repository.file_path
@@ -61,9 +59,7 @@ def test_deleted_media_file_cleanup_is_durable_and_retryable(
 
 def test_asset_cannot_be_deleted_while_transcode_is_in_progress(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
-    asset = repository.store_upload(
-        "owner-1", "sample.mp4", "video/mp4", b"fake-mp4-content"
-    )
+    asset = repository.store_upload("owner-1", "sample.mp4", "video/mp4", b"fake-mp4-content")
     asset_id = UUID(str(asset["asset_id"]))
 
     assert repository.begin_processing("owner-1", asset_id) is not None
@@ -77,9 +73,7 @@ def test_deleting_transcoded_derivative_queues_its_file_for_cleanup(
     tmp_path: Path,
 ) -> None:
     repository = _repository(tmp_path)
-    source = repository.store_upload(
-        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
-    )
+    source = repository.store_upload("owner-1", "source.mp4", "video/mp4", b"fake-source-video")
     source_id = UUID(str(source["asset_id"]))
     assert repository.begin_processing("owner-1", source_id) is not None
 
@@ -109,9 +103,7 @@ def test_deleting_source_queues_source_and_derivative_files(
     tmp_path: Path,
 ) -> None:
     repository = _repository(tmp_path)
-    source = repository.store_upload(
-        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
-    )
+    source = repository.store_upload("owner-1", "source.mp4", "video/mp4", b"fake-source-video")
     source_id = UUID(str(source["asset_id"]))
     assert repository.begin_processing("owner-1", source_id) is not None
 
@@ -142,9 +134,7 @@ def test_deleting_source_queues_source_and_derivative_files(
 def test_source_cleanup_query_is_scoped_to_asset_owner(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     repository.tasks.create_auth_user("owner-2", "other", "test-salt", "test-hash")
-    source = repository.store_upload(
-        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
-    )
+    source = repository.store_upload("owner-1", "source.mp4", "video/mp4", b"fake-source-video")
     source_id = UUID(str(source["asset_id"]))
     foreign_id, foreign_key, foreign_path = repository.new_output_target()
     foreign_path.write_bytes(b"foreign-file")
@@ -160,9 +150,15 @@ def test_source_cleanup_query_is_scoped_to_asset_owner(tmp_path: Path) -> None:
                       'video_mp4_720p', NULL, ?, ?)
             """,
             (
-                foreign_id, "owner-2", str(source_id), "foreign.mp4",
-                foreign_key, len(b"foreign-file"),
-                "0" * 64, now, now,
+                foreign_id,
+                "owner-2",
+                str(source_id),
+                "foreign.mp4",
+                foreign_key,
+                len(b"foreign-file"),
+                "0" * 64,
+                now,
+                now,
             ),
         )
 
@@ -185,9 +181,7 @@ def test_source_cleanup_query_is_scoped_to_asset_owner(tmp_path: Path) -> None:
 def test_cleanup_queue_is_owner_scoped_and_idempotent(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     repository.tasks.create_auth_user("owner-2", "other", "test-salt", "test-hash")
-    asset = repository.store_upload(
-        "owner-1", "sample.png", "image/png", b"test-image-content"
-    )
+    asset = repository.store_upload("owner-1", "sample.png", "image/png", b"test-image-content")
     asset_id = UUID(str(asset["asset_id"]))
     path = repository.file_path(str(asset["storage_key"]))
 
@@ -204,9 +198,7 @@ def test_cleanup_queue_is_owner_scoped_and_idempotent(tmp_path: Path) -> None:
 
 def test_delete_and_begin_processing_are_serialized(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
-    asset = repository.store_upload(
-        "owner-1", "sample.mp4", "video/mp4", b"fake-mp4-content"
-    )
+    asset = repository.store_upload("owner-1", "sample.mp4", "video/mp4", b"fake-mp4-content")
     asset_id = UUID(str(asset["asset_id"]))
     storage_key = str(asset["storage_key"])
     path = repository.file_path(storage_key)
@@ -240,7 +232,6 @@ def test_delete_and_begin_processing_are_serialized(tmp_path: Path) -> None:
         assert repository.get("owner-1", asset_id) is None
         assert repository.cleanup_pending_files("owner-1") == 0
         assert not path.exists()
-
 
 
 def test_failed_cleanup_items_do_not_starve_unattempted_entries(
@@ -290,9 +281,7 @@ def test_failed_cleanup_items_do_not_starve_unattempted_entries(
     assert not real_file_path(untouched_key).exists()
 
 
-def _active_worker_lease(
-    repository: MediaAssetRepository, token: int = 1
-) -> WorkerLease:
+def _active_worker_lease(repository: MediaAssetRepository, token: int = 1) -> WorkerLease:
     task = TaskRecord(
         task_type="video.analysis",
         risk_class=RiskClass.LOW,
@@ -435,9 +424,7 @@ def test_deleting_source_is_blocked_when_its_derivative_is_under_analysis(
     tmp_path: Path,
 ) -> None:
     repository = _repository(tmp_path)
-    source = repository.store_upload(
-        "owner-1", "source.mp4", "video/mp4", b"fake-source-video"
-    )
+    source = repository.store_upload("owner-1", "source.mp4", "video/mp4", b"fake-source-video")
     source_id = UUID(str(source["asset_id"]))
     assert repository.begin_processing("owner-1", source_id) is not None
 
@@ -498,6 +485,7 @@ def test_delete_and_analysis_lock_acquisition_are_serialized(tmp_path: Path) -> 
         assert repository.cleanup_pending_files("owner-1") == 0
         assert not path.exists()
 
+
 def test_analysis_use_lease_is_exclusive_across_worker_executions(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     asset = repository.store_upload(
@@ -526,12 +514,8 @@ def test_global_cleanup_sweep_is_bounded_across_owners(
 ) -> None:
     repository = _repository(tmp_path)
     repository.tasks.create_auth_user("owner-2", "other", "test-salt", "test-hash")
-    first = repository.store_upload(
-        "owner-1", "first.png", "image/png", b"first-image"
-    )
-    second = repository.store_upload(
-        "owner-2", "second.png", "image/png", b"second-image"
-    )
+    first = repository.store_upload("owner-1", "first.png", "image/png", b"first-image")
+    second = repository.store_upload("owner-2", "second.png", "image/png", b"second-image")
     first_id = UUID(str(first["asset_id"]))
     second_id = UUID(str(second["asset_id"]))
     first_path = repository.file_path(str(first["storage_key"]))
@@ -552,8 +536,6 @@ def test_global_cleanup_sweep_is_bounded_across_owners(
     with repository.tasks._connection() as connection:
         indexes = {
             row["name"]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'index'"
-            )
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
         }
     assert "idx_media_file_cleanup_global_retry" in indexes

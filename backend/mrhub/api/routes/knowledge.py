@@ -1,4 +1,5 @@
 """Bounded user-submitted document ingestion and citation-bearing retrieval."""
+
 from __future__ import annotations
 
 import re
@@ -17,7 +18,9 @@ from mrhub.security.auth import AuthenticatedUser
 router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(require_user)])
 
 _SECRET_PATTERNS = (
-    re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
+    re.compile(
+        r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"
+    ),
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
@@ -28,7 +31,9 @@ _SECRET_PATTERNS = (
 
 def _reject_obvious_secrets(value: str | None) -> str | None:
     if value is not None and any(pattern.search(value) for pattern in _SECRET_PATTERNS):
-        raise ValueError("Knowledge documents must not contain credentials or authentication secrets")
+        raise ValueError(
+            "Knowledge documents must not contain credentials or authentication secrets"
+        )
     return value
 
 
@@ -114,7 +119,13 @@ def create_document(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid document content") from exc
-    _audit(repository, user, "knowledge.document_created", str(document["document_id"]), "document_created")
+    _audit(
+        repository,
+        user,
+        "knowledge.document_created",
+        str(document["document_id"]),
+        "document_created",
+    )
     return document
 
 
@@ -149,7 +160,6 @@ def delete_document(
     _audit(repository, user, "knowledge.document_deleted", str(document_id), "document_deleted")
 
 
-
 @router.patch("/sources/{source_id}/freshness")
 def update_source_freshness(
     source_id: UUID,
@@ -159,9 +169,7 @@ def update_source_freshness(
     """Record an owner's manual freshness assessment; never fetches the source URL."""
     repository = _repository()
     try:
-        result = repository.update_source_freshness(
-            user.user_id, source_id, payload.status
-        )
+        result = repository.update_source_freshness(user.user_id, source_id, payload.status)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid source freshness status") from exc
     if result is None:
@@ -179,6 +187,7 @@ def update_source_freshness(
         },
     )
     return result
+
 
 @router.post("/search")
 def search_knowledge(

@@ -130,12 +130,8 @@ def test_validators_reject_encoded_or_ambiguous_local_paths():
     assert health_probe.validate_health_path("/health") == "/health"
     assert health_probe.validate_health_path("/health/%2e%2e/admin") is None
     assert health_probe.validate_health_path("/health//admin") is None
-    assert health_probe.validate_loopback_base_url(
-        "http://127.0.0.1/prefix/%2e%2e/admin"
-    ) is None
-    assert health_probe.validate_loopback_base_url(
-        "http://127.0.0.1/prefix//admin"
-    ) is None
+    assert health_probe.validate_loopback_base_url("http://127.0.0.1/prefix/%2e%2e/admin") is None
+    assert health_probe.validate_loopback_base_url("http://127.0.0.1/prefix//admin") is None
 
 
 @pytest.mark.parametrize("timeout", [0, -1, 10.01, float("inf"), float("nan"), True, 10**1000])

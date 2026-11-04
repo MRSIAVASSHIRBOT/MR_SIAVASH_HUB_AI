@@ -119,7 +119,6 @@ def test_prompt_options_bound_individual_palette_values():
         AnalysisPromptOptions(colors=["x" * 1000])
 
 
-
 def test_analysis_prompt_endpoint_is_owner_scoped_and_does_not_execute(
     monkeypatch,
 ):

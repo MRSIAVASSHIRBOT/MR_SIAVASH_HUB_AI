@@ -87,12 +87,20 @@ class AgentOrchestrator:
         for turn in range(1, request.max_turns + 1):
             if time.monotonic() >= deadline:
                 return self._result(
-                    "budget_exhausted", transcript, selection, turn - 1, tool_calls,
+                    "budget_exhausted",
+                    transcript,
+                    selection,
+                    turn - 1,
+                    tool_calls,
                     error_code="runtime_budget_exceeded",
                 )
             if should_cancel is not None and should_cancel():
                 return self._result(
-                    "cancelled", transcript, selection, turn - 1, tool_calls,
+                    "cancelled",
+                    transcript,
+                    selection,
+                    turn - 1,
+                    tool_calls,
                     error_code="cancelled",
                 )
 
@@ -122,7 +130,11 @@ class AgentOrchestrator:
             total_input_chars += len(prompt)
             if total_input_chars > request.max_total_input_chars:
                 return self._result(
-                    "budget_exhausted", transcript, selection, turn - 1, tool_calls,
+                    "budget_exhausted",
+                    transcript,
+                    selection,
+                    turn - 1,
+                    tool_calls,
                     error_code="total_input_budget_exceeded",
                 )
             # The per-call provider contract is stricter than the root run budget.
@@ -130,7 +142,11 @@ class AgentOrchestrator:
             # transcript becomes a sanitized budget result, not an uncaught validation error.
             if len(prompt) > MAX_PROVIDER_INPUT_CHARS:
                 return self._result(
-                    "budget_exhausted", transcript, selection, turn - 1, tool_calls,
+                    "budget_exhausted",
+                    transcript,
+                    selection,
+                    turn - 1,
+                    tool_calls,
                     error_code="provider_input_budget_exceeded",
                 )
 
@@ -145,11 +161,19 @@ class AgentOrchestrator:
             except (LookupError, ProviderError):
                 if time.monotonic() >= deadline:
                     return self._result(
-                        "budget_exhausted", transcript, selection, turn, tool_calls,
+                        "budget_exhausted",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="runtime_budget_exceeded",
                     )
                 return self._result(
-                    "provider_error", transcript, selection, turn, tool_calls,
+                    "provider_error",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="provider_unavailable_or_failed",
                 )
 
@@ -158,7 +182,11 @@ class AgentOrchestrator:
             # or dispatching any model-proposed tool.
             if time.monotonic() >= deadline:
                 return self._result(
-                    "budget_exhausted", transcript, selection, turn, tool_calls,
+                    "budget_exhausted",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="runtime_budget_exceeded",
                 )
 
@@ -167,7 +195,11 @@ class AgentOrchestrator:
                 proposal = ModelProposal.model_validate_json(response.output_text)
             except (ValidationError, ValueError):
                 return self._result(
-                    "invalid_model_output", transcript, selection, turn, tool_calls,
+                    "invalid_model_output",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="invalid_proposal_schema",
                 )
 
@@ -180,7 +212,11 @@ class AgentOrchestrator:
                     or proposal.goal is not None
                 ):
                     return self._result(
-                        "invalid_model_output", transcript, selection, turn, tool_calls,
+                        "invalid_model_output",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="invalid_final_proposal",
                     )
                 transcript.append({"turn": turn, "type": "final"})
@@ -198,17 +234,29 @@ class AgentOrchestrator:
                     or proposal.payload is not None
                 ):
                     return self._result(
-                        "invalid_model_output", transcript, selection, turn, tool_calls,
+                        "invalid_model_output",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="invalid_delegation_proposal",
                     )
                 if self.agent_registry is None:
                     return self._result(
-                        "delegation_unavailable", transcript, selection, turn, tool_calls,
+                        "delegation_unavailable",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="agent_registry_unavailable",
                     )
                 if delegations >= MAX_DELEGATIONS:
                     return self._result(
-                        "budget_exhausted", transcript, selection, turn, tool_calls,
+                        "budget_exhausted",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="delegation_budget_exceeded",
                     )
                 try:
@@ -218,7 +266,11 @@ class AgentOrchestrator:
                     )
                 except LookupError:
                     return self._result(
-                        "delegation_denied", transcript, selection, turn, tool_calls,
+                        "delegation_denied",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="agent_not_registered",
                     )
 
@@ -226,7 +278,11 @@ class AgentOrchestrator:
                 remaining_input_chars = request.max_total_input_chars - total_input_chars
                 if remaining_seconds < 1 or remaining_input_chars < 1:
                     return self._result(
-                        "budget_exhausted", transcript, selection, turn, tool_calls,
+                        "budget_exhausted",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code=(
                             "runtime_budget_exceeded"
                             if remaining_seconds < 1
@@ -249,9 +305,9 @@ class AgentOrchestrator:
                     max_total_input_chars=max(1, remaining_input_chars // MAX_DELEGATIONS),
                     specialist_instructions=profile.instructions,
                 )
-                child_result = AgentOrchestrator(
-                    self.model_router, scoped_tools
-                ).run(child_request, should_cancel=should_cancel)
+                child_result = AgentOrchestrator(self.model_router, scoped_tools).run(
+                    child_request, should_cancel=should_cancel
+                )
                 child_tool_calls = int(child_result.get("tool_calls", 0))
                 tool_calls += child_tool_calls
                 observation = {
@@ -264,34 +320,52 @@ class AgentOrchestrator:
                 observation_json = json.dumps(
                     observation, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 )
-                transcript.append({
-                    "turn": turn,
-                    "type": "delegation_observation",
-                    "agent": profile.name,
-                    "observation": observation_json[:MAX_OBSERVATION_CHARS],
-                    "observation_is_untrusted_data": True,
-                })
+                transcript.append(
+                    {
+                        "turn": turn,
+                        "type": "delegation_observation",
+                        "agent": profile.name,
+                        "observation": observation_json[:MAX_OBSERVATION_CHARS],
+                        "observation_is_untrusted_data": True,
+                    }
+                )
                 delegations += 1
                 if time.monotonic() >= deadline:
                     return self._result(
-                        "budget_exhausted", transcript, selection, turn, tool_calls,
+                        "budget_exhausted",
+                        transcript,
+                        selection,
+                        turn,
+                        tool_calls,
                         error_code="runtime_budget_exceeded",
                     )
                 continue
 
             if proposal.type != "tool_call" or not proposal.name or proposal.payload is None:
                 return self._result(
-                    "invalid_model_output", transcript, selection, turn, tool_calls,
+                    "invalid_model_output",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="unsupported_proposal_type",
                 )
             if proposal.answer is not None:
                 return self._result(
-                    "invalid_model_output", transcript, selection, turn, tool_calls,
+                    "invalid_model_output",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="mixed_tool_and_final_proposal",
                 )
             if tool_calls >= request.max_tool_calls:
                 return self._result(
-                    "budget_exhausted", transcript, selection, turn, tool_calls,
+                    "budget_exhausted",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="tool_call_budget_exceeded",
                 )
 
@@ -299,7 +373,11 @@ class AgentOrchestrator:
             # This is cooperative: it cannot interrupt the provider request already in flight.
             if should_cancel is not None and should_cancel():
                 return self._result(
-                    "cancelled", transcript, selection, turn, tool_calls,
+                    "cancelled",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="cancelled",
                 )
 
@@ -309,34 +387,54 @@ class AgentOrchestrator:
             except LookupError:
                 transcript.append({"turn": turn, "type": "tool_denied", "reason": "not_registered"})
                 return self._result(
-                    "tool_denied", transcript, selection, turn, tool_calls,
+                    "tool_denied",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="tool_not_registered",
                 )
             except (ToolPolicyError, ToolExecutionError, ValidationError, ValueError, TypeError):
-                transcript.append({"turn": turn, "type": "tool_denied", "reason": "policy_or_validation"})
+                transcript.append(
+                    {"turn": turn, "type": "tool_denied", "reason": "policy_or_validation"}
+                )
                 return self._result(
-                    "tool_denied", transcript, selection, turn, tool_calls,
+                    "tool_denied",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="tool_policy_or_validation_denied",
                 )
 
             observation_json = json.dumps(
                 observation, ensure_ascii=False, sort_keys=True, separators=(",", ":")
             )
-            transcript.append({
-                "turn": turn,
-                "type": "tool_observation",
-                "tool": proposal.name,
-                "observation": observation_json[:MAX_OBSERVATION_CHARS],
-            })
+            transcript.append(
+                {
+                    "turn": turn,
+                    "type": "tool_observation",
+                    "tool": proposal.name,
+                    "observation": observation_json[:MAX_OBSERVATION_CHARS],
+                }
+            )
             tool_calls += 1
             if time.monotonic() >= deadline:
                 return self._result(
-                    "budget_exhausted", transcript, selection, turn, tool_calls,
+                    "budget_exhausted",
+                    transcript,
+                    selection,
+                    turn,
+                    tool_calls,
                     error_code="runtime_budget_exceeded",
                 )
 
         return self._result(
-            "turn_limit_reached", transcript, selection, request.max_turns, tool_calls,
+            "turn_limit_reached",
+            transcript,
+            selection,
+            request.max_turns,
+            tool_calls,
             error_code="max_turns_reached",
         )
 

@@ -45,9 +45,7 @@ def test_jobs_summary_reports_queue_without_starting_worker(tmp_path, monkeypatc
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     get_settings.cache_clear()
     client = authenticated_client()
-    created = client.post(
-        "/tasks", json={"task_type": "demo.echo", "description": "queued task"}
-    )
+    created = client.post("/tasks", json={"task_type": "demo.echo", "description": "queued task"})
     assert created.status_code == 201
 
     response = client.get("/jobs/summary")
@@ -55,7 +53,14 @@ def test_jobs_summary_reports_queue_without_starting_worker(tmp_path, monkeypatc
     body = response.json()
     assert body["total_tasks"] == 1
     assert body["status_counts"]["queued"] == 1
-    assert body["registered_handlers"] == ["agent.model_run", "agent.workflow", "demo.echo", "video.analysis", "video.generation", "video.render"]
+    assert body["registered_handlers"] == [
+        "agent.model_run",
+        "agent.workflow",
+        "demo.echo",
+        "video.analysis",
+        "video.generation",
+        "video.render",
+    ]
     assert body["execution_mode"] == "pull_driven"
     assert body["automatic_execution"] is False
     get_settings.cache_clear()
@@ -108,7 +113,6 @@ def test_task_result_endpoint_returns_not_found_for_unknown_task(tmp_path, monke
     response = client.get(f"/tasks/{uuid4()}/result")
     assert response.status_code == 404
     get_settings.cache_clear()
-
 
 
 def test_task_idempotency_key_returns_the_original_task(tmp_path, monkeypatch) -> None:
@@ -170,7 +174,6 @@ def test_task_idempotency_key_rejects_blank_header(tmp_path, monkeypatch) -> Non
     get_settings.cache_clear()
 
 
-
 def test_task_idempotency_status_tracks_worker_completion(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "idempotency-lifecycle.sqlite3"))
     get_settings.cache_clear()
@@ -197,6 +200,7 @@ def test_task_idempotency_status_tracks_worker_completion(tmp_path, monkeypatch)
     assert record is not None and record.status == "completed"
     get_settings.cache_clear()
 
+
 def test_lifespan_initializes_database_before_serving_requests(tmp_path, monkeypatch) -> None:
     database_path = tmp_path / "lifespan.sqlite3"
     monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
@@ -210,7 +214,6 @@ def test_lifespan_initializes_database_before_serving_requests(tmp_path, monkeyp
         get_settings.cache_clear()
 
 
-
 def test_api_responses_include_security_headers():
     from fastapi.testclient import TestClient
 
@@ -222,9 +225,8 @@ def test_api_responses_include_security_headers():
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "no-referrer"
     assert response.headers["Cache-Control"] == "no-store"
-    assert response.headers["Permissions-Policy"] == (
-        "camera=(), microphone=(), geolocation=()"
-    )
+    assert response.headers["Permissions-Policy"] == ("camera=(), microphone=(), geolocation=()")
+
 
 def test_readiness_endpoint_reports_migrated_database(tmp_path, monkeypatch) -> None:
     database_path = tmp_path / "ready.sqlite3"
@@ -297,7 +299,6 @@ def test_readiness_recognizes_fresh_worker_heartbeat(tmp_path, monkeypatch) -> N
         get_settings.cache_clear()
 
 
-
 def test_readiness_rejects_stale_worker_heartbeat(tmp_path, monkeypatch) -> None:
     import sqlite3
     from datetime import UTC, datetime, timedelta
@@ -356,9 +357,7 @@ def test_video_render_cancel_endpoint_hides_foreign_or_missing_render(monkeypatc
 
     monkeypatch.setattr(video_routes, "_render_jobs", lambda: RenderJobs())
     client = authenticated_client()
-    response = client.delete(
-        "/video-intelligence/renders/3f79d4b1-6b95-4b39-9c4e-62d6f2ac8d41"
-    )
+    response = client.delete("/video-intelligence/renders/3f79d4b1-6b95-4b39-9c4e-62d6f2ac8d41")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Video render not found"

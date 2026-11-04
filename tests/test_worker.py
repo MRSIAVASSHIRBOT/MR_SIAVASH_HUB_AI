@@ -25,11 +25,7 @@ def start_task_linked_workflow(repository, recovery, task, workflow_id, *, activ
     )
     assert lease is not None
     recovery.start_run(workflow_id, lease=lease)
-    attempt = (
-        recovery.start_step(workflow_id, 1, lease=lease)
-        if active_step
-        else None
-    )
+    attempt = recovery.start_step(workflow_id, 1, lease=lease) if active_step else None
     return lease, attempt
 
 
@@ -367,7 +363,6 @@ def test_worker_with_lost_fencing_token_cannot_commit_result(tmp_path):
     assert LeaseManager(repository.database_path).is_current(successor)
 
 
-
 def test_worker_completes_linked_idempotency_record(tmp_path):
     repository = TaskRepository(tmp_path / "worker-idempotency.sqlite3")
     repository.initialize()
@@ -434,7 +429,6 @@ def test_handler_failure_marks_linked_idempotency_unknown_outcome(tmp_path):
     assert record is not None and record.status == "unknown_outcome"
 
 
-
 def test_worker_recovery_marks_interrupted_workflow_for_reconciliation(tmp_path):
     repository = TaskRepository(tmp_path / "workflow-worker-recovery.sqlite3")
     repository.initialize()
@@ -478,9 +472,7 @@ def test_worker_recovery_pauses_workflow_interrupted_before_first_step(tmp_path)
         [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
         task=task,
     )
-    _lease, _attempt = start_task_linked_workflow(
-        repository, recovery, task, workflow_id
-    )
+    _lease, _attempt = start_task_linked_workflow(repository, recovery, task, workflow_id)
     with repository._connection() as connection:
         connection.execute(
             "UPDATE worker_executions SET started_at = ?, lease_expires_at = ? WHERE task_id = ?",
@@ -531,7 +523,6 @@ def test_worker_recovery_finishes_job_when_workflow_already_succeeded(tmp_path):
     assert stored_task is not None and stored_task.status is TaskStatus.SUCCEEDED
 
 
-
 def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
     repository = TaskRepository(tmp_path / "safe-workflow-worker-recovery.sqlite3")
     repository.initialize()
@@ -567,7 +558,6 @@ def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
     assert decision.next_step == 1
 
 
-
 def test_worker_fails_closed_for_workflow_without_encrypted_payload(tmp_path):
     """A queued workflow without owner-bound encrypted input must never execute."""
     repository, worker = make_worker(tmp_path)
@@ -587,6 +577,7 @@ def test_worker_fails_closed_for_workflow_without_encrypted_payload(tmp_path):
     assert stored_task is not None and stored_task.status is TaskStatus.FAILED
     assert stored_workflow is not None and stored_workflow["status"] == "failed"
 
+
 def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(tmp_path):
     repository, _worker = make_worker(tmp_path)
     repository.create_auth_user("owner-a", "owner-a", "salt", "hash")
@@ -598,9 +589,7 @@ def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(t
         task=task,
         owner_user_id="owner-a",
     )
-    _lease, _attempt = start_task_linked_workflow(
-        repository, recovery, task, workflow_id
-    )
+    _lease, _attempt = start_task_linked_workflow(repository, recovery, task, workflow_id)
     with repository._connection() as connection:
         connection.execute(
             """
@@ -621,9 +610,7 @@ def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(t
     stored_workflow = recovery.get_run(workflow_id, owner_user_id="owner-a")
     assert stored_task is not None and stored_task.status is TaskStatus.CANCELLED
     assert stored_workflow is not None and stored_workflow["status"] == "cancelled"
-    assert recovery.get_encrypted_payload(
-        workflow_id, owner_user_id="owner-a"
-    ) is None
+    assert recovery.get_encrypted_payload(workflow_id, owner_user_id="owner-a") is None
 
 
 def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_path):
@@ -662,6 +649,7 @@ def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_
     assert stored_workflow is not None
     assert stored_workflow["status"] == "recovery_required"
     assert stored_workflow["steps"][0]["status"] == "unknown_outcome"
+
 
 def test_worker_summary_includes_recovery_metrics_without_private_task_data(tmp_path):
     repository, worker = make_worker(tmp_path)

@@ -42,7 +42,10 @@ class VisionImage:
             or not 0 <= self.timestamp_seconds <= 60
         ):
             raise ValueError("Vision image timestamp is outside the supported range")
-        if not isinstance(self.jpeg_bytes, bytes) or not 0 < len(self.jpeg_bytes) <= MAX_VISION_IMAGE_BYTES:
+        if (
+            not isinstance(self.jpeg_bytes, bytes)
+            or not 0 < len(self.jpeg_bytes) <= MAX_VISION_IMAGE_BYTES
+        ):
             raise ValueError("Vision image must be a bounded non-empty JPEG byte string")
 
 
@@ -96,11 +99,9 @@ class VisionProvider(Protocol):
 
     descriptor: ModelDescriptor
 
-    def generate(self, request: VisionRequest) -> VisionResponse:
-        ...
+    def generate(self, request: VisionRequest) -> VisionResponse: ...
 
-    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
-        ...
+    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth: ...
 
 
 class OllamaVisionProvider:
@@ -140,7 +141,9 @@ class OllamaVisionProvider:
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         if not 0.1 <= timeout_seconds <= 10:
-            raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
+            raise ProviderConfigurationError(
+                "Health probe timeout must be between 0.1 and 10 seconds"
+            )
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
                 response = client.get("/api/tags")
@@ -154,10 +157,7 @@ class OllamaVisionProvider:
     def generate(self, request: VisionRequest) -> VisionResponse:
         if not isinstance(request, VisionRequest):
             raise ProviderConfigurationError("Invalid vision request")
-        images = [
-            base64.b64encode(image.jpeg_bytes).decode("ascii")
-            for image in request.images
-        ]
+        images = [base64.b64encode(image.jpeg_bytes).decode("ascii") for image in request.images]
         try:
             with self._client() as client:
                 with client.stream(
@@ -185,10 +185,16 @@ class OllamaVisionProvider:
         except httpx.HTTPError as exc:
             raise ProviderUnavailableError("Local vision service is unavailable") from exc
         except (ValueError, UnicodeDecodeError) as exc:
-            raise ProviderUnavailableError("Local vision model returned an invalid response") from exc
+            raise ProviderUnavailableError(
+                "Local vision model returned an invalid response"
+            ) from exc
 
         output = payload.get("response") if isinstance(payload, dict) else None
-        if not isinstance(output, str) or not output.strip() or len(output) > MAX_VISION_OUTPUT_CHARS:
+        if (
+            not isinstance(output, str)
+            or not output.strip()
+            or len(output) > MAX_VISION_OUTPUT_CHARS
+        ):
             raise ProviderUnavailableError("Local vision model returned an invalid response")
         return VisionResponse(
             provider=self.descriptor.provider,

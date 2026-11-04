@@ -30,9 +30,7 @@ def authenticated_client() -> TestClient:
         json={"username": "owner", "password": "test-only-strong-password-2026"},
     )
     assert login.status_code == 200
-    client.headers.update(
-        {"Authorization": f"Bearer {login.json()['access_token']}"}
-    )
+    client.headers.update({"Authorization": f"Bearer {login.json()['access_token']}"})
     return client
 
 

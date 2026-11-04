@@ -89,13 +89,16 @@ def test_knowledge_search_is_owner_scoped_and_delete_removes_fts_index_rows() ->
     deleted = client.delete(f"/knowledge/documents/{own_id}")
     assert deleted.status_code == 204
     assert client.get(f"/knowledge/documents/{own_id}").status_code == 404
-    assert client.post(
-        "/knowledge/search", json={"query": "Nebula isolation"}
-    ).json()["results"] == []
+    assert (
+        client.post("/knowledge/search", json={"query": "Nebula isolation"}).json()["results"] == []
+    )
     with repository.tasks._connection() as connection:
-        assert connection.execute(
-            "SELECT 1 FROM knowledge_chunks_fts WHERE document_id = ?", (own_id,)
-        ).fetchone() is None
+        assert (
+            connection.execute(
+                "SELECT 1 FROM knowledge_chunks_fts WHERE document_id = ?", (own_id,)
+            ).fetchone()
+            is None
+        )
 
 
 def test_knowledge_export_is_owner_scoped_and_preserves_source_provenance() -> None:
@@ -158,7 +161,6 @@ def test_knowledge_routes_require_authentication() -> None:
     assert client.get("/knowledge/documents").status_code in (401, 403)
 
 
-
 def test_source_freshness_is_owner_scoped_manual_metadata_and_survives_search():
     client = authenticated_client()
     created = client.post(
@@ -187,10 +189,7 @@ def test_source_freshness_is_owner_scoped_manual_metadata_and_survives_search():
         "/knowledge/search",
         json={"query": "freshness metadata marker"},
     )
-    result = next(
-        item for item in search.json()["results"]
-        if item["source_id"] == source_id
-    )
+    result = next(item for item in search.json()["results"] if item["source_id"] == source_id)
     assert result["freshness_status"] == "owner_reviewed_current"
     assert result["freshness_checked_at"] is not None
 
@@ -204,8 +203,7 @@ def test_source_freshness_is_owner_scoped_manual_metadata_and_survives_search():
         json={"query": "freshness metadata marker"},
     )
     stale_result = next(
-        item for item in stale_search.json()["results"]
-        if item["source_id"] == source_id
+        item for item in stale_search.json()["results"] if item["source_id"] == source_id
     )
     assert stale_result["freshness_status"] == "stale"
 

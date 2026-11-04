@@ -44,7 +44,9 @@ class AgentRunRepository:
                 str(item.get("name"))
                 for item in requested_tools
                 if isinstance(item, dict) and "name" in item
-            ] if isinstance(requested_tools, list) else [],
+            ]
+            if isinstance(requested_tools, list)
+            else [],
             "requires_text": bool(request_payload.get("requires_text", True)),
             "requires_vision": bool(request_payload.get("requires_vision", False)),
             "requires_audio": bool(request_payload.get("requires_audio", False)),
@@ -66,9 +68,11 @@ class AgentRunRepository:
         ]
         results = execution.get("results", [])
         status = (
-            "blocked" if execution.get("blocked") else
-            "succeeded" if execution.get("execution_completed") else
-            "failed"
+            "blocked"
+            if execution.get("blocked")
+            else "succeeded"
+            if execution.get("execution_completed")
+            else "failed"
         )
         selection = plan.get("selected_provider", {})
         provider_name = selection.get("provider") if isinstance(selection, dict) else None
@@ -102,9 +106,7 @@ class AgentRunRepository:
             )
         return self.get(run_id, owner_user_id=owner_user_id)  # type: ignore[return-value]
 
-    def get(
-        self, run_id: UUID, *, owner_user_id: str | None = None
-    ) -> dict[str, object] | None:
+    def get(self, run_id: UUID, *, owner_user_id: str | None = None) -> dict[str, object] | None:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT * FROM agent_runs WHERE run_id = ? AND owner_user_id = ?",

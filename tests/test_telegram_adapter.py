@@ -88,7 +88,6 @@ def test_provider_is_created_only_when_both_telegram_settings_exist() -> None:
     adapters["telegram"].close()
 
 
-
 @pytest.mark.parametrize(
     ("media_type", "field", "endpoint", "filename"),
     [

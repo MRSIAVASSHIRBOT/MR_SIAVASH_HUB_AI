@@ -37,7 +37,11 @@ def make_analyzer(tmp_path, record=None):
     path = tmp_path / "owned-video.mp4"
     path.write_bytes(b"video fixture")
     repository = FakeMediaRepository(path, record)
-    return VideoAssetAnalyzer(tmp_path / "database.sqlite3", repository=repository), repository, path
+    return (
+        VideoAssetAnalyzer(tmp_path / "database.sqlite3", repository=repository),
+        repository,
+        path,
+    )
 
 
 def test_analyzer_composes_owned_probe_frames_and_scenes_with_one_bounded_duration(
@@ -157,9 +161,7 @@ def test_analyzer_rejects_invalid_frame_budget(tmp_path, max_frames):
     assert repository.lookups == []
 
 
-def test_analyzer_translates_frame_extraction_failures_to_sanitized_codes(
-    tmp_path, monkeypatch
-):
+def test_analyzer_translates_frame_extraction_failures_to_sanitized_codes(tmp_path, monkeypatch):
     analyzer, _, _ = make_analyzer(tmp_path)
     monkeypatch.setattr(
         "mrhub.video_intelligence.analyzer.probe_video",
@@ -173,18 +175,14 @@ def test_analyzer_translates_frame_extraction_failures_to_sanitized_codes(
     )
     monkeypatch.setattr(
         "mrhub.video_intelligence.analyzer.extract_video_frames",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            FrameExtractionError("extraction_timeout")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(FrameExtractionError("extraction_timeout")),
     )
 
     with pytest.raises(VideoAssetAnalysisError, match="frame_extraction_timeout"):
         analyzer.analyze("owner-a", ASSET_ID)
 
 
-def test_analyzer_translates_scene_detection_failures_to_sanitized_codes(
-    tmp_path, monkeypatch
-):
+def test_analyzer_translates_scene_detection_failures_to_sanitized_codes(tmp_path, monkeypatch):
     analyzer, _, _ = make_analyzer(tmp_path)
     monkeypatch.setattr(
         "mrhub.video_intelligence.analyzer.probe_video",
@@ -202,9 +200,7 @@ def test_analyzer_translates_scene_detection_failures_to_sanitized_codes(
     )
     monkeypatch.setattr(
         "mrhub.video_intelligence.analyzer.detect_scene_boundaries",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            SceneDetectionError("detection_timeout")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(SceneDetectionError("detection_timeout")),
     )
 
     with pytest.raises(VideoAssetAnalysisError, match="scene_detection_timeout"):

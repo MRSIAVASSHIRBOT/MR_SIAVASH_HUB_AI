@@ -252,8 +252,14 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
                 processing_status, processing_profile, error_code, created_at, updated_at
             ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
             (
-                str(source_id), "owner-a", "source.mp4", storage_key,
-                len(source_bytes), hashlib.sha256(source_bytes).hexdigest(), now, now,
+                str(source_id),
+                "owner-a",
+                "source.mp4",
+                storage_key,
+                len(source_bytes),
+                hashlib.sha256(source_bytes).hexdigest(),
+                now,
+                now,
             ),
         )
         connection.execute(
@@ -342,8 +348,14 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
                 processing_status, processing_profile, error_code, created_at, updated_at
             ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
             (
-                str(source_id), "owner-a", "source.mp4", source_key,
-                len(source_bytes), hashlib.sha256(source_bytes).hexdigest(), now, now,
+                str(source_id),
+                "owner-a",
+                "source.mp4",
+                source_key,
+                len(source_bytes),
+                hashlib.sha256(source_bytes).hexdigest(),
+                now,
+                now,
             ),
         )
         connection.execute(
@@ -364,8 +376,11 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
                 lease_expires_at, execution_token
             ) VALUES (?, 1, ?, ?, ?, ?)""",
             (
-                str(task_id), "2000-01-01T00:00:00+00:00",
-                "dead-worker", "2000-01-01T00:00:00+00:00", 7,
+                str(task_id),
+                "2000-01-01T00:00:00+00:00",
+                "dead-worker",
+                "2000-01-01T00:00:00+00:00",
+                7,
             ),
         )
         connection.execute(
@@ -374,8 +389,13 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
                 lease_owner, execution_token, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
-                "lease-orphan", str(source_id), "owner-a", str(task_id),
-                "dead-worker", 7, now,
+                "lease-orphan",
+                str(source_id),
+                "owner-a",
+                str(task_id),
+                "dead-worker",
+                7,
+                now,
             ),
         )
         reserved = connection.execute(
@@ -388,7 +408,10 @@ def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
     output_asset_id = reserved.removesuffix(".mp4")
     partial_path = media.storage_root / f".{output_asset_id}.{'a' * 32}.partial.mp4"
     partial_path.write_bytes(b"interrupted-ffmpeg-output")
-    unrelated_partial = media.storage_root / f".{UUID('4c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00')}.{'b' * 32}.partial.mp4"
+    unrelated_partial = (
+        media.storage_root
+        / f".{UUID('4c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00')}.{'b' * 32}.partial.mp4"
+    )
     unrelated_partial.write_bytes(b"belongs-to-another-render")
     worker = WorkerEngine(
         analysis_repository.tasks,
@@ -429,8 +452,11 @@ def test_render_output_registration_rejects_unreserved_storage_key(tmp_path, mon
                 lease_expires_at, execution_token
             ) VALUES (?, 1, ?, ?, ?, ?)""",
             (
-                str(task_id), now, "render-worker",
-                "2099-01-01T00:00:00+00:00", 9,
+                str(task_id),
+                now,
+                "render-worker",
+                "2099-01-01T00:00:00+00:00",
+                9,
             ),
         )
         connection.execute(
@@ -468,9 +494,7 @@ def test_render_output_registration_rejects_unreserved_storage_key(tmp_path, mon
     assert jobs.get("owner-a", render_id)["status"] == "running"
 
 
-def test_render_cancellation_is_owner_scoped_and_terminal_when_queued(
-    tmp_path, monkeypatch
-):
+def test_render_cancellation_is_owner_scoped_and_terminal_when_queued(tmp_path, monkeypatch):
     analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
     jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
     accepted, _ = jobs.submit("owner-a", analysis_id, "render-cancel-queued")
@@ -494,9 +518,7 @@ def test_render_cancellation_is_owner_scoped_and_terminal_when_queued(
     assert status == "failed"
 
 
-def test_running_render_cancellation_signals_worker_without_publishing(
-    tmp_path, monkeypatch
-):
+def test_running_render_cancellation_signals_worker_without_publishing(tmp_path, monkeypatch):
     analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
     jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
     accepted, _ = jobs.submit("owner-a", analysis_id, "render-cancel-running")
@@ -510,8 +532,11 @@ def test_running_render_cancellation_signals_worker_without_publishing(
                 lease_expires_at, execution_token
             ) VALUES (?, 1, ?, ?, ?, ?)""",
             (
-                str(task_id), "2026-11-04T00:00:00+00:00",
-                "render-worker", expiry, 11,
+                str(task_id),
+                "2026-11-04T00:00:00+00:00",
+                "render-worker",
+                expiry,
+                11,
             ),
         )
         connection.execute(
@@ -537,9 +562,7 @@ def test_running_render_cancellation_signals_worker_without_publishing(
     assert jobs.get("owner-a", render_id)["status"] == "running"
 
 
-def test_render_worker_observes_preexisting_cancellation_before_media_access(
-    tmp_path, monkeypatch
-):
+def test_render_worker_observes_preexisting_cancellation_before_media_access(tmp_path, monkeypatch):
     analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
     jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
     media = MediaAssetRepository(tmp_path / "render.sqlite")
@@ -554,8 +577,11 @@ def test_render_worker_observes_preexisting_cancellation_before_media_access(
                 lease_expires_at, execution_token
             ) VALUES (?, 1, ?, ?, ?, ?)""",
             (
-                str(task_id), "2026-11-04T00:00:00+00:00",
-                "render-worker", expiry, 13,
+                str(task_id),
+                "2026-11-04T00:00:00+00:00",
+                "render-worker",
+                expiry,
+                13,
             ),
         )
         connection.execute(

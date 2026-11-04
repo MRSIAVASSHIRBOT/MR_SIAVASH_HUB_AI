@@ -115,14 +115,19 @@ def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
             detail="No registered provider satisfies the requested capabilities",
         ) from exc
 
+
 @router.post("/execute")
-def execute_agent_tools(request: AgentPlanRequest, current_user: Annotated[AuthenticatedUser, Depends(require_user)]) -> dict[str, object]:
+def execute_agent_tools(
+    request: AgentPlanRequest, current_user: Annotated[AuthenticatedUser, Depends(require_user)]
+) -> dict[str, object]:
     """Run only explicitly requested tools that pass the server policy checks."""
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
         execution = core.execute(request)
         repository = AgentRunRepository(get_settings().database_path)
-        run = repository.record(request.model_dump(mode="json"), execution, owner_user_id=current_user.user_id)
+        run = repository.record(
+            request.model_dump(mode="json"), execution, owner_user_id=current_user.user_id
+        )
         return {**execution, "run": run}
     except LookupError as exc:
         raise HTTPException(
@@ -130,15 +135,17 @@ def execute_agent_tools(request: AgentPlanRequest, current_user: Annotated[Authe
             detail="No registered provider satisfies the requested capabilities",
         ) from exc
 
+
 @router.get("/runs/{run_id}")
-def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depends(require_user)]) -> dict[str, object]:
+def get_agent_run(
+    run_id: UUID, current_user: Annotated[AuthenticatedUser, Depends(require_user)]
+) -> dict[str, object]:
     repository = AgentRunRepository(get_settings().database_path)
     repository.initialize()
     run = repository.get(run_id, owner_user_id=current_user.user_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     return run
-
 
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
@@ -172,7 +179,9 @@ def list_agent_workflows(
 def execute_agent_workflow(
     request: AgentPlanRequest,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
+    idempotency_key: Annotated[
+        str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)
+    ] = None,
 ) -> dict[str, object]:
     """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
     core = AgentCore(build_model_router(), build_tool_registry())
@@ -240,7 +249,9 @@ def execute_agent_workflow(
         step_specs = []
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
-            raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
+            raise HTTPException(
+                status_code=422, detail="Workflow plan contains no executable steps"
+            )
         for step in raw_steps:
             if not isinstance(step, dict):
                 continue
@@ -271,7 +282,11 @@ def execute_agent_workflow(
         except sqlite3.IntegrityError as exc:
             if idempotency_key is not None:
                 record = idempotency.get(scope, idempotency_key)
-                if record is not None and record.request_digest == request_digest and record.workflow_id:
+                if (
+                    record is not None
+                    and record.request_digest == request_digest
+                    and record.workflow_id
+                ):
                     existing = recovery.get_run(
                         UUID(record.workflow_id), owner_user_id=current_user.user_id
                     )
@@ -341,9 +356,7 @@ def cancel_agent_workflow(
     tasks.initialize()
     recovery = WorkflowRecoveryRepository(settings.database_path)
     try:
-        return recovery.request_cancellation(
-            workflow_id, owner_user_id=current_user.user_id
-        )
+        return recovery.request_cancellation(workflow_id, owner_user_id=current_user.user_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Agent workflow not found") from exc
     except ValueError as exc:
@@ -376,7 +389,9 @@ def reconcile_agent_workflow(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid reconciliation request") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail="Workflow cannot be reconciled in its current state") from exc
+        raise HTTPException(
+            status_code=409, detail="Workflow cannot be reconciled in its current state"
+        ) from exc
     return {
         "workflow": recovery.get_run(workflow_id, owner_user_id=current_user.user_id),
         "checkpoint": checkpoint.__dict__ if checkpoint is not None else None,
@@ -414,7 +429,6 @@ def check_agent_workflow_resume(
     }
 
 
-
 @router.post("/workflows/{workflow_id}/resume")
 def resume_agent_workflow(
     workflow_id: UUID,
@@ -440,4 +454,6 @@ def resume_agent_workflow(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Workflow is not safely resumable") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail="Workflow resume could not be completed") from exc
+        raise HTTPException(
+            status_code=409, detail="Workflow resume could not be completed"
+        ) from exc

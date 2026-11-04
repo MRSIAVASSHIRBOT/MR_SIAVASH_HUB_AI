@@ -55,9 +55,7 @@ def _request(key="generation-1", **overrides):
     return VideoGenerationRequest(**values)
 
 
-def test_generation_submit_is_encrypted_owner_scoped_and_idempotent(
-    tmp_path, monkeypatch
-):
+def test_generation_submit_is_encrypted_owner_scoped_and_idempotent(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"g" * 32).decode("ascii"),
@@ -92,9 +90,7 @@ def test_generation_submit_is_encrypted_owner_scoped_and_idempotent(
     assert "An original cinematic" not in payload_row["ciphertext_b64"]
 
 
-def test_generation_idempotency_rejects_different_request_and_owner_scope(
-    tmp_path, monkeypatch
-):
+def test_generation_idempotency_rejects_different_request_and_owner_scope(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"h" * 32).decode("ascii"),
@@ -103,7 +99,10 @@ def test_generation_idempotency_rejects_different_request_and_owner_scope(
     repository.submit("owner-a", analysis_id, "local", "renderer-v1", _request())
     with pytest.raises(VideoGenerationConflict):
         repository.submit(
-            "owner-a", analysis_id, "local", "renderer-v1",
+            "owner-a",
+            analysis_id,
+            "local",
+            "renderer-v1",
             _request(prompt="A materially different prompt"),
         )
 
@@ -112,17 +111,13 @@ def test_generation_idempotency_rejects_different_request_and_owner_scope(
         repository.submit("owner-b", analysis_id, "local", "renderer-v1", _request())
 
 
-def test_generation_requires_completed_owned_analysis_and_valid_transition(
-    tmp_path, monkeypatch
-):
+def test_generation_requires_completed_owned_analysis_and_valid_transition(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"i" * 32).decode("ascii"),
     )
     repository, analysis_id = _repository(tmp_path)
-    accepted, _ = repository.submit(
-        "owner-a", analysis_id, "local", "renderer-v1", _request()
-    )
+    accepted, _ = repository.submit("owner-a", analysis_id, "local", "renderer-v1", _request())
     generation_id = UUID(accepted["generation_id"])
 
     with pytest.raises(ValueError, match="Invalid generation transition"):
@@ -140,17 +135,13 @@ def test_generation_requires_completed_owned_analysis_and_valid_transition(
     assert repository.load_for_handoff("owner-a", generation_id) is None
 
 
-def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(
-    tmp_path, monkeypatch
-):
+def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"j" * 32).decode("ascii"),
     )
     repository, analysis_id = _repository(tmp_path)
-    accepted, _ = repository.submit(
-        "owner-a", analysis_id, "local", "renderer-v1", _request()
-    )
+    accepted, _ = repository.submit("owner-a", analysis_id, "local", "renderer-v1", _request())
     generation_id = UUID(accepted["generation_id"])
     repository.transition("owner-a", generation_id, "queued")
     repository.transition("owner-a", generation_id, "submitting")
@@ -183,28 +174,19 @@ def test_generation_payload_key_is_required(tmp_path, monkeypatch):
     )
     repository, analysis_id = _repository(tmp_path)
     with pytest.raises(ValueError, match="encryption key is not configured"):
-        repository.submit(
-            "owner-a", analysis_id, "local", "renderer-v1", _request()
-        )
+        repository.submit("owner-a", analysis_id, "local", "renderer-v1", _request())
 
 
-
-def test_successful_generation_registers_private_output_asset_atomically(
-    tmp_path, monkeypatch
-):
+def test_successful_generation_registers_private_output_asset_atomically(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"o" * 32).decode("ascii"),
     )
     repository, analysis_id = _repository(tmp_path)
-    accepted, _ = repository.submit(
-        "owner-a", analysis_id, "local", "renderer-v1", _request()
-    )
+    accepted, _ = repository.submit("owner-a", analysis_id, "local", "renderer-v1", _request())
     generation_id = UUID(accepted["generation_id"])
     repository.transition("owner-a", generation_id, "queued")
-    repository.transition(
-        "owner-a", generation_id, "submitting", provider_job_id="provider-job-1"
-    )
+    repository.transition("owner-a", generation_id, "submitting", provider_job_id="provider-job-1")
     repository.transition("owner-a", generation_id, "running", progress_percent=80)
     with pytest.raises(ValueError):
         repository.transition("owner-a", generation_id, "succeeded")
@@ -237,8 +219,13 @@ def test_successful_generation_registers_private_output_asset_atomically(
         height=1280,
     )
     asset = repository.complete_with_output(
-        "owner-a", generation_id, asset_id, storage_key,
-        output_path, "generated-video.mp4", result,
+        "owner-a",
+        generation_id,
+        asset_id,
+        storage_key,
+        output_path,
+        "generated-video.mp4",
+        result,
     )
     assert asset["asset_id"] == asset_id
     assert asset["owner_user_id"] == "owner-a"
@@ -252,12 +239,16 @@ def test_successful_generation_registers_private_output_asset_atomically(
     assert repository.load_for_handoff("owner-a", generation_id) is None
 
     replay = repository.complete_with_output(
-        "owner-a", generation_id, asset_id, storage_key,
-        output_path, "generated-video.mp4", result,
+        "owner-a",
+        generation_id,
+        asset_id,
+        storage_key,
+        output_path,
+        "generated-video.mp4",
+        result,
     )
     assert replay["asset_id"] == asset_id
     assert len(media.list_assets("owner-a")) == 1
-
 
 
 def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkeypatch):
@@ -266,14 +257,10 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
         base64.urlsafe_b64encode(b"q" * 32).decode("ascii"),
     )
     repository, analysis_id = _repository(tmp_path)
-    accepted, _ = repository.submit(
-        "owner-a", analysis_id, "local", "renderer-v1", _request()
-    )
+    accepted, _ = repository.submit("owner-a", analysis_id, "local", "renderer-v1", _request())
     generation_id = UUID(accepted["generation_id"])
     repository.transition("owner-a", generation_id, "queued")
-    repository.transition(
-        "owner-a", generation_id, "submitting", provider_job_id="provider-job-2"
-    )
+    repository.transition("owner-a", generation_id, "submitting", provider_job_id="provider-job-2")
     repository.transition("owner-a", generation_id, "running")
 
     from mrhub.media.repository import MediaAssetRepository
@@ -304,8 +291,13 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
     )
     with pytest.raises(ValueError, match="Provider result does not match"):
         repository.complete_with_output(
-            "owner-a", generation_id, asset_id, storage_key,
-            output_path, "generated-video.mp4", result,
+            "owner-a",
+            generation_id,
+            asset_id,
+            storage_key,
+            output_path,
+            "generated-video.mp4",
+            result,
         )
     assert repository.get("owner-a", generation_id)["status"] == "running"
     assert media.get("owner-a", UUID(asset_id)) is None
@@ -341,8 +333,10 @@ def test_generation_task_waits_for_action_bound_owner_approval(tmp_path, monkeyp
     monkeypatch.setattr(
         video_generation_registry,
         "get",
-        lambda provider, model: provider_lookups.append((provider, model))
-        or (_ for _ in ()).throw(LookupError("provider unavailable")),
+        lambda provider, model: (
+            provider_lookups.append((provider, model))
+            or (_ for _ in ()).throw(LookupError("provider unavailable"))
+        ),
     )
     worker = WorkerEngine(repository.tasks)
     assert worker.run_once() is None
@@ -370,9 +364,7 @@ def test_generation_task_waits_for_action_bound_owner_approval(tmp_path, monkeyp
     assert repository.get("owner-a", generation_id)["status"] == "failed"
 
 
-def test_rejected_generation_never_dispatches_and_purges_encrypted_payload(
-    tmp_path, monkeypatch
-):
+def test_rejected_generation_never_dispatches_and_purges_encrypted_payload(tmp_path, monkeypatch):
     from datetime import UTC, datetime
     from uuid import uuid4
 
@@ -475,8 +467,10 @@ def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch):
             supported_aspect_ratios=["9:16"],
             max_resolution="1080p",
         ),
-        submit=lambda _request: calls.append("submit")
-        or (_ for _ in ()).throw(VideoGenerationSubmissionError("ambiguous")),
+        submit=lambda _request: (
+            calls.append("submit")
+            or (_ for _ in ()).throw(VideoGenerationSubmissionError("ambiguous"))
+        ),
     )
     monkeypatch.setattr(
         video_generation_registry,

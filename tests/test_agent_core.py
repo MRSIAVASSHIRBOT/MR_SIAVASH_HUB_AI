@@ -87,9 +87,7 @@ def test_agent_core_marks_invalid_tool_input_without_running_it():
 
 def test_agent_core_rejects_unsupported_provider_capabilities():
     with pytest.raises(LookupError):
-        make_core().plan(
-            AgentPlanRequest(goal="Analyze image", requires_vision=True)
-        )
+        make_core().plan(AgentPlanRequest(goal="Analyze image", requires_vision=True))
 
 
 def test_agent_execute_runs_registered_safe_tool():
@@ -173,6 +171,7 @@ def test_agent_execute_stops_after_runtime_failure():
     assert response["error_code"] == "tool_execution_failed"
     assert "private diagnostic detail" not in str(response)
     assert len(response["results"]) == 1
+
 
 def test_agent_execute_honors_cancellation_before_first_tool():
     response = make_core().execute(

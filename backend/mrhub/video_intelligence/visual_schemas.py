@@ -17,9 +17,9 @@ class VisualFrameObservation(BaseModel):
     shot_scale: Literal[
         "extreme_wide", "wide", "medium", "close_up", "extreme_close_up", "unclear"
     ] = "unclear"
-    camera_movement: Literal[
-        "static", "pan", "tilt", "tracking", "zoom", "handheld", "unclear"
-    ] = "unclear"
+    camera_movement: Literal["static", "pan", "tilt", "tracking", "zoom", "handheld", "unclear"] = (
+        "unclear"
+    )
     composition: str = Field(default="", max_length=240)
     lighting: str = Field(default="", max_length=180)
     color_notes: list[ColorNote] = Field(default_factory=list, max_length=6)

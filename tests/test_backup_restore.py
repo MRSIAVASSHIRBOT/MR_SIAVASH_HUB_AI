@@ -73,7 +73,6 @@ def test_restore_requires_valid_manifest(tmp_path):
         restore_database(backup, tmp_path / "restored.sqlite3")
 
 
-
 def test_application_database_backup_restores_owner_login(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
@@ -398,12 +397,8 @@ def test_clean_destination_restore_recovers_database_and_media_asset(
             },
         )
         assert login.status_code == 200
-        restored_headers = {
-            "Authorization": f"Bearer {login.json()['access_token']}"
-        }
-        assets = restored_client.get(
-            "/content/assets", headers=restored_headers
-        )
+        restored_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assets = restored_client.get("/content/assets", headers=restored_headers)
         assert assets.status_code == 200
         assert assets.json()["count"] == 1
         assert assets.json()["assets"][0]["asset_id"] == asset_id

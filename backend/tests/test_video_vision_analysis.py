@@ -17,31 +17,33 @@ def _frames():
 
 
 def _visual_json(timestamp_a=0.0, timestamp_b=1.5):
-    return json.dumps({
-        "style_summary": "A restrained cinematic sequence with balanced framing.",
-        "observations": [
-            {
-                "timestamp_seconds": timestamp_a,
-                "description": "A wide view with the subject placed near the center.",
-                "shot_scale": "wide",
-                "camera_movement": "static",
-                "composition": "Centered subject with negative space.",
-                "lighting": "Soft directional light.",
-                "color_notes": ["emerald", "charcoal"],
-                "confidence": 0.91,
-            },
-            {
-                "timestamp_seconds": timestamp_b,
-                "description": "The framing moves closer while preserving the subject.",
-                "shot_scale": "medium",
-                "camera_movement": "tracking",
-                "composition": "Subject remains near the center.",
-                "lighting": "Consistent soft light.",
-                "color_notes": ["emerald"],
-                "confidence": 0.78,
-            },
-        ],
-    })
+    return json.dumps(
+        {
+            "style_summary": "A restrained cinematic sequence with balanced framing.",
+            "observations": [
+                {
+                    "timestamp_seconds": timestamp_a,
+                    "description": "A wide view with the subject placed near the center.",
+                    "shot_scale": "wide",
+                    "camera_movement": "static",
+                    "composition": "Centered subject with negative space.",
+                    "lighting": "Soft directional light.",
+                    "color_notes": ["emerald", "charcoal"],
+                    "confidence": 0.91,
+                },
+                {
+                    "timestamp_seconds": timestamp_b,
+                    "description": "The framing moves closer while preserving the subject.",
+                    "shot_scale": "medium",
+                    "camera_movement": "tracking",
+                    "composition": "Subject remains near the center.",
+                    "lighting": "Consistent soft light.",
+                    "color_notes": ["emerald"],
+                    "confidence": 0.78,
+                },
+            ],
+        }
+    )
 
 
 def test_local_vision_analysis_uses_actual_timestamps_and_transient_frames():
@@ -146,11 +148,13 @@ def test_local_vision_returns_sanitized_provider_failure():
 
 def test_visual_schema_rejects_extra_fields_and_duplicate_timestamps():
     with pytest.raises(ValueError):
-        VisualAnalysisResult.model_validate({
-            "style_summary": "summary",
-            "extra": "not allowed",
-            "observations": [],
-        })
+        VisualAnalysisResult.model_validate(
+            {
+                "style_summary": "summary",
+                "extra": "not allowed",
+                "observations": [],
+            }
+        )
 
     duplicated = json.loads(_visual_json())
     duplicated["observations"][1]["timestamp_seconds"] = 0.0

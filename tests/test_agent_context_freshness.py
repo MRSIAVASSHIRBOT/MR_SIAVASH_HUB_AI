@@ -12,16 +12,18 @@ class EmptyMemory:
 
 class StaleKnowledge:
     def search(self, owner_user_id: str, query: str, limit: int):
-        return [{
-            "citation_ref": "knowledge://documents/doc-1#chunk-0",
-            "source_ref": "local-note:review",
-            "trust_classification": "user_reviewed",
-            "freshness_status": "stale",
-            "freshness_checked_at": "2026-11-02T00:00:00+00:00",
-            "document_hash": "a" * 64,
-            "chunk_hash": "b" * 64,
-            "content": "An evidence passage with a stale status.",
-        }]
+        return [
+            {
+                "citation_ref": "knowledge://documents/doc-1#chunk-0",
+                "source_ref": "local-note:review",
+                "trust_classification": "user_reviewed",
+                "freshness_status": "stale",
+                "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+                "document_hash": "a" * 64,
+                "chunk_hash": "b" * 64,
+                "content": "An evidence passage with a stale status.",
+            }
+        ]
 
 
 def test_context_preserves_stale_metadata_and_keeps_evidence_untrusted():
@@ -41,7 +43,6 @@ def test_context_preserves_stale_metadata_and_keeps_evidence_untrusted():
     assert passage["freshness_checked_at"] == "2026-11-02T00:00:00+00:00"
     assert passage["freshness_is_automatically_verified"] is False
     assert passage["content_is_untrusted_data"] is True
-
 
 
 class MixedFreshnessKnowledge:
@@ -141,32 +142,35 @@ def test_context_rejects_unknown_freshness_policy():
         )
 
 
-
 class ManyStaleThenCurrentKnowledge:
     def search(self, owner_user_id: str, query: str, limit: int):
         assert limit == 25
         results = []
         for index in range(4):
-            results.append({
-                "citation_ref": f"knowledge://documents/stale-{index}#chunk-0",
-                "source_ref": f"local-note:stale-{index}",
+            results.append(
+                {
+                    "citation_ref": f"knowledge://documents/stale-{index}#chunk-0",
+                    "source_ref": f"local-note:stale-{index}",
+                    "trust_classification": "user_supplied",
+                    "freshness_status": "stale",
+                    "freshness_checked_at": "2026-11-02T00:00:00+00:00",
+                    "document_hash": "a" * 64,
+                    "chunk_hash": "b" * 64,
+                    "content": "stale result",
+                }
+            )
+        results.append(
+            {
+                "citation_ref": "knowledge://documents/current-after-stale#chunk-0",
+                "source_ref": "local-note:current",
                 "trust_classification": "user_supplied",
-                "freshness_status": "stale",
+                "freshness_status": "owner_reviewed_current",
                 "freshness_checked_at": "2026-11-02T00:00:00+00:00",
-                "document_hash": "a" * 64,
-                "chunk_hash": "b" * 64,
-                "content": "stale result",
-            })
-        results.append({
-            "citation_ref": "knowledge://documents/current-after-stale#chunk-0",
-            "source_ref": "local-note:current",
-            "trust_classification": "user_supplied",
-            "freshness_status": "owner_reviewed_current",
-            "freshness_checked_at": "2026-11-02T00:00:00+00:00",
-            "document_hash": "c" * 64,
-            "chunk_hash": "d" * 64,
-            "content": "current result after stale candidates",
-        })
+                "document_hash": "c" * 64,
+                "chunk_hash": "d" * 64,
+                "content": "current result after stale candidates",
+            }
+        )
         return results
 
 
@@ -191,20 +195,21 @@ def test_current_only_policy_searches_past_the_default_four_chunk_limit():
     assert result["excluded_unreviewed_knowledge_count"] == 0
 
 
-
 def test_include_all_marks_old_owner_review_as_expired_but_keeps_it_visible():
     class ExpiredCurrentKnowledge:
         def search(self, owner_user_id: str, query: str, limit: int):
-            return [{
-                "citation_ref": "knowledge://documents/old-current#chunk-0",
-                "source_ref": "local-note:old-current",
-                "trust_classification": "user_supplied",
-                "freshness_status": "owner_reviewed_current",
-                "freshness_checked_at": "2025-01-01T00:00:00+00:00",
-                "document_hash": "a" * 64,
-                "chunk_hash": "b" * 64,
-                "content": "old owner-reviewed evidence remains visible under include_all",
-            }]
+            return [
+                {
+                    "citation_ref": "knowledge://documents/old-current#chunk-0",
+                    "source_ref": "local-note:old-current",
+                    "trust_classification": "user_supplied",
+                    "freshness_status": "owner_reviewed_current",
+                    "freshness_checked_at": "2025-01-01T00:00:00+00:00",
+                    "document_hash": "a" * 64,
+                    "chunk_hash": "b" * 64,
+                    "content": "old owner-reviewed evidence remains visible under include_all",
+                }
+            ]
 
     assembler = AgentContextAssembler.__new__(AgentContextAssembler)
     assembler.memory = EmptyMemory()
@@ -222,7 +227,6 @@ def test_include_all_marks_old_owner_review_as_expired_but_keeps_it_visible():
     assert result["passages"][0]["freshness_review_expired"] is True
     assert result["passages"][0]["freshness_review_max_age_days"] == 30
     assert "old owner-reviewed evidence" in result["context_block"]
-
 
 
 class AtCandidateLimitKnowledge:

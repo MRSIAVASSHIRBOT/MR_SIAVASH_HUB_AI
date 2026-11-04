@@ -27,7 +27,6 @@ def test_synthetic_knowledge_retrieval_corpus_returns_expected_source_at_rank_on
         assert results[0]["content_integrity_verified"] is True
 
 
-
 def test_reference_retrieval_benchmark_reports_repeatable_quality_metrics():
     from mrhub.knowledge.evaluation import run_reference_evaluation
 

@@ -94,7 +94,6 @@ class AuthService:
         self.repository.delete_auth_session(token_hash)
 
 
-
 class LoginAttemptLimiter:
     """Bound repeated failed logins per client address in this single-process app."""
 

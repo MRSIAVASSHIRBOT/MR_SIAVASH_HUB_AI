@@ -16,8 +16,7 @@ def make_running_task(tmp_path):
             (TaskStatus.RUNNING.value, str(task.task_id)),
         )
         connection.execute(
-            "INSERT INTO worker_executions (task_id, attempt_count, started_at) "
-            "VALUES (?, 1, ?)",
+            "INSERT INTO worker_executions (task_id, attempt_count, started_at) VALUES (?, 1, ?)",
             (str(task.task_id), datetime.now(UTC).isoformat()),
         )
     return repository, task

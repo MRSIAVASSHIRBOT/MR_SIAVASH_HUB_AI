@@ -1,4 +1,5 @@
 """Owner-scoped memory persistence and FTS5 retrieval."""
+
 from __future__ import annotations
 
 import re
@@ -158,15 +159,15 @@ class MemoryRepository:
             )
         return cursor.rowcount
 
-    def search(
-        self, owner_user_id: str, query: str, limit: int = 10
-    ) -> list[dict[str, object]]:
+    def search(self, owner_user_id: str, query: str, limit: int = 10) -> list[dict[str, object]]:
         """Run bounded AND-style lexical search with owner/expiry filtering in SQL."""
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         # Token extraction removes FTS operators and syntax supplied by callers.
-        match_expression = " AND ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12])
+        match_expression = " AND ".join(
+            f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12]
+        )
         bounded_limit = max(1, min(limit, 25))
         with self.tasks._connection() as connection:
             rows = connection.execute(

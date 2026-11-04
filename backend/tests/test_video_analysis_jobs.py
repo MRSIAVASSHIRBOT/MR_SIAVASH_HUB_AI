@@ -63,9 +63,7 @@ def test_submit_is_atomic_idempotent_and_owner_scoped(tmp_path, monkeypatch):
         )
 
 
-def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(
-    tmp_path, monkeypatch
-):
+def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"z" * 32).decode("ascii"),
@@ -98,12 +96,17 @@ def test_analysis_payload_is_encrypted_and_removed_after_terminal_result(
             (str(task_id), "worker-a", lease_expiry, 1),
         )
     lease = WorkerLease(
-        task_id=str(task_id), owner="worker-a",
-        fencing_token=1, expires_at=lease_expiry,
+        task_id=str(task_id),
+        owner="worker-a",
+        fencing_token=1,
+        expires_at=lease_expiry,
     )
     repository.finish(
-        task_id, owner, status="completed",
-        result={"semantic_visual_analysis": False}, lease=lease,
+        task_id,
+        owner,
+        status="completed",
+        result={"semantic_visual_analysis": False},
+        lease=lease,
     )
     record = repository.get(owner, analysis_id)
     assert record["status"] == "completed"
@@ -131,19 +134,14 @@ def test_submit_fails_closed_without_encryption_key(tmp_path, monkeypatch):
         )
 
 
-
-def test_stale_worker_recovery_releases_orphaned_asset_use_locks(
-    tmp_path, monkeypatch
-):
+def test_stale_worker_recovery_releases_orphaned_asset_use_locks(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
     )
     repository = _repository(tmp_path)
     media = MediaAssetRepository(repository.database_path)
-    asset = media.store_upload(
-        "owner-a", "recovery.mp4", "video/mp4", b"recovery-video-fixture"
-    )
+    asset = media.store_upload("owner-a", "recovery.mp4", "video/mp4", b"recovery-video-fixture")
     asset_id = UUID(str(asset["asset_id"]))
     accepted, created = repository.submit(
         "owner-a", _request(str(asset_id)), "recovery-idempotency-key"
@@ -200,18 +198,19 @@ def test_stale_worker_recovery_releases_orphaned_asset_use_locks(
     assert recovered_task is not None
     assert recovered_task.status.value == "failed"
     with repository.tasks._connection() as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
-            (str(task_id),),
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+                (str(task_id),),
+            ).fetchone()[0]
+            == 0
+        )
 
     assert media.delete("owner-a", asset_id) == [str(asset["storage_key"])]
     assert media.cleanup_pending_files("owner-a") == 0
 
 
-def test_active_analysis_limits_allow_idempotent_replay_but_reject_new_jobs(
-    tmp_path, monkeypatch
-):
+def test_active_analysis_limits_allow_idempotent_replay_but_reject_new_jobs(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "MRH_WORKFLOW_PAYLOAD_KEY",
         base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
@@ -269,9 +268,7 @@ def test_idempotent_replay_does_not_require_reencrypting_payload(tmp_path, monke
         "get_settings",
         lambda: SimpleNamespace(workflow_payload_key=None),
     )
-    replay, replay_created = repository.submit(
-        "owner-a", request, "replay-without-key"
-    )
+    replay, replay_created = repository.submit("owner-a", request, "replay-without-key")
     assert replay_created is False
     assert replay["analysis_id"] == accepted["analysis_id"]
 
@@ -329,8 +326,10 @@ def test_cancel_running_analysis_blocks_late_success_and_finishes_cancelled(tmp_
             (str(task_id), "worker-b", lease_expiry, 2),
         )
     lease = WorkerLease(
-        task_id=str(task_id), owner="worker-b",
-        fencing_token=2, expires_at=lease_expiry,
+        task_id=str(task_id),
+        owner="worker-b",
+        fencing_token=2,
+        expires_at=lease_expiry,
     )
     assert repository.mark_running(task_id, "owner-a", lease=lease)
 
@@ -340,15 +339,21 @@ def test_cancel_running_analysis_blocks_late_success_and_finishes_cancelled(tmp_
     assert repository.tasks.get(task_id).status.value == "cancelled"
 
     repository.finish(
-        task_id, "owner-a", status="completed",
-        result={"unexpected": True}, lease=lease,
+        task_id,
+        "owner-a",
+        status="completed",
+        result={"unexpected": True},
+        lease=lease,
     )
     assert repository.get("owner-a", analysis_id)["status"] == "running"
     assert repository.load_for_worker(task_id) is not None
 
     repository.finish(
-        task_id, "owner-a", status="cancelled",
-        error_code="cancelled_by_owner", lease=lease,
+        task_id,
+        "owner-a",
+        status="cancelled",
+        error_code="cancelled_by_owner",
+        lease=lease,
     )
     assert repository.get("owner-a", analysis_id)["status"] == "cancelled"
     assert repository.load_for_worker(task_id) is None
@@ -379,7 +384,6 @@ def test_cancel_analysis_is_idempotent_and_owner_scoped(tmp_path, monkeypatch):
     assert second["status"] == "cancelled"
 
 
-
 def test_worker_failure_path_acknowledges_cancelled_task_instead_of_marking_failed():
     from types import SimpleNamespace
     from uuid import uuid4
@@ -394,11 +398,13 @@ def test_worker_failure_path_acknowledges_cancelled_task_instead_of_marking_fail
 
     class FakeJobs:
         def finish(self, task_id, owner_user_id, **kwargs):
-            calls.update({
-                "task_id": task_id,
-                "owner_user_id": owner_user_id,
-                **kwargs,
-            })
+            calls.update(
+                {
+                    "task_id": task_id,
+                    "owner_user_id": owner_user_id,
+                    **kwargs,
+                }
+            )
 
     handler = VideoAnalysisWorkerHandler.__new__(VideoAnalysisWorkerHandler)
     handler.tasks = FakeTasks()

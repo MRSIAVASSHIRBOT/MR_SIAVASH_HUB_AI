@@ -144,9 +144,12 @@ def test_expiry_filters_retrieval_and_purge_removes_fts_rows() -> None:
     assert purge.status_code == 200
     assert purge.json()["deleted"] == 1
     with repository.tasks._connection() as connection:
-        assert connection.execute(
-            "SELECT 1 FROM memory_entries_fts WHERE memory_id = ?", (memory_id,)
-        ).fetchone() is None
+        assert (
+            connection.execute(
+                "SELECT 1 FROM memory_entries_fts WHERE memory_id = ?", (memory_id,)
+            ).fetchone()
+            is None
+        )
 
 
 def test_memory_export_is_owner_scoped_and_contains_expired_entries() -> None:

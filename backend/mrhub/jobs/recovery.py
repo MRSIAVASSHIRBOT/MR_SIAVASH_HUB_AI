@@ -164,7 +164,9 @@ class WorkflowRecoveryRepository:
             kind = item.get("kind")
             name = item.get("name")
             if not isinstance(number, int) or number < 1 or number in seen_numbers:
-                raise WorkflowRecoveryError("Workflow step numbers must be unique positive integers")
+                raise WorkflowRecoveryError(
+                    "Workflow step numbers must be unique positive integers"
+                )
             if not isinstance(kind, str) or not kind.strip() or len(kind) > 80:
                 raise WorkflowRecoveryError("Workflow step kind is invalid")
             if not isinstance(name, str) or not name.strip() or len(name) > 120:
@@ -210,8 +212,13 @@ class WorkflowRecoveryRepository:
                 ) VALUES (?, ?, 'queued', ?, ?, 0, NULL, ?, ?, ?)
                 """,
                 (
-                    str(workflow_id), task_id, request_digest,
-                    definition_version, now, now, owner_user_id,
+                    str(workflow_id),
+                    task_id,
+                    request_digest,
+                    definition_version,
+                    now,
+                    now,
+                    owner_user_id,
                 ),
             )
             if idempotency_binding is not None:
@@ -240,9 +247,12 @@ class WorkflowRecoveryRepository:
                 nonce_b64 = payload_envelope.get("nonce_b64")
                 ciphertext_b64 = payload_envelope.get("ciphertext_b64")
                 if (
-                    not isinstance(version, int) or version < 1
-                    or not isinstance(nonce_b64, str) or not nonce_b64
-                    or not isinstance(ciphertext_b64, str) or not ciphertext_b64
+                    not isinstance(version, int)
+                    or version < 1
+                    or not isinstance(nonce_b64, str)
+                    or not nonce_b64
+                    or not isinstance(ciphertext_b64, str)
+                    or not ciphertext_b64
                 ):
                     raise WorkflowRecoveryError("Encrypted workflow payload envelope is invalid")
                 connection.execute(
@@ -253,8 +263,13 @@ class WorkflowRecoveryRepository:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        str(workflow_id), task_id, owner_user_id, version,
-                        nonce_b64, ciphertext_b64, now,
+                        str(workflow_id),
+                        task_id,
+                        owner_user_id,
+                        version,
+                        nonce_b64,
+                        ciphertext_b64,
+                        now,
                     ),
                 )
             for number, kind, name in normalized:
@@ -428,8 +443,12 @@ class WorkflowRecoveryRepository:
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    checkpoint_id, str(workflow_id), version,
-                    attempt.step_number, state_digest, now,
+                    checkpoint_id,
+                    str(workflow_id),
+                    version,
+                    attempt.step_number,
+                    state_digest,
+                    now,
                 ),
             )
             connection.execute(
@@ -437,8 +456,12 @@ class WorkflowRecoveryRepository:
                 (now, str(workflow_id)),
             )
             return WorkflowCheckpoint(
-                checkpoint_id, str(workflow_id), version,
-                attempt.step_number, state_digest, now,
+                checkpoint_id,
+                str(workflow_id),
+                version,
+                attempt.step_number,
+                state_digest,
+                now,
             )
 
     def fail_step(
@@ -501,9 +524,7 @@ class WorkflowRecoveryRepository:
                 (run_status, error_code, now, str(workflow_id)),
             )
 
-    def mark_interrupted(
-        self, workflow_id: UUID, *, lease: WorkerLease | None = None
-    ) -> int:
+    def mark_interrupted(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> int:
         """Classify active attempts; only known-safe steps become retryable."""
         now = self._now()
         with self._connection() as connection:
@@ -684,7 +705,9 @@ class WorkflowRecoveryRepository:
                     (str(workflow_id),),
                 ).fetchone()
                 if counts is None or counts["total"] == 0 or counts["total"] != counts["succeeded"]:
-                    raise WorkflowRecoveryError("Every workflow step must succeed before completion")
+                    raise WorkflowRecoveryError(
+                        "Every workflow step must succeed before completion"
+                    )
             if status == "cancelled":
                 connection.execute(
                     """
@@ -852,7 +875,9 @@ class WorkflowRecoveryRepository:
                     "replan", None, checkpoint_version, "definition_version_mismatch"
                 )
             if run["request_digest"] != supplied_request_digest:
-                return ResumeDecision("request_input", None, checkpoint_version, "request_digest_mismatch")
+                return ResumeDecision(
+                    "request_input", None, checkpoint_version, "request_digest_mismatch"
+                )
 
             active = connection.execute(
                 """
@@ -863,7 +888,9 @@ class WorkflowRecoveryRepository:
                 (str(workflow_id),),
             ).fetchone()
             if active is not None:
-                return ResumeDecision("in_progress", active["step_number"], checkpoint_version, None)
+                return ResumeDecision(
+                    "in_progress", active["step_number"], checkpoint_version, None
+                )
 
             failed = connection.execute(
                 """
@@ -879,7 +906,9 @@ class WorkflowRecoveryRepository:
                     "unknown_outcome": "step_outcome_unknown",
                     "cancelled": "step_cancelled",
                 }[failed["status"]]
-                return ResumeDecision("reconcile", failed["step_number"], checkpoint_version, reason)
+                return ResumeDecision(
+                    "reconcile", failed["step_number"], checkpoint_version, reason
+                )
 
             next_step = connection.execute(
                 """
@@ -893,9 +922,7 @@ class WorkflowRecoveryRepository:
                 return ResumeDecision("resume", next_step["step_number"], checkpoint_version, None)
             return ResumeDecision("finish", None, checkpoint_version, "all_steps_succeeded")
 
-    def delete_encrypted_payload(
-        self, workflow_id: UUID, *, owner_user_id: str
-    ) -> bool:
+    def delete_encrypted_payload(self, workflow_id: UUID, *, owner_user_id: str) -> bool:
         """Delete retained ciphertext after a terminal outcome for its owner."""
         with self._connection() as connection:
             cursor = connection.execute(
@@ -912,9 +939,7 @@ class WorkflowRecoveryRepository:
             )
             return cursor.rowcount == 1
 
-    def request_cancellation(
-        self, workflow_id: UUID, *, owner_user_id: str
-    ) -> dict[str, str]:
+    def request_cancellation(self, workflow_id: UUID, *, owner_user_id: str) -> dict[str, str]:
         """Cancel queued work or request cooperative cancellation of a running workflow."""
         now = self._now()
         with self._connection() as connection:
@@ -983,7 +1008,9 @@ class WorkflowRecoveryRepository:
             return {
                 "workflow_id": str(workflow_id),
                 "task_id": task_id,
-                "status": "cancelled" if status in {"queued", "paused"} else "cancellation_requested",
+                "status": "cancelled"
+                if status in {"queued", "paused"}
+                else "cancellation_requested",
             }
 
     def replace_encrypted_payload(
@@ -999,9 +1026,12 @@ class WorkflowRecoveryRepository:
         nonce_b64 = payload_envelope.get("nonce_b64")
         ciphertext_b64 = payload_envelope.get("ciphertext_b64")
         if (
-            not isinstance(version, int) or version < 1
-            or not isinstance(nonce_b64, str) or not nonce_b64
-            or not isinstance(ciphertext_b64, str) or not ciphertext_b64
+            not isinstance(version, int)
+            or version < 1
+            or not isinstance(nonce_b64, str)
+            or not nonce_b64
+            or not isinstance(ciphertext_b64, str)
+            or not ciphertext_b64
         ):
             raise WorkflowRecoveryError("Encrypted workflow payload envelope is invalid")
         with self._connection() as connection:
@@ -1013,8 +1043,13 @@ class WorkflowRecoveryRepository:
                 WHERE workflow_id = ? AND task_id = ? AND owner_user_id = ?
                 """,
                 (
-                    version, nonce_b64, ciphertext_b64, self._now(),
-                    str(workflow_id), task_id, owner_user_id,
+                    version,
+                    nonce_b64,
+                    ciphertext_b64,
+                    self._now(),
+                    str(workflow_id),
+                    task_id,
+                    owner_user_id,
                 ),
             )
             return cursor.rowcount == 1
@@ -1045,9 +1080,7 @@ class WorkflowRecoveryRepository:
             "created_at": row["created_at"],
         }
 
-    def list_runs(
-        self, *, owner_user_id: str, limit: int = 50
-    ) -> list[dict[str, object]]:
+    def list_runs(self, *, owner_user_id: str, limit: int = 50) -> list[dict[str, object]]:
         """List bounded workflow metadata for one owner without exposing payloads."""
         if not owner_user_id.strip():
             raise WorkflowRecoveryError("Workflow owner is required")
@@ -1064,12 +1097,13 @@ class WorkflowRecoveryRepository:
                 (owner_user_id, limit),
             ).fetchall()
         workflows = [
-            self.get_run(UUID(row["workflow_id"]), owner_user_id=owner_user_id)
-            for row in rows
+            self.get_run(UUID(row["workflow_id"]), owner_user_id=owner_user_id) for row in rows
         ]
         return [workflow for workflow in workflows if workflow is not None]
 
-    def get_run(self, workflow_id: UUID, *, owner_user_id: str | None = None) -> dict[str, object] | None:
+    def get_run(
+        self, workflow_id: UUID, *, owner_user_id: str | None = None
+    ) -> dict[str, object] | None:
         with self._connection() as connection:
             run = connection.execute(
                 "SELECT * FROM workflow_runs WHERE workflow_id = ? AND (? IS NULL OR owner_user_id = ?)",

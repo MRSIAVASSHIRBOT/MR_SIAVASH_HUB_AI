@@ -55,9 +55,7 @@ class AgentContextAssembler:
 
     @staticmethod
     def _serialized_context(passages: list[dict[str, Any]]) -> str:
-        return _CONTEXT_PREFIX + json.dumps(
-            passages, ensure_ascii=False, separators=(",", ":")
-        )
+        return _CONTEXT_PREFIX + json.dumps(passages, ensure_ascii=False, separators=(",", ":"))
 
     @classmethod
     def _fit_passage(
@@ -105,9 +103,7 @@ class AgentContextAssembler:
             raise ValueError("Query must contain 1 to 200 characters")
 
         memory_results = (
-            self.memory.search(owner_user_id, query, MAX_MEMORY_RESULTS)
-            if include_memory
-            else []
+            self.memory.search(owner_user_id, query, MAX_MEMORY_RESULTS) if include_memory else []
         )
         knowledge_search_limit = (
             MAX_FRESHNESS_FILTER_CANDIDATES
@@ -122,8 +118,7 @@ class AgentContextAssembler:
         knowledge_candidates_scanned = len(knowledge_results)
         knowledge_candidate_limit = knowledge_search_limit if include_knowledge else 0
         knowledge_candidates_may_be_truncated = (
-            include_knowledge
-            and knowledge_candidates_scanned >= knowledge_candidate_limit
+            include_knowledge and knowledge_candidates_scanned >= knowledge_candidate_limit
         )
         excluded_stale_knowledge_count = 0
         excluded_unreviewed_knowledge_count = 0
@@ -145,8 +140,7 @@ class AgentContextAssembler:
                 elif (
                     freshness_status != "owner_reviewed_current"
                     or reviewed_at is None
-                    or reviewed_at
-                    > now + timedelta(seconds=MAX_FRESHNESS_FUTURE_SKEW_SECONDS)
+                    or reviewed_at > now + timedelta(seconds=MAX_FRESHNESS_FUTURE_SKEW_SECONDS)
                 ):
                     excluded_unreviewed_knowledge_count += 1
                 elif review_expired:
@@ -187,9 +181,7 @@ class AgentContextAssembler:
                     "freshness_review_expired": item.get("freshness_review_expired", False),
                     "freshness_review_max_age_days": MAX_FRESHNESS_REVIEW_AGE_DAYS,
                     "freshness_is_automatically_verified": False,
-                    "content_integrity_verified": item.get(
-                        "content_integrity_verified", True
-                    ),
+                    "content_integrity_verified": item.get("content_integrity_verified", True),
                     "document_hash": item["document_hash"],
                     "chunk_hash": item["chunk_hash"],
                     "content": str(item["content"])[:MAX_KNOWLEDGE_ITEM_CHARS],

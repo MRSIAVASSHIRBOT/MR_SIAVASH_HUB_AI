@@ -59,11 +59,13 @@ def test_orchestrator_completes_with_final_answer_without_tools():
 def test_orchestrator_revalidates_tool_proposal_then_observes_result():
     orchestrator, provider = make_orchestrator(
         [
-            json.dumps({
-                "type": "tool_call",
-                "name": "text.echo",
-                "payload": {"text": "hello"},
-            }),
+            json.dumps(
+                {
+                    "type": "tool_call",
+                    "name": "text.echo",
+                    "payload": {"text": "hello"},
+                }
+            ),
             json.dumps({"type": "final", "answer": "Echo returned five characters."}),
         ]
     )
@@ -113,9 +115,7 @@ def test_orchestrator_does_not_treat_retrieved_text_as_permission():
     orchestrator, provider = make_orchestrator(
         [json.dumps({"type": "tool_call", "name": "admin.root", "payload": {}})]
     )
-    result = orchestrator.run(
-        AgentLoopRequest(goal="Review evidence", retrieved_context=hostile)
-    )
+    result = orchestrator.run(AgentLoopRequest(goal="Review evidence", retrieved_context=hostile))
 
     assert result["status"] == "tool_denied"
     prompt = provider.requests[0].input_text
@@ -125,11 +125,15 @@ def test_orchestrator_does_not_treat_retrieved_text_as_permission():
 
 def test_orchestrator_stop_during_inference_blocks_proposed_tool_call():
     orchestrator, provider = make_orchestrator(
-        [json.dumps({
-            "type": "tool_call",
-            "name": "text.echo",
-            "payload": {"text": "must-not-run"},
-        })]
+        [
+            json.dumps(
+                {
+                    "type": "tool_call",
+                    "name": "text.echo",
+                    "payload": {"text": "must-not-run"},
+                }
+            )
+        ]
     )
     checks = iter([False, True])
     result = orchestrator.run(
@@ -159,11 +163,13 @@ def test_orchestrator_discards_late_model_response_before_tool_dispatch(monkeypa
         return ProviderResponse(
             provider="scripted",
             model="scripted-test",
-            output_text=json.dumps({
-                "type": "tool_call",
-                "name": "text.echo",
-                "payload": {"text": "must-not-run"},
-            }),
+            output_text=json.dumps(
+                {
+                    "type": "tool_call",
+                    "name": "text.echo",
+                    "payload": {"text": "must-not-run"},
+                }
+            ),
         )
 
     provider.generate = slow_generate
@@ -194,13 +200,17 @@ def test_orchestrator_rejects_runtime_budget_above_server_maximum():
 def test_orchestrator_delegates_to_a_registered_specialist_with_shared_budgets():
     orchestrator, provider = make_orchestrator(
         [
-            json.dumps({
-                "type": "delegate",
-                "agent": "knowledge_synthesizer",
-                "goal": "Summarize the supplied evidence.",
-            }),
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "knowledge_synthesizer",
+                    "goal": "Summarize the supplied evidence.",
+                }
+            ),
             json.dumps({"type": "final", "answer": "Evidence is limited but consistent."}),
-            json.dumps({"type": "final", "answer": "The specialist found limited but consistent evidence."}),
+            json.dumps(
+                {"type": "final", "answer": "The specialist found limited but consistent evidence."}
+            ),
         ],
         with_agents=True,
     )
@@ -227,16 +237,20 @@ def test_orchestrator_delegates_to_a_registered_specialist_with_shared_budgets()
 def test_delegated_specialist_cannot_use_tools_outside_its_scope():
     orchestrator, provider = make_orchestrator(
         [
-            json.dumps({
-                "type": "delegate",
-                "agent": "knowledge_synthesizer",
-                "goal": "Try a tool that is not in my grant.",
-            }),
-            json.dumps({
-                "type": "tool_call",
-                "name": "text.echo",
-                "payload": {"text": "must-not-run"},
-            }),
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "knowledge_synthesizer",
+                    "goal": "Try a tool that is not in my grant.",
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "tool_call",
+                    "name": "text.echo",
+                    "payload": {"text": "must-not-run"},
+                }
+            ),
             json.dumps({"type": "final", "answer": "The specialist was denied."}),
         ],
         with_agents=True,
@@ -254,11 +268,15 @@ def test_delegated_specialist_cannot_use_tools_outside_its_scope():
 
 def test_orchestrator_denies_unknown_specialist_without_running_child():
     orchestrator, provider = make_orchestrator(
-        [json.dumps({
-            "type": "delegate",
-            "agent": "unregistered.specialist",
-            "goal": "Do not run.",
-        })],
+        [
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "unregistered.specialist",
+                    "goal": "Do not run.",
+                }
+            )
+        ],
         with_agents=True,
     )
 
@@ -273,16 +291,20 @@ def test_orchestrator_denies_unknown_specialist_without_running_child():
 def test_delegated_agent_cannot_delegate_recursively():
     orchestrator, provider = make_orchestrator(
         [
-            json.dumps({
-                "type": "delegate",
-                "agent": "knowledge_synthesizer",
-                "goal": "Attempt nested delegation.",
-            }),
-            json.dumps({
-                "type": "delegate",
-                "agent": "text_helper",
-                "goal": "Nested work.",
-            }),
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "knowledge_synthesizer",
+                    "goal": "Attempt nested delegation.",
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "text_helper",
+                    "goal": "Nested work.",
+                }
+            ),
             json.dumps({"type": "final", "answer": "Nested delegation was denied."}),
         ],
         with_agents=True,
@@ -300,22 +322,28 @@ def test_delegated_agent_cannot_delegate_recursively():
 def test_child_tool_calls_consume_the_parent_tool_budget():
     orchestrator, _provider = make_orchestrator(
         [
-            json.dumps({
-                "type": "delegate",
-                "agent": "text_helper",
-                "goal": "Echo one value.",
-            }),
-            json.dumps({
-                "type": "tool_call",
-                "name": "text.echo",
-                "payload": {"text": "child"},
-            }),
+            json.dumps(
+                {
+                    "type": "delegate",
+                    "agent": "text_helper",
+                    "goal": "Echo one value.",
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "tool_call",
+                    "name": "text.echo",
+                    "payload": {"text": "child"},
+                }
+            ),
             json.dumps({"type": "final", "answer": "Child echo completed."}),
-            json.dumps({
-                "type": "tool_call",
-                "name": "text.echo",
-                "payload": {"text": "parent must not run another tool"},
-            }),
+            json.dumps(
+                {
+                    "type": "tool_call",
+                    "name": "text.echo",
+                    "payload": {"text": "parent must not run another tool"},
+                }
+            ),
         ],
         with_agents=True,
     )

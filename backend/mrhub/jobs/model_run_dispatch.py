@@ -51,9 +51,7 @@ class ModelRunWorkerHandler:
         workflow_id = UUID(row["workflow_id"])
         owner_user_id = str(row["owner_user_id"])
         try:
-            stored = self.recovery.get_encrypted_payload(
-                workflow_id, owner_user_id=owner_user_id
-            )
+            stored = self.recovery.get_encrypted_payload(workflow_id, owner_user_id=owner_user_id)
             if stored is None or stored["task_id"] != str(task.task_id):
                 raise PayloadEnvelopeError("Model run payload is missing")
             payload = decrypt_payload(
@@ -82,12 +80,18 @@ class ModelRunWorkerHandler:
             )
         except (PayloadEnvelopeError, KeyError, TypeError, ValueError):
             self._fail_closed(task, lease)
-            return {"workflow_id": str(workflow_id), "execution_completed": False,
-                    "error_code": "encrypted_payload_unavailable"}
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "encrypted_payload_unavailable",
+            }
 
         if lease_lost.is_set():
-            return {"workflow_id": str(workflow_id), "execution_completed": False,
-                    "error_code": "worker_lease_lost"}
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "worker_lease_lost",
+            }
 
         try:
             self.recovery.start_run(workflow_id, lease=lease)
@@ -110,9 +114,7 @@ class ModelRunWorkerHandler:
             agent_registry = build_default_agent_registry(tool_registry)
             orchestrator = AgentOrchestrator(model_router, tool_registry, agent_registry)
         except (ValueError, TypeError, LookupError, ProviderError, OSError):
-            self.recovery.fail_step(
-                workflow_id, attempt, "model_setup_failed", lease=lease
-            )
+            self.recovery.fail_step(workflow_id, attempt, "model_setup_failed", lease=lease)
             with self.repository._connection() as connection:
                 connection.execute(
                     """UPDATE idempotency_records SET status = 'failed'
@@ -143,8 +145,14 @@ class ModelRunWorkerHandler:
             if should_cancel() and result.get("status") != "cancelled":
                 result = {**result, "status": "cancelled", "error_code": "cancelled"}
         except (
-            ProviderError, LookupError, ValueError, TypeError, KeyError,
-            RuntimeError, OSError, sqlite3.Error,
+            ProviderError,
+            LookupError,
+            ValueError,
+            TypeError,
+            KeyError,
+            RuntimeError,
+            OSError,
+            sqlite3.Error,
         ):
             # The inference/tool loop may have partially completed. Never replay it.
             self.recovery.mark_interrupted(workflow_id, lease=lease)
@@ -157,12 +165,18 @@ class ModelRunWorkerHandler:
             current = self.jobs.get(task.task_id)
             if current is not None and current.status is TaskStatus.RUNNING:
                 self.jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
-            return {"workflow_id": str(workflow_id), "execution_completed": False,
-                    "error_code": "model_run_outcome_unknown"}
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "model_run_outcome_unknown",
+            }
 
         if lease_lost.is_set():
-            return {"workflow_id": str(workflow_id), "execution_completed": False,
-                    "error_code": "worker_lease_lost"}
+            return {
+                "workflow_id": str(workflow_id),
+                "execution_completed": False,
+                "error_code": "worker_lease_lost",
+            }
 
         output = {
             "kind": "agent.model_run.result",
@@ -192,7 +206,11 @@ class ModelRunWorkerHandler:
             if not replaced:
                 raise PayloadEnvelopeError("Encrypted model-run result could not be stored")
         except (
-            PayloadEnvelopeError, sqlite3.Error, OSError, TypeError, ValueError,
+            PayloadEnvelopeError,
+            sqlite3.Error,
+            OSError,
+            TypeError,
+            ValueError,
             WorkflowRecoveryError,
         ):
             # A completed model/tool loop whose result cannot be durably stored
@@ -206,17 +224,16 @@ class ModelRunWorkerHandler:
                 )
             current = self.jobs.get(task.task_id)
             if current is not None and current.status is TaskStatus.RUNNING:
-                self.jobs.transition(
-                    task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease
-                )
+                self.jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
             return {
                 "workflow_id": str(workflow_id),
                 "execution_completed": False,
                 "error_code": "model_run_result_persistence_unknown",
             }
         output_digest = hashlib.sha256(
-            json.dumps(output, ensure_ascii=False, sort_keys=True,
-                       separators=(",", ":")).encode("utf-8")
+            json.dumps(output, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
         ).hexdigest()
         if result.get("status") == "cancelled":
             self.recovery.finish_run(workflow_id, "cancelled", lease=lease)

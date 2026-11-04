@@ -3,6 +3,7 @@
 This module only ranks declared profiles using the deterministic resource
 advisor. It never chooses a provider, starts inference, or downloads models.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -32,10 +33,7 @@ def recommend_model_profiles(
         raise ValueError("At most 20 profile IDs may be compared")
     unique_ids = list(dict.fromkeys(profile_ids))
 
-    unknown_ids = [
-        profile_id for profile_id in unique_ids
-        if get_model_profile(profile_id) is None
-    ]
+    unknown_ids = [profile_id for profile_id in unique_ids if get_model_profile(profile_id) is None]
     if unknown_ids:
         raise KeyError(tuple(unknown_ids))
 
@@ -52,22 +50,28 @@ def recommend_model_profiles(
             },
             system_reserve_gib=system_reserve_gib,
         )
-        results.append({
-            "profile_id": profile_id,
-            "name": profile["name"],
-            "verified": profile["verified"],
-            "source_kind": profile["source_kind"],
-            "assessment": assessment,
-            "recommendation": (
-                "candidate" if assessment["status"] in {"likely_fit", "likely_tight"}
-                and not profile["requires_gpu"] else "not_recommended_or_unverified"
-            ),
-        })
+        results.append(
+            {
+                "profile_id": profile_id,
+                "name": profile["name"],
+                "verified": profile["verified"],
+                "source_kind": profile["source_kind"],
+                "assessment": assessment,
+                "recommendation": (
+                    "candidate"
+                    if assessment["status"] in {"likely_fit", "likely_tight"}
+                    and not profile["requires_gpu"]
+                    else "not_recommended_or_unverified"
+                ),
+            }
+        )
 
-    results.sort(key=lambda item: (
-        _STATUS_RANK.get(item["assessment"]["status"], 99),
-        item["profile_id"],
-    ))
+    results.sort(
+        key=lambda item: (
+            _STATUS_RANK.get(item["assessment"]["status"], 99),
+            item["profile_id"],
+        )
+    )
     return {
         "results": results,
         "count": len(results),

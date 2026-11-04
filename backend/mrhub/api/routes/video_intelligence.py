@@ -107,7 +107,9 @@ def _validate_logo(owner_user_id: str, brand: BrandIdentity) -> None:
         raise HTTPException(status_code=422, detail="Invalid logo asset ID") from exc
     asset = MediaAssetRepository(get_settings().database_path).get(owner_user_id, asset_id)
     if asset is None or not str(asset["media_type"]).startswith("image/"):
-        raise HTTPException(status_code=422, detail="Logo must reference an image owned by this user")
+        raise HTTPException(
+            status_code=422, detail="Logo must reference an image owned by this user"
+        )
 
 
 @router.get("/generation/providers")
@@ -126,8 +128,6 @@ def list_video_generation_providers(
         "reason_code": None if providers else "provider_unavailable",
         "execution": "not_started",
     }
-
-
 
 
 @router.post("/analyses/{analysis_id}/generations", status_code=status.HTTP_202_ACCEPTED)
@@ -237,7 +237,9 @@ def create_brand(
     try:
         return _brands().create(user.user_id, payload)
     except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="A brand with this name already exists") from exc
+        raise HTTPException(
+            status_code=409, detail="A brand with this name already exists"
+        ) from exc
 
 
 @router.get("/brands/{profile_id}")
@@ -261,7 +263,9 @@ def update_brand(
     try:
         profile = _brands().update(user.user_id, profile_id, payload)
     except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="A brand with this name already exists") from exc
+        raise HTTPException(
+            status_code=409, detail="A brand with this name already exists"
+        ) from exc
     if profile is None:
         raise HTTPException(status_code=404, detail="Brand profile not found")
     return profile
@@ -274,7 +278,6 @@ def delete_brand(
 ) -> None:
     if not _brands().delete(user.user_id, profile_id):
         raise HTTPException(status_code=404, detail="Brand profile not found")
-
 
 
 @router.get("/assets/{asset_id}/metadata", response_model=VideoTechnicalMetadata)
@@ -296,10 +299,9 @@ def inspect_video_asset(
     return probe_video(path)
 
 
-
-
 def _timeline_drafts() -> VideoTimelineDraftRepository:
     return VideoTimelineDraftRepository(get_settings().database_path)
+
 
 def _analysis_jobs() -> VideoAnalysisJobRepository:
     return VideoAnalysisJobRepository(get_settings().database_path)
@@ -331,9 +333,7 @@ def submit_video_analysis(
             raise HTTPException(status_code=409, detail="Source asset is not ready for analysis")
 
     try:
-        accepted, created = _analysis_jobs().submit(
-            user.user_id, payload, idempotency_key
-        )
+        accepted, created = _analysis_jobs().submit(user.user_id, payload, idempotency_key)
     except VideoAnalysisConflict as exc:
         raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
     except VideoAnalysisCapacityExceeded as exc:
@@ -350,9 +350,7 @@ def submit_video_analysis(
 
     if not created:
         response.status_code = status.HTTP_200_OK
-    public_result = {
-        key: value for key, value in accepted.items() if key != "task_id"
-    }
+    public_result = {key: value for key, value in accepted.items() if key != "task_id"}
     return {**public_result, "created": created}
 
 
@@ -384,7 +382,6 @@ def get_video_analysis(
     if analysis is None:
         raise HTTPException(status_code=404, detail="Video analysis not found")
     return analysis
-
 
 
 @router.post("/analyses/{analysis_id}/prompts/compose")
@@ -465,8 +462,7 @@ def create_timeline_draft(
         raise HTTPException(status_code=409, detail="Video analysis is not completed")
     assets = analysis["result"].get("assets")
     if not isinstance(assets, list) or not any(
-        isinstance(item, dict) and item.get("asset_id") == str(payload.asset_id)
-        for item in assets
+        isinstance(item, dict) and item.get("asset_id") == str(payload.asset_id) for item in assets
     ):
         raise HTTPException(status_code=404, detail="Asset is not part of this analysis")
     try:
@@ -525,9 +521,7 @@ def submit_video_render(
 ) -> dict[str, object]:
     """Queue a silent cut-only MP4 render from a completed owned analysis."""
     try:
-        accepted, created = _render_jobs().submit(
-            user.user_id, analysis_id, idempotency_key
-        )
+        accepted, created = _render_jobs().submit(user.user_id, analysis_id, idempotency_key)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Video analysis not found") from exc
     except VideoRenderConflict as exc:
@@ -536,9 +530,9 @@ def submit_video_render(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not created:
         response.status_code = status.HTTP_200_OK
-    return {
-        key: value for key, value in accepted.items() if key != "task_id"
-    } | {"created": created}
+    return {key: value for key, value in accepted.items() if key != "task_id"} | {
+        "created": created
+    }
 
 
 @router.get("/renders/{render_id}")

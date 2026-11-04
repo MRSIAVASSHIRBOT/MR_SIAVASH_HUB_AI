@@ -163,7 +163,6 @@ def test_compare_registered_models_requires_authentication(tmp_path, monkeypatch
     get_settings.cache_clear()
 
 
-
 def test_model_recommendation_is_advisory_and_ranks_cpu_candidate(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     get_settings.cache_clear()
@@ -219,7 +218,6 @@ def test_model_recommendation_requires_authentication(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-
 def test_model_select_is_capability_aware_and_only_uses_registered_provider(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     monkeypatch.delenv("MRH_LOCAL_INFERENCE_ENABLED", raising=False)
@@ -245,9 +243,7 @@ def test_model_select_requires_authentication(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_provider_inventory_is_authenticated_and_does_not_probe_services(
-    tmp_path, monkeypatch
-):
+def test_provider_inventory_is_authenticated_and_does_not_probe_services(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     monkeypatch.setenv("MRH_LOCAL_INFERENCE_ENABLED", "true")
     monkeypatch.setenv("MRH_LOCAL_INFERENCE_MODEL", "tiny-model")
@@ -301,9 +297,7 @@ def test_provider_health_check_is_explicit_bounded_and_sanitized(tmp_path, monke
 
     monkeypatch.setattr(OllamaProvider, "health", fake_health)
     client = authenticated_client()
-    response = client.post(
-        "/models/providers/health-check", json={"timeout_seconds": 1.5}
-    )
+    response = client.post("/models/providers/health-check", json={"timeout_seconds": 1.5})
 
     assert response.status_code == 200
     body = response.json()
@@ -322,9 +316,7 @@ def test_provider_health_check_rejects_unbounded_timeout(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     get_settings.cache_clear()
     client = authenticated_client()
-    response = client.post(
-        "/models/providers/health-check", json={"timeout_seconds": 30}
-    )
+    response = client.post("/models/providers/health-check", json={"timeout_seconds": 30})
     assert response.status_code == 422
     get_settings.cache_clear()
 
@@ -336,7 +328,6 @@ def test_provider_health_check_requires_authentication(tmp_path, monkeypatch):
     response = client.post("/models/providers/health-check", json={})
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
-
 
 
 def test_build_model_router_applies_agent_timeout_cap(monkeypatch):
@@ -396,7 +387,6 @@ def test_build_model_router_applies_agent_timeout_cap(monkeypatch):
     )
 
     assert observed == {"ollama": 30, "openrouter": 30}
-
 
 
 def test_remote_generation_uses_router_contract_and_never_constructs_local_fallback(

@@ -90,9 +90,7 @@ def test_instagram_rejects_non_public_or_unsafe_media_urls_before_request(media_
 
 
 def test_instagram_rejects_wrong_platform_and_empty_caption():
-    adapter, client = make_adapter(
-        lambda request: httpx.Response(200, json={"id": "unused"})
-    )
+    adapter, client = make_adapter(lambda request: httpx.Response(200, json={"id": "unused"}))
     try:
         with pytest.raises(PermanentPublishError):
             adapter.publish(

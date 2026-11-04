@@ -3,6 +3,7 @@
 This module records source metadata and review evidence only. It never downloads,
 imports, installs, or executes code from a discovered source.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -17,18 +18,14 @@ from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
-SourceKind = Literal[
-    "github_repository", "documentation", "package", "api", "other"
-]
-IntegrationType = Literal[
-    "connector", "skill", "python_package", "http_api", "adapter", "manual"
-]
-CandidateStatus = Literal[
-    "discovered", "reviewing", "approved", "rejected", "disabled"
-]
+SourceKind = Literal["github_repository", "documentation", "package", "api", "other"]
+IntegrationType = Literal["connector", "skill", "python_package", "http_api", "adapter", "manual"]
+CandidateStatus = Literal["discovered", "reviewing", "approved", "rejected", "disabled"]
 
 SOURCE_KINDS = frozenset({"github_repository", "documentation", "package", "api", "other"})
-INTEGRATION_TYPES = frozenset({"connector", "skill", "python_package", "http_api", "adapter", "manual"})
+INTEGRATION_TYPES = frozenset(
+    {"connector", "skill", "python_package", "http_api", "adapter", "manual"}
+)
 STATUSES = frozenset({"discovered", "reviewing", "approved", "rejected", "disabled"})
 STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
     "discovered": frozenset({"reviewing", "rejected"}),
@@ -100,7 +97,9 @@ def canonicalize_source_url(value: str) -> str:
     if parsed.query or parsed.fragment:
         raise CapabilityValidationError("Source URL must not contain a query or fragment")
     normalized_host = host.lower().rstrip(".")
-    if normalized_host in {"localhost", "localhost.localdomain"} or normalized_host.endswith(".local"):
+    if normalized_host in {"localhost", "localhost.localdomain"} or normalized_host.endswith(
+        ".local"
+    ):
         raise CapabilityValidationError("Source URL must point to a public hostname")
     try:
         address = ipaddress.ip_address(normalized_host)
@@ -120,9 +119,9 @@ class CapabilityRegistry:
 
     MAX_CAPABILITIES = 50
     MAX_CAPABILITY_LENGTH = 80
-    REQUIRED_APPROVAL_EVIDENCE = frozenset({
-        "license_url", "security_review", "compatibility_notes", "test_plan"
-    })
+    REQUIRED_APPROVAL_EVIDENCE = frozenset(
+        {"license_url", "security_review", "compatibility_notes", "test_plan"}
+    )
 
     def __init__(self, database_path: Path) -> None:
         self.database_path = Path(database_path)
@@ -224,13 +223,22 @@ class CapabilityRegistry:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'discovered', ?, '{}', ?, ?)""",
                     (
-                        candidate_id, canonical_url, display_name, summary, source_kind,
-                        license_id, integration_type,
-                        json.dumps(normalized_capabilities, ensure_ascii=False), now, now,
+                        candidate_id,
+                        canonical_url,
+                        display_name,
+                        summary,
+                        source_kind,
+                        license_id,
+                        integration_type,
+                        json.dumps(normalized_capabilities, ensure_ascii=False),
+                        now,
+                        now,
                     ),
                 )
         except sqlite3.IntegrityError as exc:
-            raise CapabilityValidationError("This canonical source is already in the catalog") from exc
+            raise CapabilityValidationError(
+                "This canonical source is already in the catalog"
+            ) from exc
         return self.get(candidate_id)
 
     def get(self, candidate_id: str) -> CapabilityCandidate:
@@ -257,7 +265,8 @@ class CapabilityRegistry:
             else:
                 rows = connection.execute(
                     "SELECT * FROM capability_candidates WHERE status = ? "
-                    "ORDER BY updated_at DESC LIMIT ?", (status, bounded_limit)
+                    "ORDER BY updated_at DESC LIMIT ?",
+                    (status, bounded_limit),
                 ).fetchall()
         return [self._row_to_candidate(row) for row in rows]
 
@@ -277,8 +286,10 @@ class CapabilityRegistry:
             raise CapabilityValidationError(
                 f"Invalid capability status transition: {current.status} -> {status}"
             )
-        next_license = current.license_id if license_id is None else self._normalize_text(
-            license_id, "License identifier", 80
+        next_license = (
+            current.license_id
+            if license_id is None
+            else self._normalize_text(license_id, "License identifier", 80)
         )
         next_evidence = dict(current.evidence)
         if evidence is not None:
@@ -308,11 +319,16 @@ class CapabilityRegistry:
                    SET status = ?, license_id = ?, evidence_json = ?, updated_at = ?
                    WHERE candidate_id = ? AND status = ?""",
                 (
-                    status, next_license,
+                    status,
+                    next_license,
                     json.dumps(next_evidence, ensure_ascii=False, sort_keys=True),
-                    now, candidate_id, current.status,
+                    now,
+                    candidate_id,
+                    current.status,
                 ),
             )
             if cursor.rowcount != 1:
-                raise CapabilityCatalogError("Candidate changed concurrently; reload before retrying")
+                raise CapabilityCatalogError(
+                    "Candidate changed concurrently; reload before retrying"
+                )
         return self.get(candidate_id)

@@ -1,6 +1,5 @@
 """Validated contracts for video style analysis and prompt generation."""
 
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -48,7 +47,9 @@ class VideoAnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: AnalysisMode
-    source_asset_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(min_length=1, max_length=5)
+    source_asset_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(
+        min_length=1, max_length=5
+    )
     brand: BrandIdentity | None = None
     duration_seconds: int = Field(default=10, ge=3, le=60)
     output_aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"

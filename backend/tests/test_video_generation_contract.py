@@ -122,7 +122,6 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
         registry.register(adapter)
 
 
-
 def test_authenticated_provider_catalog_fails_closed_when_no_adapter_is_configured():
     from client_helpers import authenticated_client
 

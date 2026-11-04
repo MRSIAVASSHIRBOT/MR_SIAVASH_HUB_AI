@@ -1,4 +1,5 @@
 """Safe handoff from a completed provider job to a private media asset."""
+
 from __future__ import annotations
 
 from uuid import UUID

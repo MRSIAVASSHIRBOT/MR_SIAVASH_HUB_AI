@@ -41,7 +41,9 @@ def test_sign_asset_url_generates_expiring_hmac_url(monkeypatch):
         "123e4567-e89b-12d3-a456-426614174000",
         now=1_800_000_000,
     )
-    assert url.startswith("https://media.example.com/public/media/123e4567-e89b-12d3-a456-426614174000?")
+    assert url.startswith(
+        "https://media.example.com/public/media/123e4567-e89b-12d3-a456-426614174000?"
+    )
     assert "expires=1800000900" in url
     assert "signature=" in url
 

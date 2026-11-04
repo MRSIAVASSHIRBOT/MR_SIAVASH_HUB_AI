@@ -21,8 +21,7 @@ VisionProviderFactory = Callable[..., VisionProvider]
 
 def _analysis_prompt(timestamps: Sequence[float]) -> str:
     frame_lines = "\n".join(
-        f"{index}: {timestamp:.3f} seconds"
-        for index, timestamp in enumerate(timestamps, start=1)
+        f"{index}: {timestamp:.3f} seconds" for index, timestamp in enumerate(timestamps, start=1)
     )
     return (
         "Analyze the supplied JPEG frames in their given order as evidence from one video. "
@@ -87,9 +86,7 @@ def analyze_sampled_frames(
         return {"status": "invalid_response", "reason_code": "visual_output_invalid"}
 
     allowed_timestamps = {round(frame.timestamp_seconds, 3) for frame in frames}
-    observed_timestamps = [
-        round(item.timestamp_seconds, 3) for item in parsed.observations
-    ]
+    observed_timestamps = [round(item.timestamp_seconds, 3) for item in parsed.observations]
     if (
         any(value not in allowed_timestamps for value in observed_timestamps)
         or len(observed_timestamps) != len(set(observed_timestamps))
@@ -102,7 +99,5 @@ def analyze_sampled_frames(
         "provider": response.provider,
         "model": response.model,
         "style_summary": parsed.style_summary,
-        "observations": [
-            item.model_dump(mode="json") for item in parsed.observations
-        ],
+        "observations": [item.model_dump(mode="json") for item in parsed.observations],
     }

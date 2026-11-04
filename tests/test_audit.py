@@ -28,7 +28,6 @@ def test_audit_records_are_persisted_and_sensitive_keys_are_dropped(tmp_path) ->
     assert "private prompt text" not in str(stored[0])
 
 
-
 def test_agent_model_run_history_is_owner_scoped_and_bounded(tmp_path) -> None:
     repository = TaskRepository(tmp_path / "agent-model-history.sqlite3")
     repository.initialize()

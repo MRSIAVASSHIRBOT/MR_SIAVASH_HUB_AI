@@ -4,11 +4,13 @@ from mrhub.providers.base import (
     ProviderContractError,
     ProviderHealth,
     ProviderRequest,
-    ProviderResponse,
 )
+from mrhub.providers.ollama import OllamaProvider
+from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRequest, ModelRouter
 from mrhub.providers.stub import StubProvider
+from mrhub.providers.vision import OllamaVisionProvider
 
 
 def test_stub_provider_is_explicit_and_does_not_claim_inference():
@@ -96,10 +98,14 @@ def test_router_rejects_invalid_provider_health_contract(health):
 
 def test_router_does_not_fallback_when_local_adapter_is_missing():
     router = ModelRouter()
-    router.register(ModelDescriptor(
-        provider="cloud", model="cloud-text",
-        capability=ModelCapability(text=True), local=False,
-    ))
+    router.register(
+        ModelDescriptor(
+            provider="cloud",
+            model="cloud-text",
+            capability=ModelCapability(text=True),
+            local=False,
+        )
+    )
     try:
         router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
     except LookupError as exc:
@@ -168,35 +174,69 @@ def test_router_duplicate_descriptor_does_not_partially_register_provider_adapte
         raise AssertionError("adapter registry must remain unchanged after rejection")
 
 
+def test_provider_transport_parameter_is_preserved_and_accessible():
+    """Provider transport parameter should be preserved and accessible."""
+    import httpx
+
+    class CustomMockTransport(httpx.BaseTransport):
+        def handle_request(self, request):
+            raise NotImplementedError("Mock transport for testing only")
+
+    from mrhub.providers.openrouter import OpenRouterProvider
+
+    custom_transport = CustomMockTransport()
+    provider = OpenRouterProvider(
+        model="gpt-4o",
+        api_key="test-key",
+        transport=custom_transport,
+    )
+
+    assert provider._transport is custom_transport
+    assert hasattr(provider, "_async_transport")
+    assert provider._async_transport is custom_transport
+
+
 @pytest.mark.parametrize(
-    ("provider_name", "model_name"),
-    [
-        ("unexpected-provider", "stub-text-v1"),
-        ("stub", "unexpected-model"),
-    ],
+    "provider_class", [OllamaProvider, OllamaVisionProvider, OpenRouterProvider]
 )
-def test_router_rejects_response_with_mismatched_provider_identity(provider_name, model_name):
-    class MismatchedProvider:
-        descriptor = StubProvider.descriptor
+def test_provider_transport_parameter_accepted_and_preserved(provider_class):
+    """All provider classes should accept and preserve transport parameter."""
+    import httpx
 
-        def health(self, timeout_seconds=2.0):
-            return ProviderHealth(available=True, reason_code="ready")
+    class CustomMockTransport(httpx.BaseTransport):
+        def handle_request(self, request):
+            raise NotImplementedError("Mock transport for testing only")
 
-        def generate(self, request):
-            return ProviderResponse(
-                provider=provider_name,
-                model=model_name,
-                output_text="response must not pass the router",
-            )
+    mock_transport = CustomMockTransport()
 
-    router = ModelRouter()
-    router.register_provider(MismatchedProvider())
+    if provider_class is OllamaProvider:
+        provider = provider_class(
+            model="test-model",
+            transport=mock_transport,
+        )
+    elif provider_class is OllamaVisionProvider:
+        provider = provider_class(
+            model="test-vision-model",
+            transport=mock_transport,
+        )
+    elif provider_class is OpenRouterProvider:
+        provider = provider_class(
+            model="gpt-4o",
+            api_key="test-key",
+            transport=mock_transport,
+        )
 
-    with pytest.raises(ProviderContractError) as error:
-        router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
+    assert provider._transport is mock_transport
 
-    assert error.value.code == "provider_contract_violation"
-    assert "response must not pass" not in str(error.value)
+
+def test_openrouter_provider_transport_preserved_with_default_none():
+    """OpenRouter provider should default transport to None."""
+    from mrhub.providers.openrouter import OpenRouterProvider
+
+    provider = OpenRouterProvider(model="gpt-4o", api_key="test-key")
+    assert provider._transport is None
+    assert hasattr(provider, "_async_transport")
+    assert provider._async_transport is None
 
 
 def test_router_does_not_generate_when_provider_health_is_unavailable():

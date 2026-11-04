@@ -32,12 +32,14 @@ def test_evaluation_requires_manual_review_for_unknown_license():
 
 
 def test_evaluation_deprioritizes_archived_or_disabled_repository():
-    result = evaluate_repository_metadata({
-        "license": {"spdx_id": "MIT"},
-        "archived": True,
-        "disabled": False,
-        "stargazers_count": 2000,
-    })
+    result = evaluate_repository_metadata(
+        {
+            "license": {"spdx_id": "MIT"},
+            "archived": True,
+            "disabled": False,
+            "stargazers_count": 2000,
+        }
+    )
 
     assert result["score"] < 50
     assert result["recommendation"] == "manual_review_required"
@@ -45,11 +47,13 @@ def test_evaluation_deprioritizes_archived_or_disabled_repository():
 
 
 def test_evaluation_handles_malformed_timestamps_and_clamps_score():
-    result = evaluate_repository_metadata({
-        "license": {"spdx_id": "MIT"},
-        "updated_at": "not-a-timestamp",
-        "stargazers_count": 100000,
-    })
+    result = evaluate_repository_metadata(
+        {
+            "license": {"spdx_id": "MIT"},
+            "updated_at": "not-a-timestamp",
+            "stargazers_count": 100000,
+        }
+    )
 
     assert 0 <= result["score"] <= 100
     assert any(signal["code"] == "invalid_updated_at" for signal in result["signals"])

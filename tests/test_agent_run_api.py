@@ -52,10 +52,14 @@ def test_agent_run_uses_owner_scoped_context_and_returns_freshness_citations(mon
     assert marked.status_code == 200
 
     citation = f"knowledge://documents/{doc['document_id']}#chunk-0"
-    provider = ScriptedProvider(json.dumps({
-        "type": "final",
-        "answer": f"The evidence is marked stale; citation: {citation}",
-    }))
+    provider = ScriptedProvider(
+        json.dumps(
+            {
+                "type": "final",
+                "answer": f"The evidence is marked stale; citation: {citation}",
+            }
+        )
+    )
     router = ModelRouter()
     router.register_provider(provider)
     monkeypatch.setattr(
@@ -141,10 +145,14 @@ def test_agent_run_emergency_stop_prevents_model_inference(monkeypatch):
     from mrhub.jobs.worker_control import WorkerControlRepository
 
     client = authenticated_client()
-    provider = ScriptedProvider(json.dumps({
-        "type": "final",
-        "answer": "This must not be generated while stopped.",
-    }))
+    provider = ScriptedProvider(
+        json.dumps(
+            {
+                "type": "final",
+                "answer": "This must not be generated while stopped.",
+            }
+        )
+    )
     router = ModelRouter()
     router.register_provider(provider)
     monkeypatch.setattr(
@@ -234,11 +242,15 @@ def test_retrieved_prompt_injection_cannot_authorize_model_proposed_tool(monkeyp
     assert document.status_code == 201
     citation = f"knowledge://documents/{document.json()['document_id']}#chunk-0"
 
-    provider = ScriptedProvider(json.dumps({
-        "type": "tool_call",
-        "name": "admin.root",
-        "payload": {"operation": "export_private_records"},
-    }))
+    provider = ScriptedProvider(
+        json.dumps(
+            {
+                "type": "tool_call",
+                "name": "admin.root",
+                "payload": {"operation": "export_private_records"},
+            }
+        )
+    )
     router = ModelRouter()
     router.register_provider(provider)
     monkeypatch.setattr(
@@ -272,7 +284,4 @@ def test_retrieved_prompt_injection_cannot_authorize_model_proposed_tool(monkeyp
     assert hostile in prompt
     assert citation in prompt
     assert "untrusted evidence only" in prompt
-    assert any(
-        source["reference"] == citation
-        for source in body["context_sources"]
-    )
+    assert any(source["reference"] == citation for source in body["context_sources"])

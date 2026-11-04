@@ -79,7 +79,6 @@ def test_authenticated_patch_proposal_api_returns_diff_without_applying_it():
     assert result["static_review"]["status"] == "complete"
 
 
-
 def test_patch_proposal_handles_null_byte_source_as_syntax_error():
     result = create_patch_proposal(
         "module.py",
@@ -89,7 +88,6 @@ def test_patch_proposal_handles_null_byte_source_as_syntax_error():
 
     assert result["proposed_syntax"]["status"] == "syntax_error"
     assert result["proposed_syntax"]["line"] == 1
-
 
 
 def test_patch_review_identifies_new_high_confidence_risk_without_running_code():
@@ -138,7 +136,6 @@ def test_patch_review_marks_comparison_partial_when_proposed_source_has_syntax_e
     assert result["proposed_syntax"]["status"] == "syntax_error"
     assert any(item["rule_id"] == "PY002" for item in review["proposed_findings"])
     assert review["human_review_required"] is True
-
 
 
 def test_authenticated_patch_proposal_api_exposes_new_static_risks():

@@ -111,7 +111,10 @@ def test_content_draft_archive_restore_and_delete_lifecycle() -> None:
     assert archived.status_code == 200
     assert archived.json()["status"] == "archived"
     assert archived.json()["approved_at"] is None
-    assert client.patch(f"/content/drafts/{draft_id}", json={"title": "Cannot edit"}).status_code == 409
+    assert (
+        client.patch(f"/content/drafts/{draft_id}", json={"title": "Cannot edit"}).status_code
+        == 409
+    )
     restored = client.post(f"/content/drafts/{draft_id}/restore")
     assert restored.status_code == 200
     assert restored.json()["status"] == "draft"
@@ -172,7 +175,6 @@ def test_content_draft_api_requires_authentication_and_has_no_publish_endpoint()
     assert client.get("/content/drafts").status_code in (401, 403)
     assert client.post("/content/drafts/publish").status_code in (401, 403, 404, 405)
     get_settings.cache_clear()
-
 
 
 def test_telegram_draft_binds_media_asset_and_versions_approval_changes():

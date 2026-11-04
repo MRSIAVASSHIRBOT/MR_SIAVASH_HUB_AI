@@ -33,7 +33,11 @@ def build_model_router(
     model_router = ModelRouter()
     if include_stub and provider_mode == "all":
         model_router.register_provider(StubProvider())
-    if provider_mode in {"all", "local"} and settings.local_inference_enabled and settings.local_inference_model:
+    if (
+        provider_mode in {"all", "local"}
+        and settings.local_inference_enabled
+        and settings.local_inference_model
+    ):
         model_router.register_provider(
             OllamaProvider(
                 model=settings.local_inference_model,
@@ -299,7 +303,9 @@ def generate_remote_model(payload: GenerateModelRequest):
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=exc.code) from exc
     except LookupError as exc:
-        raise HTTPException(status_code=503, detail="Configured remote model is unavailable") from exc
+        raise HTTPException(
+            status_code=503, detail="Configured remote model is unavailable"
+        ) from exc
 
 
 @router.post("/generate")

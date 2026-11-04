@@ -1,4 +1,5 @@
 """Versioned, transactional SQLite schema migrations."""
+
 from __future__ import annotations
 
 import hashlib
@@ -116,8 +117,10 @@ MIGRATIONS = (
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""",
-            ("CREATE INDEX IF NOT EXISTS idx_workflow_runs_status_updated "
-             "ON workflow_runs(status, updated_at)"),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_workflow_runs_status_updated "
+                "ON workflow_runs(status, updated_at)"
+            ),
             """CREATE TABLE IF NOT EXISTS workflow_steps (
                 step_id TEXT PRIMARY KEY,
                 workflow_id TEXT NOT NULL REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
@@ -138,8 +141,10 @@ MIGRATIONS = (
                 updated_at TEXT NOT NULL,
                 UNIQUE(workflow_id, step_number)
             )""",
-            ("CREATE INDEX IF NOT EXISTS idx_workflow_steps_status "
-             "ON workflow_steps(workflow_id, status, step_number)"),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_workflow_steps_status "
+                "ON workflow_steps(workflow_id, status, step_number)"
+            ),
             """CREATE TABLE IF NOT EXISTS workflow_step_attempts (
                 attempt_id TEXT PRIMARY KEY,
                 step_id TEXT NOT NULL REFERENCES workflow_steps(step_id) ON DELETE CASCADE,
@@ -174,8 +179,10 @@ MIGRATIONS = (
                 expires_at TEXT,
                 PRIMARY KEY(scope, idempotency_key)
             )""",
-            ("CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
-             "ON idempotency_records(expires_at)"),
+            (
+                "CREATE INDEX IF NOT EXISTS idx_idempotency_expiry "
+                "ON idempotency_records(expires_at)"
+            ),
         ),
     ),
     Migration.build(
@@ -771,8 +778,7 @@ class SchemaMigrator:
 
         known_versions = {migration.version for migration in MIGRATIONS}
         recorded_versions = {
-            row["version"]
-            for row in connection.execute("SELECT version FROM schema_migrations")
+            row["version"] for row in connection.execute("SELECT version FROM schema_migrations")
         }
         unknown_versions = recorded_versions - known_versions
         if unknown_versions:
@@ -788,7 +794,10 @@ class SchemaMigrator:
                     (migration.version,),
                 ).fetchone()
                 if existing is not None:
-                    if existing["name"] != migration.name or existing["checksum"] != migration.checksum:
+                    if (
+                        existing["name"] != migration.name
+                        or existing["checksum"] != migration.checksum
+                    ):
                         raise MigrationError(
                             f"Applied migration {migration.version} does not match its recorded checksum"
                         )
@@ -813,11 +822,23 @@ class SchemaMigrator:
                     self._ensure_column("worker_executions", "lease_owner", "TEXT")
                     self._ensure_column("worker_executions", "lease_expires_at", "TEXT")
                     self._ensure_column("worker_executions", "heartbeat_at", "TEXT")
-                    self._ensure_column("worker_executions", "execution_token", "INTEGER NOT NULL DEFAULT 0")
+                    self._ensure_column(
+                        "worker_executions", "execution_token", "INTEGER NOT NULL DEFAULT 0"
+                    )
                 elif migration.version == 4:
-                    self._ensure_column("workflow_runs", "owner_user_id", "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL")
-                    self._ensure_column("agent_workflows", "owner_user_id", "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL")
-                    connection.execute("CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)")
+                    self._ensure_column(
+                        "workflow_runs",
+                        "owner_user_id",
+                        "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+                    )
+                    self._ensure_column(
+                        "agent_workflows",
+                        "owner_user_id",
+                        "TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL",
+                    )
+                    connection.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_workflow_runs_owner ON workflow_runs(owner_user_id, created_at)"
+                    )
 
                 from datetime import UTC, datetime
 
@@ -839,11 +860,6 @@ class SchemaMigrator:
         return applied_now
 
     def _ensure_column(self, table: str, column: str, definition: str) -> None:
-        columns = {
-            row["name"]
-            for row in self.connection.execute(f"PRAGMA table_info({table})")
-        }
+        columns = {row["name"] for row in self.connection.execute(f"PRAGMA table_info({table})")}
         if column not in columns:
-            self.connection.execute(
-                f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
-            )
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

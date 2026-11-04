@@ -51,9 +51,7 @@ def test_retrieval_metrics_validate_k_case_count_and_query_bounds() -> None:
     repository = StubKnowledgeRepository([])
 
     with pytest.raises(ValueError, match="k must be between"):
-        evaluate_retrieval(
-            repository, "owner-a", [RetrievalCase("query", ("doc",))], k=0
-        )
+        evaluate_retrieval(repository, "owner-a", [RetrievalCase("query", ("doc",))], k=0)
     with pytest.raises(ValueError, match="cases must contain"):
         evaluate_retrieval(repository, "owner-a", [], k=1)
     with pytest.raises(ValueError, match="query must contain"):

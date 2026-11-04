@@ -53,9 +53,7 @@ def test_reservation_can_be_bound_to_a_task_once(tmp_path):
     task = TaskRecord(task_type="agent.workflow", description="workflow task")
     task_repository.create(task)
 
-    bound = repository.bind(
-        "user:local", "request-3", task_id=str(task.task_id)
-    )
+    bound = repository.bind("user:local", "request-3", task_id=str(task.task_id))
 
     assert bound.task_id == str(task.task_id)
     assert reservation.record.task_id is None
@@ -71,23 +69,17 @@ def test_reservation_cannot_be_rebound_to_another_task(tmp_path):
     second_task = TaskRecord(task_type="agent.workflow")
     task_repository.create(first_task)
     task_repository.create(second_task)
-    repository.reserve(
-        "user:local", "request-4", "1" * 64, task_id=str(first_task.task_id)
-    )
+    repository.reserve("user:local", "request-4", "1" * 64, task_id=str(first_task.task_id))
 
     with pytest.raises(IdempotencyConflict):
-        repository.bind(
-            "user:local", "request-4", task_id=str(second_task.task_id)
-        )
+        repository.bind("user:local", "request-4", task_id=str(second_task.task_id))
 
 
 def test_unknown_outcome_is_not_replayed_and_requires_reconciliation(tmp_path):
     repository = make_repository(tmp_path)
     repository.reserve("user:local", "request-5", "2" * 64)
     repository.transition("user:local", "request-5", "accepted", "running")
-    unknown = repository.transition(
-        "user:local", "request-5", "running", "unknown_outcome"
-    )
+    unknown = repository.transition("user:local", "request-5", "running", "unknown_outcome")
 
     repeated = repository.reserve("user:local", "request-5", "2" * 64)
     assert repeated.created is False
@@ -96,9 +88,7 @@ def test_unknown_outcome_is_not_replayed_and_requires_reconciliation(tmp_path):
 
     resolved = repository.resolve_unknown("user:local", "request-5", "completed")
     assert resolved.status == "completed"
-    assert repository.reserve(
-        "user:local", "request-5", "2" * 64
-    ).created is False
+    assert repository.reserve("user:local", "request-5", "2" * 64).created is False
 
 
 def test_invalid_idempotency_transitions_are_rejected(tmp_path):
@@ -135,9 +125,7 @@ def test_concurrent_identical_reservations_create_only_one_record(tmp_path):
 
 
 def test_idempotency_clock_must_be_timezone_aware(tmp_path):
-    repository = make_repository(
-        tmp_path, clock=lambda: datetime(2026, 11, 1, 10, 0)
-    )
+    repository = make_repository(tmp_path, clock=lambda: datetime(2026, 11, 1, 10, 0))
 
     with pytest.raises(IdempotencyError):
         repository.reserve("user:local", "naive-clock", "6" * 64)

@@ -62,7 +62,9 @@ def _windows_display_adapters() -> list[dict[str, str]]:
     try:
         import winreg
 
-        key_path = r"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        key_path = (
+            r"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        )
         adapters: list[dict[str, str]] = []
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root:
             index = 0
@@ -79,10 +81,14 @@ def _windows_display_adapters() -> list[dict[str, str]]:
                         description = winreg.QueryValueEx(adapter_key, "DriverDesc")[0]
                         provider = winreg.QueryValueEx(adapter_key, "ProviderName")[0]
                     if isinstance(description, str) and description.strip():
-                        adapters.append({
-                            "name": description.strip(),
-                            "provider": provider.strip() if isinstance(provider, str) else "Unknown",
-                        })
+                        adapters.append(
+                            {
+                                "name": description.strip(),
+                                "provider": provider.strip()
+                                if isinstance(provider, str)
+                                else "Unknown",
+                            }
+                        )
                 except OSError:
                     continue
         return adapters
@@ -105,7 +111,7 @@ def collect_hardware_report() -> dict[str, Any]:
 
     total_memory, available_memory = _memory_snapshot()
     adapters = _windows_display_adapters()
-    gib = 1024 ** 3
+    gib = 1024**3
     return {
         "schema_version": 2,
         "read_only": True,
@@ -123,7 +129,9 @@ def collect_hardware_report() -> dict[str, Any]:
             "total_bytes": total_memory,
             "total_gib": round(total_memory / gib, 2) if total_memory is not None else None,
             "available_bytes": available_memory,
-            "available_gib": round(available_memory / gib, 2) if available_memory is not None else None,
+            "available_gib": round(available_memory / gib, 2)
+            if available_memory is not None
+            else None,
         },
         "disk": disk_report,
         "gpu": {

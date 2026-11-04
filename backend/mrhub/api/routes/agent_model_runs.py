@@ -40,9 +40,9 @@ def _repositories() -> tuple[TaskRepository, WorkflowRecoveryRepository]:
 
 
 def _digest(value: object) -> str:
-    encoded = json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -104,9 +104,7 @@ def submit_model_run(
     context = AgentContextAssembler(settings.database_path).assemble(
         user.user_id, **context_options
     )
-    evidence = json.dumps(
-        context["passages"], ensure_ascii=False, separators=(",", ":")
-    )
+    evidence = json.dumps(context["passages"], ensure_ascii=False, separators=(",", ":"))
     try:
         AgentLoopRequest(
             goal=payload.goal,
@@ -124,10 +122,16 @@ def submit_model_run(
         {
             key: passage.get(key)
             for key in (
-                "reference", "source_ref", "trust_classification",
-                "freshness_status", "freshness_checked_at",
-                "freshness_review_expired", "freshness_review_max_age_days",
-                "content_integrity_verified", "document_hash", "chunk_hash",
+                "reference",
+                "source_ref",
+                "trust_classification",
+                "freshness_status",
+                "freshness_checked_at",
+                "freshness_review_expired",
+                "freshness_review_max_age_days",
+                "content_integrity_verified",
+                "document_hash",
+                "chunk_hash",
             )
             if passage.get(key) is not None
         }
@@ -157,9 +161,7 @@ def submit_model_run(
                 "excluded_expired_knowledge_count": context.get(
                     "excluded_expired_knowledge_count", 0
                 ),
-                "freshness_review_max_age_days": context.get(
-                    "freshness_review_max_age_days", 30
-                ),
+                "freshness_review_max_age_days": context.get("freshness_review_max_age_days", 30),
             },
         },
         workflow_id=str(workflow_id),
@@ -171,8 +173,7 @@ def submit_model_run(
         recovery = WorkflowRecoveryRepository(settings.database_path)
         recovery.create_run(
             request_digest,
-            [{"step_number": 1, "kind": "model_inference",
-              "name": "Model-driven Agent execution"}],
+            [{"step_number": 1, "kind": "model_inference", "name": "Model-driven Agent execution"}],
             task=task,
             owner_user_id=user.user_id,
             workflow_id=workflow_id,
@@ -207,12 +208,8 @@ def submit_model_run(
         "excluded_unreviewed_knowledge_count": context.get(
             "excluded_unreviewed_knowledge_count", 0
         ),
-        "excluded_expired_knowledge_count": context.get(
-            "excluded_expired_knowledge_count", 0
-        ),
-        "freshness_review_max_age_days": context.get(
-            "freshness_review_max_age_days", 30
-        ),
+        "excluded_expired_knowledge_count": context.get("excluded_expired_knowledge_count", 0),
+        "freshness_review_max_age_days": context.get("freshness_review_max_age_days", 30),
     }
 
 

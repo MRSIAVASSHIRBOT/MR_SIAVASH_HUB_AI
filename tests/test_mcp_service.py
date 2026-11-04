@@ -45,9 +45,7 @@ def test_mcp_settings_reject_out_of_range_ports(port):
 
 
 def test_mcp_service_refuses_to_start_when_disabled(monkeypatch):
-    monkeypatch.setattr(
-        mcp_service, "get_settings", lambda: _settings(mcp_enabled=False)
-    )
+    monkeypatch.setattr(mcp_service, "get_settings", lambda: _settings(mcp_enabled=False))
 
     with pytest.raises(SystemExit, match="MCP service is disabled"):
         mcp_service.main()
@@ -55,9 +53,7 @@ def test_mcp_service_refuses_to_start_when_disabled(monkeypatch):
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "localhost", "hub.local"])
 def test_mcp_service_refuses_non_numeric_loopback_bind(host, monkeypatch):
-    monkeypatch.setattr(
-        mcp_service, "get_settings", lambda: _settings(mcp_host=host)
-    )
+    monkeypatch.setattr(mcp_service, "get_settings", lambda: _settings(mcp_host=host))
     monkeypatch.setattr(
         mcp_service,
         "create_mcp_server",

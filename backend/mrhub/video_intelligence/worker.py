@@ -57,8 +57,11 @@ class VideoAnalysisWorkerHandler:
             if lease_lost.is_set() or current is None or current.status is TaskStatus.CANCELLED:
                 if current is not None and current.status is TaskStatus.CANCELLED:
                     self.jobs.finish(
-                        task.task_id, owner_user_id, status="cancelled",
-                        error_code="cancelled_by_owner", lease=lease,
+                        task.task_id,
+                        owner_user_id,
+                        status="cancelled",
+                        error_code="cancelled_by_owner",
+                        lease=lease,
                     )
                 return {"analysis_id": str(analysis_id), "status": "cancelled_or_lease_lost"}
 
@@ -75,17 +78,13 @@ class VideoAnalysisWorkerHandler:
                 return self._fail(task, owner_user_id, lease, "asset_not_ready")
 
             try:
-                acquired = self.media.acquire_analysis_use(
-                    owner_user_id, asset_id, lease=lease
-                )
+                acquired = self.media.acquire_analysis_use(owner_user_id, asset_id, lease=lease)
             except MediaAssetBusy:
                 return self._fail(task, owner_user_id, lease, "asset_busy")
             if not acquired:
                 if lease_lost.is_set():
                     return {"analysis_id": str(analysis_id), "status": "lease_lost"}
-                return self._fail(
-                    task, owner_user_id, lease, "asset_not_ready_or_locked"
-                )
+                return self._fail(task, owner_user_id, lease, "asset_not_ready_or_locked")
 
             try:
                 try:
@@ -95,9 +94,7 @@ class VideoAnalysisWorkerHandler:
                         duration_seconds=float(request.duration_seconds),
                     )
                 except VideoAssetAnalysisError as exc:
-                    return self._fail(
-                        task, owner_user_id, lease, exc.reason_code
-                    )
+                    return self._fail(task, owner_user_id, lease, exc.reason_code)
                 metadata = analyzed.metadata
                 duration = analyzed.analyzed_duration_seconds
                 frames = analyzed.frames
@@ -107,8 +104,11 @@ class VideoAnalysisWorkerHandler:
                 if current is None or current.status is TaskStatus.CANCELLED:
                     if current is not None:
                         self.jobs.finish(
-                            task.task_id, owner_user_id, status="cancelled",
-                            error_code="cancelled_during_frame_extraction", lease=lease,
+                            task.task_id,
+                            owner_user_id,
+                            status="cancelled",
+                            error_code="cancelled_during_frame_extraction",
+                            lease=lease,
                         )
                     return {"analysis_id": str(analysis_id), "status": "cancelled"}
                 if lease_lost.is_set():
@@ -127,33 +127,35 @@ class VideoAnalysisWorkerHandler:
                 if current is None or current.status is TaskStatus.CANCELLED:
                     if current is not None:
                         self.jobs.finish(
-                            task.task_id, owner_user_id, status="cancelled",
-                            error_code="cancelled_during_vision_analysis", lease=lease,
+                            task.task_id,
+                            owner_user_id,
+                            status="cancelled",
+                            error_code="cancelled_during_vision_analysis",
+                            lease=lease,
                         )
                     return {"analysis_id": str(analysis_id), "status": "cancelled"}
 
                 semantic_results.append({"asset_id": str(asset_id), **semantic})
-                results.append({
-                    "asset_id": str(asset_id),
-                    "content_hash": analyzed.content_hash,
-                    "technical_metadata": metadata.model_dump(mode="json"),
-                    "analysis_window_seconds": round(duration, 3),
-                    "keyframe_count": len(frames),
-                    "keyframe_timestamps": [
-                        frame.timestamp_seconds for frame in frames
-                    ],
-                    "scene_start_timestamps": list(scenes.scene_start_times),
-                    "scene_boundaries_truncated": scenes.truncated,
-                    "semantic_visual_analysis": semantic,
-                    "audio_analysis": (
-                        "requested_but_not_performed"
-                        if request.include_audio_analysis else "not_requested"
-                    ),
-                })
-            finally:
-                self.media.release_analysis_use(
-                    owner_user_id, asset_id, lease=lease
+                results.append(
+                    {
+                        "asset_id": str(asset_id),
+                        "content_hash": analyzed.content_hash,
+                        "technical_metadata": metadata.model_dump(mode="json"),
+                        "analysis_window_seconds": round(duration, 3),
+                        "keyframe_count": len(frames),
+                        "keyframe_timestamps": [frame.timestamp_seconds for frame in frames],
+                        "scene_start_timestamps": list(scenes.scene_start_times),
+                        "scene_boundaries_truncated": scenes.truncated,
+                        "semantic_visual_analysis": semantic,
+                        "audio_analysis": (
+                            "requested_but_not_performed"
+                            if request.include_audio_analysis
+                            else "not_requested"
+                        ),
+                    }
                 )
+            finally:
+                self.media.release_analysis_use(owner_user_id, asset_id, lease=lease)
 
         if lease_lost.is_set():
             return {"analysis_id": str(analysis_id), "status": "lease_lost"}
@@ -163,8 +165,11 @@ class VideoAnalysisWorkerHandler:
         if current is None or current.status is TaskStatus.CANCELLED:
             if current is not None:
                 self.jobs.finish(
-                    task.task_id, owner_user_id, status="cancelled",
-                    error_code="cancelled_by_owner", lease=lease,
+                    task.task_id,
+                    owner_user_id,
+                    status="cancelled",
+                    error_code="cancelled_by_owner",
+                    lease=lease,
                 )
             return {"analysis_id": str(analysis_id), "status": "cancelled"}
         semantic_states = [item["status"] for item in semantic_results]
@@ -199,8 +204,7 @@ class VideoAnalysisWorkerHandler:
                 "assets": semantic_results,
             },
             "audio_analysis": (
-                "requested_but_not_performed"
-                if request.include_audio_analysis else "not_requested"
+                "requested_but_not_performed" if request.include_audio_analysis else "not_requested"
             ),
             "brand_profile_applied": False,
             "custom_changes_applied": False,
@@ -208,25 +212,28 @@ class VideoAnalysisWorkerHandler:
             "edit_specification": edit_specification.model_dump(mode="json"),
             "timeline": timeline.model_dump(mode="json"),
         }
-        self.jobs.finish(task.task_id, owner_user_id, status="completed", result=result, lease=lease)
+        self.jobs.finish(
+            task.task_id, owner_user_id, status="completed", result=result, lease=lease
+        )
         return {"analysis_id": str(analysis_id), "status": "completed", "asset_count": len(results)}
 
     def _fail(
-        self, task: TaskRecord, owner_user_id: str | None,
-        lease: WorkerLease, error_code: str
+        self, task: TaskRecord, owner_user_id: str | None, lease: WorkerLease, error_code: str
     ) -> dict[str, object]:
         current = self.tasks.get(task.task_id)
         if current is not None and current.status is TaskStatus.CANCELLED:
             if owner_user_id is not None:
                 self.jobs.finish(
-                    task.task_id, owner_user_id, status="cancelled",
-                    error_code="cancelled_by_owner", lease=lease,
+                    task.task_id,
+                    owner_user_id,
+                    status="cancelled",
+                    error_code="cancelled_by_owner",
+                    lease=lease,
                 )
             return {"status": "cancelled"}
         if owner_user_id is not None:
             self.jobs.finish(
-                task.task_id, owner_user_id, status="failed",
-                error_code=error_code, lease=lease
+                task.task_id, owner_user_id, status="failed", error_code=error_code, lease=lease
             )
         # Let WorkerEngine persist the matching terminal task failure. Exception
         # text is deliberately generic; the analysis row stores only the code.

@@ -33,12 +33,14 @@ class PolicyResult(BaseModel):
 class PolicyEngine:
     """Small explicit policy engine. Unknown permissions are never inferred."""
 
-    LOW_RISK_TASK_TYPES: ClassVar[frozenset[str]] = frozenset({
-        "demo.echo",
-        "analysis.summarize",
-        "content.draft",
-        "memory.search",
-    })
+    LOW_RISK_TASK_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "demo.echo",
+            "analysis.summarize",
+            "content.draft",
+            "memory.search",
+        }
+    )
 
     def classify_task_type(self, task_type: str) -> RiskClass:
         """Classify task types server-side; unknown types require approval."""
@@ -57,9 +59,7 @@ class PolicyEngine:
                 reason="Missing required permission grants: " + ", ".join(sorted(missing)),
             )
 
-        needs_approval = (
-            request.risk_class is RiskClass.HIGH or request.external_side_effect
-        )
+        needs_approval = request.risk_class is RiskClass.HIGH or request.external_side_effect
         if needs_approval and not request.user_approved:
             return PolicyResult(
                 decision=PolicyDecision.REQUIRE_APPROVAL,

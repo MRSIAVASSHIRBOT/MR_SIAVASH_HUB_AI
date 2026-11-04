@@ -42,8 +42,11 @@ class VideoRenderWorkerHandler:
             current_task = self.tasks.get(task.task_id)
             if current_task is None or current_task.status is TaskStatus.CANCELLED:
                 self.jobs.finish(
-                    task.task_id, owner_user_id, status="cancelled",
-                    error_code="cancelled_before_render", lease=lease,
+                    task.task_id,
+                    owner_user_id,
+                    status="cancelled",
+                    error_code="cancelled_before_render",
+                    lease=lease,
                 )
                 return {"render_id": str(render_id), "status": "cancelled"}
             analysis = self.analyses.get(owner_user_id, analysis_id)
@@ -73,9 +76,7 @@ class VideoRenderWorkerHandler:
                 if asset["processing_status"] not in {"stored", "processed"}:
                     raise ValueError("render_source_not_ready")
                 try:
-                    acquired = self.media.acquire_analysis_use(
-                        owner_user_id, asset_id, lease=lease
-                    )
+                    acquired = self.media.acquire_analysis_use(owner_user_id, asset_id, lease=lease)
                 except MediaAssetBusy as exc:
                     raise ValueError("render_source_busy") from exc
                 if not acquired:
@@ -91,8 +92,11 @@ class VideoRenderWorkerHandler:
             current_task = self.tasks.get(task.task_id)
             if current_task is None or current_task.status is TaskStatus.CANCELLED:
                 self.jobs.finish(
-                    task.task_id, owner_user_id, status="cancelled",
-                    error_code="cancelled_before_render", lease=lease,
+                    task.task_id,
+                    owner_user_id,
+                    status="cancelled",
+                    error_code="cancelled_before_render",
+                    lease=lease,
                 )
                 return {"render_id": str(render_id), "status": "cancelled"}
             try:
@@ -112,8 +116,11 @@ class VideoRenderWorkerHandler:
             if current_task is None or current_task.status is TaskStatus.CANCELLED:
                 output_path.unlink(missing_ok=True)
                 self.jobs.finish(
-                    task.task_id, owner_user_id, status="cancelled",
-                    error_code="cancelled_during_render", lease=lease,
+                    task.task_id,
+                    owner_user_id,
+                    status="cancelled",
+                    error_code="cancelled_during_render",
+                    lease=lease,
                 )
                 return {"render_id": str(render_id), "status": "cancelled"}
 
@@ -151,8 +158,11 @@ class VideoRenderWorkerHandler:
             if output_path is not None:
                 output_path.unlink(missing_ok=True)
             self.jobs.finish(
-                task.task_id, owner_user_id, status="failed",
-                error_code=exc.reason_code, lease=lease,
+                task.task_id,
+                owner_user_id,
+                status="failed",
+                error_code=exc.reason_code,
+                lease=lease,
             )
             raise ValueError("Video render execution failed") from exc
         except (ValueError, TypeError, KeyError, OSError) as exc:
@@ -161,24 +171,33 @@ class VideoRenderWorkerHandler:
             current_task = self.tasks.get(task.task_id)
             if current_task is not None and current_task.status is TaskStatus.CANCELLED:
                 self.jobs.finish(
-                    task.task_id, owner_user_id, status="cancelled",
-                    error_code="cancelled_during_render", lease=lease,
+                    task.task_id,
+                    owner_user_id,
+                    status="cancelled",
+                    error_code="cancelled_during_render",
+                    lease=lease,
                 )
                 return {"render_id": str(render_id), "status": "cancelled"}
             # Exception text can contain paths, identifiers, or validation input;
             # persist only a stable generic code for non-renderer failures.
             code = "render_request_invalid"
             self.jobs.finish(
-                task.task_id, owner_user_id, status="failed",
-                error_code=code, lease=lease,
+                task.task_id,
+                owner_user_id,
+                status="failed",
+                error_code=code,
+                lease=lease,
             )
             raise ValueError("Video render execution failed") from exc
         except Exception as exc:
             if output_path is not None:
                 output_path.unlink(missing_ok=True)
             self.jobs.finish(
-                task.task_id, owner_user_id, status="failed",
-                error_code="render_internal_error", lease=lease,
+                task.task_id,
+                owner_user_id,
+                status="failed",
+                error_code="render_internal_error",
+                lease=lease,
             )
             raise ValueError("Video render execution failed") from exc
         finally:
@@ -186,6 +205,4 @@ class VideoRenderWorkerHandler:
             # entire FFmpeg + FFprobe + publication window. Release only this
             # exact task/fencing-token record, including every early-return path.
             for asset_id in reversed(acquired_assets):
-                self.media.release_analysis_use(
-                    owner_user_id, asset_id, lease=lease
-                )
+                self.media.release_analysis_use(owner_user_id, asset_id, lease=lease)

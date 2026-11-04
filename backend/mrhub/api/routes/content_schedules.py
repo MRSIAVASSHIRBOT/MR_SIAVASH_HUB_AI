@@ -1,4 +1,5 @@
 """Authenticated API for durable, approval-gated content scheduling."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,8 +15,12 @@ from mrhub.content.scheduling import ContentScheduleRepository, ScheduleConflict
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 
-router = APIRouter(prefix="/content", tags=["content-scheduling"], dependencies=[Depends(require_user)])
-ScheduleStatus = Literal["scheduled", "publishing", "published", "cancelled", "failed", "unknown_outcome"]
+router = APIRouter(
+    prefix="/content", tags=["content-scheduling"], dependencies=[Depends(require_user)]
+)
+ScheduleStatus = Literal[
+    "scheduled", "publishing", "published", "cancelled", "failed", "unknown_outcome"
+]
 
 
 class ScheduleCreate(BaseModel):
@@ -26,8 +31,13 @@ def _repository() -> ContentScheduleRepository:
     return ContentScheduleRepository(get_settings().database_path)
 
 
-def _audit(repository: ContentScheduleRepository, user: AuthenticatedUser, event: str,
-           schedule_id: str, reason: str) -> None:
+def _audit(
+    repository: ContentScheduleRepository,
+    user: AuthenticatedUser,
+    event: str,
+    schedule_id: str,
+    reason: str,
+) -> None:
     AuditLogger(repository.tasks).record(
         event_type=event,
         outcome="success",
@@ -52,7 +62,9 @@ def schedule_draft(
         raise HTTPException(status_code=404, detail="Content draft not found") from exc
     except ScheduleConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    _audit(repository, user, "content.schedule_created", str(record["schedule_id"]), "schedule_created")
+    _audit(
+        repository, user, "content.schedule_created", str(record["schedule_id"]), "schedule_created"
+    )
     return record
 
 

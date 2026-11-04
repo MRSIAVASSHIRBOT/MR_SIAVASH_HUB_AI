@@ -116,9 +116,7 @@ def build_ffmpeg_command(
         )
 
     concat_inputs = "".join(labels)
-    filter_parts.append(
-        f"{concat_inputs}concat=n={len(labels)}:v=1:a=0[outv]"
-    )
+    filter_parts.append(f"{concat_inputs}concat=n={len(labels)}:v=1:a=0[outv]")
     command.extend(
         [
             "-filter_complex",
@@ -201,9 +199,7 @@ def render_video_timeline(
             raise VideoRenderError("render_source_file_missing")
         resolved_sources[asset_id] = resolved
 
-    temporary_output = output_path.with_name(
-        f".{output_path.stem}.{uuid4().hex}.partial.mp4"
-    )
+    temporary_output = output_path.with_name(f".{output_path.stem}.{uuid4().hex}.partial.mp4")
     command = build_ffmpeg_command(
         ffmpeg_binary=ffmpeg,
         timeline=validated,
@@ -274,9 +270,7 @@ def render_video_timeline(
             format_info = metadata["format"]
             streams = metadata["streams"]
             duration = float(format_info["duration"])
-            video_streams = [
-                stream for stream in streams if stream.get("codec_type") == "video"
-            ]
+            video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
             width, height = OUTPUT_DIMENSIONS[validated.output_aspect_ratio]
             if (
                 "mp4" not in str(format_info["format_name"]).split(",")

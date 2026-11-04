@@ -41,9 +41,7 @@ def test_ollama_vision_uses_local_images_and_bounded_generation():
         assert "127.0.0.1" in str(request.url)
         return httpx.Response(200, json={"response": '{"style_summary":"cinematic"}'})
 
-    provider = OllamaVisionProvider(
-        "llava-local", transport=httpx.MockTransport(handler)
-    )
+    provider = OllamaVisionProvider("llava-local", transport=httpx.MockTransport(handler))
     result = provider.generate(_request())
 
     assert result.provider == "ollama"
@@ -100,9 +98,7 @@ def test_ollama_vision_maps_timeout_to_sanitized_error():
     def handler(_request):
         raise httpx.ReadTimeout("private internal detail")
 
-    provider = OllamaVisionProvider(
-        "llava-local", transport=httpx.MockTransport(handler)
-    )
+    provider = OllamaVisionProvider("llava-local", transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderTimeoutError) as error:
         provider.generate(_request())
     assert str(error.value) == "Local vision request timed out"

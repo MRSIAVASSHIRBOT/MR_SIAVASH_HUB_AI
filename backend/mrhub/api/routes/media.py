@@ -1,4 +1,5 @@
 """Authenticated bounded media uploads and sandboxed local FFmpeg transcode."""
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,9 @@ from mrhub.media.repository import (
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 
-router = APIRouter(prefix="/content/assets", tags=["content-media"], dependencies=[Depends(require_user)])
+router = APIRouter(
+    prefix="/content/assets", tags=["content-media"], dependencies=[Depends(require_user)]
+)
 _FFMPEG_SEMAPHORE = threading.BoundedSemaphore(1)
 # Per-process admission control bounds simultaneous in-memory upload buffers.
 _UPLOAD_SEMAPHORE = threading.BoundedSemaphore(1)
@@ -109,7 +112,9 @@ async def upload_asset(
         if content_length:
             try:
                 if int(content_length) > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Media upload exceeds the 25 MB limit")
+                    raise HTTPException(
+                        status_code=413, detail="Media upload exceeds the 25 MB limit"
+                    )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail="Invalid Content-Length") from exc
 
@@ -123,13 +128,13 @@ async def upload_asset(
                 raise HTTPException(status_code=413, detail="Media upload exceeds the 25 MB limit")
             data.extend(chunk)
         if not _signature_matches(media_type, data):
-            raise HTTPException(status_code=415, detail="Media signature does not match Content-Type")
+            raise HTTPException(
+                status_code=415, detail="Media signature does not match Content-Type"
+            )
         filename = _safe_filename(x_file_name)
         repository = _repository()
         storage_task = asyncio.create_task(
-            asyncio.to_thread(
-                repository.store_upload, user.user_id, filename, media_type, data
-            )
+            asyncio.to_thread(repository.store_upload, user.user_id, filename, media_type, data)
         )
         try:
             # Shield the storage thread from request cancellation. If the HTTP
@@ -137,13 +142,13 @@ async def upload_asset(
             # using the upload buffer.
             record = await asyncio.shield(storage_task)
         except asyncio.CancelledError:
-            await asyncio.shield(
-                asyncio.gather(storage_task, return_exceptions=True)
-            )
+            await asyncio.shield(asyncio.gather(storage_task, return_exceptions=True))
             raise
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Invalid media upload") from exc
-        _audit(repository, user, "content.asset_uploaded", str(record["asset_id"]), "asset_uploaded")
+        _audit(
+            repository, user, "content.asset_uploaded", str(record["asset_id"]), "asset_uploaded"
+        )
         return _public_asset(record)
     finally:
         _UPLOAD_SEMAPHORE.release()
@@ -194,7 +199,9 @@ def transcode_video(
         "video/mp4",
         "video/quicktime",
     }:
-        raise HTTPException(status_code=422, detail="Only original MP4/QuickTime video assets can be transcoded")
+        raise HTTPException(
+            status_code=422, detail="Only original MP4/QuickTime video assets can be transcoded"
+        )
     input_path = repository.file_path(str(existing["storage_key"]))
     if not input_path.is_file():
         raise HTTPException(status_code=404, detail="Media file is missing")
@@ -274,23 +281,55 @@ def transcode_video(
         except subprocess.TimeoutExpired as exc:
             output_path.unlink(missing_ok=True)
             repository.fail_processing(user.user_id, asset_id, "ffmpeg_timeout")
-            _audit(repository, user, "content.asset_transcode_failed", str(asset_id), "ffmpeg_timeout", "failure")
+            _audit(
+                repository,
+                user,
+                "content.asset_transcode_failed",
+                str(asset_id),
+                "ffmpeg_timeout",
+                "failure",
+            )
             raise HTTPException(status_code=504, detail="ffmpeg_timeout") from exc
         except OSError as exc:
             output_path.unlink(missing_ok=True)
             repository.fail_processing(user.user_id, asset_id, "ffmpeg_unavailable")
-            _audit(repository, user, "content.asset_transcode_failed", str(asset_id), "ffmpeg_unavailable", "failure")
+            _audit(
+                repository,
+                user,
+                "content.asset_transcode_failed",
+                str(asset_id),
+                "ffmpeg_unavailable",
+                "failure",
+            )
             raise HTTPException(status_code=503, detail="ffmpeg_unavailable") from exc
 
         if result.returncode != 0:
             output_path.unlink(missing_ok=True)
             repository.fail_processing(user.user_id, asset_id, "ffmpeg_failed")
-            _audit(repository, user, "content.asset_transcode_failed", str(asset_id), "ffmpeg_failed", "failure")
+            _audit(
+                repository,
+                user,
+                "content.asset_transcode_failed",
+                str(asset_id),
+                "ffmpeg_failed",
+                "failure",
+            )
             raise HTTPException(status_code=422, detail="ffmpeg_failed")
-        if not output_path.is_file() or output_path.stat().st_size <= 0 or output_path.stat().st_size > MAX_OUTPUT_BYTES:
+        if (
+            not output_path.is_file()
+            or output_path.stat().st_size <= 0
+            or output_path.stat().st_size > MAX_OUTPUT_BYTES
+        ):
             output_path.unlink(missing_ok=True)
             repository.fail_processing(user.user_id, asset_id, "invalid_output")
-            _audit(repository, user, "content.asset_transcode_failed", str(asset_id), "invalid_output", "failure")
+            _audit(
+                repository,
+                user,
+                "content.asset_transcode_failed",
+                str(asset_id),
+                "invalid_output",
+                "failure",
+            )
             raise HTTPException(status_code=422, detail="invalid_ffmpeg_output")
 
         try:
@@ -305,9 +344,18 @@ def transcode_video(
         except Exception as exc:
             output_path.unlink(missing_ok=True)
             repository.fail_processing(user.user_id, asset_id, "output_registration_failed")
-            _audit(repository, user, "content.asset_transcode_failed", str(asset_id), "output_registration_failed", "failure")
+            _audit(
+                repository,
+                user,
+                "content.asset_transcode_failed",
+                str(asset_id),
+                "output_registration_failed",
+                "failure",
+            )
             raise HTTPException(status_code=500, detail="output_registration_failed") from exc
-        _audit(repository, user, "content.asset_transcoded", str(output["asset_id"]), "video_mp4_720p")
+        _audit(
+            repository, user, "content.asset_transcoded", str(output["asset_id"]), "video_mp4_720p"
+        )
         return {"status": "succeeded", "asset": _public_asset(output)}
     finally:
         _FFMPEG_SEMAPHORE.release()

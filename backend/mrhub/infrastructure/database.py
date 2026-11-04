@@ -137,7 +137,9 @@ class TaskRepository:
         with self._connection() as connection:
             cursor = connection.execute(query, parameters)
             if cursor.rowcount != 1:
-                raise RuntimeError("Task state or lease changed concurrently; reload before retrying")
+                raise RuntimeError(
+                    "Task state or lease changed concurrently; reload before retrying"
+                )
         return updated
 
     def record_audit(self, event: dict[str, object]) -> None:
@@ -195,9 +197,7 @@ class TaskRepository:
             "metadata": json.loads(row["metadata_json"]),
         }
 
-    def list_agent_model_runs(
-        self, owner_user_id: str, limit: int = 20
-    ) -> list[dict[str, object]]:
+    def list_agent_model_runs(self, owner_user_id: str, limit: int = 20) -> list[dict[str, object]]:
         """Return only model-run audit records belonging to the authenticated owner."""
         bounded_limit = max(1, min(limit, 100))
         with self._connection() as connection:
@@ -216,9 +216,7 @@ class TaskRepository:
             ).fetchall()
         return [self._agent_model_run_record(row) for row in rows]
 
-    def get_agent_model_run(
-        self, owner_user_id: str, run_id: str
-    ) -> dict[str, object] | None:
+    def get_agent_model_run(self, owner_user_id: str, run_id: str) -> dict[str, object] | None:
         """Return one model-run record only when it belongs to the authenticated owner."""
         with self._connection() as connection:
             row = connection.execute(
@@ -241,9 +239,7 @@ class TaskRepository:
         with self._connection() as connection:
             return connection.execute("SELECT 1 FROM auth_users LIMIT 1").fetchone() is not None
 
-    def create_auth_user(
-        self, user_id: str, username: str, salt: str, password_hash: str
-    ) -> None:
+    def create_auth_user(self, user_id: str, username: str, salt: str, password_hash: str) -> None:
         from datetime import UTC, datetime
 
         with self._connection() as connection:
@@ -296,7 +292,6 @@ class TaskRepository:
     def delete_auth_session(self, token_hash: str) -> None:
         with self._connection() as connection:
             connection.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
-
 
     def record_task_approval(
         self,

@@ -55,12 +55,7 @@ def test_scope_rejects_duplicate_or_blank_asset_identifiers():
 
 
 def test_configuration_audit_reports_line_evidence_without_values():
-    text = (
-        "host = 127.0.0.1\n"
-        "debug = true\n"
-        "verify = false\n"
-        "allow_origins = ['*']\n"
-    )
+    text = "host = 127.0.0.1\ndebug = true\nverify = false\nallow_origins = ['*']\n"
     result = audit_configuration_text(
         text,
         scope=_scope(),
@@ -91,8 +86,7 @@ def test_configuration_audit_enforces_input_limit():
 
 def test_configuration_audit_flags_insecure_cookie_settings_without_echoing_values():
     result = audit_configuration_text(
-        "SESSION_COOKIE_SECURE = false\n"
-        "SESSION_COOKIE_HTTPONLY = false\n",
+        "SESSION_COOKIE_SECURE = false\nSESSION_COOKIE_HTTPONLY = false\n",
         scope=_scope(),
         asset="repo:owned-project",
         filename="app.env",
@@ -108,7 +102,6 @@ def test_configuration_audit_flags_insecure_cookie_settings_without_echoing_valu
     assert result["targets_modified"] is False
 
 
-
 def test_configuration_audit_requires_current_exact_asset_scope():
     scope = _scope("repo:owned-project")
 
@@ -119,9 +112,7 @@ def test_configuration_audit_requires_current_exact_asset_scope():
             asset="repo:another-project",
         )
 
-    expired_scope = _scope(
-        expires_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1)
-    )
+    expired_scope = _scope(expires_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1))
     with pytest.raises(ScopeValidationError, match="expired"):
         audit_configuration_text(
             "debug = true",
@@ -199,9 +190,7 @@ def test_dependency_manifest_review_rejects_out_of_scope_asset_and_bounds_input(
 
 def test_dependency_manifest_exact_pin_is_not_flagged_but_ranges_are():
     result = audit_requirements_text(
-        "fastapi==0.115.0\n"
-        "uvicorn>=0.30\n"
-        "example==1.2,>=1.1\n",
+        "fastapi==0.115.0\nuvicorn>=0.30\nexample==1.2,>=1.1\n",
         scope=_scope(),
         asset="repo:owned-project",
     )
@@ -209,7 +198,6 @@ def test_dependency_manifest_exact_pin_is_not_flagged_but_ranges_are():
     assert result["packages_reviewed"] == 3
     assert [item["line"] for item in result["findings"]] == [2, 3]
     assert all(item["rule_id"] == "DEP001" for item in result["findings"])
-
 
 
 def test_authenticated_config_review_api_enforces_scope_and_returns_safe_evidence():
@@ -242,10 +230,7 @@ def test_authenticated_config_review_api_enforces_scope_and_returns_safe_evidenc
     from mrhub.infrastructure.database import TaskRepository
 
     audit = TaskRepository(get_settings().database_path).list_audit()
-    completed = [
-        item for item in audit
-        if item["event_type"] == "security_lab.review_completed"
-    ]
+    completed = [item for item in audit if item["event_type"] == "security_lab.review_completed"]
     assert len(completed) == 1
     assert "ticket-123" not in str(completed[0])
     assert "debug = true" not in str(completed[0])
@@ -275,10 +260,7 @@ def test_authenticated_dependency_review_api_denies_out_of_scope_assets():
     from mrhub.infrastructure.database import TaskRepository
 
     audit = TaskRepository(get_settings().database_path).list_audit()
-    denied = [
-        item for item in audit
-        if item["event_type"] == "security_lab.review_denied"
-    ]
+    denied = [item for item in audit if item["event_type"] == "security_lab.review_denied"]
     assert len(denied) == 1
     assert denied[0]["outcome"] == "denied"
     assert denied[0]["metadata"]["reason_code"] == "authorization_scope_denied"
@@ -313,10 +295,7 @@ def test_authenticated_dependency_review_api_is_offline_and_reports_unpinned_pac
     from mrhub.infrastructure.database import TaskRepository
 
     audit = TaskRepository(get_settings().database_path).list_audit()
-    completed = [
-        item for item in audit
-        if item["event_type"] == "security_lab.review_completed"
-    ]
+    completed = [item for item in audit if item["event_type"] == "security_lab.review_completed"]
     assert len(completed) == 1
     assert "ticket-123" not in str(completed[0])
     assert "fastapi>=0.115" not in str(completed[0])
@@ -344,7 +323,6 @@ def test_security_lab_api_requires_authentication():
     assert response.status_code == 401
 
 
-
 def test_scope_rejects_authorizations_longer_than_thirty_days():
     scope = DefensiveReviewScope(
         authorization_reference="ticket-long",
@@ -355,13 +333,9 @@ def test_scope_rejects_authorizations_longer_than_thirty_days():
         scope.assert_current()
 
 
-
 def test_structured_log_review_correlates_events_without_returning_actor_identifiers():
     actor = "sensitive-user-identifier"
-    records = [
-        {"event_type": "auth.login.failed", "actor_id": actor}
-        for _ in range(5)
-    ]
+    records = [{"event_type": "auth.login.failed", "actor_id": actor} for _ in range(5)]
     records += [
         {"event_type": "auth.login.succeeded", "actor_id": actor},
         {"event_type": "authorization.role_changed", "actor_id": "admin-actor"},
@@ -386,7 +360,11 @@ def test_structured_log_review_correlates_events_without_returning_actor_identif
     assert result["actor_identifiers_included"] is False
     assert result["raw_log_values_included"] is False
     assert {item["rule_id"] for item in result["findings"]} == {
-        "LOG001", "LOG002", "LOG003", "LOG004", "LOG005"
+        "LOG001",
+        "LOG002",
+        "LOG003",
+        "LOG004",
+        "LOG005",
     }
     assert actor not in str(result)
     assert "admin-actor" not in str(result)
@@ -463,19 +441,17 @@ def test_authenticated_structured_log_review_api_returns_safe_findings_and_audit
     from mrhub.infrastructure.database import TaskRepository
 
     audit = TaskRepository(get_settings().database_path).list_audit()
-    completed = [
-        item for item in audit
-        if item["event_type"] == "security_lab.review_completed"
-    ]
+    completed = [item for item in audit if item["event_type"] == "security_lab.review_completed"]
     assert len(completed) == 1
     assert completed[0]["metadata"]["reason_code"] == "offline_structured_security_log_review"
     assert "private-login-id" not in str(completed[0])
 
 
-
 def test_structured_log_review_counts_json_parser_resource_edge_cases_as_unparsed():
-    oversized_integer = '{"event_type":"unknown.event","value":' + ("9" * 5_000) + '}'
-    deeply_nested = '{"event_type":"unknown.event","value":' + ("[" * 10_000) + "0" + ("]" * 10_000) + "}"
+    oversized_integer = '{"event_type":"unknown.event","value":' + ("9" * 5_000) + "}"
+    deeply_nested = (
+        '{"event_type":"unknown.event","value":' + ("[" * 10_000) + "0" + ("]" * 10_000) + "}"
+    )
     text = f"{oversized_integer}\n{deeply_nested}"
 
     result = audit_structured_log_text(

@@ -18,9 +18,7 @@ def make_authenticated_client(tmp_path, monkeypatch) -> TestClient:
         json={"username": "owner", "password": password},
     )
     assert login.status_code == 200
-    client.headers.update(
-        {"Authorization": f"Bearer {login.json()['access_token']}"}
-    )
+    client.headers.update({"Authorization": f"Bearer {login.json()['access_token']}"})
     return client
 
 

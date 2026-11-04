@@ -1,4 +1,5 @@
 """Worker-owned dispatch for durable, encrypted agent workflows."""
+
 from __future__ import annotations
 
 from threading import Event
@@ -46,14 +47,10 @@ class WorkflowWorkerHandler:
             return self._fail_closed(task, lease, None, "workflow_payload_unavailable")
         workflow_id = UUID(row["workflow_id"])
         if not row["owner_user_id"]:
-            return self._fail_closed(
-                task, lease, workflow_id, "workflow_payload_unavailable"
-            )
+            return self._fail_closed(task, lease, workflow_id, "workflow_payload_unavailable")
         owner_user_id = row["owner_user_id"]
         try:
-            stored = self.recovery.get_encrypted_payload(
-                workflow_id, owner_user_id=owner_user_id
-            )
+            stored = self.recovery.get_encrypted_payload(workflow_id, owner_user_id=owner_user_id)
             if stored is None or stored["task_id"] != str(task.task_id):
                 raise PayloadEnvelopeError("Workflow payload is missing")
             envelope = EncryptedPayload(
@@ -70,9 +67,7 @@ class WorkflowWorkerHandler:
             )
             request = AgentPlanRequest.model_validate(payload)
         except (PayloadEnvelopeError, ValidationError, TypeError, ValueError):
-            return self._fail_closed(
-                task, lease, workflow_id, "workflow_payload_unavailable"
-            )
+            return self._fail_closed(task, lease, workflow_id, "workflow_payload_unavailable")
 
         if lease_lost.is_set():
             return self._fail_closed(task, lease, workflow_id, "workflow_lease_lost")
@@ -80,9 +75,7 @@ class WorkflowWorkerHandler:
         core = AgentCore(build_model_router(), build_tool_registry())
         plan = core.plan(request)
         if not plan.get("execution_ready"):
-            return self._fail_closed(
-                task, lease, workflow_id, "workflow_plan_not_executable"
-            )
+            return self._fail_closed(task, lease, workflow_id, "workflow_plan_not_executable")
         runner = AgentWorkflowRunner(self.repository, core)
         request_digest = AgentWorkflowRunner._digest(request.model_dump(mode="json"))
         if row["status"] == "paused" and row["last_error_code"] == "resume_queued":
@@ -113,14 +106,10 @@ class WorkflowWorkerHandler:
                 lease_lost=lease_lost,
             )
         else:
-            return self._fail_closed(
-                task, lease, workflow_id, "workflow_state_not_dispatchable"
-            )
+            return self._fail_closed(task, lease, workflow_id, "workflow_state_not_dispatchable")
         current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if current is not None and current["status"] in {"succeeded", "failed", "cancelled"}:
-            self.recovery.delete_encrypted_payload(
-                workflow_id, owner_user_id=owner_user_id
-            )
+            self.recovery.delete_encrypted_payload(workflow_id, owner_user_id=owner_user_id)
         execution = result.get("execution")
         if isinstance(execution, dict):
             return {

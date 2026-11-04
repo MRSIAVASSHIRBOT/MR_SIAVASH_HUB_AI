@@ -33,11 +33,9 @@ class VideoAssetAnalysisError(RuntimeError):
 class MediaAssetLookup(Protocol):
     """Narrow repository surface required by the internal analysis service."""
 
-    def get(self, owner_user_id: str, asset_id: UUID) -> dict[str, object] | None:
-        ...
+    def get(self, owner_user_id: str, asset_id: UUID) -> dict[str, object] | None: ...
 
-    def file_path(self, storage_key: str) -> Path:
-        ...
+    def file_path(self, storage_key: str) -> Path: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,11 +123,7 @@ class VideoAssetAnalyzer:
         if metadata.metadata_status != "available":
             raise VideoAssetAnalysisError("video_metadata_unavailable")
         source_duration = metadata.duration_seconds
-        if (
-            source_duration is None
-            or not math.isfinite(source_duration)
-            or source_duration <= 0
-        ):
+        if source_duration is None or not math.isfinite(source_duration) or source_duration <= 0:
             raise VideoAssetAnalysisError("video_duration_invalid")
         analyzed_duration = min(duration_seconds, source_duration)
         if analyzed_duration < 0.1:
@@ -143,9 +137,7 @@ class VideoAssetAnalyzer:
                 max_width=self.MAX_FRAME_WIDTH,
             )
         except FrameExtractionError as exc:
-            raise VideoAssetAnalysisError(
-                f"frame_{exc.reason_code}"
-            ) from exc
+            raise VideoAssetAnalysisError(f"frame_{exc.reason_code}") from exc
 
         try:
             scenes = detect_scene_boundaries(
@@ -155,9 +147,7 @@ class VideoAssetAnalyzer:
                 max_scene_changes=max_scene_changes,
             )
         except SceneDetectionError as exc:
-            raise VideoAssetAnalysisError(
-                f"scene_{exc.reason_code}"
-            ) from exc
+            raise VideoAssetAnalysisError(f"scene_{exc.reason_code}") from exc
 
         content_hash = asset.get("content_hash")
         return AnalyzedVideoAsset(

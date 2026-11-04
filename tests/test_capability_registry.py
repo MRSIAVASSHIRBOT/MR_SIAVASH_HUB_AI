@@ -103,9 +103,7 @@ def test_approval_rejects_non_https_license_evidence(tmp_path):
     }
 
     with pytest.raises(CapabilityValidationError, match="public HTTPS license URL"):
-        registry.transition(
-            candidate.candidate_id, "approved", license_id="MIT", evidence=evidence
-        )
+        registry.transition(candidate.candidate_id, "approved", license_id="MIT", evidence=evidence)
 
 
 def test_status_transitions_are_enforced_and_rejected_sources_can_be_revisited(tmp_path):

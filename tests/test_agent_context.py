@@ -72,7 +72,6 @@ def test_agent_context_requires_authentication():
     assert response.status_code in (401, 403)
 
 
-
 def test_agent_context_current_only_policy_excludes_stale_and_unknown_sources():
     client = authenticated_client()
     created = []

@@ -76,7 +76,6 @@ def test_scheduled_dispatch_resolves_owned_media_and_passes_it_to_adapter():
     assert media["file_size"] == len(b"\x89PNG\r\n\x1a\nmedia-dispatch-fixture")
 
 
-
 def test_dispatch_fails_closed_if_attached_media_disappears():
     client = authenticated_client()
     upload = client.post(

@@ -22,16 +22,12 @@ def test_extract_video_frames_returns_bounded_uniform_samples(monkeypatch, tmp_p
         observed["kwargs"] = kwargs
         output_pattern = Path(command[-1])
         for index in range(1, 4):
-            output_pattern.with_name(f"frame-{index:02d}.jpg").write_bytes(
-                f"jpeg-{index}".encode()
-            )
+            output_pattern.with_name(f"frame-{index:02d}.jpg").write_bytes(f"jpeg-{index}".encode())
         return subprocess.CompletedProcess(command, 0, b"", b"")
 
     monkeypatch.setattr(frames.subprocess, "run", fake_run)
 
-    result = frames.extract_video_frames(
-        source, duration_seconds=6, max_frames=3, max_width=640
-    )
+    result = frames.extract_video_frames(source, duration_seconds=6, max_frames=3, max_width=640)
 
     assert [frame.timestamp_seconds for frame in result] == [0.0, 2.0, 4.0]
     assert [frame.jpeg_bytes for frame in result] == [b"jpeg-1", b"jpeg-2", b"jpeg-3"]
@@ -52,7 +48,8 @@ def test_extract_video_frames_rejects_invalid_limits_before_execution(monkeypatc
     source = _source(tmp_path)
     monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
     monkeypatch.setattr(
-        frames.subprocess, "run",
+        frames.subprocess,
+        "run",
         lambda *_args, **_kwargs: pytest.fail("subprocess must not run"),
     )
 
@@ -66,9 +63,7 @@ def test_extract_video_frames_rejects_invalid_limits_before_execution(monkeypatc
 
 def test_extract_video_frames_reports_missing_source(tmp_path):
     with pytest.raises(frames.FrameExtractionError) as error:
-        frames.extract_video_frames(
-            tmp_path / "missing.mp4", duration_seconds=5
-        )
+        frames.extract_video_frames(tmp_path / "missing.mp4", duration_seconds=5)
     assert error.value.reason_code == "source_missing"
 
 
@@ -112,7 +107,6 @@ def test_extract_video_frames_maps_timeout_to_stable_error(monkeypatch, tmp_path
     assert error.value.reason_code == "extraction_timeout"
 
 
-
 def test_extract_video_frames_enforces_aggregate_size_before_read(monkeypatch, tmp_path):
     source = _source(tmp_path)
     monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
@@ -120,9 +114,7 @@ def test_extract_video_frames_enforces_aggregate_size_before_read(monkeypatch, t
     def fake_run(command, **_kwargs):
         output = Path(command[-1])
         for index in range(1, 10):
-            output.with_name(f"frame-{index:02d}.jpg").write_bytes(
-                b"x" * 1_400_000
-            )
+            output.with_name(f"frame-{index:02d}.jpg").write_bytes(b"x" * 1_400_000)
         return subprocess.CompletedProcess(command, 0, b"", b"")
 
     monkeypatch.setattr(frames.subprocess, "run", fake_run)
@@ -136,7 +128,8 @@ def test_extract_video_frames_rejects_nonzero_ffmpeg_exit(monkeypatch, tmp_path)
     source = _source(tmp_path)
     monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
     monkeypatch.setattr(
-        frames.subprocess, "run",
+        frames.subprocess,
+        "run",
         lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, b"", b""),
     )
 
@@ -149,7 +142,8 @@ def test_extract_video_frames_rejects_empty_output(monkeypatch, tmp_path):
     source = _source(tmp_path)
     monkeypatch.setattr(frames.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
     monkeypatch.setattr(
-        frames.subprocess, "run",
+        frames.subprocess,
+        "run",
         lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, b"", b""),
     )
 

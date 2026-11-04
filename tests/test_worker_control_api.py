@@ -13,9 +13,10 @@ def test_worker_control_endpoints_require_authentication(tmp_path, monkeypatch):
     client = TestClient(create_app())
 
     assert client.get("/jobs/control").status_code in (401, 403)
-    assert client.post(
-        "/jobs/emergency-stop", json={"reason": "maintenance"}
-    ).status_code in (401, 403)
+    assert client.post("/jobs/emergency-stop", json={"reason": "maintenance"}).status_code in (
+        401,
+        403,
+    )
     assert client.post("/jobs/resume").status_code in (401, 403)
     get_settings.cache_clear()
 
@@ -29,9 +30,7 @@ def test_emergency_stop_and_resume_persist_owner_attribution(tmp_path, monkeypat
     assert before.status_code == 200
     assert before.json()["stopped"] is False
 
-    stopped = client.post(
-        "/jobs/emergency-stop", json={"reason": "Scheduled maintenance"}
-    )
+    stopped = client.post("/jobs/emergency-stop", json={"reason": "Scheduled maintenance"})
     assert stopped.status_code == 200
     stop_body = stopped.json()
     assert stop_body["stopped"] is True

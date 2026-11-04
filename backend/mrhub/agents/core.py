@@ -42,9 +42,7 @@ class AgentCore:
         self.model_router = model_router
         self.tool_registry = tool_registry
         if policy is not None and policy is not tool_registry.policy:
-            raise ValueError(
-                "AgentCore policy must be the same instance used by ToolRegistry"
-            )
+            raise ValueError("AgentCore policy must be the same instance used by ToolRegistry")
         self.policy = tool_registry.policy
 
     def execute(
@@ -93,9 +91,7 @@ class AgentCore:
             if on_step is not None:
                 on_step(step_number, "running", None)
             try:
-                result = self.tool_registry.invoke(
-                    requested_tool.name, requested_tool.payload
-                )
+                result = self.tool_registry.invoke(requested_tool.name, requested_tool.payload)
             except (ToolExecutionError, ValueError, TypeError, KeyError, RuntimeError):
                 if on_step is not None:
                     on_step(step_number, "failed", "tool_execution_failed")
@@ -211,11 +207,7 @@ class AgentCore:
                 }
             )
 
-        executable = all(
-            step["status"] == "ready"
-            for step in steps
-            if step["kind"] == "tool"
-        )
+        executable = all(step["status"] == "ready" for step in steps if step["kind"] == "tool")
         return {
             "goal_length": len(request.goal),
             "analysis_mode": "declarative_request",

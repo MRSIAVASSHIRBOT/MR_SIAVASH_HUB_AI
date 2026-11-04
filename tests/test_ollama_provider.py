@@ -48,9 +48,7 @@ def test_ollama_generate_parses_response_and_bounds_generation():
         )
 
     provider = OllamaProvider("tiny-model", transport=httpx.MockTransport(handler))
-    result = provider.generate(
-        ProviderRequest(input_text="hello", max_output_tokens=128)
-    )
+    result = provider.generate(ProviderRequest(input_text="hello", max_output_tokens=128))
     assert result.output_text == "local answer"
     assert result.input_tokens == 12
     assert result.output_tokens == 7

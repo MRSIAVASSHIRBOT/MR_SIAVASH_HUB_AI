@@ -68,28 +68,48 @@ class DefensiveReviewScope(BaseModel):
 
 _RULES: tuple[tuple[str, str, str, re.Pattern[str]], ...] = (
     (
-        "CFG001", "high", "Debug mode appears enabled.",
+        "CFG001",
+        "high",
+        "Debug mode appears enabled.",
         re.compile(r"(?im)^\s*(?:debug|debug_mode)\s*[:=]\s*(?:true|1|yes)\s*(?:#.*)?$"),
     ),
     (
-        "CFG002", "high", "Service appears configured to bind to every network interface.",
+        "CFG002",
+        "high",
+        "Service appears configured to bind to every network interface.",
         re.compile(r"(?im)^\s*(?:host|bind_address)\s*[:=]\s*['\"]?0\.0\.0\.0['\"]?\s*(?:#.*)?$"),
     ),
     (
-        "CFG003", "high", "TLS certificate verification appears disabled.",
-        re.compile(r"(?im)^\s*(?:verify|ssl_verify|tls_verify)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"),
+        "CFG003",
+        "high",
+        "TLS certificate verification appears disabled.",
+        re.compile(
+            r"(?im)^\s*(?:verify|ssl_verify|tls_verify)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"
+        ),
     ),
     (
-        "CFG004", "medium", "Wildcard cross-origin policy appears configured.",
-        re.compile(r"(?i)(?:allow_origins|allowed_origins|cors_origins)\s*[:=].*(?:\*|\[['\"]\*['\"]\])"),
+        "CFG004",
+        "medium",
+        "Wildcard cross-origin policy appears configured.",
+        re.compile(
+            r"(?i)(?:allow_origins|allowed_origins|cors_origins)\s*[:=].*(?:\*|\[['\"]\*['\"]\])"
+        ),
     ),
     (
-        "CFG005", "medium", "Secure cookie flag appears disabled.",
-        re.compile(r"(?im)^\s*(?:session_cookie_secure|cookie_secure|secure_cookies)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"),
+        "CFG005",
+        "medium",
+        "Secure cookie flag appears disabled.",
+        re.compile(
+            r"(?im)^\s*(?:session_cookie_secure|cookie_secure|secure_cookies)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"
+        ),
     ),
     (
-        "CFG006", "medium", "HttpOnly cookie flag appears disabled.",
-        re.compile(r"(?im)^\s*(?:session_cookie_httponly|cookie_httponly|httponly)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"),
+        "CFG006",
+        "medium",
+        "HttpOnly cookie flag appears disabled.",
+        re.compile(
+            r"(?im)^\s*(?:session_cookie_httponly|cookie_httponly|httponly)\s*[:=]\s*(?:false|0|no)\s*(?:#.*)?$"
+        ),
     ),
 )
 
@@ -180,15 +200,17 @@ def audit_configuration_text(
                         "Enable HttpOnly on session cookies to reduce script access to session tokens.",
                     ),
                 }[rule_id]
-                findings.append(_finding(
-                    rule_id,
-                    severity,
-                    confidence,
-                    safe_filename,
-                    line_number,
-                    message,
-                    remediation,
-                ))
+                findings.append(
+                    _finding(
+                        rule_id,
+                        severity,
+                        confidence,
+                        safe_filename,
+                        line_number,
+                        message,
+                        remediation,
+                    )
+                )
     return {
         "mode": "offline_defensive_configuration_review",
         "asset": authorized_asset,
@@ -203,9 +225,7 @@ def audit_configuration_text(
     }
 
 
-_REQUIREMENT_RE = re.compile(
-    r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]+\])?\s*(.*)$"
-)
+_REQUIREMENT_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]+\])?\s*(.*)$")
 
 
 def audit_requirements_text(
@@ -234,15 +254,17 @@ def audit_requirements_text(
         message: str,
         remediation: str,
     ) -> None:
-        findings.append(_finding(
-            rule_id,
-            severity,
-            confidence,
-            safe_filename,
-            line_number,
-            message,
-            remediation,
-        ))
+        findings.append(
+            _finding(
+                rule_id,
+                severity,
+                confidence,
+                safe_filename,
+                line_number,
+                message,
+                remediation,
+            )
+        )
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
@@ -390,15 +412,17 @@ def audit_structured_log_text(
         message: str,
         remediation: str,
     ) -> None:
-        findings.append(_finding(
-            rule_id,
-            severity,
-            confidence,
-            safe_filename,
-            line_number,
-            message,
-            remediation,
-        ))
+        findings.append(
+            _finding(
+                rule_id,
+                severity,
+                confidence,
+                safe_filename,
+                line_number,
+                message,
+                remediation,
+            )
+        )
 
     for line_number, raw_line in enumerate(lines, start=1):
         if not raw_line.strip():
@@ -471,8 +495,7 @@ def audit_structured_log_text(
             "Review the surrounding authentication events and apply the service's normal account-protection procedure if the activity is unexpected.",
         )
         later_successes = [
-            line for line in successful_by_actor.get(actor_key, [])
-            if line > failure_lines[-1]
+            line for line in successful_by_actor.get(actor_key, []) if line > failure_lines[-1]
         ]
         if later_successes:
             add(

@@ -85,9 +85,7 @@ def test_agent_execute_runs_registered_safe_tool():
 def test_agent_execute_requires_authentication(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
     get_settings.cache_clear()
-    response = TestClient(create_app()).post(
-        "/agent/execute", json={"goal": "must authenticate"}
-    )
+    response = TestClient(create_app()).post("/agent/execute", json={"goal": "must authenticate"})
     assert response.status_code in (401, 403)
     get_settings.cache_clear()
 
@@ -170,6 +168,7 @@ def test_agent_workflow_executes_and_persists_each_step():
     assert task_result.status_code == 200
     assert task_result.json()["result"]["execution_completed"] is True
 
+
 def test_agent_workflow_persists_blocked_plan_without_execution():
     client = authenticated_client()
     response = client.post(
@@ -191,24 +190,26 @@ def test_agent_workflow_persists_blocked_plan_without_execution():
 
 def test_agent_workflow_not_found():
     client = authenticated_client()
-    response = client.get(
-        "/agent/workflows/00000000-0000-0000-0000-000000000002"
-    )
+    response = client.get("/agent/workflows/00000000-0000-0000-0000-000000000002")
     assert response.status_code == 404
-
 
 
 def test_workflow_request_digest_distinguishes_same_length_goals():
     from mrhub.agents.core import AgentPlanRequest
     from mrhub.api.routes.agent import _workflow_digest
 
-    first = AgentPlanRequest(goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "one"}}])
-    second = AgentPlanRequest(goal="bravo", tools=[{"name": "text.echo", "payload": {"text": "one"}}])
-    third = AgentPlanRequest(goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "two"}}])
+    first = AgentPlanRequest(
+        goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "one"}}]
+    )
+    second = AgentPlanRequest(
+        goal="bravo", tools=[{"name": "text.echo", "payload": {"text": "one"}}]
+    )
+    third = AgentPlanRequest(
+        goal="alpha", tools=[{"name": "text.echo", "payload": {"text": "two"}}]
+    )
 
     assert _workflow_digest(first) != _workflow_digest(second)
     assert _workflow_digest(first) != _workflow_digest(third)
-
 
 
 def test_workflow_resume_check_is_owner_scoped_and_never_executes():
@@ -222,6 +223,7 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
     )
     assert created.status_code == 200
     from client_helpers import run_worker_once
+
     assert run_worker_once() is not None
     workflow_id = created.json()["workflow"]["workflow_id"]
     checked = client.post(
@@ -236,8 +238,6 @@ def test_workflow_resume_check_is_owner_scoped_and_never_executes():
     assert checked.status_code == 200
     assert checked.json()["decision"] == "terminal"
     assert checked.json()["execution_started"] is False
-
-
 
 
 def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step(monkeypatch):
@@ -361,6 +361,7 @@ def test_agent_workflow_resume_rejects_changed_original_request_without_executio
     created = client.post("/agent/workflows", json=original)
     assert created.status_code == 200
     from client_helpers import run_worker_once
+
     assert run_worker_once() is not None
     workflow = created.json()["workflow"]
     workflow_id = workflow["workflow_id"]
@@ -493,14 +494,20 @@ def test_agent_workflow_idempotency_key_rejects_changed_request():
     headers = {"Idempotency-Key": "workflow-submit-002"}
     first = client.post(
         "/agent/workflows",
-        json={"goal": "First request", "tools": [{"name": "text.echo", "payload": {"text": "one"}}]},
+        json={
+            "goal": "First request",
+            "tools": [{"name": "text.echo", "payload": {"text": "one"}}],
+        },
         headers=headers,
     )
     assert first.status_code == 200
 
     conflict = client.post(
         "/agent/workflows",
-        json={"goal": "Different request", "tools": [{"name": "text.echo", "payload": {"text": "two"}}]},
+        json={
+            "goal": "Different request",
+            "tools": [{"name": "text.echo", "payload": {"text": "two"}}],
+        },
         headers=headers,
     )
     assert conflict.status_code == 409

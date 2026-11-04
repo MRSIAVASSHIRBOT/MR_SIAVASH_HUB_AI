@@ -71,14 +71,10 @@ def _setup(tmp_path, monkeypatch):
         duration_seconds=10,
         idempotency_key="generation-output-test",
     )
-    accepted, _ = jobs.submit(
-        "owner-a", analysis_id, "local", "renderer-v1", request
-    )
+    accepted, _ = jobs.submit("owner-a", analysis_id, "local", "renderer-v1", request)
     generation_id = UUID(accepted["generation_id"])
     jobs.transition("owner-a", generation_id, "queued")
-    jobs.transition(
-        "owner-a", generation_id, "submitting", provider_job_id="provider-job-1"
-    )
+    jobs.transition("owner-a", generation_id, "submitting", provider_job_id="provider-job-1")
     return jobs, MediaAssetRepository(jobs.database_path), generation_id
 
 
@@ -95,9 +91,7 @@ def _result(content):
     )
 
 
-def test_provider_output_is_bounded_and_registered_as_private_asset(
-    tmp_path, monkeypatch
-):
+def test_provider_output_is_bounded_and_registered_as_private_asset(tmp_path, monkeypatch):
     jobs, media, generation_id = _setup(tmp_path, monkeypatch)
     content = b"provider-output-fixture"
     from mrhub.video_intelligence import service
@@ -114,8 +108,12 @@ def test_provider_output_is_bounded_and_registered_as_private_asset(
     )
 
     asset = download_and_register_generation_output(
-        _Provider(content), _result(content), jobs, media,
-        "owner-a", generation_id,
+        _Provider(content),
+        _result(content),
+        jobs,
+        media,
+        "owner-a",
+        generation_id,
     )
 
     assert asset["owner_user_id"] == "owner-a"
@@ -126,9 +124,7 @@ def test_provider_output_is_bounded_and_registered_as_private_asset(
     assert jobs.get("owner-a", generation_id)["status"] == "succeeded"
 
 
-def test_provider_byte_count_mismatch_aborts_without_publishing_file(
-    tmp_path, monkeypatch
-):
+def test_provider_byte_count_mismatch_aborts_without_publishing_file(tmp_path, monkeypatch):
     jobs, media, generation_id = _setup(tmp_path, monkeypatch)
     content = b"provider-output-fixture"
 
@@ -146,9 +142,7 @@ def test_provider_byte_count_mismatch_aborts_without_publishing_file(
     assert list(media.storage_root.iterdir()) == []
 
 
-def test_provider_capability_mismatch_is_rejected_before_download(
-    tmp_path, monkeypatch
-):
+def test_provider_capability_mismatch_is_rejected_before_download(tmp_path, monkeypatch):
     jobs, media, generation_id = _setup(tmp_path, monkeypatch)
     content = b"provider-output-fixture"
     provider = _Provider(content)

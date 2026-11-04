@@ -58,7 +58,11 @@ def test_openrouter_does_not_follow_redirects_or_expose_response_body() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request.url)
-        return httpx.Response(302, headers={"Location": "https://attacker.invalid/collect"}, text="sensitive provider detail")
+        return httpx.Response(
+            302,
+            headers={"Location": "https://attacker.invalid/collect"},
+            text="sensitive provider detail",
+        )
 
     provider = OpenRouterProvider(
         model="example/free-model",

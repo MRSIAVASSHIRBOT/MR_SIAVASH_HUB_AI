@@ -75,9 +75,7 @@ class EditSpecification(BaseModel):
     brand_guidance: BrandGuidance
     custom_edit_guidance: CustomEditGuidance
     audio_plan_status: Literal["not_requested", "requested_not_implemented"]
-    timeline_status: Literal[
-        "scene_map_prepared_timeline_not_built", "validated_cut_only"
-    ] = (
+    timeline_status: Literal["scene_map_prepared_timeline_not_built", "validated_cut_only"] = (
         "scene_map_prepared_timeline_not_built"
     )
     render_status: Literal["not_implemented"] = "not_implemented"
@@ -117,7 +115,8 @@ def build_edit_specification(
                 # FFmpeg's parser allows a small timestamp tolerance around EOF.
                 # A cut at/after the analyzed duration cannot start an output segment.
                 scene_start_timestamps=[
-                    value for value in scene_starts
+                    value
+                    for value in scene_starts
                     if isinstance(value, (int, float))
                     and not isinstance(value, bool)
                     and value < float(duration)

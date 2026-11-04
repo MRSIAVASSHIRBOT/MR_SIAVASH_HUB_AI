@@ -11,9 +11,7 @@ def test_emergency_stop_persists_and_prevents_new_task_claims(tmp_path):
     repository.create(task)
     control = WorkerControlRepository(repository.database_path)
 
-    stopped = control.set_stopped(
-        True, reason="operator requested stop", changed_by="owner-1"
-    )
+    stopped = control.set_stopped(True, reason="operator requested stop", changed_by="owner-1")
     assert stopped["stopped"] is True
     assert stopped["reason"] == "operator requested stop"
 
@@ -36,7 +34,6 @@ def test_worker_control_defaults_to_running_after_schema_migration(tmp_path):
 
     assert state["stopped"] is False
     assert state["reason"] is None
-
 
 
 def test_emergency_stop_does_not_replay_inflight_handler_and_blocks_next_claim(tmp_path):
@@ -97,6 +94,7 @@ def test_emergency_stop_does_not_replay_inflight_handler_and_blocks_next_claim(t
     assert resumed is not None and resumed.task_id == second_task.task_id
     assert resumed.status is TaskStatus.SUCCEEDED
 
+
 def test_emergency_stop_blocks_scheduled_content_dispatch(tmp_path):
     repository = TaskRepository(tmp_path / "worker-control-schedules.sqlite3")
     repository.initialize()
@@ -119,4 +117,3 @@ def test_emergency_stop_blocks_scheduled_content_dispatch(tmp_path):
     control.set_stopped(False, reason=None, changed_by="owner-1")
     assert worker.run_once() is None
     assert dispatcher.calls == 1
-

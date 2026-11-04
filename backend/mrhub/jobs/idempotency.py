@@ -141,16 +141,12 @@ class IdempotencyRepository:
                     )
                 if existing.task_id not in {None, task_id} and task_id is not None:
                     raise IdempotencyConflict("Idempotency key is already bound to another task")
-                if (
-                    existing.workflow_id not in {None, workflow_id}
-                    and workflow_id is not None
-                ):
+                if existing.workflow_id not in {None, workflow_id} and workflow_id is not None:
                     raise IdempotencyConflict(
                         "Idempotency key is already bound to another workflow"
                     )
-                if (
-                    (task_id is not None and existing.task_id is None)
-                    or (workflow_id is not None and existing.workflow_id is None)
+                if (task_id is not None and existing.task_id is None) or (
+                    workflow_id is not None and existing.workflow_id is None
                 ):
                     connection.execute(
                         """
@@ -215,9 +211,7 @@ class IdempotencyRepository:
                         "Idempotency key was already used for a different request"
                     )
                 if existing.workflow_id is not None:
-                    raise IdempotencyConflict(
-                        "Idempotency key is already bound to a workflow"
-                    )
+                    raise IdempotencyConflict("Idempotency key is already bound to a workflow")
                 if existing.task_id is not None:
                     return IdempotencyReservation(existing, created=False)
 
@@ -323,9 +317,7 @@ class IdempotencyRepository:
             ).fetchone()
             return self._record(updated)
 
-    def transition(
-        self, scope: str, key: str, expected: str, target: str
-    ) -> IdempotencyRecord:
+    def transition(self, scope: str, key: str, expected: str, target: str) -> IdempotencyRecord:
         """Apply a compare-and-set state transition; unknown outcomes are never retried."""
         if target not in self._ALLOWED_TRANSITIONS.get(expected, set()):
             raise IdempotencyError(f"Invalid idempotency transition: {expected} -> {target}")

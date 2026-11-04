@@ -1,4 +1,5 @@
 """Explicitly configured social publishing adapters."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -39,9 +40,7 @@ class TelegramBotApiAdapter:
         self._client = client or httpx.Client(timeout=15.0)
         self._owns_client = client is None
 
-    def publish(
-        self, draft: dict[str, object], *, idempotency_key: str
-    ) -> PublishReceipt:
+    def publish(self, draft: dict[str, object], *, idempotency_key: str) -> PublishReceipt:
         del idempotency_key  # Telegram sendMessage has no provider-side idempotency support.
         if draft.get("platform") != "telegram":
             raise PermanentPublishError("Telegram adapter received a non-Telegram draft")
@@ -90,10 +89,18 @@ class TelegramBotApiAdapter:
                 or not 1 <= file_size <= 25_000_000
                 or file_size != int(media.get("file_size", -1))
             ):
-                raise PermanentPublishError("Telegram media file is invalid or exceeds the upload limit")
+                raise PermanentPublishError(
+                    "Telegram media file is invalid or exceeds the upload limit"
+                )
             if len(text) > 1024:
-                raise PermanentPublishError("Telegram media caption exceeds the 1024 character limit")
-            endpoint = f"https://api.telegram.org/bot{self._bot_token}/sendPhoto" if upload_field == "photo" else f"https://api.telegram.org/bot{self._bot_token}/sendVideo"
+                raise PermanentPublishError(
+                    "Telegram media caption exceeds the 1024 character limit"
+                )
+            endpoint = (
+                f"https://api.telegram.org/bot{self._bot_token}/sendPhoto"
+                if upload_field == "photo"
+                else f"https://api.telegram.org/bot{self._bot_token}/sendVideo"
+            )
             try:
                 with media_path.open("rb") as media_file:
                     response = self._client.post(
@@ -177,9 +184,8 @@ class InstagramGraphImageAdapter:
         ):
             raise PermanentPublishError("Instagram requires a public HTTPS media URL")
         hostname = hostname.rstrip(".").lower()
-        if (
-            hostname in {"localhost", "localhost.localdomain"}
-            or hostname.endswith((".local", ".internal", ".test", ".invalid", ".example"))
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(
+            (".local", ".internal", ".test", ".invalid", ".example")
         ):
             raise PermanentPublishError("Instagram media URL must use a public hostname")
         try:
@@ -207,7 +213,9 @@ class InstagramGraphImageAdapter:
         try:
             payload: Any = response.json()
         except ValueError as exc:
-            raise UnknownPublishOutcome("Instagram Graph API returned an unreadable response") from exc
+            raise UnknownPublishOutcome(
+                "Instagram Graph API returned an unreadable response"
+            ) from exc
         if not isinstance(payload, dict):
             raise UnknownPublishOutcome("Instagram Graph API returned an unexpected response")
         if payload.get("error"):
@@ -218,9 +226,7 @@ class InstagramGraphImageAdapter:
             raise PermanentPublishError("Instagram Graph API rejected the request")
         return payload
 
-    def publish(
-        self, draft: dict[str, object], *, idempotency_key: str
-    ) -> PublishReceipt:
+    def publish(self, draft: dict[str, object], *, idempotency_key: str) -> PublishReceipt:
         # Graph API publishing has no general idempotency key for this two-step flow.
         del idempotency_key
         if draft.get("platform") != "instagram":
@@ -228,7 +234,11 @@ class InstagramGraphImageAdapter:
         media_url = self._validate_public_media_url(draft.get("media_url"))
         body = str(draft.get("body", "")).strip()
         hashtags = draft.get("hashtags", [])
-        suffix = " ".join(str(tag).strip() for tag in hashtags if str(tag).strip()) if isinstance(hashtags, list) else ""
+        suffix = (
+            " ".join(str(tag).strip() for tag in hashtags if str(tag).strip())
+            if isinstance(hashtags, list)
+            else ""
+        )
         caption = "\n\n".join(part for part in (body, suffix) if part)
         if not caption or len(caption) > 2_200:
             raise PermanentPublishError("Instagram caption must contain 1 to 2200 characters")

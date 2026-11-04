@@ -1,4 +1,5 @@
 """Durable owner-scoped schedule records for approved content drafts."""
+
 from __future__ import annotations
 
 import hashlib
@@ -78,9 +79,16 @@ class ContentScheduleRepository:
                     ) VALUES (?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, 0, NULL, NULL, ?, ?, NULL)
                     """,
                     (
-                        schedule_id, owner_user_id, str(draft_id), draft["platform"],
-                        scheduled_utc.isoformat(), draft["version"], draft["content_hash"],
-                        idempotency_key, created_at, created_at,
+                        schedule_id,
+                        owner_user_id,
+                        str(draft_id),
+                        draft["platform"],
+                        scheduled_utc.isoformat(),
+                        draft["version"],
+                        draft["content_hash"],
+                        idempotency_key,
+                        created_at,
+                        created_at,
                     ),
                 )
                 row = connection.execute(

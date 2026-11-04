@@ -3,6 +3,7 @@
 This route is intentionally separate from authenticated media management. It serves only
 known image assets, requires a valid HMAC and expiry, and never accepts a filesystem path.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -56,8 +57,13 @@ def sign_asset_url(asset_id: str, *, now: int | None = None) -> str:
         # A DNS hostname is expected here; only parseable IP literals need IP checks.
         address = None
     if (
-        parsed.scheme != "https" or not host or parsed.username or parsed.password
-        or parsed.query or parsed.fragment or port not in (None, 443)
+        parsed.scheme != "https"
+        or not host
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or port not in (None, 443)
         or host.lower() in {"localhost", "localhost.localdomain"}
         or host.lower().endswith((".local", ".internal", ".test", ".invalid", ".example"))
         or (address is not None and not address.is_global)
@@ -99,7 +105,9 @@ def serve_signed_media(
         raise HTTPException(status_code=404, detail="media_asset_unavailable")
     with path.open("rb") as image_file:
         header = image_file.read(8)
-    if not any(header.startswith(prefix) for prefix in _IMAGE_SIGNATURES[str(record["media_type"])]):
+    if not any(
+        header.startswith(prefix) for prefix in _IMAGE_SIGNATURES[str(record["media_type"])]
+    ):
         raise HTTPException(status_code=404, detail="media_asset_type_mismatch")
     return FileResponse(
         path,

@@ -1,4 +1,5 @@
 """Authenticated, non-applying NEXUS patch proposal and diff review API."""
+
 from __future__ import annotations
 
 from typing import Annotated

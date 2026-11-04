@@ -3,6 +3,7 @@
 The repository stores encrypted inputs and fenced lifecycle state. Provider calls
 are performed only by the separately registered, lease-owned worker handler.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -124,8 +125,13 @@ class VideoGenerationJobRepository:
                 ) VALUES (?, ?, ?, ?, ?, 'prepared', NULL, NULL, NULL,
                           NULL, NULL, NULL, NULL, NULL, ?, ?)""",
                 (
-                    str(generation_id), owner_user_id, str(source_analysis_id),
-                    provider, model, now, now,
+                    str(generation_id),
+                    owner_user_id,
+                    str(source_analysis_id),
+                    provider,
+                    model,
+                    now,
+                    now,
                 ),
             )
             connection.execute(
@@ -134,8 +140,12 @@ class VideoGenerationJobRepository:
                     nonce_b64, ciphertext_b64, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?)""",
                 (
-                    str(generation_id), owner_user_id, envelope.version,
-                    envelope.nonce_b64, envelope.ciphertext_b64, now,
+                    str(generation_id),
+                    owner_user_id,
+                    envelope.version,
+                    envelope.nonce_b64,
+                    envelope.ciphertext_b64,
+                    now,
                 ),
             )
             connection.execute(
@@ -173,7 +183,12 @@ class VideoGenerationJobRepository:
                 (str(generation_id), owner_user_id),
             ).fetchone()
             if existing is not None:
-                return {"generation_id": str(generation_id), "task_id": existing["task_id"], "status": str(job["status"]), "created": False}
+                return {
+                    "generation_id": str(generation_id),
+                    "task_id": existing["task_id"],
+                    "status": str(job["status"]),
+                    "created": False,
+                }
             if job["status"] != "prepared":
                 raise ValueError("Only prepared generation jobs can be enqueued")
             task = TaskRecord(
@@ -188,8 +203,14 @@ class VideoGenerationJobRepository:
                 """INSERT INTO tasks (
                     task_id, task_type, status, risk_class, created_at, updated_at, description
                 ) VALUES (?, ?, 'waiting_approval', ?, ?, ?, ?)""",
-                (str(task.task_id), task.task_type, task.risk_class.value,
-                 task.created_at.isoformat(), task.updated_at.isoformat(), task.description),
+                (
+                    str(task.task_id),
+                    task.task_type,
+                    task.risk_class.value,
+                    task.created_at.isoformat(),
+                    task.updated_at.isoformat(),
+                    task.description,
+                ),
             )
             connection.execute(
                 """INSERT INTO video_generation_task_links (
@@ -202,7 +223,12 @@ class VideoGenerationJobRepository:
                    WHERE generation_id = ? AND owner_user_id = ? AND status = 'prepared'""",
                 (now, str(generation_id), owner_user_id),
             )
-        return {"generation_id": str(generation_id), "task_id": str(task.task_id), "status": "queued", "created": True}
+        return {
+            "generation_id": str(generation_id),
+            "task_id": str(task.task_id),
+            "status": "queued",
+            "created": True,
+        }
 
     def load_for_worker(self, task_id: UUID) -> dict[str, object] | None:
         """Decrypt one queued job only through its linked durable task."""
@@ -259,7 +285,10 @@ class VideoGenerationJobRepository:
         if lease.task_id == "" or not lease.owner or lease.fencing_token < 1:
             raise ValueError("A valid worker lease is required")
         now = self._now()
-        allowed = {"queued": {"submitting", "failed"}, "submitting": {"running", "unknown_outcome", "failed"}}
+        allowed = {
+            "queued": {"submitting", "failed"},
+            "submitting": {"running", "unknown_outcome", "failed"},
+        }
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             link = connection.execute(
@@ -288,14 +317,23 @@ class VideoGenerationJobRepository:
                        WHERE e.task_id = ? AND e.lease_owner = ?
                          AND e.execution_token = ? AND e.lease_expires_at > ?
                      )""",
-                (target, provider_job_id, error_code, now, str(generation_id),
-                 owner_user_id, current["status"], lease.task_id, lease.owner,
-                 lease.fencing_token, now),
+                (
+                    target,
+                    provider_job_id,
+                    error_code,
+                    now,
+                    str(generation_id),
+                    owner_user_id,
+                    current["status"],
+                    lease.task_id,
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                ),
             )
             if cursor.rowcount != 1:
                 raise ValueError("Worker lease lost before generation state update")
         return self.get(owner_user_id, generation_id)
-
 
     def fail_unapproved_task(self, task_id: UUID) -> bool:
         """Fail a queued generation task that lacks a valid owner approval."""
@@ -366,9 +404,7 @@ class VideoGenerationJobRepository:
             ).fetchone()
         return dict(row) if row is not None else None
 
-    def load_for_handoff(
-        self, owner_user_id: str, generation_id: UUID
-    ) -> dict[str, object] | None:
+    def load_for_handoff(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT p.envelope_version, p.nonce_b64, p.ciphertext_b64,
@@ -534,8 +570,14 @@ class VideoGenerationJobRepository:
                 ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'processed',
                           'video_ai_generated', NULL, ?, ?)""",
                 (
-                    output_asset_id, owner_user_id, output_filename, storage_key,
-                    size, digest.hexdigest(), now, now,
+                    output_asset_id,
+                    owner_user_id,
+                    output_filename,
+                    storage_key,
+                    size,
+                    digest.hexdigest(),
+                    now,
+                    now,
                 ),
             )
             connection.execute(
@@ -545,8 +587,14 @@ class VideoGenerationJobRepository:
                        progress_percent = 100, error_code = NULL, updated_at = ?
                    WHERE generation_id = ? AND owner_user_id = ?""",
                 (
-                    output_asset_id, size, duration, metadata.width, metadata.height,
-                    now, str(generation_id), owner_user_id,
+                    output_asset_id,
+                    size,
+                    duration,
+                    metadata.width,
+                    metadata.height,
+                    now,
+                    str(generation_id),
+                    owner_user_id,
                 ),
             )
             connection.execute(
@@ -616,8 +664,14 @@ class VideoGenerationJobRepository:
                        error_code = ?, updated_at = ?
                    WHERE generation_id = ? AND owner_user_id = ? AND status = ?""",
                 (
-                    target, provider_job_id, progress_percent, error_code, now,
-                    str(generation_id), owner_user_id, current,
+                    target,
+                    provider_job_id,
+                    progress_percent,
+                    error_code,
+                    now,
+                    str(generation_id),
+                    owner_user_id,
+                    current,
                 ),
             )
         return self.get(owner_user_id, generation_id)

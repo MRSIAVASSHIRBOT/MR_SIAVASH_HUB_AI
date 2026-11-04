@@ -155,7 +155,6 @@ def test_renderer_rejects_missing_owner_resolved_source_before_process(tmp_path,
     assert called is False
 
 
-
 def test_real_ffmpeg_render_produces_probeable_mp4_when_available(tmp_path):
     ffmpeg = shutil.which("ffmpeg")
     ffprobe = shutil.which("ffprobe")

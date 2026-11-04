@@ -114,8 +114,15 @@ class VideoTimelineDraftRepository:
                         created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
                     (
-                        draft_id, owner_user_id, str(analysis_id), str(asset_id),
-                        duration_seconds, aspect_ratio, timeline_json, now, now,
+                        draft_id,
+                        owner_user_id,
+                        str(analysis_id),
+                        str(asset_id),
+                        duration_seconds,
+                        aspect_ratio,
+                        timeline_json,
+                        now,
+                        now,
                     ),
                 )
                 row = connection.execute(
@@ -160,8 +167,13 @@ class VideoTimelineDraftRepository:
                        version = version + 1, updated_at = ?
                    WHERE draft_id = ? AND owner_user_id = ? AND version = ?""",
                 (
-                    update.duration_seconds, update.aspect_ratio, timeline_json,
-                    now, str(draft_id), owner_user_id, update.expected_version,
+                    update.duration_seconds,
+                    update.aspect_ratio,
+                    timeline_json,
+                    now,
+                    str(draft_id),
+                    owner_user_id,
+                    update.expected_version,
                 ),
             )
             if cursor.rowcount != 1:

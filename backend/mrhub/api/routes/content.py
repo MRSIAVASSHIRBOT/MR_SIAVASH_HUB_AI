@@ -1,4 +1,5 @@
 """Authenticated local-first content draft lifecycle; no publishing side effects."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -136,7 +137,9 @@ def create_draft(
         )
         if duplicate is not None:
             raise _duplicate_conflict() from exc
-        raise HTTPException(status_code=422, detail="Content draft violates a storage constraint") from exc
+        raise HTTPException(
+            status_code=422, detail="Content draft violates a storage constraint"
+        ) from exc
     _audit(repository, user, "content.draft_created", str(record["draft_id"]), "draft_created")
     return record
 

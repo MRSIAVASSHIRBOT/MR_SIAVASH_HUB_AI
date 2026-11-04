@@ -33,9 +33,7 @@ class AgentWorkflowRunner:
         self.jobs = JobEngine(repository)
         self.recovery = WorkflowRecoveryRepository(repository.database_path)
         self.lease_seconds = lease_seconds
-        self.lease_manager = LeaseManager(
-            repository.database_path, lease_seconds=lease_seconds
-        )
+        self.lease_manager = LeaseManager(repository.database_path, lease_seconds=lease_seconds)
         self.worker_id = str(uuid4())
 
     @staticmethod
@@ -116,9 +114,7 @@ class AgentWorkflowRunner:
                 definition = self.core.tool_registry.get(requested_tool.name)
                 kind = "external_tool" if definition.external_side_effect else "safe_tool"
                 name = requested_tool.name
-            step_specs.append(
-                {"step_number": number, "kind": kind, "name": name}
-            )
+            step_specs.append({"step_number": number, "kind": kind, "name": name})
         worker_owned_lease = lease is not None
         if worker_owned_lease:
             if workflow_id is None or task is None or lease_lost is None:
@@ -168,23 +164,17 @@ class AgentWorkflowRunner:
         attempts: dict[int, StepAttempt] = {}
 
         try:
-            self._record_execution_start(
-                lease, increment_attempt=not worker_owned_lease
-            )
+            self._record_execution_start(lease, increment_attempt=not worker_owned_lease)
             self.recovery.start_run(workflow_id, lease=lease)
             provider_attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
             provider_digest = self._digest(plan.get("selected_provider", {}))
-            self.recovery.complete_step(
-                workflow_id, provider_attempt, provider_digest, lease=lease
-            )
+            self.recovery.complete_step(workflow_id, provider_attempt, provider_digest, lease=lease)
 
             def on_step(number: int, status: str, error_code: str | None) -> None:
                 if lease_lost.is_set():
                     raise RuntimeError("Workflow worker lease was lost")
                 if status == "running":
-                    attempts[number] = self.recovery.start_step(
-                        workflow_id, number, lease=lease
-                    )
+                    attempts[number] = self.recovery.start_step(workflow_id, number, lease=lease)
                 elif status == "failed":
                     attempt = attempts.get(number)
                     if attempt is not None:
@@ -204,9 +194,7 @@ class AgentWorkflowRunner:
                 attempt = attempts.get(number)
                 if attempt is None:
                     raise RuntimeError("Workflow step result has no active attempt")
-                self.recovery.complete_step(
-                    workflow_id, attempt, output_digest, lease=lease
-                )
+                self.recovery.complete_step(workflow_id, attempt, output_digest, lease=lease)
                 del attempts[number]
 
             def should_cancel() -> bool:
@@ -274,7 +262,8 @@ class AgentWorkflowRunner:
                 if task_state is not None and task_state.status is TaskStatus.RUNNING:
                     target = (
                         TaskStatus.WAITING_APPROVAL
-                        if current is not None and current["status"] in {"recovery_required", "paused"}
+                        if current is not None
+                        and current["status"] in {"recovery_required", "paused"}
                         else TaskStatus.FAILED
                     )
                     self.jobs.transition(task.task_id, target, lease=lease)
@@ -295,7 +284,6 @@ class AgentWorkflowRunner:
                 "executed_tool_count": len(execution["results"]),
             },
         }
-
 
     def _validate_resume(
         self,
@@ -341,14 +329,11 @@ class AgentWorkflowRunner:
         if expected != stored:
             raise ValueError("Current workflow plan differs from the stored definition")
 
-        provider_step = next(
-            (step for step in workflow["steps"] if step["step_number"] == 1), None
-        )
+        provider_step = next((step for step in workflow["steps"] if step["step_number"] == 1), None)
         if (
             provider_step is not None
             and provider_step["status"] == "succeeded"
-            and provider_step["output_digest"]
-            != self._digest(plan.get("selected_provider", {}))
+            and provider_step["output_digest"] != self._digest(plan.get("selected_provider", {}))
         ):
             raise ValueError("Selected provider changed; workflow must be replanned")
 
@@ -387,9 +372,7 @@ class AgentWorkflowRunner:
             metadata={"workflow_id": str(workflow_id), "task_type": "agent.workflow"},
         )
         return {
-            "workflow": self.recovery.get_run(
-                workflow_id, owner_user_id=owner_user_id
-            ),
+            "workflow": self.recovery.get_run(workflow_id, owner_user_id=owner_user_id),
             "execution": None,
             "queued": True,
         }
@@ -472,9 +455,7 @@ class AgentWorkflowRunner:
             else:
                 start_step = decision.next_step
                 if start_step == 1:
-                    provider_attempt = self.recovery.start_step(
-                        workflow_id, 1, lease=lease
-                    )
+                    provider_attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
                     self.recovery.complete_step(
                         workflow_id,
                         provider_attempt,
@@ -483,9 +464,7 @@ class AgentWorkflowRunner:
                     )
                     start_step = 2
 
-                def on_step(
-                    number: int, status: str, error_code: str | None
-                ) -> None:
+                def on_step(number: int, status: str, error_code: str | None) -> None:
                     if lease_lost.is_set():
                         raise RuntimeError("Workflow worker lease was lost")
                     if status == "running":
@@ -495,9 +474,7 @@ class AgentWorkflowRunner:
                     elif status == "failed":
                         attempt = attempts.get(number)
                         if attempt is not None:
-                            definition = self.core.tool_registry.get(
-                                request.tools[number - 2].name
-                            )
+                            definition = self.core.tool_registry.get(request.tools[number - 2].name)
                             self.recovery.fail_step(
                                 workflow_id,
                                 attempt,
@@ -512,9 +489,7 @@ class AgentWorkflowRunner:
                     attempt = attempts.get(number)
                     if attempt is None:
                         raise RuntimeError("Workflow step result has no active attempt")
-                    self.recovery.complete_step(
-                        workflow_id, attempt, output_digest, lease=lease
-                    )
+                    self.recovery.complete_step(workflow_id, attempt, output_digest, lease=lease)
                     del attempts[number]
 
                 execution = self.core.execute(
@@ -533,9 +508,7 @@ class AgentWorkflowRunner:
                     "error_code": "cancelled",
                 }
 
-            current = self.recovery.get_run(
-                workflow_id, owner_user_id=owner_user_id
-            )
+            current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
             if execution.get("cancelled"):
                 if current is not None and current["status"] == "running":
                     self.recovery.finish_run(workflow_id, "cancelled", lease=lease)
@@ -548,27 +521,20 @@ class AgentWorkflowRunner:
             else:
                 if current is not None and current["status"] == "running":
                     self.recovery.finish_run(workflow_id, "failed", lease=lease)
-                current = self.recovery.get_run(
-                    workflow_id, owner_user_id=owner_user_id
-                )
+                current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
                 target = (
                     TaskStatus.WAITING_APPROVAL
-                    if current is not None
-                    and current["status"] in {"recovery_required", "paused"}
+                    if current is not None and current["status"] in {"recovery_required", "paused"}
                     else TaskStatus.FAILED
                 )
                 self.jobs.transition(task_id, target, lease=lease)
         except Exception as exc:
             if self.lease_manager.is_current(lease):
                 self.recovery.mark_interrupted(workflow_id, lease=lease)
-                current = self.recovery.get_run(
-                    workflow_id, owner_user_id=owner_user_id
-                )
+                current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
                 if current is not None and current["status"] == "running":
                     self.recovery.finish_run(workflow_id, "failed", lease=lease)
-                    current = self.recovery.get_run(
-                        workflow_id, owner_user_id=owner_user_id
-                    )
+                    current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
                 state = self.jobs.get(task_id)
                 if state is not None and state.status is TaskStatus.RUNNING:
                     target = (
@@ -587,9 +553,7 @@ class AgentWorkflowRunner:
                 self.lease_manager.release(lease)
 
         return {
-            "workflow": self.recovery.get_run(
-                workflow_id, owner_user_id=owner_user_id
-            ),
+            "workflow": self.recovery.get_run(workflow_id, owner_user_id=owner_user_id),
             "execution": {
                 "execution_completed": execution["execution_completed"],
                 "model_inference_started": execution["model_inference_started"],

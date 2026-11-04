@@ -3,6 +3,7 @@
 This module compares caller-supplied source text only. It never reads arbitrary paths,
 imports target modules, executes code, or writes files.
 """
+
 from __future__ import annotations
 
 import ast
@@ -93,15 +94,9 @@ def create_patch_proposal(
 
     base_review = analyze_python_source(original_source, path=safe_path)
     proposed_review = analyze_python_source(proposed_source, path=safe_path)
-    introduced_findings = _finding_delta(
-        proposed_review["findings"], base_review["findings"]
-    )
-    resolved_findings = _finding_delta(
-        base_review["findings"], proposed_review["findings"]
-    )
-    introduced_high_count = sum(
-        finding["severity"] == "high" for finding in introduced_findings
-    )
+    introduced_findings = _finding_delta(proposed_review["findings"], base_review["findings"])
+    resolved_findings = _finding_delta(base_review["findings"], proposed_review["findings"])
+    introduced_high_count = sum(finding["severity"] == "high" for finding in introduced_findings)
     review_status = (
         "complete"
         if base_review["status"] == "ok" and proposed_review["status"] == "ok"

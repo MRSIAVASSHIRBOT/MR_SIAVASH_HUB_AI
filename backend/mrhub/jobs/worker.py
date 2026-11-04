@@ -4,6 +4,7 @@ The worker is deliberately pull-driven: callers invoke run_once(); application s
 never begins executing queued work implicitly. No shell, network, arbitrary code, or
 external side effects are available to handlers.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -130,9 +131,7 @@ class WorkerEngine:
         """Dispatch a workflow using the worker's canonical lease."""
         from mrhub.jobs.workflow_dispatch import WorkflowWorkerHandler
 
-        return WorkflowWorkerHandler(self.repository)(
-            task, lease=lease, lease_lost=lease_lost
-        )
+        return WorkflowWorkerHandler(self.repository)(task, lease=lease, lease_lost=lease_lost)
 
     def _run_agent_model_run(
         self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
@@ -140,9 +139,7 @@ class WorkerEngine:
         """Dispatch one durable model-driven Agent run under the current lease."""
         from mrhub.jobs.model_run_dispatch import ModelRunWorkerHandler
 
-        return ModelRunWorkerHandler(self.repository)(
-            task, lease=lease, lease_lost=lease_lost
-        )
+        return ModelRunWorkerHandler(self.repository)(task, lease=lease, lease_lost=lease_lost)
 
     def _run_video_analysis(
         self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
@@ -150,9 +147,7 @@ class WorkerEngine:
         """Run bounded owner-scoped video analysis under the current worker lease."""
         from mrhub.video_intelligence.worker import VideoAnalysisWorkerHandler
 
-        return VideoAnalysisWorkerHandler(self.repository)(
-            task, lease=lease, lease_lost=lease_lost
-        )
+        return VideoAnalysisWorkerHandler(self.repository)(task, lease=lease, lease_lost=lease_lost)
 
     def _run_video_render(
         self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
@@ -160,9 +155,7 @@ class WorkerEngine:
         """Render a validated video timeline under the current worker lease."""
         from mrhub.video_intelligence.render_worker import VideoRenderWorkerHandler
 
-        return VideoRenderWorkerHandler(self.repository)(
-            task, lease=lease, lease_lost=lease_lost
-        )
+        return VideoRenderWorkerHandler(self.repository)(task, lease=lease, lease_lost=lease_lost)
 
     def _run_video_generation(
         self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
@@ -310,7 +303,11 @@ class WorkerEngine:
                                                updated_at = ?
                                            WHERE generation_id = ? AND owner_user_id = ?
                                              AND status = 'submitting'""",
-                                        (now, generation["generation_id"], generation["owner_user_id"]),
+                                        (
+                                            now,
+                                            generation["generation_id"],
+                                            generation["owner_user_id"],
+                                        ),
                                     )
                                     recovered_status = TaskStatus.FAILED
                                     audit_outcome = "recovery_required"
@@ -318,11 +315,15 @@ class WorkerEngine:
                                 elif generation_status == "running":
                                     recovered_status = TaskStatus.SUCCEEDED
                                     audit_outcome = "succeeded"
-                                    reason_code = "video_generation_handoff_recorded_before_task_commit"
+                                    reason_code = (
+                                        "video_generation_handoff_recorded_before_task_commit"
+                                    )
                                 elif generation_status == "unknown_outcome":
                                     recovered_status = TaskStatus.FAILED
                                     audit_outcome = "recovery_required"
-                                    reason_code = "video_generation_submission_requires_reconciliation"
+                                    reason_code = (
+                                        "video_generation_submission_requires_reconciliation"
+                                    )
                                 elif generation_status in {"failed", "cancelled", "succeeded"}:
                                     recovered_status = (
                                         TaskStatus.SUCCEEDED
@@ -340,7 +341,11 @@ class WorkerEngine:
                                                updated_at = ?
                                            WHERE generation_id = ? AND owner_user_id = ?
                                              AND status IN ('queued', 'prepared')""",
-                                        (now, generation["generation_id"], generation["owner_user_id"]),
+                                        (
+                                            now,
+                                            generation["generation_id"],
+                                            generation["owner_user_id"],
+                                        ),
                                     )
                                     connection.execute(
                                         """DELETE FROM video_generation_payloads
@@ -349,7 +354,9 @@ class WorkerEngine:
                                     )
                                     recovered_status = TaskStatus.FAILED
                                     audit_outcome = "failed"
-                                    reason_code = "video_generation_worker_interrupted_before_submit"
+                                    reason_code = (
+                                        "video_generation_worker_interrupted_before_submit"
+                                    )
                             else:
                                 connection.execute(
                                     """
@@ -371,9 +378,7 @@ class WorkerEngine:
                     ).fetchall()
                     has_unknown_outcome = False
                     for step in active_steps:
-                        safe_to_retry = step["step_kind"] in {
-                            "provider_selection", "safe_tool"
-                        }
+                        safe_to_retry = step["step_kind"] in {"provider_selection", "safe_tool"}
                         attempt_status = "cancelled" if safe_to_retry else "unknown_outcome"
                         step_status = "cancelled" if safe_to_retry else "unknown_outcome"
                         if not safe_to_retry:
@@ -480,9 +485,7 @@ class WorkerEngine:
                     ).fetchall()
                     has_unknown_outcome = False
                     for step in active_steps:
-                        safe_to_retry = step["step_kind"] in {
-                            "provider_selection", "safe_tool"
-                        }
+                        safe_to_retry = step["step_kind"] in {"provider_selection", "safe_tool"}
                         attempt_status = "failed" if safe_to_retry else "unknown_outcome"
                         step_status = "retry_wait" if safe_to_retry else "unknown_outcome"
                         if not safe_to_retry:
@@ -504,9 +507,7 @@ class WorkerEngine:
                             """,
                             (step_status, now, now, step["step_id"]),
                         )
-                    workflow_status = (
-                        "recovery_required" if has_unknown_outcome else "paused"
-                    )
+                    workflow_status = "recovery_required" if has_unknown_outcome else "paused"
                     reason_code = (
                         "worker_interrupted"
                         if has_unknown_outcome
@@ -590,7 +591,7 @@ class WorkerEngine:
                     prefix = f".{asset_id}."
                     suffix = ".partial.mp4"
                     for partial in root.glob(f".{asset_id}.*.partial.mp4"):
-                        nonce = partial.name[len(prefix):-len(suffix)]
+                        nonce = partial.name[len(prefix) : -len(suffix)]
                         if (
                             partial.parent == root
                             and len(nonce) == 32
@@ -677,10 +678,7 @@ class WorkerEngine:
             if self._control.is_stopped():
                 return None
             result = self._run_once()
-            if (
-                self._content_schedule_dispatcher is not None
-                and not self._control.is_stopped()
-            ):
+            if self._content_schedule_dispatcher is not None and not self._control.is_stopped():
                 self._content_schedule_dispatcher.run_once()
             return result
 
@@ -791,7 +789,13 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis", "video.generation", "video.render"}:
+            if task.task_type in {
+                "agent.workflow",
+                "agent.model_run",
+                "video.analysis",
+                "video.generation",
+                "video.render",
+            }:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)
@@ -867,8 +871,15 @@ class WorkerEngine:
                       AND e.execution_token = ? AND e.lease_expires_at > ?
                   )
                 """,
-                (TaskStatus.SUCCEEDED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
-                 lease.owner, lease.fencing_token, now),
+                (
+                    TaskStatus.SUCCEEDED.value,
+                    now,
+                    str(task.task_id),
+                    TaskStatus.RUNNING.value,
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                ),
             )
             if cursor.rowcount == 1:
                 connection.execute(
@@ -900,9 +911,7 @@ class WorkerEngine:
             self._mark_cancelled(task, lease=lease)
         return saved
 
-    def _schedule_retry_or_fail(
-        self, task: TaskRecord, *, lease: WorkerLease
-    ) -> TaskRecord:
+    def _schedule_retry_or_fail(self, task: TaskRecord, *, lease: WorkerLease) -> TaskRecord:
         if task.task_type not in self.RETRY_SAFE_TASK_TYPES:
             return self._finish_failure(task, "retry_not_permitted", lease=lease)
         with self._connection() as connection:
@@ -975,8 +984,15 @@ class WorkerEngine:
                       AND e.execution_token = ? AND e.lease_expires_at > ?
                   )
                 """,
-                (TaskStatus.FAILED.value, now, str(task.task_id), TaskStatus.RUNNING.value,
-                 lease.owner, lease.fencing_token, now),
+                (
+                    TaskStatus.FAILED.value,
+                    now,
+                    str(task.task_id),
+                    TaskStatus.RUNNING.value,
+                    lease.owner,
+                    lease.fencing_token,
+                    now,
+                ),
             )
             if cursor.rowcount == 1:
                 connection.execute(
@@ -1062,8 +1078,7 @@ class WorkerEngine:
                 "SELECT status, COUNT(*) AS total FROM tasks GROUP BY status"
             ).fetchall()
             retry_row = connection.execute(
-                "SELECT COUNT(*) AS total FROM worker_executions "
-                "WHERE next_attempt_at IS NOT NULL"
+                "SELECT COUNT(*) AS total FROM worker_executions WHERE next_attempt_at IS NOT NULL"
             ).fetchone()
             workflow_rows = connection.execute(
                 "SELECT status, COUNT(*) AS total FROM workflow_runs GROUP BY status"
@@ -1086,9 +1101,7 @@ class WorkerEngine:
         status_counts = {status.value: 0 for status in TaskStatus}
         for row in rows:
             status_counts[row["status"]] = row["total"]
-        workflow_status_counts = {
-            row["status"]: row["total"] for row in workflow_rows
-        }
+        workflow_status_counts = {row["status"]: row["total"] for row in workflow_rows}
         oldest_queued_age_seconds = None
         if oldest_queued and oldest_queued["created_at"]:
             try:
@@ -1104,9 +1117,7 @@ class WorkerEngine:
             "total_tasks": sum(status_counts.values()),
             "status_counts": status_counts,
             "workflow_status_counts": workflow_status_counts,
-            "recovery_required_workflows": workflow_status_counts.get(
-                "recovery_required", 0
-            ),
+            "recovery_required_workflows": workflow_status_counts.get("recovery_required", 0),
             "expired_running_leases": expired_lease_row["total"] if expired_lease_row else 0,
             "oldest_queued_age_seconds": oldest_queued_age_seconds,
             "retry_scheduled": retry_row["total"] if retry_row else 0,
