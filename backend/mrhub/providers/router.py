@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from mrhub.providers.base import (
     ModelProvider,
     ProviderContractError,
+    ProviderHealth,
     ProviderRequest,
     ProviderResponse,
 )
@@ -36,7 +37,14 @@ class ModelRouter:
 
     def __init__(self, registry: ProviderRegistry | None = None) -> None:
         self._providers: dict[tuple[str, str], ModelDescriptor] = {}
-        self.registry = registry or ProviderRegistry()
+        # Preserve the caller's registry as the single adapter authority,
+        # including registry implementations that intentionally evaluate false.
+        self.registry = registry if registry is not None else ProviderRegistry()
+        # A pre-populated injected registry is authoritative; hydrate the
+        # capability catalog so selection and dispatch see the same adapters.
+        for provider in self.registry.providers():
+            descriptor = provider.descriptor
+            self._providers[(descriptor.provider, descriptor.model)] = descriptor
 
     def register(self, descriptor: ModelDescriptor) -> None:
         key = (descriptor.provider, descriptor.model)
@@ -93,7 +101,14 @@ class ModelRouter:
     def generate(self, request: ModelRequest, payload: ProviderRequest) -> ProviderResponse:
         selection = self.select(request)
         provider = self.registry.get(selection.provider, selection.model)
-        health = provider.health()
+        health = provider.health(timeout_seconds=2.0)
+        if (
+            not isinstance(health, ProviderHealth)
+            or type(health.available) is not bool
+            or not isinstance(health.reason_code, str)
+            or not health.reason_code
+        ):
+            raise ProviderContractError("Provider returned an invalid health contract")
         if not health.available:
             raise LookupError("Selected provider is unavailable")
 

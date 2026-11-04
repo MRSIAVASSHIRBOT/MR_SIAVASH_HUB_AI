@@ -15,6 +15,14 @@ These are HUB-owned, vendor-neutral integration IDs. They do not rename or claim
 
 The local integration protocol is versioned independently from the capability-discovery schema. Current `contract_version` is `1.0` and appears in every integration status response, including disabled and invalid-configuration results. `integration_contract_version` in `/agent/capabilities` identifies the same contract. A breaking change to status fields, status meanings, or request semantics requires a new major version; additive optional fields may remain within the current major version.
 
+## Provider adapter lifecycle contract
+
+Model adapters are registered through one injected ProviderRegistry; ModelRouter preserves that exact registry instance and hydrates its capability descriptor catalog from any adapters already registered there. New registrations update the adapter registry and descriptor catalog as one guarded operation. A failed or duplicate registration must not leave the two views partially updated.
+
+Before dispatch, the router calls the selected adapter's bounded health(timeout_seconds=2.0) contract. The result must be a ProviderHealth value with a real boolean available field and a non-empty string reason_code. A malformed health result is a provider contract violation and generation is not started. A well-formed unavailable result fails closed; the router does not silently substitute another provider after selection.
+
+The health check is an adapter lifecycle gate, not proof that inference will succeed. Provider implementations remain responsible for enforcing their own network/request timeouts, classifying transient failures, and avoiding logging prompts, credentials, or response bodies. Agent planning may select from registered descriptors without running inference; actual dispatch is performed only by the explicit router generation path. MCP tool invocation remains separate and continues to use the canonical ToolRegistry and its shared PolicyEngine.
+
 ## Shared configuration contract
 
 Each integration uses the same settings shape:
