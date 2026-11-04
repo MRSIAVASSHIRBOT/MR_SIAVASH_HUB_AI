@@ -165,3 +165,20 @@ def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
     )[0]
     assert "videoPromptAnalysisId = null" not in render_analysis
     assert "videoPromptAnalysisId = null" in submit_analysis
+
+
+def test_operator_ui_exposes_saved_renderer_draft_render_selection_and_cleanup():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert 'id="video-render-source-note"' in page.text
+    assert "rendererDraft.renderer_timeline" in script.text
+    assert "rendererDraft.renderer_timeline_sha256" in script.text
+    assert '"/video-intelligence/timeline-drafts/"' in script.text
+    assert '"draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version' in script.text
+    assert "mrh_video_render_pending_requests" in script.text
+    assert 'sessionStorage.removeItem("mrh_video_render_pending_requests")' in script.text
+    assert "pendingVideoRenderIdentity = null" in script.text
