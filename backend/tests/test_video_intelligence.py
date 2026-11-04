@@ -601,7 +601,6 @@ def test_prepare_draft_render_timeline_is_idempotent_for_verified_existing_timel
     monkeypatch,
 ):
     import mrhub.api.routes.video_intelligence as routes
-
     from mrhub.video_intelligence.edit_spec import EditSpecification
     from mrhub.video_intelligence.timeline import build_video_timeline
 
