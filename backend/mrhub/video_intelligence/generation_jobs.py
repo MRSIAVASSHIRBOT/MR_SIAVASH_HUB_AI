@@ -216,7 +216,7 @@ class VideoGenerationJobRepository:
                    JOIN video_generation_jobs AS j
                      ON j.generation_id = l.generation_id
                     AND j.owner_user_id = l.owner_user_id
-                   JOIN video_generation_payloads AS p
+                   LEFT JOIN video_generation_payloads AS p
                      ON p.generation_id = j.generation_id
                     AND p.owner_user_id = j.owner_user_id
                    WHERE l.task_id = ?""",
@@ -231,18 +231,25 @@ class VideoGenerationJobRepository:
             raise ValueError("Running generation job is missing its provider reference")
         generation_id = str(row["generation_id"])
         owner_user_id = str(row["owner_user_id"])
-        payload = decrypt_payload(
-            EncryptedPayload(
-                version=int(row["envelope_version"]),
-                nonce_b64=str(row["nonce_b64"]),
-                ciphertext_b64=str(row["ciphertext_b64"]),
-            ),
-            workflow_id=generation_id,
-            task_id=generation_id,
-            owner_user_id=owner_user_id,
-            key=load_payload_key(),
-        )
-        return {
+        payload = None
+        if job_status == "queued":
+            if any(
+                row[field] is None
+                for field in ("envelope_version", "nonce_b64", "ciphertext_b64")
+            ):
+                raise ValueError("Queued generation request payload is unavailable")
+            payload = decrypt_payload(
+                EncryptedPayload(
+                    version=int(row["envelope_version"]),
+                    nonce_b64=str(row["nonce_b64"]),
+                    ciphertext_b64=str(row["ciphertext_b64"]),
+                ),
+                workflow_id=generation_id,
+                task_id=generation_id,
+                owner_user_id=owner_user_id,
+                key=load_payload_key(),
+            )
+        loaded = {
             "owner_user_id": owner_user_id,
             "generation_id": generation_id,
             "provider": str(row["provider"]),
@@ -250,8 +257,10 @@ class VideoGenerationJobRepository:
             "status": job_status,
             "provider_job_id": row["provider_job_id"],
             "progress_percent": row["progress_percent"],
-            "request": payload,
         }
+        if payload is not None:
+            loaded["request"] = payload
+        return loaded
 
     def enqueue_reconciliation(
         self, owner_user_id: str, generation_id: UUID
