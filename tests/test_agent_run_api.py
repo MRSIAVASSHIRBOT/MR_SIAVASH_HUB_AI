@@ -276,3 +276,66 @@ def test_retrieved_prompt_injection_cannot_authorize_model_proposed_tool(monkeyp
         source["reference"] == citation
         for source in body["context_sources"]
     )
+
+def test_agent_run_exposes_approval_required_without_invoking_external_tool(monkeypatch):
+    from pydantic import BaseModel
+
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.tools.builtins import build_tool_registry
+    from mrhub.tools.registry import ToolDefinition
+
+    client = authenticated_client()
+    provider = ScriptedProvider(json.dumps({
+        "type": "tool_call",
+        "name": "external.publish",
+        "payload": {},
+    }))
+    router = ModelRouter()
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class EmptyOutput(BaseModel):
+        pass
+
+    calls = []
+    registry = build_tool_registry()
+    registry.register(ToolDefinition(
+        name="external.publish",
+        description="Publish only after explicit approval",
+        input_model=EmptyInput,
+        output_model=EmptyOutput,
+        handler=lambda _: calls.append("called") or {},
+        risk_class=RiskClass.HIGH,
+        external_side_effect=True,
+    ))
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_tool_registry",
+        lambda: registry,
+    )
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Publish content only after explicit approval.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    execution = body["execution"]
+    assert execution["status"] == "approval_required"
+    assert execution["error_code"] == "approval_required"
+    assert execution["trace"][-1]["type"] == "tool_approval_required"
+    assert execution["tool_calls"] == 0
+    assert execution["tools_executed"] is False
+    assert body["external_side_effects_performed"] is False
+    assert calls == []
