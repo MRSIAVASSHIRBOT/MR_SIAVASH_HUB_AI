@@ -175,11 +175,11 @@ def test_static_analysis_detects_os_system_and_os_popen_without_aliases():
 
 def test_static_analysis_detects_requests_tls_verification_disabled_and_import_aliases():
     result = analyze_python_source(
-        "import requests as http\\n"
-        "from requests import post as send\\n"
-        "http.get(url, verify=False)\\n"
-        "send(url, verify=False)\\n"
-        "http.get(secure_url, verify=True)\\n",
+        "import requests as http\n"
+        "from requests import post as send\n"
+        "http.get(url, verify=False)\n"
+        "send(url, verify=False)\n"
+        "http.get(secure_url, verify=True)\n",
         path="src/http_client.py",
     )
 
