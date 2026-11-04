@@ -1300,6 +1300,7 @@
     videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== saved.draft_id);
     videoTimelineDrafts.unshift(saved);
     renderVideoStoryboardDraftOptions(selected.asset_id);
+    syncVideoRenderTarget();
     message("#video-storyboard-message", "Storyboard نسخه " + saved.version + " ذخیره شد.", "success");
     return saved;
   }
