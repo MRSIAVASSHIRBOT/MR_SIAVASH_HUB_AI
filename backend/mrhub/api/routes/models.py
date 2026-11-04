@@ -285,13 +285,16 @@ def generate_remote_model(payload: GenerateModelRequest):
             detail="Remote inference is disabled or incompletely configured; no cloud request was made",
         )
     try:
-        model_router = build_model_router()
-        provider = model_router.registry.get("openrouter", settings.remote_inference_model)
-        return provider.generate(
+        model_router = build_model_router(
+            provider_mode="remote",
+            include_stub=False,
+        )
+        return model_router.generate(
+            ModelRequest(requires_text=True),
             ProviderRequest(
                 input_text=payload.input_text,
                 max_output_tokens=payload.max_output_tokens,
-            )
+            ),
         )
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=exc.code) from exc

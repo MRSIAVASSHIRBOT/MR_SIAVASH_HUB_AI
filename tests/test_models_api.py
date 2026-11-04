@@ -396,3 +396,71 @@ def test_build_model_router_applies_agent_timeout_cap(monkeypatch):
     )
 
     assert observed == {"ollama": 30, "openrouter": 30}
+
+
+
+def test_remote_generation_uses_router_contract_and_never_constructs_local_fallback(
+    tmp_path, monkeypatch
+):
+    from pydantic import SecretStr
+
+    from mrhub.api.routes import models
+    from mrhub.config import Settings
+    from mrhub.providers.base import ProviderHealth, ProviderResponse
+    from mrhub.providers.types import ModelCapability, ModelDescriptor
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    monkeypatch.setenv("MRH_LOCAL_INFERENCE_ENABLED", "true")
+    monkeypatch.setenv("MRH_LOCAL_INFERENCE_MODEL", "local-model")
+    monkeypatch.setenv("MRH_REMOTE_INFERENCE_ENABLED", "true")
+    monkeypatch.setenv("MRH_REMOTE_INFERENCE_API_KEY", "test-remote-key")
+    monkeypatch.setenv("MRH_REMOTE_INFERENCE_MODEL", "remote-model")
+    get_settings.cache_clear()
+
+    class ForbiddenLocalProvider:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("remote-only generation must not construct a local provider")
+
+    class MismatchedRemoteProvider:
+        def __init__(self, *, model, **kwargs):
+            self.descriptor = ModelDescriptor(
+                provider="openrouter",
+                model=model,
+                capability=ModelCapability(text=True),
+                available=True,
+                local=False,
+            )
+
+        def health(self, timeout_seconds=2.0):
+            return ProviderHealth(available=True, reason_code="test_ready")
+
+        def generate(self, request):
+            return ProviderResponse(
+                provider="unexpected-provider",
+                model=self.descriptor.model,
+                output_text="must be rejected",
+            )
+
+    monkeypatch.setattr(models, "OllamaProvider", ForbiddenLocalProvider)
+    monkeypatch.setattr(models, "OpenRouterProvider", MismatchedRemoteProvider)
+    monkeypatch.setattr(
+        models,
+        "get_settings",
+        lambda: Settings(
+            local_inference_enabled=True,
+            local_inference_model="local-model",
+            remote_inference_enabled=True,
+            remote_inference_api_key=SecretStr("test-remote-key"),
+            remote_inference_model="remote-model",
+        ),
+    )
+
+    client = authenticated_client()
+    response = client.post(
+        "/models/generate-remote",
+        json={"input_text": "test remote response identity"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "provider_contract_violation"
+    get_settings.cache_clear()
