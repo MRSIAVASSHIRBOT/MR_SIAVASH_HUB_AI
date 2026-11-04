@@ -364,3 +364,8 @@ The exact PR #276 head passed Python 3.11/3.12, Backend CI, Defensive Python Sca
 Current inventory at main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`: 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are repository-shape metrics, not a completion percentage.
 
 The post-merge workflows listed above validate configured hosted automation only. Target-device/browser verification, external-account acceptance, clean install/upgrade/rollback and database/media/encryption-key restore drills remain independent release gates. This audit is not a production-readiness declaration.
+
+
+## 11. Dashboard render integration follow-up — 2026-11-04 UTC
+
+PR #281's API-level stale-revision conflict regression test is merged in main commit `4e9bb24192eb2a0585377ff797dc1f032414bac0`. PR #285 proposes dashboard routing to immutable draft rendering only when the saved draft contains a renderer-compatible timeline and persisted hash; otherwise the existing analysis-timeline render path remains in use. The UI clarifies that beat-only Storyboard edits affect prompt composition, not MP4 cut intervals, and scopes retry keys to the exact render identity. This does not add a renderer-timeline clip editor or infer source mappings from storyboard beats. PR #285 is open pending exact-head CI and review. Snapshot retention/cleanup and target-device acceptance remain separate gates.
