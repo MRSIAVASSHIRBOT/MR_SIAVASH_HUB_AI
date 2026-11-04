@@ -183,6 +183,24 @@ def test_router_rejects_response_with_mismatched_provider_identity(provider_name
     assert "response must not pass" not in str(error.value)
 
 
+def test_router_does_not_generate_when_provider_health_is_unavailable():
+    class UnavailableProvider:
+        descriptor = StubProvider.descriptor
+
+        def health(self, timeout_seconds=2.0):
+            assert timeout_seconds == 2.0
+            return ProviderHealth(available=False, reason_code="offline")
+
+        def generate(self, request):
+            raise AssertionError("generation must not start for an unavailable provider")
+
+    router = ModelRouter()
+    router.register_provider(UnavailableProvider())
+
+    with pytest.raises(LookupError, match="Selected provider is unavailable"):
+        router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
+
+
 def test_router_rejects_non_provider_response_values():
     class InvalidProvider:
         descriptor = StubProvider.descriptor
