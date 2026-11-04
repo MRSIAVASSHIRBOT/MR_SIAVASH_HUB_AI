@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from mrhub.video_intelligence.edit_spec import build_edit_specification
+from mrhub.video_intelligence.edit_spec import EditSpecification, build_edit_specification
 from mrhub.video_intelligence.schemas import AnalysisMode, BrandIdentity, VideoAnalysisRequest
 
 
@@ -122,3 +122,16 @@ def test_edit_spec_excludes_scene_cut_at_or_after_analyzed_source_end():
     specification = build_edit_specification(request, [asset])
 
     assert specification.sources[0].scene_start_timestamps == [0.0, 3.5, 8.0]
+
+
+def test_edit_spec_rejects_duplicate_source_asset_references():
+    request = VideoAnalysisRequest(
+        mode=AnalysisMode.FAITHFUL,
+        source_asset_ids=["asset-123"],
+    )
+    specification = build_edit_specification(request, [_asset_result()])
+    payload = specification.model_dump(mode="python")
+    payload["sources"].append(payload["sources"][0].copy())
+
+    with pytest.raises(ValidationError, match="source asset IDs must be unique"):
+        EditSpecification.model_validate(payload)
