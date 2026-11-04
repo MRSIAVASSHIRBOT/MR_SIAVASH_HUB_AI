@@ -39,7 +39,7 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 **Remaining work**
 - Complete public HTTPS media-origin configuration, edge controls, Graph API scopes/credentials, and a controlled real-account acceptance test.
 - Add/verify provider-specific reconciliation for ambiguous social-publishing outcomes, schedule deduplication and operator-visible failure states.
-- Connect versioned editable timeline drafts to immutable render-job snapshots; currently the render route consumes the original analysis timeline, not the edited draft.
+- Connect versioned storyboard drafts to prompt composition; validate owner, analysis, asset and draft version, and return the exact draft revision with the composed prompt. Keep the cut-only FFmpeg renderer on its separate validated `VideoTimeline` contract.
 - Keep external generation providers optional, reviewed, disabled by default and approval-gated; no video-generation adapter is currently registered.
 
 **Depends on:** existing asset store, schedule dispatcher, approval policy, and secret configuration.
