@@ -148,6 +148,14 @@ class VideoRenderJobRepository:
                     connection, snapshot, assets
                 )
                 snapshot_id = stored_snapshot.snapshot_id
+            elif snapshot_id is not None:
+                # A new render submitted by snapshot ID must obey the same
+                # current-draft fence as a newly constructed snapshot.
+                assert snapshot_repository is not None
+                stored_snapshot, _ = snapshot_repository.persist_in_transaction(
+                    connection, stored_snapshot, assets
+                )
+                snapshot_id = stored_snapshot.snapshot_id
 
             connection.execute(
                 """INSERT INTO tasks (
