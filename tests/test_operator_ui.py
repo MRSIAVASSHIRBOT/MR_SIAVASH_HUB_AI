@@ -189,7 +189,7 @@ def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision()
     assert "function syncVideoRenderTarget()" in script
     assert script.count("function currentVideoRenderIdentity()") == 1
     assert script.count("function syncVideoRenderTarget()") == 1
-    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in script
+    assert "activeVideoRenderIdentity === currentVideoRenderIdentity()" in script
     lock = script.split("function lockVideoStoryboardControls", 1)[1].split(
         "function clearVideoRenderState", 1
     )[0]
@@ -215,16 +215,20 @@ def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision()
     assert "دکمه‌های بررسی و لغو فقط همان Job قبلی را کنترل می‌کنند" in sync_target
 
 
-def test_operator_ui_exposes_saved_renderer_draft_render_selection_and_cleanup():
+def test_operator_ui_exposes_saved_renderer_draft_preparation_and_cleanup():
     client = TestClient(create_app())
     page = client.get("/ui/")
     script = client.get("/ui/app.js")
 
     assert page.status_code == 200
     assert script.status_code == 200
-    assert 'id="video-render-source-note"' in page.text
-    assert "rendererDraft.renderer_timeline" in script.text
-    assert "rendererDraft.renderer_timeline_sha256" in script.text
+    assert 'id="video-storyboard-prepare-render-timeline"' in page.text
+    assert 'id="video-render-submit"' in page.text
+    assert 'id="video-render-source-note"' not in page.text
+    assert "async function prepareVideoRenderTimeline()" in script.text
+    assert "async function prepareSavedVideoDraftForRender" in script.text
+    assert "selectedDraft.renderer_timeline" in script.text
+    assert "selectedDraft.renderer_timeline_sha256" in script.text
     assert '"/video-intelligence/timeline-drafts/"' in script.text
     assert '"draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version' in script.text
     assert "mrh_video_render_pending_requests" in script.text
@@ -270,6 +274,14 @@ def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
     assert "activeVideoRenderAnalysisId = requestAnalysisId" in submit
     assert "currentVideoRenderIdentity() === requestIdentity" in submit
     assert "syncVideoRenderTarget();" in submit
+    success_guard = submit.split(
+        "if (currentVideoRenderIdentity() === requestIdentity)", 1
+    )[1].split("} else {", 1)[0]
+    assert "message(" in success_guard
+    assert "await refreshVideoRender();" in success_guard
+    error_guard = submit.split("} catch (error) {", 1)[1].split("} finally", 1)[0]
+    assert "if (currentVideoRenderIdentity() === requestIdentity)" in error_guard
+    assert "syncVideoRenderTarget();" in error_guard
 
     cancel = script.split("async function cancelVideoRender", 1)[1].split(
         "async function downloadRenderedVideo", 1
