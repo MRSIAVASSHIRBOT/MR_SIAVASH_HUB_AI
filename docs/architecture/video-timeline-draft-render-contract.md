@@ -1,7 +1,7 @@
 # Video Timeline Draft → Render Contract
 
-**Status:** Implemented on PR #273 branch; exact-head CI and review are pending. The current `main` baseline does not yet contain this persistence/worker integration.  
-**Main baseline:** `589a038d09271ddbcb2e8c07fbbce983499c882a` (2026-11-04 UTC)  
+**Status:** Core snapshot persistence and Worker integration merged via PR #273. A post-merge current-draft race fence is proposed in PR #276 and is not yet merged.  
+**Main baseline:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc` (2026-11-04 UTC)  
 **Scope:** Bind a saved, renderer-compatible timeline revision to a durable MP4 render job without changing analysis-only render semantics.
 
 ## 1. Three distinct timeline representations
@@ -41,7 +41,7 @@ The render repository then uses one `BEGIN IMMEDIATE` transaction to:
 3. create the durable task and render row bound to that snapshot;
 4. create the idempotency record.
 
-A stale draft, snapshot conflict, or idempotency conflict aborts the transaction; no partial snapshot/task/render/idempotency state is committed. A replay with the same immutable input resolves to the original snapshot and render record. The response includes the exact draft ID/version and snapshot ID.
+A stale draft, snapshot conflict, or idempotency conflict aborts the transaction; no partial snapshot/task/render/idempotency state is committed. A replay with the same immutable input resolves to the original snapshot and render record. The response includes the exact draft ID/version and snapshot ID. An already accepted request may be replayed with its original idempotency key after the editable draft advances; that is a replay of the same accepted operation, not a new render. A new render submission must prove that the snapshot still matches the current owner-scoped draft revision inside the transaction, even if a snapshot row for that old revision already exists. PR #276 adds this additional fence and its stale-snapshot regression test; until merged, this edge-case correction is not part of main.
 
 The endpoint renders the currently persisted draft revision observed by the server and fenced in the transaction. It does not currently accept a caller-supplied historical draft version. The legacy `POST /video-intelligence/analyses/{analysis_id}/renders` route remains available and retains analysis-timeline behavior.
 
@@ -98,3 +98,8 @@ Exact-head CI must pass before merge. No local test execution or target-device a
 - No automatic retry is introduced for ambiguous external provider outcomes.
 - No arbitrary FFmpeg filters or user-supplied commands are accepted.
 - No claim of a full nonlinear video editor or production readiness is made.
+
+
+## 9. Post-merge stale-revision correction
+
+PR #273 merged the immutable snapshot render path. A follow-up review identified that the repository's existing-snapshot branch could return a previously created snapshot before checking whether the editable draft had advanced. The new-render path must reject this stale snapshot even when the immutable row already exists. PR #276 moves the current-draft check ahead of existing-snapshot reuse for transactional render submission, while preserving repository-level historical snapshot replay and already accepted idempotency replays. This follow-up remains unmerged until exact-head CI and review pass.

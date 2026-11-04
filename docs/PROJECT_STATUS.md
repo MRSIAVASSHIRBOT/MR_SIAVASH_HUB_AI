@@ -522,13 +522,15 @@ This is the newest video-workstream hand-off and supersedes the earlier storyboa
 - **PR #272** (merge commit `45c06562999a46861f89fca1438bd5b7776a850a`) adds the immutable renderer-timeline snapshot value object with canonical JSON, SHA-256 integrity, owner/analysis/draft-revision identity and revision-sensitive idempotency.
 - Main commit `589a038d09271ddbcb2e8c07fbbce983499c882a` adds the architecture contract clarifying that storyboard beats and cut-only renderer timelines are distinct representations.
 
-### PR #273 — open, not merged
+### PR #273 — merged
 
-[PR #273](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/273) extends the snapshot contract with durable persistence and the end-to-end render path. Its current branch implementation includes migrations 28–29, renderer-timeline/hash persistence on drafts, immutable owner-scoped snapshot rows, measured source-duration validation, an atomic snapshot + render-task + render-record + idempotency transaction, and Worker consumption of the immutable snapshot with fail-closed behavior and no fallback to mutable analysis data.
+[PR #273](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/273) was merged as `144b870e54713b3f80196c986b4864d547e301df`. Main now contains migrations 28–29, renderer-timeline/hash persistence on drafts, immutable owner-scoped snapshot rows, measured source-duration validation, atomic snapshot + render-task + render-record + idempotency persistence, and Worker consumption of immutable snapshots with fail-closed behavior and no fallback to mutable analysis data.
 
-The branch also adds regression coverage for owner isolation, stale revisions, source bounds, snapshot immutability, snapshot-backed rendering, atomic acceptance and rollback on idempotency conflict. These are branch changes, not main behavior until PR #273 is reviewed and merged.
+The merged PR head was `a01f865e907086cdc767a774fb1f2d94b8c57229`; its recorded Python 3.11/3.12, Defensive Python Scan, and Linux/Windows FFmpeg checks passed. A subsequent review found a narrower race: if a snapshot already existed and the draft advanced before a *new* render submission, the existing-snapshot replay path could bypass the current-draft fence. This does not invalidate already accepted immutable renders or their legitimate idempotent retries, but it must be fixed for new submissions.
 
-**CI state must be checked against the live PR head.** Exact-head checks were pending during this status update; no green CI claim or merge approval is made here. PR #273 must remain unmerged until the exact current head passes Python 3.11/3.12, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg integration, followed by source-level review.
+### PR #276 — post-merge stale-revision fence
+
+PR #276 is the follow-up candidate based on current main. It keeps historical snapshot reads/replays available while requiring every new snapshot-backed render submission to match the exact current owner-scoped draft revision inside the same SQLite transaction. It adds a regression test proving that a stale existing snapshot cannot create a second render after the draft advances. The follow-up remains unmerged until exact-head CI and review pass.
 
 ### Remaining video acceptance work
 
@@ -540,3 +542,8 @@ The branch also adds regression coverage for owner isolation, stale revisions, s
 
 Green CI is not target-device acceptance or production readiness. Whole-product install/upgrade/rollback, database/media/key restore, external-account verification and provider acceptance remain independent release gates.
 
+
+
+## Post-merge stale snapshot submission fence — 2026-11-04 UTC
+
+Current main baseline before follow-up: `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`. PR #273 is merged. A focused follow-up branch `fix/video-render-stale-snapshot-fence` contains the transaction-level current-draft guard and regression test; it is tracked in PR #276 and must not be described as main behavior until merged. The repository's low-level immutable snapshot lookup remains able to replay an already-created historical snapshot; only *new render submission* is required to prove that the draft row still has the exact same owner, analysis, asset, version, canonical timeline and hash under the submission transaction. Existing idempotent replay for an already accepted request remains valid. CI and review are pending on PR #276.

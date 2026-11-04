@@ -744,6 +744,42 @@ def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
     assert replay_after_advance_created is False
     assert replay_after_advance.snapshot_id == stored.snapshot_id
 
+    # A retry of the already accepted operation remains idempotent even after
+    # the editable draft advances; this is not a new render submission.
+    replay_accepted_after_advance, replay_accepted_created = render_jobs.submit(
+        "owner-a",
+        analysis_id,
+        "snapshot-persistence-render-key",
+        snapshot_id=stored.snapshot_id,
+    )
+    assert replay_accepted_created is False
+    assert replay_accepted_after_advance["render_id"] == accepted_render["render_id"]
+
+    # Historical snapshot replay is read-only; a new render must use the
+    # currently persisted draft revision, not the stale revision's snapshot.
+    with pytest.raises(
+        VideoRenderSnapshotConflict, match="current owner-scoped draft revision"
+    ):
+        render_jobs.submit(
+            "owner-a",
+            analysis_id,
+            "stale-snapshot-new-render-key",
+            snapshot=snapshot,
+        )
+    with pytest.raises(
+        VideoRenderSnapshotConflict, match="current owner-scoped draft revision"
+    ):
+        render_jobs.submit(
+            "owner-a",
+            analysis_id,
+            "stale-snapshot-id-new-render-key",
+            snapshot_id=stored.snapshot_id,
+        )
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_runs"
+        ).fetchone()[0] == 1
+
 
 def test_render_snapshot_repository_rejects_stale_draft_revision(
     tmp_path, monkeypatch
