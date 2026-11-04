@@ -919,7 +919,11 @@
 
   async function cancelVideoRender() {
     if (!activeVideoRenderId) return;
-    if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
+    const renderTargetMatches = activeVideoRenderIdentity === currentVideoRenderIdentity();
+    const confirmation = renderTargetMatches
+      ? "درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود."
+      : "این رندر متعلق به Timeline یا نسخهٔ دیگری است. فقط همان Job قبلی لغو می‌شود؛ ادامه می‌دهید؟";
+    if (!window.confirm(confirmation)) return;
     const renderId = activeVideoRenderId;
     const renderIdentity = activeVideoRenderIdentity;
     const button = $("#video-render-cancel");
