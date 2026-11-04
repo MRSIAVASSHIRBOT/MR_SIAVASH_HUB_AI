@@ -39,7 +39,7 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
-- `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. Requires an owned analysis and does not start video generation.
+- `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. An optional `draft_id` plus `expected_draft_version` selects an owner-scoped saved storyboard for its matching asset; the API verifies draft ownership, analysis binding and exact version before composition. It does not start video generation.
 - `POST /video-intelligence/timeline-drafts` — persist an editable timeline for an asset in the current owner's completed analysis.
 - `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned timeline draft.
 - `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
@@ -54,7 +54,7 @@ The durable Worker always reports technical metadata, sampled keyframe timestamp
 
 Configure `MRH_LOCAL_VISION_ENABLED=true`, `MRH_LOCAL_VISION_MODEL=<installed-model>`, and optionally `MRH_LOCAL_VISION_TIMEOUT_SECONDS=120`. Ollama must be running on the configured loopback-only `MRH_LOCAL_INFERENCE_BASE_URL`. No model is downloaded automatically, and there is no remote fallback. If vision is disabled or unavailable, the job completes with an explicit semantic-analysis status rather than fabricated descriptions.
 
-Editable timeline drafts can be saved separately with owner isolation, bounded beat intervals, and optimistic version checks. Editing a draft does not trigger rendering or provider execution.
+Editable timeline drafts can be saved separately with owner isolation, bounded beat intervals, and optimistic version checks. Prompt composition can consume a selected saved draft only when its owner, analysis, asset and exact version match; its authored beats override the generated beats for that asset. Composition remains deterministic and does not trigger rendering or provider execution. Draft transitions remain prompt guidance and are not passed to the cut-only FFmpeg renderer.
 
 The dashboard provides an authenticated workflow to select owned video assets, submit an idempotent analysis job, manually refresh its status, inspect technical/semantic results, and compose/copy one prompt per source asset. The separate pull-worker process must be running (`python -m mrhub.worker_service`) for queued analyses to execute; the API does not start background execution implicitly.
 
