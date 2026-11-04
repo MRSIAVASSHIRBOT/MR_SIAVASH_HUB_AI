@@ -1005,7 +1005,7 @@
   function renderVideoStoryboardEditor(beats, sourceTimestampLimitSeconds = 86400) {
     const container = $("#video-storyboard-beats");
     const sourceTimestampMax = Number.isFinite(Number(sourceTimestampLimitSeconds))
-      ? Math.max(0, Number(sourceTimestampLimitSeconds) - 0.001)
+      ? Math.min(86400, Math.max(0, Number(sourceTimestampLimitSeconds) - 0.001))
       : 86400;
     container.replaceChildren();
     if (!Array.isArray(beats) || !beats.length) {
