@@ -1,4 +1,4 @@
-"""Shared bounded health probing for optional local integrations."""
+""""Shared bounded health probing for optional local integrations."""
 
 import ipaddress  # noqa: I001
 import re
@@ -8,6 +8,8 @@ import httpx
 
 
 INTEGRATION_CONTRACT_VERSION = "1.0"
+MAX_HEALTH_PROBE_TIMEOUT_SECONDS = 10.0
+MAX_HEALTH_PROBE_RESPONSE_BYTES = 16384
 
 
 def _valid_local_path(value: str, *, allow_root: bool = True) -> bool:
@@ -67,16 +69,25 @@ async def probe_loopback_service(
     timeout_seconds: float,
     max_response_bytes: int,
 ) -> dict[str, object]:
-    """Perform a bounded, redirect-free health check and return sanitized status."""
+    """Perform a bounded, redirect-free health check and return sanitized status.
+
+    The probe has a hard timeout ceiling and response-size ceiling so optional
+    integrations cannot turn a status request into an unbounded resource wait.
+    Cancellation is deliberately allowed to propagate to the caller.
+    """
     base = validate_loopback_base_url(base_url)
     path = validate_health_path(health_path)
-    if not 1 <= max_response_bytes <= 16384:
-        return {
-            "contract_version": INTEGRATION_CONTRACT_VERSION,
-            "status": "invalid_configuration",
-            "configured": False,
-        }
-    if base is None or path is None:
+    valid_timeout = (
+        isinstance(timeout_seconds, (int, float))
+        and not isinstance(timeout_seconds, bool)
+        and 0 < timeout_seconds <= MAX_HEALTH_PROBE_TIMEOUT_SECONDS
+    )
+    valid_response_limit = (
+        isinstance(max_response_bytes, int)
+        and not isinstance(max_response_bytes, bool)
+        and 1 <= max_response_bytes <= MAX_HEALTH_PROBE_RESPONSE_BYTES
+    )
+    if not valid_timeout or not valid_response_limit or base is None or path is None:
         return {
             "contract_version": INTEGRATION_CONTRACT_VERSION,
             "status": "invalid_configuration",
@@ -102,9 +113,11 @@ async def probe_loopback_service(
                     "http_status": response.status_code,
                 }
             received = 0
-            # One-byte chunks make the configured limit strict: no oversized
-            # chunk is buffered before the limit check can stop the stream.
-            async for chunk in response.aiter_bytes(chunk_size=1):
+            # Bound each yielded chunk to at most the remaining allowance plus
+            # one byte, avoiding per-byte iteration while detecting overflow.
+            async for chunk in response.aiter_bytes(
+                chunk_size=min(1024, max_response_bytes + 1)
+            ):
                 received += len(chunk)
                 if received > max_response_bytes:
                     return {
@@ -118,6 +131,12 @@ async def probe_loopback_service(
                 "configured": True,
                 "http_status": response.status_code,
             }
+    except httpx.TimeoutException:
+        return {
+            "contract_version": INTEGRATION_CONTRACT_VERSION,
+            "status": "timeout",
+            "configured": True,
+        }
     except (httpx.HTTPError, OSError, ValueError):
         return {
             "contract_version": INTEGRATION_CONTRACT_VERSION,
