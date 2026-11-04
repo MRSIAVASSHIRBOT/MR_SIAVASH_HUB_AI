@@ -737,6 +737,16 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert repository.tasks.get(task_id).status is TaskStatus.FAILED
     assert calls["submit"] == 1
 
+    # Reconciliation must remain possible if the provider's current capability
+    # catalog changes after the original request has already been accepted.
+    provider.capability = SimpleNamespace(
+        provider="local",
+        model="renderer-v1",
+        max_duration_seconds=5,
+        supported_aspect_ratios=["16:9"],
+        max_resolution="720p",
+    )
+
     # A lookup miss is not proof that submission never happened. Keep the
     # ambiguous state and allow a later explicit reconciliation attempt.
     repository.enqueue_reconciliation("owner-a", generation_id)
