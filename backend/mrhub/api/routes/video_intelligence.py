@@ -52,6 +52,7 @@ from mrhub.video_intelligence.schemas import (
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
+from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import (
     TimelineBeat,
     TimelineConflict,
