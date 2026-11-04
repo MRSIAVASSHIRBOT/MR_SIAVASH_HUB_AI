@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
+**Audited main SHA:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -17,13 +17,13 @@ These results confirm the configured automated checks on the current main commit
 
 ## 2. Live repository inventory
 
-At main `8f190eeac4b4627692b60ac27e6dd5c12e4557bc` (2026-11-04 UTC):
+At main `3134fb50d47f7ab87934971a27e2ba90c85263d8` (2026-11-04 UTC):
 
-- Recursive Git tree: 331 entries; response was not truncated.
-- Python test files under `tests/` and `backend/tests/`: 95.
+- Recursive Git tree: 327 entries; response was not truncated.
+- Python test files under `tests/` and `backend/tests/`: 94.
 - Backend package domains: 19 (agents, API, capabilities, content, diagnostics, domain, infrastructure, integrations, jobs, knowledge, media, memory, NEXUS, operations, providers, security, tools, video intelligence, web).
 - GitHub Actions workflows: 7, including Backend CI, the Python 3.11/3.12 CI matrix, Defensive Python Scan, Windows launcher validation, and real video-render integration.
-- Schema migrations: through version 29.
+- Schema migrations: through version 27.
 - The wheel/package CI includes packaged UI asset verification.
 
 These counts describe repository structure and test inventory. They are not evidence that every feature is complete or that the tests exercise every production configuration.
@@ -39,7 +39,7 @@ These counts describe repository structure and test inventory. They are not evid
 | Workflow and Job Engine | Durable tasks, worker leases/fencing, checkpoint recovery, pause/resume, cancellation, emergency stop; PR #223 includes API/worker process-level emergency-stop/resume smoke coverage | Scheduled triggers, stronger fault injection around in-flight synchronous/external effects, multi-worker and long-running recovery semantics |
 | Tools and MCP | Built-in manifests, schema validation, policy grants, audit events, optional loopback MCP bridge | Compatibility/integrity testing, connector lifecycle and a reviewed extension ecosystem; no implicit authority grants |
 | Content and social | Draft/review/approval, durable schedules, Telegram text/media and opt-in Instagram image adapter foundations | Controlled real-account publishing/reconciliation, provider scopes, external HTTPS origin, edge controls, log hygiene and failure recovery |
-| Video and media | Owner-scoped media registry; bounded probing/analysis; editable timeline drafts; PR #271 saved-storyboard prompt composition and dashboard editor; PR #272 immutable renderer-snapshot value object; PR #273 durable immutable snapshot persistence, atomic draft-aware render submission and Worker snapshot consumption through migrations 28–29 | Dashboard render submission, snapshot-retention operations and target-device acceptance remain open. Renderer remains silent and hard-cut-only; no operational AI video provider is registered |
+| Video and media | Owner-scoped media registry; bounded probing/analysis; editable timeline drafts; PR #271 saved-storyboard prompt composition and dashboard editor; PR #272 immutable renderer-snapshot value object; PR #273 merged migrations 28–29, immutable snapshot persistence, atomic draft-aware render submission and snapshot-backed Worker execution | PR #276 proposes an additional current-draft revision fence for new submissions when a historical snapshot already exists; exact-head CI/review pending. Dashboard render submission and target-device acceptance remain open. Renderer remains silent and hard-cut-only; no operational AI video provider is registered |
 | NEXUS | Read-only Python AST analysis, import-alias awareness, advisory rules PY101–PY105 including `os.system`/`os.popen`, review-only patch proposals | Broader language/dependency coverage, performance validation on large repositories and explicitly authorized isolated test execution; analyzer must not execute target code |
 | Discovery and research | Roadmap and module boundaries | Source connectors, attributed research records, provenance, untrusted-content handling and end-to-end retrieval are not yet evidenced as complete |
 | Defensive Cybersecurity Lab | Scoped offline configuration and requirements review, authenticated metadata-only review API, structured-log triage | Approved advisory/CVE snapshot workflow and authorized asset inventory with scope/evidence tests; keep all operations defensive and non-destructive |
@@ -302,17 +302,54 @@ This is a provider contract gate, not a reconciliation worker or active integrat
 
 Post-merge workflows on `cbc12c0adf3994f28c49ca3ac4ff447ec029bade` were queued when this snapshot was prepared; do not report them as green until they complete.
 
-## 9. Video storyboard and immutable render integration — verified on main 2026-11-04 UTC
+## 9. Video storyboard and snapshot-render follow-up — 2026-11-04 UTC
 
-This section supersedes the earlier PR #273 proposal status. The audited main baseline is `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`.
+This section supersedes the earlier video-gap description in section 7. The current main baseline is `589a038d09271ddbcb2e8c07fbbce983499c882a`.
 
-### Merged implementation
+### Verified merged behavior
 
-- **PR #271** merged as `e9055ebef035931a36b277b3ce5d76ee58ff60c4`: owner-scoped saved storyboard drafts are validated against analysis, asset and exact draft version before text-only prompt composition. The dashboard supports draft listing, creation, editing, saving and explicit prompt composition. Composition does not call a generation provider, enqueue a generation job or invoke FFmpeg.
-- **PR #272** merged as `45c06562999a46861f89fca1438bd5b7776a850a`: strict immutable renderer-timeline snapshot value object, canonical JSON, SHA-256 integrity, owner/analysis/draft revision binding and revision-sensitive idempotency.
-- **PR #273** merged as `144b870e54713b3f80196c986b4864d547e301df`. Exact PR head `a01f865e907086cdc767a774fb1f2d94b8c57229` passed Python 3.11 and 3.12 CI, Backend CI, Defensive Python Scan, and Linux/Windows real FFmpeg integration. Main commit `8f190eeac4b4627692b60ac27e6dd5c12e4557bc` has successful post-merge runs: Backend CI `41844698187`, Video Render Integration `41844698033`, Defensive Python Scan `41844698232`, and CI `41844698029`.
-- Migrations 28–29 persist paired renderer-timeline/hash fields, immutable owner-scoped snapshots and render-job snapshot linkage. Draft-aware submission validates owner and source membership/duration, then commits snapshot, task, render record and idempotency binding atomically. The Worker loads and validates the immutable snapshot and fails closed rather than falling back to mutable analysis data.
-- Route tests cover exact snapshot handoff, missing/foreign drafts, absent saved renderer timelines and malformed saved timeline input. The test suite also covers snapshot immutability, revision fencing, source bounds and transactional rollback behavior.
+- **PR #271** merged as `e9055ebef035931a36b277b3ce5d76ee58ff60c4`. Saved owner-scoped storyboard drafts can be selected for prompt composition after draft/analysis/asset/version validation. The dashboard supports draft listing, creation, editing, saving and explicit prompt composition. Composition is text-only and does not call a generation provider, enqueue a generation job or invoke FFmpeg.
+- **PR #272** merged as `45c06562999a46861f89fca1438bd5b7776a850a`. It adds a strict immutable renderer-timeline snapshot value object with canonical JSON, SHA-256, owner/analysis/draft revision binding and revision-sensitive idempotency.
+- Main migration inventory remains at version 27. The snapshot persistence migrations described below are proposed on PR #273 and must not be counted as main capabilities before merge.
+
+### PR #273 — persistence and Worker integration candidate
+
+PR #273 is open and not merged. Its current branch proposes:
+- migration 28 for paired renderer timeline/hash fields and immutable owner-scoped snapshot storage, with restrictive retention relationships;
+- migration 29 for render-job snapshot linkage;
+- source asset membership and measured per-asset source-duration validation;
+- atomic snapshot, task, render record and idempotency persistence;
+- Worker loading and validation of the immutable snapshot, with fail-closed behavior and no fallback to mutable analysis data;
+- regression tests for owner isolation, version fencing, source bounds, immutable storage, snapshot-backed rendering and atomic rollback.
+
+The PR description and live GitHub metadata must be rechecked before merge. Exact-head checks were pending during this audit update. Do not infer success from earlier commits or branch history. The merge gate is Python 3.11/3.12, Backend CI, Defensive Python Scan, Linux and Windows FFmpeg integration on the exact current head, followed by code review.
+
+### Remaining verified gaps
+
+1. Route-level acceptance tests for the draft-aware render endpoint, including owner isolation, analysis mismatch, invalid stored renderer timeline, response shape and status mapping.
+2. Dashboard control to submit a render from a saved renderer-compatible timeline. The existing dashboard editor is not evidence that this render action is exposed.
+3. Target-device workflow acceptance using real media, including edits after snapshot creation, idempotent replay, cancellation, output publication and download.
+4. The local renderer remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and generated AI footage are not implemented.
+5. Video-generation provider reconciliation remains separate. PR #266 establishes a required read-only provider lookup contract only; no provider adapter is registered and no reconciliation worker/API is active.
+
+The audit is not a production-readiness declaration. Target-device/browser verification, external-account acceptance, install/upgrade/rollback and database/media/encryption-key restore drills remain separate release gates.
+
+## 10. Post-merge snapshot revision race correction — 2026-11-04 UTC
+
+**Current main baseline:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
+**PR #273 merge:** `144b870e54713b3f80196c986b4864d547e301df`  
+**PR #276 merge:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`
+
+PR #273 introduced migrations 28–29, renderer-timeline/hash persistence, immutable owner-scoped snapshots, atomic snapshot/render/idempotency acceptance and snapshot-backed Worker execution.
+
+A follow-up review found that an existing immutable snapshot could be reused by a *new* render submission after the editable draft had advanced. PR #276 closes this race:
+- The transactional new-render path now checks the current owner-scoped draft before reusing an existing snapshot.
+- Both snapshot-value and snapshot-ID submission forms enforce the same check.
+- The check binds owner, analysis, source asset, draft version, canonical timeline and SHA-256.
+- The original idempotency record is resolved before new work is created, so an already accepted render can still be replayed with the original key after the draft advances.
+- Regression tests verify stale new submissions are rejected and no second render row is created.
+
+The exact PR #276 head passed Python 3.11/3.12, Backend CI, Defensive Python Scan, and real FFmpeg integration on Linux and Windows. Post-merge checks on main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2` were still running when this audit was refreshed: the scan and Linux/Windows FFmpeg jobs had passed, while the Python 3.11/3.12 and aggregate test jobs remained in progress.
 
 ### Remaining verified gaps
 
@@ -324,6 +361,6 @@ This section supersedes the earlier PR #273 proposal status. The audited main ba
 
 ### Whole-project evidence boundary
 
-Current inventory at main `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`: 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are repository-shape metrics, not a completion percentage.
+Current inventory at main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`: 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are repository-shape metrics, not a completion percentage.
 
 The post-merge workflows listed above validate configured hosted automation only. Target-device/browser verification, external-account acceptance, clean install/upgrade/rollback and database/media/encryption-key restore drills remain independent release gates. This audit is not a production-readiness declaration.
