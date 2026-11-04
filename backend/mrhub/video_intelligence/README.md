@@ -129,7 +129,6 @@ The renderer consumes only a validated `VideoTimeline` and source paths resolved
 
 The current renderer is deliberately silent and cut-only. Output is limited to 125 clips, 60 seconds, fixed aspect-ratio presets, 1920-pixel maximum dimension, a 180-second FFmpeg timeout, and the repository's 100 MB output ceiling. A separate FFprobe process must confirm MP4 format, one video stream, expected dimensions, and duration before publication. Failed or cancelled jobs do not publish an asset. This does not constitute Windows or real-media runtime acceptance.
 
-
 ## Immutable storyboard render snapshots
 
 A saved `VideoTimelineDraft` and the cut-only renderer's `VideoTimeline` are different contracts. Storyboard beats contain editorial/generation intent; they are not executable renderer instructions. A draft may be submitted for local rendering only after the application has produced and persisted its renderer-compatible timeline representation.
