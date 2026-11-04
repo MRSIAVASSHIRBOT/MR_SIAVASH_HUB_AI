@@ -14,7 +14,7 @@
   let pendingVideoRenderKey = sessionStorage.getItem("mrh_video_render_pending_key");
   let pendingVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_pending_analysis_id");
   let pendingVideoRenderIdentity = sessionStorage.getItem("mrh_video_render_pending_identity");
-  let pendingVideoRenderRequests = {};
+  let pendingVideoRenderRequests = Object.create(null);
   try {
     const storedRequests = JSON.parse(sessionStorage.getItem("mrh_video_render_pending_requests") || "{}");
     if (storedRequests && typeof storedRequests === "object" && !Array.isArray(storedRequests)) {
@@ -728,6 +728,10 @@
       }
       requestKey = window.crypto.randomUUID();
       pendingVideoRenderRequests[requestIdentity] = requestKey;
+      const pendingIdentities = Object.keys(pendingVideoRenderRequests);
+      while (pendingIdentities.length > 20) {
+        delete pendingVideoRenderRequests[pendingIdentities.shift()];
+      }
     }
     pendingVideoRenderKey = requestKey;
     pendingVideoRenderAnalysisId = activeVideoAnalysisId;
