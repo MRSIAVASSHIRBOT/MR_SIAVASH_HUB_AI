@@ -86,7 +86,7 @@ Exact-head CI must pass before merge. No local test execution or target-device a
 
 ## 7. Remaining acceptance work
 
-- Add route-level tests for the draft-aware endpoint's owner isolation, analysis association, malformed saved timeline, response contract and HTTP status mapping.
+- Route-level tests now cover authenticated snapshot handoff, owner-scoped missing/foreign drafts, rejection when no renderer timeline is saved, and malformed saved timeline input. Keep the tests aligned with any future API response or status changes.
 - Add a dashboard action for submitting a render from the selected saved renderer timeline; do not expose a control before the complete API/Worker path is available.
 - Verify the user-facing workflow on the target Windows device with representative media, cancellation, stale draft edits and output download.
 - Keep the renderer explicitly silent and cut-only. Audio, captions, graphics, motion effects, transitions beyond hard cuts and AI-generated footage require separate validated contracts and are not implemented here.
