@@ -161,7 +161,7 @@ def test_prompt_composition_uses_versioned_storyboard_for_its_asset():
             "end_seconds": 3.0,
             "source_timestamp_seconds": 1.0,
             "confidence": 0.7,
-            "scene_cut_timestamps": [2.0],
+            "scene_cut_timestamps": [2.0, 3.0],
         },
         {
             "start_seconds": 3.0,
