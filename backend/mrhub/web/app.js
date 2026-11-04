@@ -14,6 +14,20 @@
   let pendingVideoRenderKey = sessionStorage.getItem("mrh_video_render_pending_key");
   let pendingVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_pending_analysis_id");
   let pendingVideoRenderIdentity = sessionStorage.getItem("mrh_video_render_pending_identity");
+  let pendingVideoRenderRequests = {};
+  try {
+    const storedRequests = JSON.parse(sessionStorage.getItem("mrh_video_render_pending_requests") || "{}");
+    if (storedRequests && typeof storedRequests === "object" && !Array.isArray(storedRequests)) {
+      for (const [identity, key] of Object.entries(storedRequests)) {
+        if (typeof identity === "string" && typeof key === "string"
+          && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
+          pendingVideoRenderRequests[identity] = key;
+        }
+      }
+    }
+  } catch {
+    pendingVideoRenderRequests = {};
+  }
   let activeVideoRenderStatus = null;
   let activeVideoRenderAssetId = null;
   let canSubmitVideoRender = false;
@@ -24,6 +38,9 @@
     sessionStorage.removeItem("mrh_video_render_pending_key");
     sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
     sessionStorage.removeItem("mrh_video_render_pending_identity");
+    sessionStorage.removeItem("mrh_video_render_pending_requests");
+    pendingVideoRenderIdentity = null;
+    pendingVideoRenderRequests = {};
     activeVideoAnalysisId = null;
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
@@ -693,22 +710,32 @@
       ? "draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version
         + ":" + rendererDraft.renderer_timeline_sha256
       : "analysis:" + activeVideoAnalysisId;
-    if (
-      !pendingVideoRenderKey
-      || pendingVideoRenderAnalysisId !== activeVideoAnalysisId
-      || pendingVideoRenderIdentity !== requestIdentity
-    ) {
+    let requestKey = pendingVideoRenderRequests[requestIdentity] || null;
+    const legacyRequestMatches = pendingVideoRenderKey
+      && pendingVideoRenderAnalysisId === activeVideoAnalysisId
+      && (
+        pendingVideoRenderIdentity === requestIdentity
+        || (!pendingVideoRenderIdentity && requestIdentity === "analysis:" + activeVideoAnalysisId)
+      );
+    if (!requestKey && legacyRequestMatches) {
+      requestKey = pendingVideoRenderKey;
+      pendingVideoRenderRequests[requestIdentity] = requestKey;
+    }
+    if (!requestKey) {
       if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
         message("#video-render-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
         return;
       }
-      pendingVideoRenderKey = window.crypto.randomUUID();
-      pendingVideoRenderAnalysisId = activeVideoAnalysisId;
-      pendingVideoRenderIdentity = requestIdentity;
-      sessionStorage.setItem("mrh_video_render_pending_key", pendingVideoRenderKey);
-      sessionStorage.setItem("mrh_video_render_pending_analysis_id", pendingVideoRenderAnalysisId);
-      sessionStorage.setItem("mrh_video_render_pending_identity", pendingVideoRenderIdentity);
+      requestKey = window.crypto.randomUUID();
+      pendingVideoRenderRequests[requestIdentity] = requestKey;
     }
+    pendingVideoRenderKey = requestKey;
+    pendingVideoRenderAnalysisId = activeVideoAnalysisId;
+    pendingVideoRenderIdentity = requestIdentity;
+    sessionStorage.setItem("mrh_video_render_pending_key", pendingVideoRenderKey);
+    sessionStorage.setItem("mrh_video_render_pending_analysis_id", pendingVideoRenderAnalysisId);
+    sessionStorage.setItem("mrh_video_render_pending_identity", pendingVideoRenderIdentity);
+    sessionStorage.setItem("mrh_video_render_pending_requests", JSON.stringify(pendingVideoRenderRequests));
     const button = $("#video-render-submit");
     button.disabled = true;
     message(
@@ -733,6 +760,8 @@
       pendingVideoRenderAnalysisId = null;
       sessionStorage.removeItem("mrh_video_render_pending_key");
       sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+      delete pendingVideoRenderRequests[requestIdentity];
+      sessionStorage.setItem("mrh_video_render_pending_requests", JSON.stringify(pendingVideoRenderRequests));
       sessionStorage.removeItem("mrh_video_render_pending_identity");
       pendingVideoRenderIdentity = null;
       renderVideoRender(accepted);
