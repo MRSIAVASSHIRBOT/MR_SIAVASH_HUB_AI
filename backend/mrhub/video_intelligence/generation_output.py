@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
@@ -19,6 +20,8 @@ def download_and_register_generation_output(
     media: MediaAssetRepository,
     owner_user_id: str,
     generation_id: UUID,
+    *,
+    lease: WorkerLease | None = None,
 ) -> dict[str, object]:
     """Stream one successful result into bounded storage, then independently validate it.
 
@@ -64,6 +67,7 @@ def download_and_register_generation_output(
             output_path,
             f"generated-{asset_id}.mp4",
             result,
+            lease=lease,
         )
         if asset is None:
             raise ValueError("Generation job is unavailable for output registration")
