@@ -75,17 +75,18 @@
 
   function syncVideoRenderTarget() {
     if (!activeVideoRenderId || !activeVideoRenderIdentity) return;
+    const renderMayBeActive = Boolean(activeVideoRenderId)
+      && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
     if (activeVideoRenderIdentity === currentVideoRenderIdentity()) {
       $("#video-render-refresh").disabled = false;
       $("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);
-      $("#video-render-submit").disabled = !canSubmitVideoRender
-        || ["accepted", "running"].includes(activeVideoRenderStatus);
+      $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
       return;
     }
     $("#video-render-result").replaceChildren();
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
-    $("#video-render-submit").disabled = !canSubmitVideoRender;
+    $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
     message(
       "#video-render-message",
       "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است؛ برای مشاهده یا لغو آن، همان Draft را دوباره انتخاب کنید."
@@ -660,6 +661,7 @@
     $("#video-render-submit").disabled = !canSubmitVideoRender
       || (Boolean(activeVideoRenderId) && !activeVideoRenderStatus)
       || ["accepted", "running"].includes(activeVideoRenderStatus);
+    syncVideoRenderTarget();
   }
 
   function clearVideoRenderState() {
@@ -716,6 +718,7 @@
     $("#video-render-refresh").disabled = !activeVideoRenderId;
     $("#video-render-cancel").disabled = !active;
     $("#video-render-submit").disabled = !canSubmitVideoRender || active;
+    syncVideoRenderTarget();
   }
 
   async function refreshVideoRender() {
@@ -836,7 +839,11 @@
     } catch (error) {
       message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
     } finally {
-      button.disabled = !canSubmitVideoRender || ["accepted", "running"].includes(activeVideoRenderStatus);
+      if (activeVideoRenderId && activeVideoRenderIdentity) {
+        syncVideoRenderTarget();
+      } else {
+        button.disabled = !canSubmitVideoRender;
+      }
     }
   }
 
