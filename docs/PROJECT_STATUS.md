@@ -576,7 +576,7 @@ PR #290 merged as `592e98221014ca897edfb09285830a6a3b990a76`. The test-only regr
 
 ## Video-generation outcome reconciliation proposal — 2026-11-04 UTC
 
-Current main baseline at this review: `a4f89e6addaba6b7221b8b05aab3e2bdf63f8e0b`. PR #293 is open and not merged. Its branch `feat/video-generation-outcome-reconciliation-clean` is 33 commits ahead of and 0 behind current main at the latest comparison; this is a branch comparison, not a merge-readiness verdict.
+Current main baseline at this review: `6cabc1e81dfc97c704c3ecd1506553a481bedb69`. PR #293 is open and not merged. Its branch `feat/video-generation-outcome-reconciliation-clean` is 36 commits ahead of and 0 behind current main at the latest comparison; this is a branch comparison, not a merge-readiness verdict.
 
 The proposal adds owner-scoped generation status and explicit reconciliation endpoints. For ambiguous submissions, the worker looks up the original generation idempotency key and never calls `submit` again. When a provider job is discovered, the worker persists its opaque reference under the active lease, polls status and streams a successful result through bounded private storage before independent media probing and atomic asset registration. Provider job IDs remain excluded from the public status and task-result contracts. The original encrypted request is retained while the remote outcome remains ambiguous and purged only on terminal failure/cancellation or successful output finalization.
 
