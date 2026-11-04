@@ -194,7 +194,13 @@ def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision()
     refresh = script.split("async function refreshVideoRender", 1)[1].split(
         "async function submitVideoRender", 1
     )[0]
-    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in refresh
+    assert "renderIdentity && renderIdentity !== currentVideoRenderIdentity()" in refresh
+    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" not in refresh
+    sync_target = script.split("function syncVideoRenderTarget", 1)[1].split(
+        "function message", 1
+    )[0]
+    assert "replaceChildren" not in sync_target
+    assert "دکمه‌های بررسی و لغو فقط همان Job قبلی را کنترل می‌کنند" in sync_target
 
 
 def test_operator_ui_exposes_saved_renderer_draft_render_selection_and_cleanup():
@@ -261,6 +267,7 @@ def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
     assert "encodeURIComponent(renderId)" in cancel
     assert "activeVideoRenderId !== renderId" in cancel
     assert "activeVideoRenderIdentity !== renderIdentity" in cancel
+    assert "فقط همان Job قبلی لغو می‌شود" in cancel
 
 def test_operator_ui_binds_render_retries_to_exact_analysis_or_draft_revision():
     script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
