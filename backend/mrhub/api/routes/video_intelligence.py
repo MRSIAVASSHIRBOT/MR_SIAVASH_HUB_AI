@@ -617,6 +617,24 @@ def prepare_video_render_timeline(
             render_specification_data
         )
         renderer_timeline = build_video_timeline(render_specification)
+        existing_timeline = draft.get("renderer_timeline")
+        if isinstance(existing_timeline, dict) and draft.get("renderer_timeline_sha256"):
+            current_snapshot = VideoRenderTimelineSnapshot.create(
+                owner_user_id=user.user_id,
+                analysis_id=analysis_id,
+                draft_id=draft_id,
+                draft_version=int(draft["version"]),
+                timeline=renderer_timeline,
+                analysis_source_asset_ids=[
+                    source["asset_id"] for source in selected_sources
+                ],
+            )
+            if (
+                existing_timeline == renderer_timeline.model_dump(mode="json")
+                and draft["renderer_timeline_sha256"] == current_snapshot.timeline_sha256
+            ):
+                return draft
+
         update = TimelineDraftUpdate(
             expected_version=int(draft["version"]),
             duration_seconds=int(draft["duration_seconds"]),
