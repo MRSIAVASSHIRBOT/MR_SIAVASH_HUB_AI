@@ -443,3 +443,14 @@ PY106 is a targeted AST heuristic for literal `verify=False` on supported Reques
 ### Remaining acceptance work
 
 Continue coordinated integration across provider routing, workflow execution/recovery, content automation, video generation/rendering, MCP lifecycle, package/release validation and discovery provenance. Real target-device acceptance, live external-account verification, production restore/key-recovery drills, and install/upgrade/rollback testing remain open. No whole-product completion or production-readiness claim is made.
+
+
+## Provider-router consistency follow-up — 2026-11-04 UTC
+
+Latest main snapshot: `a7f4fb453da7ba70d3c20c684011f7076f12235b`.
+
+- **PR #245** (`a7f4fb453da7ba70d3c20c684011f7076f12235b`) hardens AI Core provider registration: duplicate provider/model descriptors are rejected instead of silently overwriting router metadata. Provider registration preflights the router key before mutating the adapter registry, preventing a partial cross-registry state. Regression tests cover both preservation of the original descriptor and absence of a partially registered adapter.
+- All six exact-head PR #245 checks passed: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration.
+- Main push-triggered workflows for `a7f4fb453da7ba70d3c20c684011f7076f12235b` must still be checked independently; PR checks are not a substitute for post-merge main verification.
+
+The project readiness boundary is unchanged: real target-device acceptance, external-account publishing, production restore/key recovery, package install/upgrade/rollback, full video-editor capabilities, and complete connector lifecycle acceptance remain open. No production-ready or whole-project-complete claim is made.
