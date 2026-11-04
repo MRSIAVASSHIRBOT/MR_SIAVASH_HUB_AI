@@ -574,3 +574,10 @@ PR #290 merged as `592e98221014ca897edfb09285830a6a3b990a76`. The test-only regr
 - Provider reconciliation is separate from local FFmpeg rendering; no external generation provider is registered.
 - Clean install/upgrade/rollback, database/media/key restore and external-account verification remain independent release gates.
 
+## Video-generation outcome reconciliation proposal — 2026-11-04 UTC
+
+Current main baseline at this review: `a4f89e6addaba6b7221b8b05aab3e2bdf63f8e0b`. PR #293 is open and not merged. Its branch `feat/video-generation-outcome-reconciliation-clean` is 33 commits ahead of and 0 behind current main at the latest comparison; this is a branch comparison, not a merge-readiness verdict.
+
+The proposal adds owner-scoped generation status and explicit reconciliation endpoints. For ambiguous submissions, the worker looks up the original generation idempotency key and never calls `submit` again. When a provider job is discovered, the worker persists its opaque reference under the active lease, polls status and streams a successful result through bounded private storage before independent media probing and atomic asset registration. Provider job IDs remain excluded from the public status and task-result contracts. The original encrypted request is retained while the remote outcome remains ambiguous and purged only on terminal failure/cancellation or successful output finalization.
+
+Exact-head CI is currently queued, not passed. A further operational merge gate is durable per-generation reconciliation throttling: repeated explicit lookup/status attempts need an atomic attempt budget and cooldown/backoff, with HTTP 429 and a stable `Retry-After` contract. Tests must cover concurrent requests, cooldown expiry, lookup miss, provider error and owner isolation. The provider registry remains empty by default; this PR does not activate a real provider. No production-readiness or external-provider acceptance is claimed.
