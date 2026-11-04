@@ -671,6 +671,30 @@
     const renderMayBeActive = Boolean(activeVideoRenderId)
       && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
     $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft;
+    $("#video-storyboard-render-submit").disabled = !hasDraft || renderMayBeActive;
+  }
+
+  function lockVideoStoryboardControls() {
+    const nodes = [
+      $("#video-analysis-submit"),
+      $("#video-prompt-source"),
+      $("#video-storyboard-draft-select"),
+      $("#video-storyboard-add-beat"),
+      $("#video-storyboard-save"),
+      $("#video-storyboard-compose"),
+      $("#video-storyboard-new"),
+      ...Array.from($("#video-storyboard-beats").querySelectorAll("input, textarea, button")),
+    ].filter(Boolean);
+    const previous = nodes.map((node) => node.disabled);
+    nodes.forEach((node) => { node.disabled = true; });
+    $("#video-storyboard-prepare-render-timeline").disabled = true;
+    $("#video-storyboard-render-submit").disabled = true;
+    return () => {
+      if (!token) return;
+      nodes.forEach((node, index) => { node.disabled = previous[index]; });
+      syncStoryboardRenderButtons();
+      syncVideoRenderTarget();
+    };
   }
 
   function clearVideoRenderState() {
@@ -1335,21 +1359,29 @@
   }
 
   async function prepareSavedVideoDraftForRender(saved) {
+    if (saved.renderer_timeline && saved.renderer_timeline_sha256) {
+      return saved;
+    }
     const prepared = await api(
       "/video-intelligence/timeline-drafts/" + encodeURIComponent(saved.draft_id) + "/prepare-render-timeline",
       { method: "POST" }
     );
-    activeVideoTimelineDraft = prepared;
-    syncStoryboardRenderButtons();
+    if (
+      activeVideoAnalysisId === saved.analysis_id
+      && $("#video-prompt-source").value === saved.asset_id
+    ) {
+      activeVideoTimelineDraft = prepared;
+    }
     videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== prepared.draft_id);
     videoTimelineDrafts.unshift(prepared);
     renderVideoStoryboardDraftOptions(prepared.asset_id);
+    syncStoryboardRenderButtons();
+    syncVideoRenderTarget();
     return prepared;
   }
 
   async function prepareVideoRenderTimeline() {
-    const button = $("#video-storyboard-prepare-render-timeline");
-    button.disabled = true;
+    const unlock = lockVideoStoryboardControls();
     try {
       const saved = await persistVideoStoryboardDraft();
       const prepared = await prepareSavedVideoDraftForRender(saved);
@@ -1359,13 +1391,41 @@
       message(
         "#video-storyboard-message",
         "Timeline برش‌مستقیم برای نسخه " + prepared.version
-          + " ذخیره شد؛ مدت واقعی خروجی " + actual.toFixed(2) + " ثانیه است.",
+          + " آماده است؛ مدت واقعی خروجی " + actual.toFixed(2) + " ثانیه است.",
         "success"
       );
     } catch (error) {
       message("#video-storyboard-message", error.message, "error");
     } finally {
-      syncStoryboardRenderButtons();
+      unlock();
+    }
+  }
+
+  async function submitVideoDraftRender() {
+    const unlock = lockVideoStoryboardControls();
+    try {
+      const requestAnalysisId = activeVideoAnalysisId;
+      const savedDraft = await persistVideoStoryboardDraft();
+      if (activeVideoAnalysisId !== requestAnalysisId) {
+        throw new Error("تحلیل فعال تغییر کرده است؛ رندر را دوباره از نسخهٔ انتخاب‌شده ثبت کنید.");
+      }
+      const prepared = await prepareSavedVideoDraftForRender(savedDraft);
+      if (
+        activeVideoAnalysisId !== requestAnalysisId
+        || !prepared.renderer_timeline
+        || !prepared.renderer_timeline_sha256
+      ) {
+        throw new Error("Timeline معتبر برای همین نسخهٔ Draft آماده نشد.");
+      }
+      await submitVideoRender();
+    } catch (error) {
+      message(
+        "#video-storyboard-message",
+        error.message + "؛ کلید idempotency نسخهٔ ذخیره‌شده برای تلاش مجدد حفظ می‌شود.",
+        "error"
+      );
+    } finally {
+      unlock();
     }
   }
 
