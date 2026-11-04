@@ -3,7 +3,7 @@ import subprocess
 from uuid import UUID
 
 import pytest
-from fastapi import Response
+from fastapi import HTTPException, Response
 from pydantic import ValidationError
 
 from mrhub.api.routes.video_intelligence import (
@@ -14,6 +14,7 @@ from mrhub.api.routes.video_intelligence import (
 from mrhub.config import get_settings
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
+from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     AnalysisMode,
@@ -383,7 +384,13 @@ def test_draft_render_api_freezes_exact_saved_revision_and_queues_snapshot(
             return analysis
 
     class RenderJobs:
+        reject_stale = False
+
         def submit(self, owner_user_id, requested_analysis_id, key, *, snapshot):
+            if self.reject_stale:
+                raise VideoRenderSnapshotConflict(
+                    "Snapshot does not match the current owner-scoped draft revision"
+                )
             assert owner_user_id == "owner-1"
             assert requested_analysis_id == analysis_id
             assert key == "draft-render-idempotency"
@@ -417,3 +424,15 @@ def test_draft_render_api_freezes_exact_saved_revision_and_queues_snapshot(
     assert result["draft_id"] == str(draft_id)
     assert result["draft_version"] == 7
     assert result["created"] is True
+
+    # The draft may advance after the route reads it but before the render
+    # repository acquires its write transaction. The race must surface as 409.
+    render_jobs.reject_stale = True
+    with pytest.raises(HTTPException) as error:
+        submit_video_render_from_timeline_draft(
+            draft_id,
+            Response(status_code=202),
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+            "draft-render-after-concurrent-edit",
+        )
+    assert error.value.status_code == 409
