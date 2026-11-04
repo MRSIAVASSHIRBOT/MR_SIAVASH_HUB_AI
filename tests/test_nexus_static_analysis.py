@@ -194,11 +194,11 @@ def test_static_analysis_detects_requests_tls_verification_disabled_and_import_a
 
 def test_static_analysis_detects_httpx_tls_verification_disabled_and_client_aliases():
     result = analyze_python_source(
-        "import httpx as client\\n"
-        "from httpx import AsyncClient as AsyncHTTP\\n"
-        "client.get(url, verify=False)\\n"
-        "AsyncHTTP(verify=False)\\n"
-        "client.get(secure_url, verify=True)\\n",
+        "import httpx as client\n"
+        "from httpx import AsyncClient as AsyncHTTP\n"
+        "client.get(url, verify=False)\n"
+        "AsyncHTTP(verify=False)\n"
+        "client.get(secure_url, verify=True)\n",
         path="src/httpx_client.py",
     )
 
