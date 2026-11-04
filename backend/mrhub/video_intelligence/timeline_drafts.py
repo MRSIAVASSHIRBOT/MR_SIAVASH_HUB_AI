@@ -38,7 +38,7 @@ class TimelineDraftUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     expected_version: int = Field(ge=1, strict=True)
-    duration_seconds: int = Field(ge=3, le=60)
+    duration_seconds: int = Field(ge=3, le=60, strict=True)
     aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
     beats: list[TimelineBeat] = Field(min_length=1, max_length=20)
 
