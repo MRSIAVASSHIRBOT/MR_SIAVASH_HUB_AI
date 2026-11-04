@@ -699,7 +699,7 @@ MIGRATIONS = (
             """CREATE TABLE IF NOT EXISTS video_timeline_drafts (
                 draft_id TEXT PRIMARY KEY,
                 owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
-                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE RESTRICT,
+                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE CASCADE,
                 asset_id TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL CHECK (duration_seconds BETWEEN 3 AND 60),
                 aspect_ratio TEXT NOT NULL CHECK (aspect_ratio IN ('9:16', '16:9', '1:1', '4:5')),
@@ -769,7 +769,7 @@ MIGRATIONS = (
              """CREATE TABLE IF NOT EXISTS video_render_timeline_snapshots (
                 snapshot_id TEXT PRIMARY KEY,
                 owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
-                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE CASCADE,
+                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE RESTRICT,
                 draft_id TEXT NOT NULL REFERENCES video_timeline_drafts(draft_id) ON DELETE RESTRICT,
                 draft_version INTEGER NOT NULL CHECK (draft_version > 0),
                 snapshot_version TEXT NOT NULL CHECK (snapshot_version = '1'),

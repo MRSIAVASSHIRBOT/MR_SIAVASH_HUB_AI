@@ -264,7 +264,7 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_28_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
@@ -433,5 +433,12 @@ def test_v28_renderer_snapshot_schema_enforces_pair_and_retention_policy(tmp_pat
             "video_analysis_runs": "RESTRICT",
             "auth_users": "CASCADE",
         }
+        draft_foreign_keys = {
+            row["table"]: row["on_delete"]
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(video_timeline_drafts)"
+            )
+        }
+        assert draft_foreign_keys["video_analysis_runs"] == "CASCADE"
     finally:
         connection.close()
