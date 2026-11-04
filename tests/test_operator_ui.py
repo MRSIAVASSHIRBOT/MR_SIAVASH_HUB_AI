@@ -169,6 +169,45 @@ def test_operator_ui_exposes_saved_storyboard_timeline_preparation():
     assert "function syncStoryboardRenderButtons()" in script.text
 
 
+def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    assert 'mrh_video_render_identity' in script
+    assert "function currentVideoRenderIdentity()" in script
+    assert "function syncVideoRenderTarget()" in script
+    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in script
+    assert "syncVideoRenderTarget();" in script
+    assert "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است" in script
+    assert 'const renderMayBeActive = Boolean(activeVideoRenderId)' in script
+    assert script.count("|| renderMayBeActive") == 2
+    render_status = script.split("function renderVideoRender", 1)[1].split(
+        "async function refreshVideoRender", 1
+    )[0]
+    assert "syncVideoRenderTarget();" in render_status
+    refresh = script.split("async function refreshVideoRender", 1)[1].split(
+        "async function submitVideoRender", 1
+    )[0]
+    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in refresh
+
+
+def test_operator_ui_exposes_saved_renderer_draft_render_selection_and_cleanup():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert 'id="video-render-source-note"' in page.text
+    assert "rendererDraft.renderer_timeline" in script.text
+    assert "rendererDraft.renderer_timeline_sha256" in script.text
+    assert '"/video-intelligence/timeline-drafts/"' in script.text
+    assert '"draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version' in script.text
+    assert "mrh_video_render_pending_requests" in script.text
+    assert 'sessionStorage.removeItem("mrh_video_render_pending_requests")' in script.text
+    assert "pendingVideoRenderIdentity = null" in script.text
+
+
+
 def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
     script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
 
