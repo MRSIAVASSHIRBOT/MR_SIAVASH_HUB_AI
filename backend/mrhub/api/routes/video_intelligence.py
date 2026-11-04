@@ -98,6 +98,10 @@ class PromptCompositionRequest(BaseModel):
         return self
 
 
+def _generation_jobs() -> VideoGenerationJobRepository:
+    return VideoGenerationJobRepository(get_settings().database_path)
+
+
 def _brands() -> VideoBrandRepository:
     return VideoBrandRepository(get_settings().database_path)
 
@@ -171,7 +175,7 @@ def submit_video_generation(
         resolution=payload.resolution,
         idempotency_key=idempotency_key,
     )
-    jobs = VideoGenerationJobRepository(get_settings().database_path)
+    jobs = _generation_jobs()
     try:
         accepted, created = jobs.submit(
             user.user_id, analysis_id, payload.provider, payload.model, request
@@ -211,6 +215,44 @@ def submit_video_generation(
         "approval_endpoint": f"/tasks/{task_id}/approval",
         "execution": "awaiting_approval" if awaiting_approval else "queued_or_terminal",
     }
+
+
+
+
+@router.get("/generations/{generation_id}")
+def get_video_generation_status(
+    generation_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return bounded status and output metadata for this owner's generation job."""
+    generation = _generation_jobs().get(user.user_id, generation_id)
+    if generation is None:
+        # Do not reveal whether a foreign owner's generation ID exists.
+        raise HTTPException(status_code=404, detail="Video generation not found")
+
+    status_fields: dict[str, object] = {
+        "generation_id": generation["generation_id"],
+        "source_analysis_id": generation["source_analysis_id"],
+        "provider": generation["provider"],
+        "model": generation["model"],
+        "status": generation["status"],
+        "progress_percent": generation["progress_percent"],
+        "error_code": generation["error_code"],
+        "created_at": generation["created_at"],
+        "updated_at": generation["updated_at"],
+    }
+    output_asset_id = generation["output_asset_id"]
+    if output_asset_id is not None:
+        status_fields["output"] = {
+            "asset_id": output_asset_id,
+            "bytes": generation["output_bytes"],
+            "duration_seconds": generation["output_duration_seconds"],
+            "width": generation["output_width"],
+            "height": generation["output_height"],
+        }
+    else:
+        status_fields["output"] = None
+    return status_fields
 
 
 @router.post("/prompts/compose")
