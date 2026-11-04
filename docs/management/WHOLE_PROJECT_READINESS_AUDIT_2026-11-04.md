@@ -281,13 +281,13 @@ The video-generation worker now treats every exception raised after entering pro
 
 ### Newly verified cross-layer video gap
 
-Timeline drafts and rendering are not yet connected end to end:
+The persisted storyboard draft has no downstream consumer yet:
 
-- `VideoTimelineDraftRepository` stores owner-scoped, versioned semantic beat drafts.
-- The render API accepts an `analysis_id`, and `VideoRenderJobRepository.submit()` loads the original analysis timeline rather than a selected draft.
-- The current operator UI exposes analysis and render controls, but not an editable draft-to-render workflow.
+- `VideoTimelineDraftRepository` stores owner-scoped, versioned beats containing `generation_instruction`, `transition_to_next`, optional source timestamps and confidence.
+- Prompt composition currently derives beats directly from validated analysis observations; it does not accept a saved draft.
+- The separate cut-only render API consumes the original `VideoTimeline` from the analysis result. It does not consume storyboard drafts, and the operator UI does not expose a storyboard editor.
 
-Therefore, a saved or updated timeline draft is not currently the source of the rendered MP4. This is a confirmed integration gap, not a claim that the render worker itself is broken. The next video milestone should define a renderable, immutable draft snapshot, bind it to owner + draft version + source assets, and carry that snapshot through API admission, durable job persistence, worker validation, FFmpeg rendering, result registration, and UI status/download. The draft version must be included in idempotency so a changed edit cannot silently replay an earlier render request.
+This is a verified workflow-integration gap, but it does **not** mean the storyboard should be passed directly to FFmpeg. The two models have different semantics. The next milestone should connect a selected, owner-scoped draft to prompt composition: validate owner + analysis + asset + draft version, use the draft's beats as the prompt timeline for that asset, and return the exact draft ID/version with the composed prompt. The existing cut-only renderer should remain based on validated `VideoTimeline` data until a separate, explicit edit-decision-list contract is designed. After prompt composition is integrated, the operator UI should expose create/edit/save/compose operations. No provider call should occur during composition.
 
 ### Release and acceptance boundaries
 
