@@ -283,7 +283,8 @@ def test_agent_run_exposes_approval_required_without_invoking_tool(monkeypatch):
     from pydantic import BaseModel
 
     from mrhub.domain.tasks import RiskClass
-    from mrhub.tools.registry import ToolDefinition, ToolRegistry
+    from mrhub.tools.builtins import build_tool_registry
+    from mrhub.tools.registry import ToolDefinition
 
     client = authenticated_client()
     provider = ScriptedProvider(json.dumps({
@@ -305,7 +306,7 @@ def test_agent_run_exposes_approval_required_without_invoking_tool(monkeypatch):
         pass
 
     calls = []
-    registry = ToolRegistry()
+    registry = build_tool_registry()
     registry.register(ToolDefinition(
         name="external.publish",
         description="Publish approved content",
