@@ -138,6 +138,23 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
 
 
 
+def test_generation_registry_rejects_adapter_without_reconciliation_lookup():
+    class AdapterWithoutLookup:
+        capability = VideoGenerationCapability(
+            provider="legacy",
+            model="legacy-v1",
+            local=True,
+            supported_aspect_ratios=("16:9",),
+            max_duration_seconds=30,
+            max_resolution="720p",
+        )
+
+    registry = VideoGenerationRegistry()
+    with pytest.raises(TypeError, match="find_by_idempotency_key"):
+        registry.register(AdapterWithoutLookup())
+    assert registry.catalog() == []
+
+
 def test_authenticated_provider_catalog_fails_closed_when_no_adapter_is_configured():
     from client_helpers import authenticated_client
 
