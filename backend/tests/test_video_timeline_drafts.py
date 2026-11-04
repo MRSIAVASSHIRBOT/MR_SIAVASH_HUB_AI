@@ -181,3 +181,21 @@ def test_timeline_draft_list_is_owner_and_analysis_scoped(tmp_path):
     assert [item["draft_id"] for item in owned] == [created["draft_id"]]
     assert foreign_owner == []
     assert foreign_analysis == []
+
+
+
+def test_timeline_draft_update_requires_a_strict_positive_version():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        TimelineDraftUpdate(
+            expected_version=True,
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            beats=[{
+                "start_seconds": 0,
+                "end_seconds": 10,
+                "generation_instruction": "Create an original scene",
+            }],
+        )
