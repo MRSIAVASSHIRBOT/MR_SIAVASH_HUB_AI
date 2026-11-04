@@ -40,7 +40,7 @@ class VideoRenderTimelineSnapshot(BaseModel):
     owner_user_id: str = Field(min_length=1, max_length=200)
     analysis_id: UUID
     draft_id: UUID
-    draft_version: int = Field(ge=1)
+    draft_version: int = Field(ge=1, strict=True)
     timeline_json: str = Field(min_length=2, max_length=100_000)
     timeline_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
