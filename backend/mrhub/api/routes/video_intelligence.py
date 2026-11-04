@@ -414,14 +414,33 @@ def compose_prompt_from_analysis(
                 "message": "Video analysis result is unavailable",
             },
         )
+    timeline_draft = None
+    if payload.timeline_draft_id is not None:
+        timeline_draft = _timeline_drafts().get(
+            user.user_id, payload.timeline_draft_id
+        )
+        if (
+            timeline_draft is None
+            or timeline_draft.get("analysis_id") != str(analysis_id)
+        ):
+            raise HTTPException(status_code=404, detail="Timeline draft not found")
+        assets = result.get("assets")
+        if not isinstance(assets, list) or not any(
+            isinstance(item, dict)
+            and item.get("asset_id") == timeline_draft.get("asset_id")
+            for item in assets
+        ):
+            raise HTTPException(status_code=404, detail="Timeline draft not found")
     try:
-        prompts = compose_prompts_from_analysis(result, payload)
+        prompts = compose_prompts_from_analysis(
+            result, payload, timeline_draft=timeline_draft
+        )
     except PromptCompositionUnavailable as exc:
         raise HTTPException(
             status_code=409,
             detail={"code": exc.code, "message": str(exc)},
         ) from exc
-    return {
+    response: dict[str, object] = {
         "analysis_id": str(analysis_id),
         "status": "composed",
         "execution": "not_started",
@@ -429,6 +448,13 @@ def compose_prompt_from_analysis(
         "prompts": prompts,
         "count": len(prompts),
     }
+    if timeline_draft is not None:
+        response["timeline_draft"] = {
+            "draft_id": timeline_draft["draft_id"],
+            "asset_id": timeline_draft["asset_id"],
+            "version": timeline_draft["version"],
+        }
+    return response
 
 
 class TimelineDraftCreateRequest(BaseModel):
@@ -482,6 +508,25 @@ def create_timeline_draft(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/analyses/{analysis_id}/timeline-drafts")
+def list_timeline_drafts(
+    analysis_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """List bounded storyboard drafts only for an analysis owned by the caller."""
+    analysis = _analysis_jobs().get(user.user_id, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Video analysis not found")
+    if analysis["status"] != "completed":
+        raise HTTPException(status_code=409, detail="Video analysis is not completed")
+    drafts = _timeline_drafts().list_for_analysis(user.user_id, analysis_id)
+    return {
+        "analysis_id": str(analysis_id),
+        "drafts": drafts,
+        "count": len(drafts),
+    }
 
 
 @router.get("/timeline-drafts/{draft_id}")
