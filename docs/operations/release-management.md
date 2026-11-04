@@ -4,7 +4,9 @@ This document defines the repeatable release process for MR_SIAVASH_HUB_AI.
 It is an operational policy and evidence ledger, not a claim that a release is
 currently ready.
 
-## Repository baseline reviewed on 2026-11-03
+> Historical evidence is retained below for traceability. The dated superseding baselines later in this document take precedence wherever repository state has changed.
+
+## Historical repository baseline reviewed on 2026-11-03
 
 | Area | Observed state | Release implication |
 |---|---|---|
@@ -172,3 +174,30 @@ The UI does not start background polling; the pull Worker must be running separa
 ### Updated release decision
 
 The project remains **not release-ready**. Remaining gates include target-device Windows installation and real-media acceptance, browser/UX acceptance, coordinated database/media/key restore drill, clean upgrade/rollback, canonical dependency lock, license decision, external provider/social acceptance and final owner approval. No public tag, release or package publication is implied by these merges.
+
+
+## Current release-manager baseline — 2026-11-04 17:42 +0330
+
+**Observed main commit:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
+**Repository default branch:** `main`  
+**Package metadata:** `0.1.0` (`pyproject.toml`; development metadata, not a published release).  
+**Open release-relevant work:** PR [#276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276), a product-level stale-snapshot submission fence. It is not merged and must not be described as current-main behavior. Its exact head at this review is `8fab7b80f62d6ea666f658fa447c9bdba97eb8a1`.
+
+### Current packaging and platform facts
+
+- Python metadata still declares `>=3.11`; the standard CI workflow tests Python 3.11 and 3.12 on `ubuntu-latest`. No upper Python bound is declared, and versions above 3.12 are not established by this matrix.
+- The standard CI workflow installs editable development dependencies, checks browser JavaScript syntax with Node, runs pytest with coverage, builds a wheel, checks the three packaged web assets, installs the wheel into a fresh Linux virtual environment, and performs a `/health` smoke test.
+- Backend CI separately runs `pip-audit --skip-editable`, Ruff and pytest on Python 3.11/Linux.
+- The repository has a separate real FFmpeg/FFprobe integration workflow with hosted Linux and Windows coverage. Hosted Windows CI is not equivalent to a clean install and acceptance run on the owner's actual Windows device.
+- No root `LICENSE` file was found in the current-main lookup. The project license decision remains unresolved; do not publish a distributable package until it is resolved.
+- The current `pyproject.toml` still uses bounded dependency ranges and no canonical lock file was found in the root inventory. A reproducible deployment lock is still an open gate. Do not create a placeholder lock file or claim deterministic resolution without a genuine resolver-generated lock and a clean locked install.
+- The previous Windows acceptance PR #101 is now merged as documentation. The authoritative manual checklist is `docs/operations/windows-acceptance-checklist.md`; its existence does not mean the real-device run has been completed.
+- SQLite migrations were extended by the merged video snapshot work through versions 28–29. This does not imply a general downgrade engine; rollback remains based on a verified pre-upgrade backup and matching application/key/media state.
+
+### Release-manager action boundaries
+
+PR #276 changes product behavior and is therefore owned by the relevant product/engineering maintainer. The Release & Update Manager tracks its merge and exact-head CI as release evidence but does not independently rewrite or approve its implementation. Do not merge it solely because checks turn green; source review and the owning maintainer's acceptance remain required.
+
+### Current release decision
+
+**Not release-ready.** The following are still hard gates: canonical dependency lock and locked installation; license selection; actual Windows device acceptance; coordinated database/media/encryption-key restore drill; clean install/upgrade/rollback; browser/operator acceptance; external provider and social-account acceptance; exact-candidate CI; and explicit owner authorization. No release tag, GitHub Release, or package publication is created by this update.
