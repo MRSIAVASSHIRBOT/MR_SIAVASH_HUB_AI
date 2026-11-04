@@ -762,6 +762,9 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     worker.run_once()
     assert repository.get("owner-a", generation_id)["status"] == "unknown_outcome"
     assert repository.tasks.get(task_id).status is TaskStatus.SUCCEEDED
+    lookup_miss_result = worker.get_result(task_id)
+    assert lookup_miss_result["status"] == "unknown_outcome"
+    assert "provider_job_id" not in lookup_miss_result
     assert calls["find"] == [str(generation_id)]
     assert calls["submit"] == 1
 
@@ -773,6 +776,9 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert running["provider_job_id"] == "provider-job-reconciled"
     assert running["progress_percent"] == 15
     assert repository.tasks.get(task_id).status is TaskStatus.SUCCEEDED
+    running_result = worker.get_result(task_id)
+    assert running_result["status"] == "running"
+    assert "provider_job_id" not in running_result
     assert calls["find"] == [str(generation_id), str(generation_id)]
     assert calls["submit"] == 1
 
@@ -783,6 +789,9 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert completed["status"] == "succeeded"
     assert completed["output_asset_id"]
     assert completed["output_bytes"] == len(output_bytes)
+    completed_result = worker.get_result(task_id)
+    assert completed_result["status"] == "succeeded"
+    assert "provider_job_id" not in completed_result
     assert calls["submit"] == 1
     assert calls["find"] == [str(generation_id), str(generation_id)]
     assert calls["status"] == 2
