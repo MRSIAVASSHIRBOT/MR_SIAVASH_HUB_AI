@@ -157,3 +157,11 @@ def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
     assert "videoPromptAnalysisId !== incomingAnalysisId" in script
     assert "videoPromptAnalysisId = activeVideoAnalysisId" in script
     assert "renderSelectedVideoPrompt();" in script
+    render_analysis = script.split("function renderVideoAnalysis", 1)[1].split(
+        "function clearVideoRenderState", 1
+    )[0]
+    submit_analysis = script.split("async function submitVideoAnalysis", 1)[1].split(
+        "function renderSelectedVideoPrompt", 1
+    )[0]
+    assert "videoPromptAnalysisId = null" not in render_analysis
+    assert "videoPromptAnalysisId = null" in submit_analysis

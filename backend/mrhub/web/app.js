@@ -511,7 +511,6 @@
       videoPromptResults = [];
       videoTimelineDrafts = [];
       activeVideoTimelineDraft = null;
-      videoPromptAnalysisId = null;
       $("#video-storyboard-panel").hidden = true;
       $("#video-storyboard-beats").replaceChildren();
       $("#video-prompt-output").value = "";
@@ -831,6 +830,7 @@
       videoPromptResults = [];
       videoTimelineDrafts = [];
       activeVideoTimelineDraft = null;
+      videoPromptAnalysisId = null;
       $("#video-storyboard-panel").hidden = true;
       $("#video-storyboard-beats").replaceChildren();
       $("#video-prompt-output").value = "";
