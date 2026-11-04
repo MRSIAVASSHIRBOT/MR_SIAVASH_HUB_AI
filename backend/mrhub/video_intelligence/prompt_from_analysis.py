@@ -355,6 +355,7 @@ def compose_prompts_from_analysis(
             "prompt": prompt,
             "duration_seconds": duration_seconds,
             "aspect_ratio": aspect_ratio,
+            "source_timestamp_limit_seconds": source_reference_limit,
             "beat_count": len(beats),
             "beats": serialized_beats,
             "timeline": timeline,
