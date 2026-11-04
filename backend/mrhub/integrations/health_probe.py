@@ -1,4 +1,4 @@
-""""Shared bounded health probing for optional local integrations."""
+"""Shared bounded health probing for optional local integrations."""
 
 import ipaddress  # noqa: I001
 import re
