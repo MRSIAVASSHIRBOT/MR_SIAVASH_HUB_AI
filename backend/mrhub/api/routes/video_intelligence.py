@@ -42,10 +42,7 @@ from mrhub.video_intelligence.render_jobs import (
     VideoRenderJobRepository,
 )
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
-from mrhub.video_intelligence.render_snapshot_repository import (
-    VideoRenderSnapshotConflict,
-    VideoRenderSnapshotRepository,
-)
+from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
 from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
@@ -567,10 +564,6 @@ def _render_jobs() -> VideoRenderJobRepository:
     return VideoRenderJobRepository(get_settings().database_path)
 
 
-def _render_snapshots() -> VideoRenderSnapshotRepository:
-    return VideoRenderSnapshotRepository(get_settings().database_path)
-
-
 @router.post(
     "/timeline-drafts/{draft_id}/renders",
     status_code=status.HTTP_202_ACCEPTED,
@@ -626,12 +619,11 @@ def submit_video_render_from_timeline_draft(
                 if isinstance(item, dict) and item.get("asset_id")
             ],
         )
-        stored_snapshot, _ = _render_snapshots().create(snapshot)
         accepted, created = _render_jobs().submit(
             user.user_id,
             analysis_id,
             idempotency_key,
-            snapshot_id=stored_snapshot.snapshot_id,
+            snapshot=snapshot,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Render snapshot not found") from exc
@@ -646,7 +638,7 @@ def submit_video_render_from_timeline_draft(
         response.status_code = status.HTTP_200_OK
     return {
         **{key: value for key, value in accepted.items() if key != "task_id"},
-        "snapshot_id": str(stored_snapshot.snapshot_id),
+        "snapshot_id": accepted.get("snapshot_id"),
         "draft_id": str(draft_id),
         "draft_version": int(draft["version"]),
         "created": created,
