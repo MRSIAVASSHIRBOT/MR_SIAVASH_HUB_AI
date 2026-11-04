@@ -349,3 +349,149 @@ def test_generation_submission_fails_closed_without_registered_provider(monkeypa
         )
     assert error.value.status_code == 503
     assert error.value.detail["code"] == "provider_unavailable"
+
+
+
+def test_prompt_composition_uses_only_the_owned_draft_for_the_same_analysis(monkeypatch):
+    from uuid import uuid4
+
+    from mrhub.api.routes import video_intelligence
+    from mrhub.video_intelligence.prompt_from_analysis import AnalysisPromptOptions
+
+    analysis_id = uuid4()
+    asset_id = uuid4()
+    draft_id = uuid4()
+    calls = {}
+
+    class FakeAnalysisJobs:
+        def get(self, owner_user_id, requested_analysis_id):
+            assert owner_user_id == "owner-a"
+            assert requested_analysis_id == analysis_id
+            return {
+                "status": "completed",
+                "result": {
+                    "mode": "faithful_style_reconstruction",
+                    "assets": [{"asset_id": str(asset_id)}],
+                },
+            }
+
+    class FakeDrafts:
+        def get(self, owner_user_id, requested_draft_id):
+            calls["draft_lookup"] = (owner_user_id, requested_draft_id)
+            return {
+                "draft_id": str(draft_id),
+                "analysis_id": str(analysis_id),
+                "asset_id": str(asset_id),
+                "version": 3,
+            }
+
+    def compose(result, options, *, timeline_draft):
+        calls["compose"] = (result, options.timeline_draft_id, timeline_draft)
+        return [{"asset_id": str(asset_id), "prompt": "edited prompt"}]
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeAnalysisJobs)
+    monkeypatch.setattr(video_intelligence, "_timeline_drafts", FakeDrafts)
+    monkeypatch.setattr(video_intelligence, "compose_prompts_from_analysis", compose)
+
+    response = video_intelligence.compose_prompt_from_analysis(
+        analysis_id,
+        AnalysisPromptOptions(timeline_draft_id=draft_id),
+        AuthenticatedUser(user_id="owner-a", username="owner"),
+    )
+
+    assert response["execution"] == "not_started"
+    assert response["timeline_draft"] == {
+        "draft_id": str(draft_id),
+        "asset_id": str(asset_id),
+        "version": 3,
+    }
+    assert calls["draft_lookup"] == ("owner-a", draft_id)
+    assert calls["compose"][2]["draft_id"] == str(draft_id)
+
+
+def test_prompt_composition_hides_draft_linked_to_another_analysis(monkeypatch):
+    from uuid import uuid4
+
+    from fastapi import HTTPException
+
+    from mrhub.api.routes import video_intelligence
+    from mrhub.video_intelligence.prompt_from_analysis import AnalysisPromptOptions
+
+    analysis_id = uuid4()
+    draft_id = uuid4()
+
+    class FakeAnalysisJobs:
+        def get(self, _owner_user_id, _analysis_id):
+            return {"status": "completed", "result": {"assets": []}}
+
+    class FakeDrafts:
+        def get(self, _owner_user_id, _draft_id):
+            return {
+                "draft_id": str(draft_id),
+                "analysis_id": str(uuid4()),
+                "asset_id": str(uuid4()),
+                "version": 1,
+            }
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeAnalysisJobs)
+    monkeypatch.setattr(video_intelligence, "_timeline_drafts", FakeDrafts)
+
+    with pytest.raises(HTTPException) as error:
+        video_intelligence.compose_prompt_from_analysis(
+            analysis_id,
+            AnalysisPromptOptions(timeline_draft_id=draft_id),
+            AuthenticatedUser(user_id="owner-a", username="owner"),
+        )
+    assert error.value.status_code == 404
+
+
+def test_list_timeline_drafts_is_owner_scoped(monkeypatch):
+    from uuid import uuid4
+
+    from mrhub.api.routes import video_intelligence
+
+    analysis_id = uuid4()
+    calls = {}
+
+    class FakeAnalysisJobs:
+        def get(self, owner_user_id, requested_analysis_id):
+            calls["analysis"] = (owner_user_id, requested_analysis_id)
+            return {"status": "completed", "result": {}}
+
+    class FakeDrafts:
+        def list_for_analysis(self, owner_user_id, requested_analysis_id):
+            calls["list"] = (owner_user_id, requested_analysis_id)
+            return [{"draft_id": "draft-1", "version": 2}]
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeAnalysisJobs)
+    monkeypatch.setattr(video_intelligence, "_timeline_drafts", FakeDrafts)
+
+    result = video_intelligence.list_timeline_drafts(
+        analysis_id,
+        AuthenticatedUser(user_id="owner-a", username="owner"),
+    )
+
+    assert result["count"] == 1
+    assert calls["analysis"] == ("owner-a", analysis_id)
+    assert calls["list"] == ("owner-a", analysis_id)
+
+
+def test_list_timeline_drafts_hides_an_analysis_owned_by_another_user(monkeypatch):
+    from uuid import uuid4
+
+    from fastapi import HTTPException
+
+    from mrhub.api.routes import video_intelligence
+
+    class FakeAnalysisJobs:
+        def get(self, _owner_user_id, _analysis_id):
+            return None
+
+    monkeypatch.setattr(video_intelligence, "_analysis_jobs", FakeAnalysisJobs)
+
+    with pytest.raises(HTTPException) as error:
+        video_intelligence.list_timeline_drafts(
+            uuid4(),
+            AuthenticatedUser(user_id="owner-b", username="other"),
+        )
+    assert error.value.status_code == 404
