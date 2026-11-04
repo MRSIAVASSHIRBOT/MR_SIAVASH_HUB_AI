@@ -746,6 +746,10 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert repository.tasks.get(task_id).status is TaskStatus.FAILED
     assert calls["submit"] == 1
 
+    # Reconciliation must not decrypt the original prompt. It only needs the
+    # stable generation key and the provider job reference.
+    monkeypatch.setenv("MRH_WORKFLOW_PAYLOAD_KEY", "temporarily-unavailable")
+
     # Reconciliation must remain possible if the provider's current capability
     # catalog changes after the original request has already been accepted.
     provider.capability = SimpleNamespace(
