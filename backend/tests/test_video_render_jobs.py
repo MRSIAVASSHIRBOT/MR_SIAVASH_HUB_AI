@@ -744,6 +744,22 @@ def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
     assert replay_after_advance_created is False
     assert replay_after_advance.snapshot_id == stored.snapshot_id
 
+    # Reading/replaying an immutable historical snapshot remains supported,
+    # but a new render submission must be fenced to the current draft revision.
+    with pytest.raises(
+        VideoRenderSnapshotConflict, match="current owner-scoped draft revision"
+    ):
+        render_jobs.submit(
+            "owner-a",
+            analysis_id,
+            "stale-snapshot-new-render-key",
+            snapshot=snapshot,
+        )
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_runs"
+        ).fetchone()[0] == 1
+
 
 def test_render_snapshot_repository_rejects_stale_draft_revision(
     tmp_path, monkeypatch
