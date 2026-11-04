@@ -211,3 +211,14 @@ Main push-triggered workflows for `c454f4d27c62f76ff6bef08362745eef3096eb2e` wer
 NEXUS PY106 is still a narrow AST heuristic: literal `verify=False` on supported Requests/HTTPX APIs only. Dynamic values, other clients and nested configuration paths are outside its current coverage. MCP policy tests now prove denied handlers are not entered for the covered cases; this does not replace a complete connector permission lifecycle review or production external-side-effect acceptance.
 
 The earlier limitations remain: synthetic recovery tests are not production restore drills; video rendering remains short of a full editor and provider-backed generation acceptance; external social-account publishing, target-device/browser acceptance, package installation/upgrade/rollback and discovery provenance remain open. No production-ready or whole-project-complete claim is made.
+
+
+## Provider registration consistency follow-up — 2026-11-04 UTC
+
+Latest main snapshot: `a7f4fb453da7ba70d3c20c684011f7076f12235b`.
+
+**PR #245** (`a7f4fb453da7ba70d3c20c684011f7076f12235b`) closes a provider-catalog consistency gap. `ModelRouter.register` now rejects duplicate provider/model descriptors instead of overwriting metadata. `register_provider` checks the router catalog before registering the adapter, so a duplicate descriptor cannot leave the adapter registry partially changed. Regression tests verify both invariants. All six exact-head checks passed (Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, Linux and Windows FFmpeg integration).
+
+Post-merge main workflows for this SHA require separate verification. Provider health and external inference availability remain runtime-dependent; this change protects registration consistency but does not certify provider uptime or model quality.
+
+Other whole-project acceptance gaps remain open, including real device/browser acceptance, production restore/key recovery, live social-account verification, package install/upgrade/rollback, and full video editor/provider generation acceptance.
