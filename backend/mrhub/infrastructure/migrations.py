@@ -789,6 +789,14 @@ MIGRATIONS = (
                END""",
         ),
     ),
+    Migration.build(
+        29,
+        "bind_video_render_jobs_to_immutable_timeline_snapshots",
+        (
+            "ALTER TABLE video_render_runs ADD COLUMN snapshot_id TEXT REFERENCES video_render_timeline_snapshots(snapshot_id) ON DELETE RESTRICT",
+            "CREATE INDEX IF NOT EXISTS idx_video_render_runs_snapshot ON video_render_runs(snapshot_id, owner_user_id)",
+        ),
+    ),
 )
 
 
