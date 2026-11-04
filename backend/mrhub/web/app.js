@@ -1068,11 +1068,11 @@
     videoTimelineDrafts = Array.isArray(response.drafts) ? response.drafts : [];
     const assetId = $("#video-prompt-source").value;
     const existing = videoTimelineDrafts.find((draft) => draft.asset_id === assetId);
-    if (existing && (!activeVideoTimelineDraft || activeVideoTimelineDraft.asset_id !== assetId)) {
+    if (existing) {
       activeVideoTimelineDraft = existing;
     } else if (
       activeVideoTimelineDraft &&
-      !videoTimelineDrafts.some((draft) => draft.draft_id === activeVideoTimelineDraft.draft_id)
+      activeVideoTimelineDraft.asset_id === assetId
     ) {
       activeVideoTimelineDraft = null;
     }
