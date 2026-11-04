@@ -28,6 +28,12 @@ class ProviderTimeoutError(ProviderError):
     code = "provider_timeout"
 
 
+class ProviderContractError(ProviderError):
+    """Raised when an adapter violates the selected model response contract."""
+
+    code = "provider_contract_violation"
+
+
 class ProviderRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
