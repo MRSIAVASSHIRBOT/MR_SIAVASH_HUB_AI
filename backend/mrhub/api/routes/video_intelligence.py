@@ -212,6 +212,66 @@ def submit_video_generation(
     }
 
 
+@router.get("/generations/{generation_id}")
+def get_video_generation_status(
+    generation_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return the authenticated owner's durable generation state without provider calls."""
+    generation = VideoGenerationJobRepository(get_settings().database_path).get(
+        user.user_id, generation_id
+    )
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    return {
+        "generation_id": str(generation_id),
+        "source_analysis_id": generation["source_analysis_id"],
+        "status": generation["status"],
+        "progress_percent": generation["progress_percent"],
+        "output_asset_id": generation["output_asset_id"],
+        "output_bytes": generation["output_bytes"],
+        "output_duration_seconds": generation["output_duration_seconds"],
+        "output_width": generation["output_width"],
+        "output_height": generation["output_height"],
+        "error_code": generation["error_code"],
+        "created_at": generation["created_at"],
+        "updated_at": generation["updated_at"],
+    }
+
+
+@router.post(
+    "/generations/{generation_id}/reconcile",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def reconcile_video_generation(
+    generation_id: UUID,
+    response: Response,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Queue an owner-requested, read-only provider lookup for an ambiguous/running job."""
+    jobs = VideoGenerationJobRepository(get_settings().database_path)
+    try:
+        queued = jobs.enqueue_reconciliation(user.user_id, generation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if queued is None:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    generation = jobs.get(user.user_id, generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    if not queued["created"]:
+        response.status_code = status.HTTP_200_OK
+    return {
+        "generation_id": str(generation_id),
+        "task_id": str(queued["task_id"]),
+        "task_status": str(queued["status"]),
+        "generation_status": str(generation["status"]),
+        "created": bool(queued["created"]),
+        "execution": "provider_reconciliation_queued",
+        "provider_submission_replayed": False,
+    }
+
+
 @router.post("/prompts/compose")
 def compose_prompt(
     payload: PromptCompositionRequest,
