@@ -102,13 +102,23 @@ class WorkflowRecoveryRepository:
         lease: WorkerLease | None,
         now: str,
     ) -> None:
-        if lease is None:
-            return
         run = connection.execute(
             "SELECT task_id FROM workflow_runs WHERE workflow_id = ?",
             (str(workflow_id),),
         ).fetchone()
-        if run is None or run["task_id"] != lease.task_id:
+        if run is None:
+            if lease is None:
+                return
+            raise RecoveryRequired("Worker lease does not own this workflow")
+
+        task_id = run["task_id"]
+        if task_id is None:
+            if lease is not None:
+                raise RecoveryRequired("Worker lease does not own this workflow")
+            return
+        if lease is None:
+            raise RecoveryRequired("Worker lease is required for task-linked workflow")
+        if task_id != lease.task_id:
             raise RecoveryRequired("Worker lease does not own this workflow")
         current = connection.execute(
             """

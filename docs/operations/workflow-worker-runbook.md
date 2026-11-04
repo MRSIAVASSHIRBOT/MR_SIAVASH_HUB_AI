@@ -41,6 +41,8 @@ This sweeper is not started by the API and is not required for database-only API
 - Running cancellation is cooperative. A tool already executing may finish before the runner observes cancellation.
 - If the worker stops while a safe step is active, recovery may pause the workflow for an explicit safe resume.
 - If an external side effect may have completed, the workflow must remain in `unknown_outcome` / `recovery_required` until a human or a dedicated reconciliation handler determines the result. Do not blindly retry it.
+- Every worker-owned mutation of a task-linked workflow (run start, step start/completion/failure, interruption classification, and finalization) requires the current lease for that task. Missing, expired, or mismatched leases are rejected; lease-free repository execution is limited to detached workflows with no linked task.
+- Owner-authorized cancellation records durable intent; it does not grant the caller authority to finalize worker-owned state.
 - A worker that loses its lease must not write a checkpoint or terminal state. Let the current lease owner or stale-worker recovery reconcile the task.
 
 ## Shutdown

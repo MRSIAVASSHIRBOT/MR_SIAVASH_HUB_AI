@@ -35,7 +35,7 @@ Exactly-once execution across arbitrary external systems is not claimed. The des
 
 ### 4. Durable ownership
 
-Worker ownership is represented by a database-backed lease with owner, expiry, heartbeat, and an execution fencing token. Claims and state changes use short SQLite write transactions and compare-and-set predicates. A process-local lock is not considered cross-process ownership.
+Worker ownership is represented by a database-backed lease with owner, expiry, heartbeat, and an execution fencing token. Claims and state changes use short SQLite write transactions and compare-and-set predicates. A process-local lock is not considered cross-process ownership. Every worker-owned state mutation for a task-linked workflow must require the current lease; lease-free repository operations are reserved for detached workflows that have no linked task. Owner-authorized cancellation requests remain a separate control-plane operation and do not replace the worker lease required for execution or finalization.
 
 ### 5. Checkpoints and resume
 
