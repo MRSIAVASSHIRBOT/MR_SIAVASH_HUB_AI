@@ -682,3 +682,30 @@ def test_prepare_draft_render_timeline_is_idempotent_for_verified_existing_timel
 
     assert result["version"] == 4
     assert result["renderer_timeline_sha256"] == snapshot.timeline_sha256
+
+def test_prepare_draft_render_timeline_hides_missing_or_foreign_drafts(monkeypatch):
+    import mrhub.api.routes.video_intelligence as routes
+
+    draft_id = UUID("b1b0f2c0-8f2c-4c7a-9e1a-3b5b4c8d7e10")
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            assert owner_user_id == "owner-1"
+            assert requested_draft_id == draft_id
+            return None
+
+    class UnexpectedAnalyses:
+        def get(self, *_args, **_kwargs):
+            raise AssertionError("A missing or foreign draft must not reveal analysis state")
+
+    monkeypatch.setattr(routes, "_timeline_drafts", Drafts)
+    monkeypatch.setattr(routes, "_analysis_jobs", UnexpectedAnalyses)
+
+    with pytest.raises(HTTPException) as error:
+        prepare_video_render_timeline(
+            draft_id,
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+        )
+
+    assert error.value.status_code == 404
+    assert error.value.detail == "Timeline draft not found"
