@@ -401,3 +401,22 @@ No public release or whole-product completion is claimed.
 - PR #232 remains open/draft. Its six exact-head check runs completed successfully, but the combined commit-status endpoint reported pending at the time of review. Do not merge until that status is reconciled and the patch is reviewed.
 - PR #233 is merged (documentation-only readiness audit refresh).
 - Product acceptance remains incomplete: browser/UX acceptance, Windows target-device acceptance, controlled real provider/social-account tests, and a clean-destination database/media/key restore drill have not been established by hosted CI.
+
+
+## Superseding current-main hand-off — 2026-11-04 UTC
+
+This entry supersedes the earlier live-PR snapshot above. Current main at the start of this documentation refresh is `c5cd2ad114aa558099be6a2cf966df4564031853`.
+
+### Newly merged and verified
+
+- **PR #235** — bounded worker-cycle content dispatch. A worker cycle is covered by regression tests to execute at most one queued task and dispatch at most one due content schedule; later cycles continue the queue without duplicate dispatch. Merge commit: `d69c02544ec84fd40aa3871dd7c04300cf028f3f`.
+- **PR #237** — clean-destination database and media recovery integration test. It restores a temporary SQLite backup, copies the associated media directory, validates metadata and SHA-256, then verifies owner login, listing, and authenticated byte-for-byte download in a fresh app. Merge commit: `57240dad59c50b7100554f57c5d7adc784428e75`. This is synthetic CI evidence, not a production restore or key-management drill.
+- **PR #239** — scheduled OpenCode workflow handles only the explicit `free-models-per-day` quota error as a warning/no-op; missing secrets and unrelated failures remain non-zero. No paid retry or permission expansion was added. Merge commit: `c5cd2ad114aa558099be6a2cf966df4564031853`.
+
+PR #232 was closed without merging; PR #235 is the current-main replacement for its bounded worker-cycle regression coverage. PRs #236 and #238 were closed as superseded attempts; their final verified work is represented by PR #237 and PR #239 respectively.
+
+All six exact-head checks on PR #239 completed successfully: Backend CI, Python 3.11 CI, Python 3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows. The four push-triggered workflows on main commit `c5cd2ad114aa558099be6a2cf966df4564031853` were still running at the time of this snapshot; do not report post-merge main CI as green until those runs finish.
+
+### Current acceptance boundary
+
+The synthetic recovery test improves automated confidence but does not establish a real target-machine restore, protected encryption-key recovery, or operational recovery of production data. Target-device/browser acceptance, real external-provider/social-account acceptance, packaging/install/upgrade/rollback drills, and whole-product release approval remain open. No production-ready or whole-project-complete claim is made.
