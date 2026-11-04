@@ -14,7 +14,9 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
-from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotRepository
+from mrhub.video_intelligence.render_snapshot_repository import (
+    VideoRenderSnapshotRepository,
+)
 from mrhub.video_intelligence.timeline import VideoTimeline
 
 
@@ -59,6 +61,11 @@ class VideoRenderJobRepository:
             raise ValueError("analysis_not_completed")
         if snapshot is not None and snapshot_id is not None:
             raise ValueError("Provide a snapshot or snapshot_id, not both")
+        snapshot_repository = (
+            VideoRenderSnapshotRepository(self.database_path)
+            if snapshot is not None or snapshot_id is not None
+            else None
+        )
         assets = analysis["result"].get("assets")
         if snapshot is not None:
             if snapshot.owner_user_id != owner_user_id or snapshot.analysis_id != analysis_id:
@@ -76,9 +83,8 @@ class VideoRenderJobRepository:
                 raise ValueError("render_snapshot_source_mismatch")
             digest = snapshot.idempotency_digest()
         elif snapshot_id is not None:
-            stored_snapshot = VideoRenderSnapshotRepository(self.database_path).get(
-                owner_user_id, snapshot_id
-            )
+            assert snapshot_repository is not None
+            stored_snapshot = snapshot_repository.get(owner_user_id, snapshot_id)
             if stored_snapshot is None or stored_snapshot.analysis_id != analysis_id:
                 raise LookupError("render_snapshot_not_found")
             if not isinstance(assets, list):
@@ -118,9 +124,10 @@ class VideoRenderJobRepository:
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if snapshot is not None:
-                stored_snapshot, _ = VideoRenderSnapshotRepository(
-                    self.database_path
-                ).persist_in_transaction(connection, snapshot, assets)
+                assert snapshot_repository is not None
+                stored_snapshot, _ = snapshot_repository.persist_in_transaction(
+                    connection, snapshot, assets
+                )
                 snapshot_id = stored_snapshot.snapshot_id
             existing = connection.execute(
                 "SELECT request_digest, task_id FROM idempotency_records "
