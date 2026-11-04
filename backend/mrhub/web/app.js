@@ -672,9 +672,18 @@
 
   function syncStoryboardRenderButtons() {
     const hasDraft = Boolean(activeVideoTimelineDraft);
+    const hasSelectedPrompt = videoPromptResults.some(
+      (item) => item.asset_id === $("#video-prompt-source").value
+    );
     const renderMayBeActive = Boolean(activeVideoRenderId)
       && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
-    $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft;
+    const mutationBlocked = videoStoryboardControlsLocked || renderMayBeActive;
+    $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft || mutationBlocked;
+    $("#video-storyboard-save").disabled = !hasSelectedPrompt || mutationBlocked;
+    $("#video-storyboard-compose").disabled = !hasSelectedPrompt || mutationBlocked;
+    $("#video-storyboard-new").disabled = !hasSelectedPrompt || mutationBlocked;
+    $("#video-storyboard-add-beat").disabled = !hasSelectedPrompt || mutationBlocked
+      || $("#video-storyboard-beats").querySelectorAll("article.record").length >= 20;
   }
 
   function lockVideoStoryboardControls() {
@@ -903,14 +912,31 @@
 
   async function cancelVideoRender() {
     if (!activeVideoRenderId) return;
+    if (
+      activeVideoRenderIdentity
+      && activeVideoRenderIdentity !== currentVideoRenderIdentity()
+    ) {
+      syncVideoRenderTarget();
+      return;
+    }
     if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
+    const renderId = activeVideoRenderId;
+    const renderIdentity = activeVideoRenderIdentity;
     const button = $("#video-render-cancel");
     button.disabled = true;
     try {
       const result = await api(
-        "/video-intelligence/renders/" + encodeURIComponent(activeVideoRenderId),
+        "/video-intelligence/renders/" + encodeURIComponent(renderId),
         { method: "DELETE" }
       );
+      if (
+        activeVideoRenderId !== renderId
+        || activeVideoRenderIdentity !== renderIdentity
+        || (renderIdentity && renderIdentity !== currentVideoRenderIdentity())
+      ) {
+        syncVideoRenderTarget();
+        return;
+      }
       renderVideoRender(result);
       await refreshVideoRender();
       if (result.cancellation_requested) {
@@ -921,8 +947,10 @@
         );
       }
     } catch (error) {
-      message("#video-render-message", error.message, "error");
-      button.disabled = false;
+      if (activeVideoRenderId === renderId && activeVideoRenderIdentity === renderIdentity) {
+        message("#video-render-message", error.message, "error");
+        button.disabled = false;
+      }
     }
   }
 
@@ -1364,7 +1392,7 @@
     } catch (error) {
       message("#video-storyboard-message", error.message, "error");
     } finally {
-      button.disabled = false;
+      syncStoryboardRenderButtons();
     }
   }
 
@@ -1423,7 +1451,7 @@
     } catch (error) {
       message("#video-storyboard-message", error.message, "error");
     } finally {
-      button.disabled = false;
+      syncStoryboardRenderButtons();
     }
   }
 
