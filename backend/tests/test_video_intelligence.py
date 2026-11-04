@@ -692,7 +692,6 @@ def test_prepare_draft_render_timeline_hides_missing_or_foreign_drafts(monkeypat
         def get(self, owner_user_id, requested_draft_id):
             assert owner_user_id == "owner-1"
             assert requested_draft_id == draft_id
-            return None
 
     class UnexpectedAnalyses:
         def get(self, *_args, **_kwargs):
