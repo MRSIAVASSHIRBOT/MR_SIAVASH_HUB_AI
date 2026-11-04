@@ -47,6 +47,8 @@ class VideoRenderSnapshotRepository:
         connection: sqlite3.Connection,
         snapshot: VideoRenderTimelineSnapshot,
         assets: list[object],
+        *,
+        require_current_draft: bool = True,
     ) -> tuple[VideoRenderTimelineSnapshot, bool]:
         """Persist a validated snapshot using the caller's active DB transaction."""
         allowed_asset_ids = {
@@ -67,6 +69,21 @@ class VideoRenderSnapshotRepository:
                WHERE draft_id = ? AND owner_user_id = ?""",
             (str(snapshot.draft_id), snapshot.owner_user_id),
         ).fetchone()
+        def draft_matches_snapshot() -> bool:
+            return (
+                draft is not None
+                and draft["analysis_id"] == str(snapshot.analysis_id)
+                and int(draft["version"]) == snapshot.draft_version
+                and str(draft["asset_id"]) in referenced_asset_ids
+                and draft["renderer_timeline_json"] == snapshot.timeline_json
+                and draft["renderer_timeline_sha256"] == snapshot.timeline_sha256
+            )
+
+        if require_current_draft and not draft_matches_snapshot():
+            raise VideoRenderSnapshotConflict(
+                "Snapshot does not match the current owner-scoped draft revision"
+            )
+
         existing = connection.execute(
             """SELECT * FROM video_render_timeline_snapshots
                WHERE draft_id = ? AND draft_version = ?""",
@@ -85,14 +102,7 @@ class VideoRenderSnapshotRepository:
                 )
             return stored, False
 
-        if (
-            draft is None
-            or draft["analysis_id"] != str(snapshot.analysis_id)
-            or int(draft["version"]) != snapshot.draft_version
-            or str(draft["asset_id"]) not in referenced_asset_ids
-            or draft["renderer_timeline_json"] != snapshot.timeline_json
-            or draft["renderer_timeline_sha256"] != snapshot.timeline_sha256
-        ):
+        if not draft_matches_snapshot():
             raise VideoRenderSnapshotConflict(
                 "Snapshot does not match the current owner-scoped draft revision"
             )
@@ -143,7 +153,9 @@ class VideoRenderSnapshotRepository:
 
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            return self.persist_in_transaction(connection, snapshot, assets)
+            return self.persist_in_transaction(
+                connection, snapshot, assets, require_current_draft=False
+            )
 
     def get(
         self, owner_user_id: str, snapshot_id: UUID
