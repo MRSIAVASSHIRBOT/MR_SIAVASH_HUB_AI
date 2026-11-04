@@ -546,4 +546,32 @@ Green CI is not target-device acceptance or production readiness. Whole-product 
 
 ## Post-merge stale snapshot submission fence — 2026-11-04 UTC
 
-Current main baseline before follow-up: `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`. PR #273 is merged. A focused follow-up branch `fix/video-render-stale-snapshot-fence` contains the transaction-level current-draft guard and regression test; it is tracked in PR #276 and must not be described as main behavior until merged. The repository's low-level immutable snapshot lookup remains able to replay an already-created historical snapshot; only *new render submission* is required to prove that the draft row still has the exact same owner, analysis, asset, version, canonical timeline and hash under the submission transaction. Existing idempotent replay for an already accepted request remains valid. CI and review are pending on PR #276.
+**Current main:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
+**PR #276 merge commit:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`
+
+PR #276 is merged. New snapshot-backed render submissions now verify the exact current owner-scoped draft revision inside the same SQLite transaction, regardless of whether the request supplies a snapshot value or an existing `snapshot_id`. The guard checks owner, analysis, asset membership, draft version, canonical renderer timeline and SHA-256. The regression suite also confirms that an already accepted render can still be replayed with its original idempotency key after the draft advances, while a new render using that stale snapshot is rejected without creating another render row.
+
+All exact-head checks on PR #276 passed: Python 3.11/3.12, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg integration. Post-merge checks on the new main SHA were still running at the time of this update: scan and both hosted FFmpeg integrations had passed; Python 3.11, Python 3.12 and the aggregate test workflow were in progress.
+
+### Remaining video acceptance work
+
+1. Add an operator-dashboard action to submit a render from a saved renderer-compatible draft, with explicit version display and idempotency behavior.
+2. Define and implement snapshot retention/cleanup policy, including safe deletion rules and operational tests.
+3. Complete target-device acceptance on the actual Windows environment using representative media, draft edits, idempotent replay, cancellation, output registration and download.
+4. Preserve the renderer boundary: current local rendering remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and generated footage are not implemented.
+5. Keep provider-backed video generation separate. The read-only idempotency lookup contract exists, but no generation provider is registered and no end-to-end provider reconciliation/polling workflow is active.
+
+### Cross-domain audit checkpoint
+
+The Agent context path was rechecked on main after PR #275. It preserves owner-scoped retrieval, a bounded serialized evidence envelope, explicit untrusted-evidence framing, citation/provenance propagation and an opt-in owner-reviewed-current freshness filter. Missing content-integrity metadata now fails closed; explicit `true` is retained only when supplied by the repository contract. This verifies the integrity flag's provenance, not the authenticity of the original external publisher.
+
+### Current inventory and release boundary
+
+Main contains 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are inventory counts, not a whole-project completion percentage.
+
+Green hosted CI is not target-device acceptance or production readiness. Browser/Windows target verification, snapshot retention drills, external-account acceptance, clean install/upgrade/rollback and database/media/encryption-key restore remain separate release gates.
+
+
+## Dashboard render-source integration — 2026-11-04 UTC
+
+Current main baseline: `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`. PR #276 is merged and the stale-snapshot current-draft fence is now in main. PR #281 adds an API regression assertion that a concurrent draft advance is surfaced as HTTP 409; its exact-head Python 3.11/3.12, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg checks passed. PR #285 proposes dashboard selection of the snapshot-backed draft-render endpoint when the selected saved draft contains a renderer-compatible timeline and hash. It preserves analysis-only rendering for beat-only Storyboards, scopes pending idempotency keys to the exact analysis or draft revision, and explicitly tells the operator which timeline will be rendered. PR #285 remains unmerged pending exact-head checks and review. No claim is made that the current beat-only editor can author renderer clip mappings.
