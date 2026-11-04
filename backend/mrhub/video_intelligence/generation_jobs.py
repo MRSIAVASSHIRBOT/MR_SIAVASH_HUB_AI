@@ -205,7 +205,7 @@ class VideoGenerationJobRepository:
         return {"generation_id": str(generation_id), "task_id": str(task.task_id), "status": "queued", "created": True}
 
     def load_for_worker(self, task_id: UUID) -> dict[str, object] | None:
-        """Decrypt one queued job only through its linked durable task."""
+        """Decrypt a queued, ambiguous, or running job through its linked durable task."""
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT l.owner_user_id, l.generation_id, j.provider, j.model,
