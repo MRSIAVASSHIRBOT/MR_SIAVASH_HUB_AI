@@ -152,3 +152,60 @@ def test_timeline_draft_rejects_empty_or_oversized_timeline():
             aspect_ratio="9:16",
             beats=[],
         )
+
+
+
+
+@pytest.mark.parametrize("version", [True, 1.0, "1", 0])
+def test_timeline_draft_rejects_non_integer_or_invalid_versions(version):
+    with pytest.raises(ValidationError):
+        TimelineDraftUpdate(
+            expected_version=version,
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            beats=_beats(),
+        )
+
+
+def test_timeline_draft_list_is_owner_and_analysis_scoped(tmp_path):
+    repository = _repository(tmp_path)
+    created = _create(repository)
+    analysis_id = UUID(created["analysis_id"])
+
+    owned = repository.list_for_analysis("owner-a", analysis_id)
+    foreign_owner = repository.list_for_analysis("owner-b", analysis_id)
+    foreign_analysis = repository.list_for_analysis(
+        "owner-a", UUID("99999999-9999-4999-8999-999999999999")
+    )
+
+    assert [item["draft_id"] for item in owned] == [created["draft_id"]]
+    assert foreign_owner == []
+    assert foreign_analysis == []
+
+
+
+def test_timeline_draft_update_requires_a_strict_positive_version():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        TimelineDraftUpdate(
+            expected_version=True,
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            beats=[{
+                "start_seconds": 0,
+                "end_seconds": 10,
+                "generation_instruction": "Create an original scene",
+            }],
+        )
+
+@pytest.mark.parametrize("duration", [True, 10.0, "10", 2])
+def test_timeline_draft_rejects_non_integer_or_out_of_range_duration(duration):
+    with pytest.raises(ValidationError):
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=duration,
+            aspect_ratio="9:16",
+            beats=_beats(),
+        )
