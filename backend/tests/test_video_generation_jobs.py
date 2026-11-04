@@ -679,6 +679,8 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
 
         def find_by_idempotency_key(self, key):
             calls["find"].append(key)
+            if len(calls["find"]) == 1:
+                return None
             return VideoGenerationSubmission(
                 provider="local",
                 model="renderer-v1",
@@ -735,7 +737,16 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert repository.tasks.get(task_id).status is TaskStatus.FAILED
     assert calls["submit"] == 1
 
-    # Owner-triggered reconciliation finds the original job and polls it.
+    # A lookup miss is not proof that submission never happened. Keep the
+    # ambiguous state and allow a later explicit reconciliation attempt.
+    repository.enqueue_reconciliation("owner-a", generation_id)
+    worker.run_once()
+    assert repository.get("owner-a", generation_id)["status"] == "unknown_outcome"
+    assert repository.tasks.get(task_id).status is TaskStatus.SUCCEEDED
+    assert calls["find"] == [str(generation_id)]
+    assert calls["submit"] == 1
+
+    # A later lookup finds the original provider job and polls it.
     repository.enqueue_reconciliation("owner-a", generation_id)
     worker.run_once()
     running = repository.get("owner-a", generation_id)
@@ -743,7 +754,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert running["provider_job_id"] == "provider-job-reconciled"
     assert running["progress_percent"] == 15
     assert repository.tasks.get(task_id).status is TaskStatus.SUCCEEDED
-    assert calls["find"] == [str(generation_id)]
+    assert calls["find"] == [str(generation_id), str(generation_id)]
     assert calls["submit"] == 1
 
     # A later explicit refresh polls the known provider job and safely imports output.
@@ -754,7 +765,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert completed["output_asset_id"]
     assert completed["output_bytes"] == len(output_bytes)
     assert calls["submit"] == 1
-    assert calls["find"] == [str(generation_id)]
+    assert calls["find"] == [str(generation_id), str(generation_id)]
     assert calls["status"] == 2
     assert calls["download"] == 1
     asset = MediaAssetRepository(repository.database_path).get(
