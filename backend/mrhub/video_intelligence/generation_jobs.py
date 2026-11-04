@@ -327,10 +327,10 @@ class VideoGenerationJobRepository:
             raise ValueError("A valid worker lease is required")
         now = self._now()
         allowed = {
-            "queued": {"submitting", "failed"},
-            "submitting": {"running", "unknown_outcome", "failed"},
-            "unknown_outcome": {"running", "unknown_outcome", "failed"},
-            "running": {"running", "unknown_outcome", "failed"},
+            "queued": {"submitting", "failed", "cancelled"},
+            "submitting": {"running", "unknown_outcome", "failed", "cancelled"},
+            "unknown_outcome": {"running", "unknown_outcome", "failed", "cancelled"},
+            "running": {"running", "unknown_outcome", "failed", "cancelled"},
         }
         if progress_percent is not None and not 0 <= progress_percent <= 100:
             raise ValueError("Generation progress must be between 0 and 100")
@@ -377,7 +377,7 @@ class VideoGenerationJobRepository:
             )
             if cursor.rowcount != 1:
                 raise ValueError("Worker lease lost before generation state update")
-            if target == "failed":
+            if target in {"failed", "cancelled"}:
                 connection.execute(
                     """DELETE FROM video_generation_payloads
                        WHERE generation_id = ? AND owner_user_id = ?""",
