@@ -9,7 +9,6 @@ from mrhub.jobs.leases import WorkerLease
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
-    VideoGenerationSubmissionError,
 )
 from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
 from mrhub.video_intelligence.generation_registry import video_generation_registry
@@ -74,16 +73,19 @@ class VideoGenerationWorkerHandler:
 
         try:
             submission = provider.submit(request)
-        except VideoGenerationSubmissionError:
-            # Once submit was entered, the remote side effect may have happened.
-            # Never resubmit automatically; retain the encrypted request for
-            # a provider-specific reconciliation operation.
+        except Exception:  # noqa: BLE001 - any adapter failure can follow a remote side effect
+            # Once submit was entered, any adapter exception may follow a remote
+            # side effect. Treat both declared and unexpected failures as
+            # ambiguous; never resubmit automatically. Keep the encrypted
+            # request available for provider-specific reconciliation.
             if not lease_lost.is_set():
                 self.jobs.transition_under_lease(
                     owner, generation_id, "unknown_outcome", lease=lease,
                     error_code="provider_submission_outcome_unknown",
                 )
-            raise ValueError("provider_submission_outcome_unknown")
+            # Suppress adapter exception chaining: provider exceptions may embed
+            # request details or credentials and should not leak into worker logs.
+            raise ValueError("provider_submission_outcome_unknown") from None
 
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
