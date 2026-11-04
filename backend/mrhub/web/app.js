@@ -879,7 +879,8 @@
   }
 
   async function composeVideoPrompt(timelineDraft = null) {
-    if (!activeVideoAnalysisId) return;
+    if (!activeVideoAnalysisId) return false;
+    let composed = false;
     const button = $("#video-compose-prompt");
     button.disabled = true;
     message("#video-prompt-message", timelineDraft
@@ -923,14 +924,23 @@
         message("#video-prompt-message", timelineDraft
           ? videoPromptResults.length + " Prompt ساخته شد؛ Storyboard نسخه " + timelineDraft.version + " اعمال شد و هیچ Provider اجرا نشد."
           : videoPromptResults.length + " Prompt مستقل از تحلیل ساخته شد؛ Storyboard ذخیره‌شده اعمال نشد و هیچ Provider اجرا نشد.", "success");
+        composed = true;
       } else {
         message("#video-prompt-message", "تحلیل معنایی معتبر برای ساخت Prompt وجود ندارد.", "error");
       }
     } catch (error) {
       message("#video-prompt-message", error.message, "error");
+      if (timelineDraft) {
+        try {
+          await loadVideoTimelineDrafts();
+        } catch {
+          // Keep the original composition error visible.
+        }
+      }
     } finally {
       button.disabled = false;
     }
+    return composed;
   }
 
   async function copyVideoPrompt() {
@@ -1143,8 +1153,10 @@
     button.disabled = true;
     try {
       const saved = await persistVideoStoryboardDraft();
-      await composeVideoPrompt(saved);
-      message("#video-storyboard-message", "Prompt با Storyboard نسخه " + saved.version + " ساخته شد؛ اجرای Provider آغاز نشده است.", "success");
+      const composed = await composeVideoPrompt(saved);
+      if (composed) {
+        message("#video-storyboard-message", "Prompt با Storyboard نسخه " + saved.version + " ساخته شد؛ اجرای Provider آغاز نشده است.", "success");
+      }
     } catch (error) {
       message("#video-storyboard-message", error.message, "error");
     } finally {
