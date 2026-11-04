@@ -176,6 +176,12 @@ def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision()
     assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in script
     assert "syncVideoRenderTarget();" in script
     assert "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است" in script
+    assert 'const renderMayBeActive = Boolean(activeVideoRenderId)' in script
+    assert script.count("|| renderMayBeActive") == 2
+    render_status = script.split("function renderVideoRender", 1)[1].split(
+        "async function refreshVideoRender", 1
+    )[0]
+    assert "syncVideoRenderTarget();" in render_status
     refresh = script.split("async function refreshVideoRender", 1)[1].split(
         "async function submitVideoRender", 1
     )[0]
