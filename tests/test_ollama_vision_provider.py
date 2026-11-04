@@ -70,6 +70,13 @@ def test_vision_request_enforces_image_count_and_aggregate_bytes():
         VisionImage(timestamp_seconds=-0.1, jpeg_bytes=b"jpeg")
     with pytest.raises(ValueError):
         VisionImage(timestamp_seconds=0, jpeg_bytes=b"x" * (MAX_VISION_IMAGE_BYTES + 1))
+    with pytest.raises(TypeError, match="immutable tuple"):
+        VisionRequest(
+            prompt="x",
+            images=[VisionImage(timestamp_seconds=0, jpeg_bytes=b"jpeg")],
+        )
+    with pytest.raises(TypeError, match="invalid image entry"):
+        VisionRequest(prompt="x", images=(object(),))
     with pytest.raises(ValueError):
         VisionRequest(prompt="x", images=())
     with pytest.raises(ValueError):
