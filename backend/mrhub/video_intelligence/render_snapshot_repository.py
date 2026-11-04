@@ -10,7 +10,7 @@ from uuid import UUID
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
-from mrhub.video_intelligence.timeline import VideoTimeline
+from mrhub.video_intelligence.timeline_drafts import validate_renderer_timeline_source_bounds
 
 
 class VideoRenderSnapshotConflict(ValueError):
@@ -58,7 +58,7 @@ class VideoRenderSnapshotRepository:
 
         assets = analysis["result"].get("assets")
         if not isinstance(assets, list):
-            raise ValueError("Snapshot analysis assets are unavailable")
+            raise TypeError("Snapshot analysis assets are unavailable")
         allowed_asset_ids = {
             str(item["asset_id"])
             for item in assets
@@ -68,6 +68,7 @@ class VideoRenderSnapshotRepository:
         referenced_asset_ids = {clip.source_asset_id for clip in timeline.video_track}
         if not referenced_asset_ids or not referenced_asset_ids.issubset(allowed_asset_ids):
             raise ValueError("Snapshot references an asset outside the completed analysis")
+        validate_renderer_timeline_source_bounds(timeline, assets)
 
         now = self._now()
         with self.tasks._connection() as connection:

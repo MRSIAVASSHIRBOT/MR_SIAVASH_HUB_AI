@@ -404,3 +404,34 @@ def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
 
+
+
+
+def test_v28_renderer_snapshot_schema_enforces_pair_and_retention_policy(tmp_path):
+    connection = connect(tmp_path / "renderer-snapshot-schema.sqlite3")
+    try:
+        SchemaMigrator(connection).migrate()
+
+        triggers = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+            )
+        }
+        assert "trg_video_timeline_draft_renderer_pair" in triggers
+        assert "trg_video_timeline_draft_renderer_pair_insert" in triggers
+        assert "trg_video_render_snapshots_immutable" in triggers
+
+        foreign_keys = {
+            row["table"]: row["on_delete"]
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(video_render_timeline_snapshots)"
+            )
+        }
+        assert foreign_keys == {
+            "video_timeline_drafts": "RESTRICT",
+            "video_analysis_runs": "RESTRICT",
+            "auth_users": "CASCADE",
+        }
+    finally:
+        connection.close()

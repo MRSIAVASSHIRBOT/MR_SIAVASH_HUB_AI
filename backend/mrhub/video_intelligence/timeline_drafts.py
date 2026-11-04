@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,6 +64,34 @@ class TimelineDraftUpdate(BaseModel):
         return self
 
 
+
+def validate_renderer_timeline_source_bounds(
+    timeline: VideoTimeline, assets: list[object]
+) -> None:
+    """Require every clip interval to fit its analyzed source media duration."""
+    source_durations: dict[str, float] = {}
+    for item in assets:
+        if not isinstance(item, dict):
+            continue
+        asset_id = item.get("asset_id")
+        metadata = item.get("technical_metadata")
+        if not isinstance(asset_id, str) or not isinstance(metadata, dict):
+            continue
+        raw_duration = metadata.get("duration_seconds")
+        if isinstance(raw_duration, bool) or not isinstance(raw_duration, (int, float)):
+            continue
+        duration = float(raw_duration)
+        if math.isfinite(duration) and duration > 0:
+            source_durations[asset_id] = duration
+
+    for clip in timeline.video_track:
+        source_duration = source_durations.get(clip.source_asset_id)
+        if source_duration is None:
+            raise ValueError("Renderer timeline source duration is unavailable")
+        if clip.source_end_seconds > source_duration + 0.001:
+            raise ValueError("Renderer timeline source interval exceeds source duration")
+
+
 class VideoTimelineDraftRepository:
     """Persist bounded editable timelines with owner checks and version fencing."""
 
@@ -106,7 +135,7 @@ class VideoTimelineDraftRepository:
             raise ValueError("Renderer timeline requires a completed owned analysis")
         assets = analysis["result"].get("assets")
         if not isinstance(assets, list):
-            raise ValueError("Completed analysis source assets are unavailable")
+            raise TypeError("Completed analysis source assets are unavailable")
         allowed_asset_ids = {
             str(item["asset_id"])
             for item in assets
@@ -119,6 +148,7 @@ class VideoTimelineDraftRepository:
             or asset_id not in referenced_asset_ids
         ):
             raise ValueError("Renderer timeline references an asset outside the draft analysis")
+        validate_renderer_timeline_source_bounds(timeline, assets)
         encoded = self._canonical_renderer_timeline(timeline)
         if len(encoded.encode("utf-8")) > self.MAX_RENDERER_TIMELINE_BYTES:
             raise ValueError("Renderer timeline exceeds the storage limit")

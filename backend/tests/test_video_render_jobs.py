@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import sqlite3
 from datetime import UTC, datetime
 from threading import Event
@@ -63,7 +64,10 @@ def _completed_analysis(tmp_path, monkeypatch):
         "owner-a",
         status="completed",
         result={
-            "assets": [{"asset_id": source_id}],
+            "assets": [{
+                "asset_id": source_id,
+                "technical_metadata": {"duration_seconds": 3.0},
+            }],
             "timeline": {
                 "schema_version": "1.0",
                 "output_aspect_ratio": "16:9",
@@ -657,12 +661,53 @@ def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
     assert replay_created is False
     assert replay.snapshot_id == stored.snapshot_id
 
-    with repository.tasks._connection() as connection:
-        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
-            connection.execute(
-                "UPDATE video_render_timeline_snapshots SET timeline_sha256 = ? WHERE snapshot_id = ?",
-                ("0" * 64, str(snapshot.snapshot_id)),
-            )
+    with repository.tasks._connection() as connection, pytest.raises(
+        sqlite3.IntegrityError, match="immutable"
+    ):
+        connection.execute(
+            "UPDATE video_render_timeline_snapshots SET timeline_sha256 = ? WHERE snapshot_id = ?",
+            ("0" * 64, str(snapshot.snapshot_id)),
+        )
+
+    with repository.tasks._connection() as connection, pytest.raises(
+        sqlite3.IntegrityError, match="FOREIGN KEY"
+    ):
+        connection.execute(
+            "DELETE FROM video_timeline_drafts WHERE draft_id = ?",
+            (str(draft["draft_id"]),),
+        )
+
+    with repository.tasks._connection() as connection, pytest.raises(
+        sqlite3.IntegrityError, match="renderer timeline and hash must be stored together"
+    ):
+        connection.execute(
+            """UPDATE video_timeline_drafts
+               SET renderer_timeline_sha256 = NULL WHERE draft_id = ?""",
+            (str(draft["draft_id"]),),
+        )
+
+    with repository.tasks._connection() as connection, pytest.raises(
+        sqlite3.IntegrityError, match="renderer timeline and hash must be stored together"
+    ):
+        connection.execute(
+            """INSERT INTO video_timeline_drafts (
+                draft_id, owner_user_id, analysis_id, asset_id, duration_seconds,
+                aspect_ratio, timeline_json, version, created_at, updated_at,
+                renderer_timeline_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+            (
+                "7f3e5e1a-ff47-4e2c-8c0d-6e1a3a2f6a11",
+                "owner-a",
+                str(analysis_id),
+                str(source_id),
+                3,
+                "16:9",
+                "[]",
+                "2026-11-04T00:00:00+00:00",
+                "2026-11-04T00:00:00+00:00",
+                "{}",
+            ),
+        )
 
 
 def test_render_snapshot_repository_rejects_stale_draft_revision(
@@ -716,4 +761,108 @@ def test_render_snapshot_repository_rejects_stale_draft_revision(
     assert updated_draft["renderer_timeline_sha256"] is None
 
     with pytest.raises(VideoRenderSnapshotConflict, match="current owner-scoped draft revision"):
+        VideoRenderSnapshotRepository(database).create(snapshot)
+
+
+
+def test_renderer_timeline_rejects_source_interval_past_actual_media_duration(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    draft_repository = VideoTimelineDraftRepository(database)
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    draft = draft_repository.create(
+        "owner-a",
+        analysis_id,
+        source_id,
+        3,
+        "16:9",
+        [{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use source"}],
+    )
+    analysis = analysis_repository.get("owner-a", analysis_id)
+    assert analysis is not None
+    timeline_data = dict(analysis["result"]["timeline"])
+    clip = dict(timeline_data["video_track"][0])
+    clip["source_start_seconds"] = 0.1
+    clip["source_end_seconds"] = 3.1
+    timeline_data["video_track"] = [clip]
+    invalid_timeline = VideoTimeline.model_validate(timeline_data)
+
+    with pytest.raises(ValueError, match="source interval exceeds source duration"):
+        draft_repository.update(
+            "owner-a",
+            UUID(draft["draft_id"]),
+            TimelineDraftUpdate(
+                expected_version=1,
+                duration_seconds=3,
+                aspect_ratio="16:9",
+                beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use source"}],
+                renderer_timeline=invalid_timeline,
+            ),
+        )
+
+
+def test_snapshot_repository_revalidates_source_duration_before_persisting(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    draft_repository = VideoTimelineDraftRepository(database)
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    draft = draft_repository.create(
+        "owner-a",
+        analysis_id,
+        source_id,
+        3,
+        "16:9",
+        [{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use source"}],
+    )
+    analysis = analysis_repository.get("owner-a", analysis_id)
+    assert analysis is not None
+    valid_timeline = VideoTimeline.model_validate(analysis["result"]["timeline"])
+    saved = draft_repository.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use source"}],
+            renderer_timeline=valid_timeline,
+        ),
+    )
+    assert saved is not None
+
+    invalid_data = dict(analysis["result"]["timeline"])
+    clip = dict(invalid_data["video_track"][0])
+    clip["source_start_seconds"] = 0.1
+    clip["source_end_seconds"] = 3.1
+    invalid_data["video_track"] = [clip]
+    invalid_timeline = VideoTimeline.model_validate(invalid_data)
+    canonical = json.dumps(
+        invalid_timeline.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    with draft_repository.tasks._connection() as connection:
+        connection.execute(
+            """UPDATE video_timeline_drafts
+               SET renderer_timeline_json = ?, renderer_timeline_sha256 = ?
+               WHERE draft_id = ? AND version = 2""",
+            (canonical, digest, draft["draft_id"]),
+        )
+
+    snapshot = VideoRenderTimelineSnapshot.create(
+        owner_user_id="owner-a",
+        analysis_id=analysis_id,
+        draft_id=UUID(draft["draft_id"]),
+        draft_version=2,
+        timeline=invalid_timeline,
+        analysis_source_asset_ids=[str(source_id)],
+    )
+    with pytest.raises(ValueError, match="source interval exceeds source duration"):
         VideoRenderSnapshotRepository(database).create(snapshot)
