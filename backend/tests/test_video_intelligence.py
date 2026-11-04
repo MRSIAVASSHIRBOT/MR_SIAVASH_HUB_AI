@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from mrhub.api.routes.video_intelligence import (
     PromptCompositionRequest,
     compose_prompt,
+    prepare_video_render_timeline,
     submit_video_render_from_timeline_draft,
 )
 from mrhub.config import get_settings
@@ -322,6 +323,142 @@ def test_probe_video_accepts_valid_core_metadata(tmp_path, monkeypatch):
     assert result.frame_rate == 29.97
     assert result.has_audio is True
 
+
+
+
+def test_prepare_draft_render_timeline_builds_selected_source_and_fences_version(
+    monkeypatch,
+):
+    import mrhub.api.routes.video_intelligence as routes
+
+    analysis_id = UUID("b72c0b71-b1e0-42f2-8f7a-8b98bcb2d019")
+    draft_id = UUID("b1b0f2c0-8f2c-4c7a-9e1a-3b5b4c8d7e10")
+    selected_asset = "asset-selected"
+    draft = {
+        "draft_id": str(draft_id),
+        "analysis_id": str(analysis_id),
+        "asset_id": selected_asset,
+        "duration_seconds": 6,
+        "aspect_ratio": "16:9",
+        "beats": [{
+            "start_seconds": 0,
+            "end_seconds": 6,
+            "generation_instruction": "Keep the source direction",
+        }],
+        "version": 3,
+        "renderer_timeline": None,
+        "renderer_timeline_sha256": None,
+    }
+    specification = {
+        "schema_version": "1.0",
+        "mode": "faithful",
+        "style_strategy": "preserve_reference",
+        "output_aspect_ratio": "9:16",
+        "requested_output_duration_seconds": 10,
+        "sources": [
+            {
+                "asset_id": selected_asset,
+                "source_duration_seconds": 8.0,
+                "scene_start_timestamps": [0.0, 4.0],
+            },
+            {
+                "asset_id": "asset-other",
+                "source_duration_seconds": 8.0,
+                "scene_start_timestamps": [0.0],
+            },
+        ],
+        "brand_guidance": {"status": "not_provided"},
+        "custom_edit_guidance": {"status": "none"},
+        "audio_plan_status": "not_requested",
+    }
+    analysis = {
+        "status": "completed",
+        "result": {"edit_specification": specification},
+    }
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            assert owner_user_id == "owner-1"
+            assert requested_draft_id == draft_id
+            return draft
+
+        def update(self, owner_user_id, requested_draft_id, update):
+            assert owner_user_id == "owner-1"
+            assert requested_draft_id == draft_id
+            assert update.expected_version == 3
+            assert update.duration_seconds == 6
+            assert update.aspect_ratio == "16:9"
+            assert update.renderer_timeline.requested_duration_seconds == 6
+            assert update.renderer_timeline.output_aspect_ratio == "16:9"
+            assert {
+                clip.source_asset_id for clip in update.renderer_timeline.video_track
+            } == {selected_asset}
+            return {
+                **draft,
+                "version": 4,
+                "renderer_timeline": update.renderer_timeline.model_dump(mode="json"),
+                "renderer_timeline_sha256": "verified-by-repository",
+            }
+
+    class Analyses:
+        def get(self, owner_user_id, requested_analysis_id):
+            assert owner_user_id == "owner-1"
+            assert requested_analysis_id == analysis_id
+            return analysis
+
+    monkeypatch.setattr(routes, "_timeline_drafts", Drafts)
+    monkeypatch.setattr(routes, "_analysis_jobs", Analyses)
+
+    result = prepare_video_render_timeline(
+        draft_id,
+        AuthenticatedUser(user_id="owner-1", username="owner"),
+    )
+
+    assert result["version"] == 4
+    assert result["renderer_timeline"]["requested_duration_seconds"] == 6
+    assert result["renderer_timeline"]["video_track"][0]["source_asset_id"] == selected_asset
+
+
+def test_prepare_draft_render_timeline_fails_closed_without_edit_specification(
+    monkeypatch,
+):
+    import mrhub.api.routes.video_intelligence as routes
+
+    analysis_id = UUID("b72c0b71-b1e0-42f2-8f7a-8b98bcb2d019")
+    draft_id = UUID("b1b0f2c0-8f2c-4c7a-9e1a-3b5b4c8d7e10")
+    draft = {
+        "draft_id": str(draft_id),
+        "analysis_id": str(analysis_id),
+        "asset_id": "asset-selected",
+        "duration_seconds": 6,
+        "aspect_ratio": "16:9",
+        "beats": [{
+            "start_seconds": 0,
+            "end_seconds": 6,
+            "generation_instruction": "Keep the source direction",
+        }],
+        "version": 3,
+    }
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            return draft
+
+    class Analyses:
+        def get(self, owner_user_id, requested_analysis_id):
+            return {"status": "completed", "result": {"assets": []}}
+
+    monkeypatch.setattr(routes, "_timeline_drafts", Drafts)
+    monkeypatch.setattr(routes, "_analysis_jobs", Analyses)
+
+    with pytest.raises(HTTPException) as error:
+        prepare_video_render_timeline(
+            draft_id,
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail["code"] == "edit_specification_unavailable"
 
 
 def test_draft_render_api_freezes_exact_saved_revision_and_queues_snapshot(
