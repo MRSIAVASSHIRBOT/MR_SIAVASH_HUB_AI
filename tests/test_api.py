@@ -492,7 +492,6 @@ def test_video_render_from_draft_hides_foreign_or_missing_draft(monkeypatch):
     class Drafts:
         def get(self, owner_user_id, requested_draft_id):
             assert owner_user_id
-            return None
 
     def unexpected_analysis_jobs():
         raise AssertionError("A missing or foreign draft must not reveal its analysis")
