@@ -11,10 +11,29 @@
   let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
   let activeVideoRenderId = sessionStorage.getItem("mrh_video_render_id");
   let activeVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_analysis_id");
+  let activeVideoRenderIdentity = sessionStorage.getItem("mrh_video_render_identity")
+    || (activeVideoRenderAnalysisId ? "analysis:" + activeVideoRenderAnalysisId : null);
   let pendingVideoRenderKey = sessionStorage.getItem("mrh_video_render_pending_key");
   let pendingVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_pending_analysis_id");
-  let pendingVideoDraftRenderKey = sessionStorage.getItem("mrh_video_draft_render_pending_key");
-  let pendingVideoDraftRenderFingerprint = sessionStorage.getItem("mrh_video_draft_render_pending_fingerprint");
+  let pendingVideoRenderIdentity = sessionStorage.getItem("mrh_video_render_pending_identity");
+  let pendingVideoRenderRequests = Object.create(null);
+  try {
+    const storedRequests = JSON.parse(sessionStorage.getItem("mrh_video_render_pending_requests") || "{}");
+    if (storedRequests && typeof storedRequests === "object" && !Array.isArray(storedRequests)) {
+      for (const [identity, key] of Object.entries(storedRequests)) {
+        if (typeof identity === "string" && typeof key === "string"
+          && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
+          pendingVideoRenderRequests[identity] = key;
+        }
+      }
+    }
+  } catch {
+    pendingVideoRenderRequests = Object.create(null);
+  }
+  const loadedPendingIdentities = Object.keys(pendingVideoRenderRequests);
+  while (loadedPendingIdentities.length > 20) {
+    delete pendingVideoRenderRequests[loadedPendingIdentities.shift()];
+  }
   let activeVideoRenderStatus = null;
   let activeVideoRenderAssetId = null;
   let canSubmitVideoRender = false;
@@ -22,17 +41,20 @@
     sessionStorage.removeItem("mrh_video_analysis_id");
     sessionStorage.removeItem("mrh_video_render_id");
     sessionStorage.removeItem("mrh_video_render_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_identity");
     sessionStorage.removeItem("mrh_video_render_pending_key");
     sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
-    sessionStorage.removeItem("mrh_video_draft_render_pending_key");
-    sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
+    sessionStorage.removeItem("mrh_video_render_pending_identity");
+    sessionStorage.removeItem("mrh_video_render_pending_requests");
+    pendingVideoRenderIdentity = null;
+    pendingVideoRenderRequests = Object.create(null);
     activeVideoAnalysisId = null;
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
+    activeVideoRenderIdentity = null;
     pendingVideoRenderKey = null;
     pendingVideoRenderAnalysisId = null;
-    pendingVideoDraftRenderKey = null;
-    pendingVideoDraftRenderFingerprint = null;
+    pendingVideoRenderIdentity = null;
   }
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
@@ -40,6 +62,40 @@
   let videoPromptAnalysisId = null;
   let videoTimelineDrafts = [];
   let activeVideoTimelineDraft = null;
+
+  function currentVideoRenderIdentity() {
+    const draft = activeVideoTimelineDraft
+      && activeVideoTimelineDraft.analysis_id === activeVideoAnalysisId
+      && activeVideoTimelineDraft.renderer_timeline
+      && activeVideoTimelineDraft.renderer_timeline_sha256
+      ? activeVideoTimelineDraft
+      : null;
+    return draft
+      ? "draft:" + draft.draft_id + ":v" + draft.version + ":" + draft.renderer_timeline_sha256
+      : activeVideoAnalysisId ? "analysis:" + activeVideoAnalysisId : null;
+  }
+
+  function syncVideoRenderTarget() {
+    if (!activeVideoRenderId || !activeVideoRenderIdentity) return;
+    const renderMayBeActive = Boolean(activeVideoRenderId)
+      && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
+    if (activeVideoRenderIdentity === currentVideoRenderIdentity()) {
+      $("#video-render-refresh").disabled = false;
+      $("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);
+      $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
+      $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || renderMayBeActive;
+      return;
+    }
+    $("#video-render-result").replaceChildren();
+    $("#video-render-refresh").disabled = true;
+    $("#video-render-cancel").disabled = true;
+    $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
+    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || renderMayBeActive;
+    message(
+      "#video-render-message",
+      "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است؛ برای مشاهده یا لغو آن، همان Draft را دوباره انتخاب کنید."
+    );
+  }
 
   function message(target, text, kind = "") {
     const node = $(target);
@@ -67,6 +123,10 @@
     token = null;
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_pending_identity");
+    sessionStorage.removeItem("mrh_video_render_pending_requests");
+    pendingVideoRenderIdentity = null;
+    pendingVideoRenderRequests = Object.create(null);
     activeVideoAnalysisId = null;
     canSubmitVideoRender = false;
     clearVideoRenderState();
@@ -618,23 +678,24 @@
   function clearVideoRenderState() {
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
+    activeVideoRenderIdentity = null;
     activeVideoRenderStatus = null;
     activeVideoRenderAssetId = null;
     pendingVideoRenderKey = null;
     pendingVideoRenderAnalysisId = null;
+    pendingVideoRenderIdentity = null;
     sessionStorage.removeItem("mrh_video_render_id");
     sessionStorage.removeItem("mrh_video_render_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_identity");
     sessionStorage.removeItem("mrh_video_render_pending_key");
     sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_pending_identity");
     $("#video-render-result").replaceChildren();
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
     $("#video-render-submit").disabled = !canSubmitVideoRender;
-    syncStoryboardRenderButtons();
-    sessionStorage.removeItem("mrh_video_draft_render_pending_key");
-    sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
-    pendingVideoDraftRenderKey = null;
-    pendingVideoDraftRenderFingerprint = null;
+    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft;
+    $("#video-storyboard-prepare-render-timeline").disabled = !activeVideoTimelineDraft;
     message("#video-render-message", "");
   }
 
@@ -672,16 +733,31 @@
     $("#video-render-refresh").disabled = !activeVideoRenderId;
     $("#video-render-cancel").disabled = !active;
     $("#video-render-submit").disabled = !canSubmitVideoRender || active;
-    syncStoryboardRenderButtons();
+    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || active;
+    syncVideoRenderTarget();
   }
 
   async function refreshVideoRender() {
+    if (activeVideoRenderIdentity && activeVideoRenderIdentity !== currentVideoRenderIdentity()) {
+      syncVideoRenderTarget();
+      return;
+    }
     if (!activeVideoRenderId) {
       message("#video-render-message", "هنوز درخواست رندری ثبت نشده است.", "error");
       return;
     }
+    const renderId = activeVideoRenderId;
+    const renderIdentity = activeVideoRenderIdentity;
     try {
-      const render = await api("/video-intelligence/renders/" + encodeURIComponent(activeVideoRenderId));
+      const render = await api("/video-intelligence/renders/" + encodeURIComponent(renderId));
+      if (
+        activeVideoRenderId !== renderId
+        || activeVideoRenderIdentity !== renderIdentity
+        || (renderIdentity && renderIdentity !== currentVideoRenderIdentity())
+      ) {
+        syncVideoRenderTarget();
+        return;
+      }
       renderVideoRender(render);
       const statusText = render.status === "completed"
         ? "فایل MP4 آمادهٔ دریافت است."
@@ -692,54 +768,111 @@
             : "وضعیت فعلی: " + (videoRenderStatusLabels[render.status] || render.status) + ".";
       message("#video-render-message", statusText, render.status === "failed" ? "error" : "success");
     } catch (error) {
-      message("#video-render-message", error.message, "error");
+      if (activeVideoRenderId === renderId && activeVideoRenderIdentity === renderIdentity) {
+        message("#video-render-message", error.message, "error");
+      }
     }
   }
 
   async function submitVideoRender() {
-    if (!activeVideoAnalysisId || !canSubmitVideoRender) {
+    const requestAnalysisId = activeVideoAnalysisId;
+    if (!requestAnalysisId || !canSubmitVideoRender) {
       message("#video-render-message", "ابتدا تحلیل کامل با Timeline معتبر لازم است.", "error");
       return;
     }
-    if (!pendingVideoRenderKey || pendingVideoRenderAnalysisId !== activeVideoAnalysisId) {
+    const rendererDraft = activeVideoTimelineDraft
+      && activeVideoTimelineDraft.analysis_id === requestAnalysisId
+      && activeVideoTimelineDraft.renderer_timeline
+      && activeVideoTimelineDraft.renderer_timeline_sha256
+      ? activeVideoTimelineDraft
+      : null;
+    const requestIdentity = rendererDraft
+      ? "draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version
+        + ":" + rendererDraft.renderer_timeline_sha256
+      : "analysis:" + requestAnalysisId;
+    let requestKey = pendingVideoRenderRequests[requestIdentity] || null;
+    const legacyRequestMatches = pendingVideoRenderKey
+      && pendingVideoRenderAnalysisId === requestAnalysisId
+      && (
+        pendingVideoRenderIdentity === requestIdentity
+        || (!pendingVideoRenderIdentity && requestIdentity === "analysis:" + requestAnalysisId)
+      );
+    if (!requestKey && legacyRequestMatches) {
+      requestKey = pendingVideoRenderKey;
+      pendingVideoRenderRequests[requestIdentity] = requestKey;
+    }
+    if (!requestKey) {
       if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
         message("#video-render-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
         return;
       }
-      pendingVideoRenderKey = window.crypto.randomUUID();
-      pendingVideoRenderAnalysisId = activeVideoAnalysisId;
-      sessionStorage.setItem("mrh_video_render_pending_key", pendingVideoRenderKey);
-      sessionStorage.setItem("mrh_video_render_pending_analysis_id", pendingVideoRenderAnalysisId);
+      requestKey = window.crypto.randomUUID();
+      pendingVideoRenderRequests[requestIdentity] = requestKey;
+      const pendingIdentities = Object.keys(pendingVideoRenderRequests);
+      while (pendingIdentities.length > 20) {
+        delete pendingVideoRenderRequests[pendingIdentities.shift()];
+      }
     }
+    pendingVideoRenderKey = requestKey;
+    pendingVideoRenderAnalysisId = requestAnalysisId;
+    pendingVideoRenderIdentity = requestIdentity;
+    sessionStorage.setItem("mrh_video_render_pending_key", requestKey);
+    sessionStorage.setItem("mrh_video_render_pending_analysis_id", requestAnalysisId);
+    sessionStorage.setItem("mrh_video_render_pending_identity", requestIdentity);
+    sessionStorage.setItem("mrh_video_render_pending_requests", JSON.stringify(pendingVideoRenderRequests));
     const button = $("#video-render-submit");
     button.disabled = true;
-    message("#video-render-message", "در حال ثبت Job رندر در صف Worker…");
+    message(
+      "#video-render-message",
+      rendererDraft
+        ? "در حال ثبت رندر از Timeline آماده‌شدهٔ Draft و Snapshot تغییرناپذیر…"
+        : "در حال ثبت رندر از Timeline اصلی تحلیل…"
+    );
     try {
+      const renderEndpoint = rendererDraft
+        ? "/video-intelligence/timeline-drafts/" + encodeURIComponent(rendererDraft.draft_id) + "/renders"
+        : "/video-intelligence/analyses/" + encodeURIComponent(requestAnalysisId) + "/renders";
       const accepted = await api(
-        "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/renders",
-        { method: "POST", headers: { "Idempotency-Key": pendingVideoRenderKey } }
+        renderEndpoint,
+        { method: "POST", headers: { "Idempotency-Key": requestKey } }
       );
       activeVideoRenderId = accepted.render_id;
-      activeVideoRenderAnalysisId = activeVideoAnalysisId;
+      activeVideoRenderAnalysisId = requestAnalysisId;
+      activeVideoRenderIdentity = requestIdentity;
       sessionStorage.setItem("mrh_video_render_id", activeVideoRenderId);
       sessionStorage.setItem("mrh_video_render_analysis_id", activeVideoRenderAnalysisId);
+      sessionStorage.setItem("mrh_video_render_identity", activeVideoRenderIdentity);
       pendingVideoRenderKey = null;
       pendingVideoRenderAnalysisId = null;
+      pendingVideoRenderIdentity = null;
       sessionStorage.removeItem("mrh_video_render_pending_key");
       sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
-      renderVideoRender(accepted);
+      sessionStorage.removeItem("mrh_video_render_pending_identity");
+      delete pendingVideoRenderRequests[requestIdentity];
+      sessionStorage.setItem("mrh_video_render_pending_requests", JSON.stringify(pendingVideoRenderRequests));
+      if (currentVideoRenderIdentity() === requestIdentity) {
+        renderVideoRender(accepted);
+      } else {
+        syncVideoRenderTarget();
+      }
       message(
         "#video-render-message",
         accepted.created === false
           ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
-          : "درخواست ثبت شد. Worker باید فعال باشد تا رندر اجرا شود.",
+          : rendererDraft
+            ? "رندر از Timeline آماده‌شدهٔ Draft ثبت شد؛ Worker باید فعال باشد."
+            : "رندر از Timeline اصلی تحلیل ثبت شد؛ Beatهای Storyboard برش‌های MP4 را تغییر نمی‌دهند.",
         "success"
       );
       await refreshVideoRender();
     } catch (error) {
       message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
     } finally {
-      button.disabled = !canSubmitVideoRender || ["accepted", "running"].includes(activeVideoRenderStatus);
+      if (activeVideoRenderId && activeVideoRenderIdentity) {
+        syncVideoRenderTarget();
+      } else {
+        button.disabled = !canSubmitVideoRender;
+      }
     }
   }
 
