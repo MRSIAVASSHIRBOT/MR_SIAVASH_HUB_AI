@@ -730,8 +730,18 @@
       message("#video-render-message", "هنوز درخواست رندری ثبت نشده است.", "error");
       return;
     }
+    const renderId = activeVideoRenderId;
+    const renderIdentity = activeVideoRenderIdentity;
     try {
-      const render = await api("/video-intelligence/renders/" + encodeURIComponent(activeVideoRenderId));
+      const render = await api("/video-intelligence/renders/" + encodeURIComponent(renderId));
+      if (
+        activeVideoRenderId !== renderId ||
+        activeVideoRenderIdentity !== renderIdentity ||
+        (renderIdentity && renderIdentity !== currentVideoRenderIdentity())
+      ) {
+        syncVideoRenderTarget();
+        return;
+      }
       renderVideoRender(render);
       const statusText = render.status === "completed"
         ? "فایل MP4 آمادهٔ دریافت است."
@@ -742,7 +752,9 @@
             : "وضعیت فعلی: " + (videoRenderStatusLabels[render.status] || render.status) + ".";
       message("#video-render-message", statusText, render.status === "failed" ? "error" : "success");
     } catch (error) {
-      message("#video-render-message", error.message, "error");
+      if (activeVideoRenderId === renderId && activeVideoRenderIdentity === renderIdentity) {
+        message("#video-render-message", error.message, "error");
+      }
     }
   }
 
@@ -751,8 +763,9 @@
       message("#video-render-message", "ابتدا تحلیل کامل با Timeline معتبر لازم است.", "error");
       return;
     }
+    const requestAnalysisId = activeVideoAnalysisId;
     const rendererDraft = activeVideoTimelineDraft
-      && activeVideoTimelineDraft.analysis_id === activeVideoAnalysisId
+      && activeVideoTimelineDraft.analysis_id === requestAnalysisId
       && activeVideoTimelineDraft.renderer_timeline
       && activeVideoTimelineDraft.renderer_timeline_sha256
       ? activeVideoTimelineDraft
@@ -763,7 +776,7 @@
       : "analysis:" + activeVideoAnalysisId;
     let requestKey = pendingVideoRenderRequests[requestIdentity] || null;
     const legacyRequestMatches = pendingVideoRenderKey
-      && pendingVideoRenderAnalysisId === activeVideoAnalysisId
+      && pendingVideoRenderAnalysisId === requestAnalysisId
       && (
         pendingVideoRenderIdentity === requestIdentity
         || (!pendingVideoRenderIdentity && requestIdentity === "analysis:" + activeVideoAnalysisId)
@@ -785,7 +798,7 @@
       }
     }
     pendingVideoRenderKey = requestKey;
-    pendingVideoRenderAnalysisId = activeVideoAnalysisId;
+    pendingVideoRenderAnalysisId = requestAnalysisId;
     pendingVideoRenderIdentity = requestIdentity;
     sessionStorage.setItem("mrh_video_render_pending_key", pendingVideoRenderKey);
     sessionStorage.setItem("mrh_video_render_pending_analysis_id", pendingVideoRenderAnalysisId);
@@ -802,13 +815,13 @@
     try {
       const renderEndpoint = rendererDraft
         ? "/video-intelligence/timeline-drafts/" + encodeURIComponent(rendererDraft.draft_id) + "/renders"
-        : "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/renders";
+        : "/video-intelligence/analyses/" + encodeURIComponent(requestAnalysisId) + "/renders";
       const accepted = await api(
         renderEndpoint,
         { method: "POST", headers: { "Idempotency-Key": pendingVideoRenderKey } }
       );
       activeVideoRenderId = accepted.render_id;
-      activeVideoRenderAnalysisId = activeVideoAnalysisId;
+      activeVideoRenderAnalysisId = requestAnalysisId;
       activeVideoRenderIdentity = requestIdentity;
       sessionStorage.setItem("mrh_video_render_id", activeVideoRenderId);
       sessionStorage.setItem("mrh_video_render_analysis_id", activeVideoRenderAnalysisId);
@@ -826,16 +839,20 @@
       } else {
         syncVideoRenderTarget();
       }
-      message(
-        "#video-render-message",
-        accepted.created === false
-          ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
-          : rendererDraft
-            ? "رندر از نسخهٔ ذخیره‌شدهٔ Draft ثبت شد؛ Worker باید فعال باشد تا اجرا شود."
-            : "رندر از Timeline اصلی تحلیل ثبت شد؛ Storyboardهای Beat-only در این خروجی دخالت ندارند.",
-        "success"
-      );
-      await refreshVideoRender();
+      if (currentVideoRenderIdentity() === requestIdentity) {
+        message(
+          "#video-render-message",
+          accepted.created === false
+            ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
+            : rendererDraft
+              ? "رندر از نسخهٔ ذخیره‌شدهٔ Draft ثبت شد؛ Worker باید فعال باشد تا اجرا شود."
+              : "رندر از Timeline اصلی تحلیل ثبت شد؛ Storyboardهای Beat-only در این خروجی دخالت ندارند.",
+          "success"
+        );
+        await refreshVideoRender();
+      } else {
+        syncVideoRenderTarget();
+      }
     } catch (error) {
       message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
     } finally {
