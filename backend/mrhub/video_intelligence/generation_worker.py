@@ -83,7 +83,9 @@ class VideoGenerationWorkerHandler:
                     owner, generation_id, "unknown_outcome", lease=lease,
                     error_code="provider_submission_outcome_unknown",
                 )
-            raise ValueError("provider_submission_outcome_unknown") from exc
+            # Suppress adapter exception chaining: provider exceptions may embed
+            # request details or credentials and should not leak into worker logs.
+            raise ValueError("provider_submission_outcome_unknown") from None
 
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
