@@ -1,7 +1,6 @@
-"""Shared bounded health probing for optional local integrations."""
+""""Shared bounded health probing for optional local integrations."""
 
 import ipaddress  # noqa: I001
-import math
 import re
 from urllib.parse import urlsplit, urlunsplit
 
@@ -81,7 +80,6 @@ async def probe_loopback_service(
     valid_timeout = (
         isinstance(timeout_seconds, (int, float))
         and not isinstance(timeout_seconds, bool)
-        and math.isfinite(timeout_seconds)
         and 0 < timeout_seconds <= MAX_HEALTH_PROBE_TIMEOUT_SECONDS
     )
     valid_response_limit = (
@@ -143,3 +141,4 @@ async def probe_loopback_service(
             "status": "unreachable",
             "configured": True,
         }
+"
