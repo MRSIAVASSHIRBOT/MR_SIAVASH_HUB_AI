@@ -138,7 +138,7 @@ def test_prompt_composition_uses_versioned_storyboard_for_its_asset():
 
     draft_id = UUID("33333333-3333-4333-8333-333333333333")
     draft = _storyboard_draft(draft_id)
-    options = AnalysisPromptOptions(timeline_draft_id=draft_id)
+    options = AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4)
 
     prompts = compose_prompts_from_analysis(
         _analysis_result([0.0, 2.0, 3.0, 4.0]),
@@ -208,3 +208,25 @@ def test_prompt_composition_rejects_storyboard_for_an_unrelated_asset():
             timeline_draft=draft,
         )
     assert error.value.code == "timeline_draft_invalid"
+
+
+
+def test_prompt_composition_requires_the_exact_storyboard_version():
+    from uuid import UUID
+
+    from pydantic import ValidationError
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    with pytest.raises(ValidationError):
+        AnalysisPromptOptions(timeline_draft_id=draft_id)
+
+    with pytest.raises(PromptCompositionUnavailable) as error:
+        compose_prompts_from_analysis(
+            _analysis_result([0.0, 2.0]),
+            AnalysisPromptOptions(
+                timeline_draft_id=draft_id,
+                timeline_draft_version=5,
+            ),
+            timeline_draft=_storyboard_draft(draft_id),
+        )
+    assert error.value.code == "timeline_draft_version_conflict"
