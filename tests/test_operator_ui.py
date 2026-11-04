@@ -168,6 +168,18 @@ def test_operator_ui_exposes_saved_storyboard_timeline_preparation():
     assert "submitVideoDraftRender" not in script.text
     assert "function syncStoryboardRenderButtons()" in script.text
 
+    prepare = script.text.split("async function prepareSavedVideoDraftForRender", 1)[1].split(
+        "async function prepareVideoRenderTimeline", 1
+    )[0]
+    assert "/prepare-render-timeline" in prepare
+    assert "if (saved.renderer_timeline && saved.renderer_timeline_sha256)" not in prepare
+
+    submit = script.text.split("async function submitVideoRender", 1)[1].split(
+        "async function cancelVideoRender", 1
+    )[0]
+    assert "const selectedDraft = activeVideoTimelineDraft" in submit
+    assert "Timeline این Draft ناقص است" in submit
+
 
 def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision():
     script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
