@@ -1,7 +1,7 @@
 # Video Timeline Draft → Render Contract
 
 **Status:** Snapshot persistence and Worker integration merged via PR #273; the current-draft submission fence merged via PR #276. The operator-facing prepare-and-render flow is proposed in PR #287 and is not yet in main.  
-**Main baseline:** `3dbd0d32c95c388e10c75150715870e2a82af8dd` (2026-11-04 UTC)  
+**Main baseline:** `a87855fbaa27e4d9406656937aad5eb329280280` (2026-11-04 UTC)  
 **Scope:** Bind a saved, renderer-compatible timeline revision to a durable MP4 render job without changing analysis-only render semantics.
 
 ## 1. Three distinct timeline representations
@@ -120,4 +120,4 @@ Exact-head CI must pass before merge. No local test execution or target-device a
 
 ## 9. Post-merge stale-revision correction
 
-PR #273 merged the immutable snapshot render path. A follow-up review identified that the repository's existing-snapshot branch could return a previously created snapshot before checking whether the editable draft had advanced. The new-render path must reject this stale snapshot even when the immutable row already exists. PR #276 moves the current-draft check ahead of existing-snapshot reuse for transactional render submission, while preserving repository-level historical snapshot replay and already accepted idempotency replays. This follow-up remains unmerged until exact-head CI and review pass.
+PR #273 merged the immutable snapshot render path. A follow-up review identified that the repository's existing-snapshot branch could return a previously created snapshot before checking whether the editable draft had advanced. The new-render path must reject this stale snapshot even when the immutable row already exists. PR #276 moved the current-draft check ahead of existing-snapshot reuse for transactional render submission, while preserving repository-level historical snapshot replay and already accepted idempotency replays. PR #276 is merged in main; the current-draft fence is part of the baseline.
