@@ -1687,7 +1687,6 @@
   $("#video-storyboard-save").addEventListener("click", saveVideoStoryboardDraft);
   $("#video-storyboard-compose").addEventListener("click", composeVideoPromptFromStoryboard);
   $("#video-storyboard-prepare-render-timeline").addEventListener("click", prepareVideoRenderTimeline);
-  $("#video-storyboard-render-submit").addEventListener("click", submitVideoDraftRender);
 
   $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
   $("#media-refresh-button").addEventListener("click", () =>
