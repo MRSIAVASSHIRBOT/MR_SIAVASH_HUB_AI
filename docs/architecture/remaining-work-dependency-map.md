@@ -74,12 +74,12 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 6. Defensive Cybersecurity Lab
 
+**Existing foundation:** authenticated offline configuration review with exact asset matching, expiring authorization, file/line evidence, confidence and remediation; offline requirements-manifest inventory without installation or network resolution; and metadata-only audit events.
+
 **Remaining work**
-- [x] Add authenticated offline configuration review with exact asset matching, expiring authorization (maximum 30 days), file/line evidence, confidence, and remediation guidance.
-- [x] Add offline requirements-manifest inventory for unpinned, direct/VCS, nested-include, and custom-index entries; never install or resolve packages.
-- [x] Record only metadata-only audit events; do not log configuration or manifest contents.
-- [ ] Add a vulnerability-database review using an explicitly approved advisory snapshot; no implicit network access.
-- [ ] Add log analysis and authorized asset inventory as separate, scope-bound offline capabilities.
+- Add vulnerability-database review using an explicitly approved advisory snapshot; no implicit network access.
+- Add log analysis and authorized asset inventory as separate, scope-bound defensive capabilities.
+- Add reproducible finding evidence and remediation reports; keep all operations non-destructive and within the declared authorization scope.
 - Keep exploit deployment, credential collection, stealth, evasion, and malware/payload generation out of scope.
 
 **Depends on:** policy engine, audit service, bounded tools, and NEXUS read-only analysis.
