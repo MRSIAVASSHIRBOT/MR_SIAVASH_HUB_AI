@@ -366,8 +366,10 @@ class VideoGenerationJobRepository:
                    WHERE generation_id = ? AND owner_user_id = ? AND status = ?
                      AND EXISTS (
                        SELECT 1 FROM worker_executions e
-                       WHERE e.task_id = ? AND e.lease_owner = ?
-                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                       JOIN tasks t ON t.task_id = e.task_id
+                       WHERE e.task_id = ? AND t.status = 'running'
+                         AND e.lease_owner = ? AND e.execution_token = ?
+                         AND e.lease_expires_at > ?
                      )""",
                 (target, provider_job_id, progress_percent, error_code, now,
                  str(generation_id), owner_user_id, current["status"],
@@ -604,9 +606,11 @@ class VideoGenerationJobRepository:
                     (str(generation_id), owner_user_id),
                 ).fetchone()
                 current_lease = connection.execute(
-                    """SELECT 1 FROM worker_executions
-                       WHERE task_id = ? AND lease_owner = ? AND execution_token = ?
-                         AND lease_expires_at > ?""",
+                    """SELECT 1 FROM worker_executions e
+                       JOIN tasks t ON t.task_id = e.task_id
+                       WHERE e.task_id = ? AND t.status = 'running'
+                         AND e.lease_owner = ? AND e.execution_token = ?
+                         AND e.lease_expires_at > ?""",
                     (lease.task_id, lease.owner, lease.fencing_token, now),
                 ).fetchone()
                 if (
