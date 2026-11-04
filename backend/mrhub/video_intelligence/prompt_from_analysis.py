@@ -39,16 +39,16 @@ class AnalysisPromptOptions(BaseModel):
     timeline_draft_id: UUID | None = None
     timeline_draft_version: int | None = Field(default=None, ge=1)
     brand_name: str | None = Field(default=None, max_length=80)
+    colors: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=8)
+    typography: str | None = Field(default=None, max_length=240)
+    sound_design: str | None = Field(default=None, max_length=500)
+    final_frame: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def validate_timeline_draft_reference(self) -> AnalysisPromptOptions:
         if (self.timeline_draft_id is None) != (self.timeline_draft_version is None):
             raise ValueError("Storyboard ID and version must be supplied together")
         return self
-    colors: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=8)
-    typography: str | None = Field(default=None, max_length=240)
-    sound_design: str | None = Field(default=None, max_length=500)
-    final_frame: str | None = Field(default=None, max_length=500)
 
 
 def compose_prompts_from_analysis(
@@ -126,17 +126,18 @@ def compose_prompts_from_analysis(
             str(timeline_draft.get("draft_id")) != str(options.timeline_draft_id)
             or type(raw_version) is not int
             or raw_version < 1
-            or options.timeline_draft_version != raw_version
             or type(raw_duration) is not int
             or not isinstance(raw_asset_id, str)
             or raw_asset_id not in technical_by_id
             or not isinstance(timeline_draft.get("beats"), list)
         ):
             raise PromptCompositionUnavailable(
-                "timeline_draft_version_conflict"
-                if raw_version != options.timeline_draft_version
-                else "timeline_draft_invalid",
-                "The selected storyboard draft is invalid or has changed"
+                "timeline_draft_invalid", "The selected storyboard draft is invalid"
+            )
+        if raw_version != options.timeline_draft_version:
+            raise PromptCompositionUnavailable(
+                "timeline_draft_version_conflict",
+                "The selected storyboard draft has changed; reload it before composing"
             )
         try:
             draft_update = TimelineDraftUpdate(
