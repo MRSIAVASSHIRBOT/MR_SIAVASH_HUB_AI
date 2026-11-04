@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
+**Audited main SHA:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -334,20 +334,38 @@ The PR description and live GitHub metadata must be rechecked before merge. Exac
 
 The audit is not a production-readiness declaration. Target-device/browser verification, external-account acceptance, install/upgrade/rollback and database/media/encryption-key restore drills remain separate release gates.
 
-## 10. Post-merge snapshot revision race follow-up — 2026-11-04 UTC
+## 10. Post-merge snapshot revision race correction — 2026-11-04 UTC
 
-**Current main baseline:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
-**PR #273 merge:** `144b870e54713b3f80196c986b4864d547e301df`
+**Current main baseline:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
+**PR #273 merge:** `144b870e54713b3f80196c986b4864d547e301df`  
+**PR #276 merge:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`
 
-PR #273 is merged. Main includes migration 28/29, renderer timeline/hash persistence, immutable owner-scoped snapshots, atomic snapshot/render/idempotency acceptance, and snapshot-backed Worker execution. The merged PR head's recorded Python, defensive scan, and Linux/Windows FFmpeg checks were successful.
+PR #273 introduced migrations 28–29, renderer-timeline/hash persistence, immutable owner-scoped snapshots, atomic snapshot/render/idempotency acceptance and snapshot-backed Worker execution.
 
-A post-merge code review found one edge-case race in the repository's get-or-create behavior: an already persisted snapshot could be replayed by a *new* render submission even after its editable draft had advanced. This does not alter already accepted jobs or legitimate idempotent retries, which must continue to return their original render. It does mean new submissions must verify the exact current draft revision inside the same write transaction, even when the immutable snapshot row already exists.
+A follow-up review found that an existing immutable snapshot could be reused by a *new* render submission after the editable draft had advanced. PR #276 closes this race:
+- The transactional new-render path now checks the current owner-scoped draft before reusing an existing snapshot.
+- Both snapshot-value and snapshot-ID submission forms enforce the same check.
+- The check binds owner, analysis, source asset, draft version, canonical timeline and SHA-256.
+- The original idempotency record is resolved before new work is created, so an already accepted render can still be replayed with the original key after the draft advances.
+- Regression tests verify stale new submissions are rejected and no second render row is created.
 
-PR #276 is the focused correction:
-- Adds a transaction-level current-draft guard before the existing-snapshot replay path for new render submissions.
-- Preserves read-only historical snapshot replay through the repository's explicit creation/retrieval path.
-- Adds a regression test: create a snapshot, advance the draft, then attempt a new render with the stale snapshot and verify rejection with no extra render row.
-- Leaves accepted render idempotency and immutable snapshot content unchanged.
+The exact PR #276 head passed Python 3.11/3.12, Backend CI, Defensive Python Scan, and real FFmpeg integration on Linux and Windows. Post-merge checks on main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2` were still running when this audit was refreshed: the scan and Linux/Windows FFmpeg jobs had passed, while the Python 3.11/3.12 and aggregate test jobs remained in progress.
 
-PR #276 is not merged. Its exact-head Python/coverage, defensive scan, and Linux/Windows FFmpeg checks must pass before merge. Dashboard render submission and target-device acceptance remain separate open gates. This audit is not a production-readiness declaration.
+### Remaining verified gaps
 
+1. Dashboard render-submission control from a saved renderer-compatible draft is still not exposed; the existing storyboard editor is not evidence that this action is available.
+2. Snapshot retention/cleanup policy and operational retention drills need explicit implementation and acceptance.
+3. Target-device workflow acceptance remains open: representative media, edits after snapshot creation, idempotent replay, cancellation, output publication, asset registration and download.
+4. The local renderer remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and generated AI footage are not implemented.
+5. Video-generation provider reconciliation is separate from local FFmpeg rendering. The provider lookup contract exists, but no generation adapter is registered and no active provider-backed reconciliation/output-polling workflow is available.
+
+### Whole-project evidence boundary
+
+Current inventory at main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`: 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are repository-shape metrics, not a completion percentage.
+
+The post-merge workflows listed above validate configured hosted automation only. Target-device/browser verification, external-account acceptance, clean install/upgrade/rollback and database/media/encryption-key restore drills remain independent release gates. This audit is not a production-readiness declaration.
+
+
+## 11. Dashboard render-source handoff — 2026-11-04 UTC
+
+PR #285 proposes the dashboard integration for the snapshot-backed render endpoint. It only selects a saved draft when the persisted renderer timeline and its SHA-256 are present; otherwise it preserves the analysis-timeline render path and explains that Beat-only Storyboard edits affect prompt composition, not MP4 cut points. The browser scopes retry keys to the exact render identity and retains a bounded cache across target switching. This does not add a renderer-timeline clip editor, does not synthesize source intervals from storyboard beats, and does not make the dashboard capable of authoring renderer-compatible timelines. PR #285 is open and requires exact-head CI and review. PR #281's API 409 regression test passed its exact-head checks but remains a separate unmerged test-only PR.
