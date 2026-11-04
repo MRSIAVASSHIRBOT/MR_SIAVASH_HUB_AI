@@ -13,7 +13,7 @@ from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
-from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
+from mrhub.video_intelligence.render_jobs import VideoRenderConflict, VideoRenderJobRepository
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import (
     VideoRenderSnapshotConflict,
@@ -1033,3 +1033,65 @@ def test_snapshot_backed_worker_renders_frozen_draft_timeline(
     assert observed["timeline"].video_track[0].source_start_seconds == 1.0
     assert jobs.get("owner-a", render_id)["status"] == "completed"
     assert media.get("owner-a", UUID(result["output_asset_id"])) is not None
+
+def test_snapshot_and_render_submission_roll_back_together_on_idempotency_conflict(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    jobs = VideoRenderJobRepository(database)
+    jobs.submit("owner-a", analysis_id, "shared-idempotency-key")
+
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    drafts = VideoTimelineDraftRepository(database)
+    draft = drafts.create(
+        "owner-a",
+        analysis_id,
+        source_id,
+        3,
+        "16:9",
+        [{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use source"}],
+    )
+    analysis = analysis_repository.get("owner-a", analysis_id)
+    assert analysis is not None
+    timeline = VideoTimeline.model_validate(analysis["result"]["timeline"])
+    saved = drafts.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use source"}],
+            renderer_timeline=timeline,
+        ),
+    )
+    assert saved is not None
+    snapshot = VideoRenderTimelineSnapshot.create(
+        owner_user_id="owner-a",
+        analysis_id=analysis_id,
+        draft_id=UUID(draft["draft_id"]),
+        draft_version=saved["version"],
+        timeline=timeline,
+        analysis_source_asset_ids=[str(source_id)],
+    )
+
+    with pytest.raises(VideoRenderConflict, match="Idempotency key conflicts"):
+        jobs.submit(
+            "owner-a",
+            analysis_id,
+            "shared-idempotency-key",
+            snapshot=snapshot,
+        )
+
+    assert VideoRenderSnapshotRepository(database).get(
+        "owner-a", snapshot.snapshot_id
+    ) is None
+    with jobs.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_timeline_snapshots"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_runs"
+        ).fetchone()[0] == 1
+
