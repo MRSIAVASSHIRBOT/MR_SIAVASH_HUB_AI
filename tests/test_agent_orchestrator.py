@@ -345,3 +345,19 @@ def test_orchestrator_returns_budget_result_when_single_provider_prompt_exceeds_
     assert result["turns"] == 0
     assert result["tool_calls"] == 0
     assert provider.requests == []
+
+
+def test_agent_loop_request_rejects_boolean_and_coerced_budget_values():
+    import pytest
+    from pydantic import ValidationError
+
+    for field, value in (
+        ("prefer_local", 1),
+        ("max_turns", True),
+        ("max_output_tokens", "128"),
+        ("max_runtime_seconds", True),
+        ("max_tool_calls", False),
+        ("max_total_input_chars", "1000"),
+    ):
+        with pytest.raises(ValidationError):
+            AgentLoopRequest(goal="Strict request contract", **{field: value})
