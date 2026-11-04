@@ -9,7 +9,9 @@ from pydantic import ValidationError
 from mrhub.api.routes.video_intelligence import (
     PromptCompositionRequest,
     compose_prompt,
+    get_video_generation_status,
     prepare_video_render_timeline,
+    reconcile_video_generation,
     submit_video_render_from_timeline_draft,
 )
 from mrhub.config import get_settings
@@ -785,3 +787,72 @@ def test_prepare_draft_render_timeline_returns_conflict_after_concurrent_edit(
     assert error.value.status_code == 409
     assert state["update_calls"] == 1
     assert state["draft"]["version"] == 8
+
+
+def test_generation_status_and_reconciliation_routes_are_owner_scoped(monkeypatch):
+    import mrhub.api.routes.video_intelligence as routes
+
+    generation_id = UUID("a0d8f4f0-9f7a-4e51-8d5f-0f0e1a2b3c4d")
+    task_id = UUID("b1e9a5a1-0a8b-4f62-9e6f-1a2b3c4d5e6f")
+    record = {
+        "generation_id": str(generation_id),
+        "source_analysis_id": "analysis-owned",
+        "status": "unknown_outcome",
+        "provider_job_id": "private-provider-reference",
+        "progress_percent": None,
+        "output_asset_id": None,
+        "output_bytes": None,
+        "output_duration_seconds": None,
+        "output_width": None,
+        "output_height": None,
+        "error_code": "provider_submission_outcome_unknown",
+        "created_at": "2026-11-04T00:00:00+00:00",
+        "updated_at": "2026-11-04T00:01:00+00:00",
+    }
+
+    class Jobs:
+        created = True
+
+        def __init__(self, _database_path):
+            pass
+
+        def get(self, owner_user_id, requested_generation_id):
+            assert requested_generation_id == generation_id
+            return record if owner_user_id == "owner-a" else None
+
+        def enqueue_reconciliation(self, owner_user_id, requested_generation_id):
+            assert requested_generation_id == generation_id
+            if owner_user_id != "owner-a":
+                return None
+            return {
+                "generation_id": str(generation_id),
+                "task_id": str(task_id),
+                "status": "queued",
+                "created": self.created,
+            }
+
+    monkeypatch.setattr(routes, "VideoGenerationJobRepository", Jobs)
+    owner = AuthenticatedUser(user_id="owner-a", username="owner-a")
+    status_result = get_video_generation_status(generation_id, owner)
+    assert status_result["status"] == "unknown_outcome"
+    assert "provider_job_id" not in status_result
+
+    response = Response(status_code=202)
+    queued = reconcile_video_generation(generation_id, response, owner)
+    assert response.status_code == 202
+    assert queued["task_id"] == str(task_id)
+    assert queued["provider_submission_replayed"] is False
+
+    Jobs.created = False
+    replay_response = Response(status_code=202)
+    replay = reconcile_video_generation(generation_id, replay_response, owner)
+    assert replay_response.status_code == 200
+    assert replay["created"] is False
+
+    other_owner = AuthenticatedUser(user_id="owner-b", username="owner-b")
+    with pytest.raises(HTTPException) as status_error:
+        get_video_generation_status(generation_id, other_owner)
+    assert status_error.value.status_code == 404
+    with pytest.raises(HTTPException) as reconcile_error:
+        reconcile_video_generation(generation_id, Response(status_code=202), other_owner)
+    assert reconcile_error.value.status_code == 404

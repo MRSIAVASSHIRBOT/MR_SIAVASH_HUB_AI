@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from mrhub.domain.tasks import RiskClass, TaskRecord
+from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.payload_envelope import (
@@ -205,16 +206,17 @@ class VideoGenerationJobRepository:
         return {"generation_id": str(generation_id), "task_id": str(task.task_id), "status": "queued", "created": True}
 
     def load_for_worker(self, task_id: UUID) -> dict[str, object] | None:
-        """Decrypt one queued job only through its linked durable task."""
+        """Decrypt a queued, ambiguous, or running job through its linked durable task."""
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT l.owner_user_id, l.generation_id, j.provider, j.model,
-                          j.status, p.envelope_version, p.nonce_b64, p.ciphertext_b64
+                          j.status, j.provider_job_id, j.progress_percent,
+                          p.envelope_version, p.nonce_b64, p.ciphertext_b64
                    FROM video_generation_task_links AS l
                    JOIN video_generation_jobs AS j
                      ON j.generation_id = l.generation_id
                     AND j.owner_user_id = l.owner_user_id
-                   JOIN video_generation_payloads AS p
+                   LEFT JOIN video_generation_payloads AS p
                      ON p.generation_id = j.generation_id
                     AND p.owner_user_id = j.owner_user_id
                    WHERE l.task_id = ?""",
@@ -222,27 +224,105 @@ class VideoGenerationJobRepository:
             ).fetchone()
         if row is None:
             return None
-        if row["status"] != "queued":
-            raise ValueError("Only queued generation jobs can be dispatched")
+        job_status = str(row["status"])
+        if job_status not in {"queued", "unknown_outcome", "running"}:
+            raise ValueError("Generation job is not eligible for worker execution")
+        if job_status == "running" and not row["provider_job_id"]:
+            raise ValueError("Running generation job is missing its provider reference")
         generation_id = str(row["generation_id"])
         owner_user_id = str(row["owner_user_id"])
-        payload = decrypt_payload(
-            EncryptedPayload(
-                version=int(row["envelope_version"]),
-                nonce_b64=str(row["nonce_b64"]),
-                ciphertext_b64=str(row["ciphertext_b64"]),
-            ),
-            workflow_id=generation_id,
-            task_id=generation_id,
-            owner_user_id=owner_user_id,
-            key=load_payload_key(),
-        )
-        return {
+        payload = None
+        if job_status == "queued":
+            if any(
+                row[field] is None
+                for field in ("envelope_version", "nonce_b64", "ciphertext_b64")
+            ):
+                raise ValueError("Queued generation request payload is unavailable")
+            payload = decrypt_payload(
+                EncryptedPayload(
+                    version=int(row["envelope_version"]),
+                    nonce_b64=str(row["nonce_b64"]),
+                    ciphertext_b64=str(row["ciphertext_b64"]),
+                ),
+                workflow_id=generation_id,
+                task_id=generation_id,
+                owner_user_id=owner_user_id,
+                key=load_payload_key(),
+            )
+        loaded = {
             "owner_user_id": owner_user_id,
             "generation_id": generation_id,
             "provider": str(row["provider"]),
             "model": str(row["model"]),
-            "request": payload,
+            "status": job_status,
+            "provider_job_id": row["provider_job_id"],
+            "progress_percent": row["progress_percent"],
+        }
+        if payload is not None:
+            loaded["request"] = payload
+        return loaded
+
+    def enqueue_reconciliation(
+        self, owner_user_id: str, generation_id: UUID
+    ) -> dict[str, object] | None:
+        """Requeue the original approved task for read-only provider reconciliation."""
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT j.status AS generation_status, j.provider_job_id,
+                          l.task_id, t.status AS task_status
+                   FROM video_generation_jobs AS j
+                   JOIN video_generation_task_links AS l
+                     ON l.generation_id = j.generation_id
+                    AND l.owner_user_id = j.owner_user_id
+                   JOIN tasks AS t ON t.task_id = l.task_id
+                   WHERE j.generation_id = ? AND j.owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+            generation_status = str(row["generation_status"])
+            if generation_status not in {"unknown_outcome", "running"}:
+                raise ValueError("Only ambiguous or running generation jobs can be reconciled")
+            if generation_status == "running" and not row["provider_job_id"]:
+                raise ValueError("Running generation job is missing its provider reference")
+            task_status = str(row["task_status"])
+            task_id = str(row["task_id"])
+            if task_status in {TaskStatus.QUEUED.value, TaskStatus.RUNNING.value}:
+                return {
+                    "generation_id": str(generation_id),
+                    "task_id": task_id,
+                    "status": task_status,
+                    "created": False,
+                }
+            if task_status not in {
+                TaskStatus.FAILED.value,
+                TaskStatus.SUCCEEDED.value,
+                TaskStatus.CANCELLED.value,
+            }:
+                raise ValueError("Generation task is not eligible for reconciliation")
+            cursor = connection.execute(
+                """UPDATE tasks SET status = ?, updated_at = ?
+                   WHERE task_id = ? AND status = ?""",
+                (TaskStatus.QUEUED.value, now, task_id, task_status),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Generation task changed before reconciliation was queued")
+            connection.execute(
+                """UPDATE worker_executions
+                   SET attempt_count = 0, result_json = NULL, error_code = NULL,
+                       started_at = NULL, finished_at = NULL, recovered_at = ?,
+                       next_attempt_at = NULL, lease_owner = NULL,
+                       lease_expires_at = NULL, heartbeat_at = NULL
+                   WHERE task_id = ?""",
+                (now, task_id),
+            )
+        return {
+            "generation_id": str(generation_id),
+            "task_id": task_id,
+            "status": TaskStatus.QUEUED.value,
+            "created": True,
         }
 
     def transition_under_lease(
@@ -253,13 +333,29 @@ class VideoGenerationJobRepository:
         *,
         lease: WorkerLease,
         provider_job_id: str | None = None,
+        progress_percent: int | None = None,
         error_code: str | None = None,
     ) -> dict[str, object] | None:
         """Change a generation state only while its task fencing token is current."""
         if lease.task_id == "" or not lease.owner or lease.fencing_token < 1:
             raise ValueError("A valid worker lease is required")
         now = self._now()
-        allowed = {"queued": {"submitting", "failed"}, "submitting": {"running", "unknown_outcome", "failed"}}
+        allowed = {
+            "queued": {"submitting", "failed", "cancelled"},
+            "submitting": {"running", "unknown_outcome", "failed", "cancelled"},
+            "unknown_outcome": {"running", "unknown_outcome", "failed", "cancelled"},
+            "running": {"running", "unknown_outcome", "failed", "cancelled"},
+        }
+        if progress_percent is not None and not 0 <= progress_percent <= 100:
+            raise ValueError("Generation progress must be between 0 and 100")
+        if provider_job_id is not None and (
+            not provider_job_id or len(provider_job_id) > 255
+        ):
+            raise ValueError("Provider job identifier is invalid")
+        if error_code is not None and not re.fullmatch(
+            r"[a-z0-9][a-z0-9_.-]{0,79}", error_code
+        ):
+            raise ValueError("Generation error code is invalid")
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             link = connection.execute(
@@ -281,19 +377,28 @@ class VideoGenerationJobRepository:
             cursor = connection.execute(
                 """UPDATE video_generation_jobs SET status = ?,
                        provider_job_id = COALESCE(?, provider_job_id),
+                       progress_percent = COALESCE(?, progress_percent),
                        error_code = ?, updated_at = ?
                    WHERE generation_id = ? AND owner_user_id = ? AND status = ?
                      AND EXISTS (
                        SELECT 1 FROM worker_executions e
-                       WHERE e.task_id = ? AND e.lease_owner = ?
-                         AND e.execution_token = ? AND e.lease_expires_at > ?
+                       JOIN tasks t ON t.task_id = e.task_id
+                       WHERE e.task_id = ? AND t.status = 'running'
+                         AND e.lease_owner = ? AND e.execution_token = ?
+                         AND e.lease_expires_at > ?
                      )""",
-                (target, provider_job_id, error_code, now, str(generation_id),
-                 owner_user_id, current["status"], lease.task_id, lease.owner,
-                 lease.fencing_token, now),
+                (target, provider_job_id, progress_percent, error_code, now,
+                 str(generation_id), owner_user_id, current["status"],
+                 lease.task_id, lease.owner, lease.fencing_token, now),
             )
             if cursor.rowcount != 1:
                 raise ValueError("Worker lease lost before generation state update")
+            if target in {"failed", "cancelled"}:
+                connection.execute(
+                    """DELETE FROM video_generation_payloads
+                       WHERE generation_id = ? AND owner_user_id = ?""",
+                    (str(generation_id), owner_user_id),
+                )
         return self.get(owner_user_id, generation_id)
 
 
@@ -450,6 +555,8 @@ class VideoGenerationJobRepository:
         output_path: Path,
         output_filename: str,
         result: VideoGenerationResult,
+        *,
+        lease: WorkerLease | None = None,
     ) -> dict[str, object] | None:
         """Validate and atomically register a generated MP4 against its owner job."""
         from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
@@ -508,6 +615,26 @@ class VideoGenerationJobRepository:
             ).fetchone()
             if job is None:
                 return None
+            if lease is not None:
+                link = connection.execute(
+                    """SELECT task_id FROM video_generation_task_links
+                       WHERE generation_id = ? AND owner_user_id = ?""",
+                    (str(generation_id), owner_user_id),
+                ).fetchone()
+                current_lease = connection.execute(
+                    """SELECT 1 FROM worker_executions e
+                       JOIN tasks t ON t.task_id = e.task_id
+                       WHERE e.task_id = ? AND t.status = 'running'
+                         AND e.lease_owner = ? AND e.execution_token = ?
+                         AND e.lease_expires_at > ?""",
+                    (lease.task_id, lease.owner, lease.fencing_token, now),
+                ).fetchone()
+                if (
+                    link is None
+                    or link["task_id"] != lease.task_id
+                    or current_lease is None
+                ):
+                    raise ValueError("Worker lease lost before generation output registration")
             if (
                 job["provider"] != result.provider
                 or job["model"] != result.model

@@ -8,6 +8,7 @@ from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
     VideoGenerationResult,
+    VideoGenerationSubmission,
 )
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
@@ -549,3 +550,317 @@ def test_worker_rejects_queued_generation_without_approval_before_provider_looku
             (str(generation_id),),
         ).fetchone()
     assert payload is None
+
+
+def test_generation_reconciliation_requeues_original_task_without_duplicate_links(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("reconcile-requeue")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_generation_jobs SET status = 'unknown_outcome' WHERE generation_id = ?",
+            (str(generation_id),),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'failed' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, error_code, finished_at
+            ) VALUES (?, 3, 'handler_failed', CURRENT_TIMESTAMP)""",
+            (str(task_id),),
+        )
+
+    queued = repository.enqueue_reconciliation("owner-a", generation_id)
+    assert queued == {
+        "generation_id": str(generation_id),
+        "task_id": str(task_id),
+        "status": "queued",
+        "created": True,
+    }
+    assert repository.tasks.get(task_id).status is TaskStatus.QUEUED
+    with repository.tasks._connection() as connection:
+        execution = connection.execute(
+            "SELECT attempt_count, error_code, finished_at FROM worker_executions WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()
+    assert execution["attempt_count"] == 0
+    assert execution["error_code"] is None
+    assert execution["finished_at"] is None
+
+    replay = repository.enqueue_reconciliation("owner-a", generation_id)
+    assert replay["task_id"] == str(task_id)
+    assert replay["created"] is False
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_generation_jobs SET status = 'running', provider_job_id = ? "
+            "WHERE generation_id = ?",
+            ("provider-job-77", str(generation_id)),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'succeeded' WHERE task_id = ?",
+            (str(task_id),),
+        )
+    refreshed = repository.enqueue_reconciliation("owner-a", generation_id)
+    assert refreshed["created"] is True
+    assert refreshed["task_id"] == str(task_id)
+    assert repository.get("owner-a", generation_id)["status"] == "running"
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'cancelled' WHERE task_id = ?",
+            (str(task_id),),
+        )
+    after_local_cancel = repository.enqueue_reconciliation("owner-a", generation_id)
+    assert after_local_cancel["created"] is True
+    assert after_local_cancel["status"] == "queued"
+    assert repository.enqueue_reconciliation("owner-b", generation_id) is None
+
+
+def test_worker_reconciles_unknown_submission_and_registers_completed_output(
+    tmp_path, monkeypatch
+):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from mrhub.domain.tasks import TaskStatus
+    from mrhub.jobs.worker import WorkerEngine, action_fingerprint
+    from mrhub.media.repository import MediaAssetRepository
+    from mrhub.video_intelligence import service
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("reconcile-worker")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    task = repository.tasks.get(task_id)
+    now = datetime.now(UTC).isoformat()
+    repository.tasks.record_task_approval(
+        {
+            "approval_id": str(uuid4()),
+            "task_id": str(task_id),
+            "decision": "approved",
+            "approver_id": "owner-a",
+            "action_fingerprint": action_fingerprint(task),
+            "reason": "Owner approved the original generation request",
+            "created_at": now,
+        },
+        expected_status=TaskStatus.WAITING_APPROVAL,
+        target_status=TaskStatus.QUEUED,
+    )
+
+    output_bytes = b"reconciled generated video bytes"
+    calls = {"submit": 0, "find": [], "status": 0, "download": 0}
+
+    class Provider:
+        capability = SimpleNamespace(
+            provider="local",
+            model="renderer-v1",
+            max_duration_seconds=60,
+            supported_aspect_ratios=["9:16"],
+            max_resolution="1080p",
+        )
+
+        def submit(self, _request):
+            calls["submit"] += 1
+            raise RuntimeError("remote accepted but response was lost")
+
+        def find_by_idempotency_key(self, key):
+            calls["find"].append(key)
+            if len(calls["find"]) == 1:
+                return None
+            return VideoGenerationSubmission(
+                provider="local",
+                model="renderer-v1",
+                provider_job_id="provider-job-reconciled",
+                status=GenerationStatus.RUNNING,
+                progress_percent=15,
+            )
+
+        def get_status(self, provider_job_id):
+            assert provider_job_id == "provider-job-reconciled"
+            calls["status"] += 1
+            if calls["status"] == 1:
+                return VideoGenerationResult(
+                    provider="local",
+                    model="renderer-v1",
+                    provider_job_id=provider_job_id,
+                    status=GenerationStatus.RUNNING,
+                )
+            return VideoGenerationResult(
+                provider="local",
+                model="renderer-v1",
+                provider_job_id=provider_job_id,
+                status=GenerationStatus.SUCCEEDED,
+                output_bytes=len(output_bytes),
+                duration_seconds=10.0,
+                width=720,
+                height=1280,
+            )
+
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            assert provider_job_id == "provider-job-reconciled"
+            assert max_bytes >= len(output_bytes)
+            calls["download"] += 1
+            sink.write(output_bytes)
+            return len(output_bytes)
+
+    provider = Provider()
+    monkeypatch.setattr(video_generation_registry, "get", lambda *_args: provider)
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=10.0,
+            width=720,
+            height=1280,
+            metadata_status="available",
+        ),
+    )
+    worker = WorkerEngine(repository.tasks)
+
+    # First execution may have reached the remote service, so it becomes ambiguous.
+    worker.run_once()
+    assert repository.get("owner-a", generation_id)["status"] == "unknown_outcome"
+    assert repository.tasks.get(task_id).status is TaskStatus.FAILED
+    assert calls["submit"] == 1
+
+    # Reconciliation must not decrypt the original prompt. It only needs the
+    # stable generation key and the provider job reference.
+    monkeypatch.setenv("MRH_WORKFLOW_PAYLOAD_KEY", "temporarily-unavailable")
+
+    # Reconciliation must remain possible if the provider's current capability
+    # catalog changes after the original request has already been accepted.
+    provider.capability = SimpleNamespace(
+        provider="local",
+        model="renderer-v1",
+        max_duration_seconds=5,
+        supported_aspect_ratios=["16:9"],
+        max_resolution="720p",
+    )
+
+    # A lookup miss is not proof that submission never happened. Keep the
+    # ambiguous state and allow a later explicit reconciliation attempt.
+    repository.enqueue_reconciliation("owner-a", generation_id)
+    worker.run_once()
+    assert repository.get("owner-a", generation_id)["status"] == "unknown_outcome"
+    assert repository.tasks.get(task_id).status is TaskStatus.SUCCEEDED
+    lookup_miss_result = worker.get_result(task_id)
+    assert lookup_miss_result is not None
+    assert lookup_miss_result["result"]["status"] == "unknown_outcome"
+    assert "provider_job_id" not in lookup_miss_result["result"]
+    assert calls["find"] == [str(generation_id)]
+    assert calls["submit"] == 1
+
+    # A later lookup finds the original provider job and polls it.
+    repository.enqueue_reconciliation("owner-a", generation_id)
+    worker.run_once()
+    running = repository.get("owner-a", generation_id)
+    assert running["status"] == "running"
+    assert running["provider_job_id"] == "provider-job-reconciled"
+    assert running["progress_percent"] == 15
+    assert repository.tasks.get(task_id).status is TaskStatus.SUCCEEDED
+    running_result = worker.get_result(task_id)
+    assert running_result is not None
+    assert running_result["result"]["status"] == "running"
+    assert "provider_job_id" not in running_result["result"]
+    assert calls["find"] == [str(generation_id), str(generation_id)]
+    assert calls["submit"] == 1
+
+    # A later explicit refresh polls the known provider job and safely imports output.
+    repository.enqueue_reconciliation("owner-a", generation_id)
+    worker.run_once()
+    completed = repository.get("owner-a", generation_id)
+    assert completed["status"] == "succeeded"
+    assert completed["output_asset_id"]
+    assert completed["output_bytes"] == len(output_bytes)
+    completed_result = worker.get_result(task_id)
+    assert completed_result is not None
+    assert completed_result["result"]["status"] == "succeeded"
+    assert "provider_job_id" not in completed_result["result"]
+    assert calls["submit"] == 1
+    assert calls["find"] == [str(generation_id), str(generation_id)]
+    assert calls["status"] == 2
+    assert calls["download"] == 1
+    asset = MediaAssetRepository(repository.database_path).get(
+        "owner-a", UUID(completed["output_asset_id"])
+    )
+    assert asset is not None
+    assert asset["processing_profile"] == "video_ai_generated"
+
+
+def test_interrupted_provider_submission_recovers_to_unknown_outcome_without_purging_payload(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"t" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1",
+        _request("crash-after-provider-acceptance"),
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    # Simulate a process crash after submit() may have reached the provider,
+    # but before the worker persisted the provider job reference.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """UPDATE video_generation_jobs
+               SET status = 'submitting'
+               WHERE generation_id = ? AND owner_user_id = ?""",
+            (str(generation_id), "owner-a"),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at
+            ) VALUES (?, 1, ?)""",
+            (str(task_id), "2000-01-01T00:00:00+00:00"),
+        )
+
+    from mrhub.jobs.worker import WorkerEngine
+
+    worker = WorkerEngine(repository.tasks)
+    assert worker.run_once() is None
+
+    recovered = repository.get("owner-a", generation_id)
+    assert recovered["status"] == "unknown_outcome"
+    assert recovered["error_code"] == "worker_interrupted_during_submission"
+    assert repository.tasks.get(task_id).status is TaskStatus.FAILED
+
+    reconciled = repository.load_for_reconciliation("owner-a", generation_id)
+    assert reconciled["request"]["prompt"].startswith("An original")
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert payload is not None

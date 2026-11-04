@@ -67,6 +67,22 @@ def test_generation_submission_and_result_are_strict():
             provider_job_id="job-3",
             status=GenerationStatus.FAILED,
         )
+    with pytest.raises(ValidationError):
+        VideoGenerationResult(
+            provider="local",
+            model="renderer-v1",
+            provider_job_id="job-4",
+            status=GenerationStatus.FAILED,
+            error_code="provider failed: private token and signed URL",
+        )
+    failed = VideoGenerationResult(
+        provider="local",
+        model="renderer-v1",
+        provider_job_id="job-5",
+        status=GenerationStatus.FAILED,
+        error_code="provider_generation_failed",
+    )
+    assert failed.error_code == "provider_generation_failed"
 
 
 def test_generation_registry_is_empty_until_explicit_adapter_registration():
