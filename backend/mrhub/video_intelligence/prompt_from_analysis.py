@@ -104,6 +104,10 @@ def compose_prompts_from_analysis(
 
     if set(technical_by_id) != set(semantic_by_id):
         raise PromptCompositionUnavailable("analysis_result_invalid", "Semantic and technical assets do not match")
+    if draft_override is not None and draft_override.get("asset_id") not in technical_by_id:
+        raise PromptCompositionUnavailable(
+            "timeline_draft_asset_mismatch", "Saved timeline draft does not belong to an analyzed asset"
+        )
 
     prompts: list[dict[str, object]] = []
     for asset_id, technical in technical_by_id.items():
