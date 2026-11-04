@@ -528,15 +528,17 @@ This is the newest video-workstream hand-off and supersedes the earlier storyboa
 
 The merged PR head was `a01f865e907086cdc767a774fb1f2d94b8c57229`; its recorded Python 3.11/3.12, Defensive Python Scan, and Linux/Windows FFmpeg checks passed. A subsequent review found a narrower race: if a snapshot already existed and the draft advanced before a *new* render submission, the existing-snapshot replay path could bypass the current-draft fence. This does not invalidate already accepted immutable renders or their legitimate idempotent retries, but it must be fixed for new submissions.
 
-### PR #276 — post-merge stale-revision fence
+### PR #276 — merged stale-revision fence
 
-PR #276 is the follow-up candidate based on current main. It keeps historical snapshot reads/replays available while requiring every new snapshot-backed render submission to match the exact current owner-scoped draft revision inside the same SQLite transaction. It adds a regression test proving that a stale existing snapshot cannot create a second render after the draft advances. The follow-up remains unmerged until exact-head CI and review pass.
+PR #276 merged as `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`. New snapshot-backed render submissions now validate the exact current owner-scoped draft revision inside the same SQLite transaction, whether the caller supplies a snapshot value or an existing `snapshot_id`. The check binds owner, analysis, asset membership, version, canonical timeline and SHA-256. An already accepted render can still be replayed with its original idempotency key after the draft advances; a new render from that stale snapshot is rejected.
+
+All exact-head checks on PR #276 passed: Python 3.11/3.12, Backend CI, Defensive Python Scan and Linux/Windows FFmpeg integration. Post-merge checks on main were still running when this update was prepared: Defensive Python Scan and Linux/Windows FFmpeg had passed; Python 3.11, Python 3.12 and the aggregate test workflow were in progress.
 
 ### Remaining video acceptance work
 
-1. Add route-level tests for draft owner isolation, analysis association, malformed saved renderer timelines, response shape and HTTP status mapping.
-2. Add a dashboard action to submit a render from a saved renderer-compatible timeline; do not expose it before the API/Worker path is accepted.
-3. Validate the workflow on the target Windows device with representative source media, draft edits, idempotent replay, cancellation, output registration and download.
+1. Add an operator-dashboard action to submit a render from a saved renderer-compatible timeline, with explicit draft-version display and idempotency behavior.
+2. Define and implement snapshot retention/cleanup policy, including safe deletion rules and operational tests.
+3. Validate the complete workflow on the target Windows device with representative source media, draft edits, accepted idempotent replay, stale-snapshot rejection, cancellation, output registration and download.
 4. Preserve the explicit renderer boundary: local output remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and AI-generated footage are separate future capabilities.
 5. Keep video-generation provider reconciliation separate from local FFmpeg rendering. PR #266 supplies only the read-only adapter lookup contract; no provider is registered and no end-to-end reconciliation worker is available.
 
@@ -546,4 +548,4 @@ Green CI is not target-device acceptance or production readiness. Whole-product 
 
 ## Post-merge stale snapshot submission fence — 2026-11-04 UTC
 
-Current main baseline before follow-up: `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`. PR #273 is merged. A focused follow-up branch `fix/video-render-stale-snapshot-fence` contains the transaction-level current-draft guard and regression test; it is tracked in PR #276 and must not be described as main behavior until merged. The repository's low-level immutable snapshot lookup remains able to replay an already-created historical snapshot; only *new render submission* is required to prove that the draft row still has the exact same owner, analysis, asset, version, canonical timeline and hash under the submission transaction. Existing idempotent replay for an already accepted request remains valid. CI and review are pending on PR #276.
+Current main: `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`. PR #273 and PR #276 are merged. The current-draft fence now applies to new render submissions through both snapshot-value and snapshot-ID paths, while accepted idempotent retries and read-only historical snapshot lookup remain supported. PR #276 exact-head checks passed; post-merge Python 3.11/3.12 and aggregate test workflows were still running when this note was refreshed.

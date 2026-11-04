@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
+**Audited main SHA:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -39,7 +39,7 @@ These counts describe repository structure and test inventory. They are not evid
 | Workflow and Job Engine | Durable tasks, worker leases/fencing, checkpoint recovery, pause/resume, cancellation, emergency stop; PR #223 includes API/worker process-level emergency-stop/resume smoke coverage | Scheduled triggers, stronger fault injection around in-flight synchronous/external effects, multi-worker and long-running recovery semantics |
 | Tools and MCP | Built-in manifests, schema validation, policy grants, audit events, optional loopback MCP bridge | Compatibility/integrity testing, connector lifecycle and a reviewed extension ecosystem; no implicit authority grants |
 | Content and social | Draft/review/approval, durable schedules, Telegram text/media and opt-in Instagram image adapter foundations | Controlled real-account publishing/reconciliation, provider scopes, external HTTPS origin, edge controls, log hygiene and failure recovery |
-| Video and media | Owner-scoped media registry; bounded probing/analysis; editable timeline drafts; PR #271 saved-storyboard prompt composition and dashboard editor; PR #272 immutable renderer-snapshot value object; PR #273 merged migrations 28–29, immutable snapshot persistence, atomic draft-aware render submission and snapshot-backed Worker execution | PR #276 proposes an additional current-draft revision fence for new submissions when a historical snapshot already exists; exact-head CI/review pending. Dashboard render submission and target-device acceptance remain open. Renderer remains silent and hard-cut-only; no operational AI video provider is registered |
+| Video and media | Owner-scoped media registry; bounded probing/analysis; editable timeline drafts; PR #271 saved-storyboard prompt composition and dashboard editor; PR #272 immutable renderer-snapshot value object; PR #273 merged migrations 28–29, immutable snapshot persistence, atomic draft-aware render submission and snapshot-backed Worker execution; PR #276 merged current-draft fencing for both snapshot-value and snapshot-ID new submissions while preserving accepted idempotent retries | Dashboard render submission, snapshot retention/cleanup policy and target-device workflow acceptance remain open. Renderer remains silent and hard-cut-only; no operational AI video provider is registered |
 | NEXUS | Read-only Python AST analysis, import-alias awareness, advisory rules PY101–PY105 including `os.system`/`os.popen`, review-only patch proposals | Broader language/dependency coverage, performance validation on large repositories and explicitly authorized isolated test execution; analyzer must not execute target code |
 | Discovery and research | Roadmap and module boundaries | Source connectors, attributed research records, provenance, untrusted-content handling and end-to-end retrieval are not yet evidenced as complete |
 | Defensive Cybersecurity Lab | Scoped offline configuration and requirements review, authenticated metadata-only review API, structured-log triage | Approved advisory/CVE snapshot workflow and authorized asset inventory with scope/evidence tests; keep all operations defensive and non-destructive |
@@ -334,20 +334,33 @@ The PR description and live GitHub metadata must be rechecked before merge. Exac
 
 The audit is not a production-readiness declaration. Target-device/browser verification, external-account acceptance, install/upgrade/rollback and database/media/encryption-key restore drills remain separate release gates.
 
-## 10. Post-merge snapshot revision race follow-up — 2026-11-04 UTC
+## 10. Post-merge snapshot revision race correction — 2026-11-04 UTC
 
-**Current main baseline:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
-**PR #273 merge:** `144b870e54713b3f80196c986b4864d547e301df`
+**Current main baseline:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
+**PR #273 merge:** `144b870e54713b3f80196c986b4864d547e301df`  
+**PR #276 merge:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`
 
-PR #273 is merged. Main includes migration 28/29, renderer timeline/hash persistence, immutable owner-scoped snapshots, atomic snapshot/render/idempotency acceptance, and snapshot-backed Worker execution. The merged PR head's recorded Python, defensive scan, and Linux/Windows FFmpeg checks were successful.
+PR #273 introduced migrations 28–29, renderer-timeline/hash persistence, immutable owner-scoped snapshots, atomic snapshot/render/idempotency acceptance and snapshot-backed Worker execution.
 
-A post-merge code review found one edge-case race in the repository's get-or-create behavior: an already persisted snapshot could be replayed by a *new* render submission even after its editable draft had advanced. This does not alter already accepted jobs or legitimate idempotent retries, which must continue to return their original render. It does mean new submissions must verify the exact current draft revision inside the same write transaction, even when the immutable snapshot row already exists.
+A follow-up review found that an existing immutable snapshot could be reused by a *new* render submission after the editable draft had advanced. PR #276 closes this race:
+- The transactional new-render path checks the current owner-scoped draft before reusing an existing snapshot.
+- Both snapshot-value and snapshot-ID submission forms enforce the same check.
+- The check binds owner, analysis, source asset, draft version, canonical timeline and SHA-256.
+- The original idempotency record is resolved before new work is created, so an already accepted render can still be replayed with the original key after the draft advances.
+- Regression tests verify stale new submissions are rejected and no second render row is created.
 
-PR #276 is the focused correction:
-- Adds a transaction-level current-draft guard before the existing-snapshot replay path for new render submissions.
-- Preserves read-only historical snapshot replay through the repository's explicit creation/retrieval path.
-- Adds a regression test: create a snapshot, advance the draft, then attempt a new render with the stale snapshot and verify rejection with no extra render row.
-- Leaves accepted render idempotency and immutable snapshot content unchanged.
+The exact PR #276 head passed Python 3.11/3.12, Backend CI, Defensive Python Scan, and real FFmpeg integration on Linux and Windows. Post-merge checks on main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2` were still running when this audit was refreshed: the scan and Linux/Windows FFmpeg jobs had passed, while the Python 3.11/3.12 and aggregate test jobs remained in progress.
 
-PR #276 is not merged. Its exact-head Python/coverage, defensive scan, and Linux/Windows FFmpeg checks must pass before merge. Dashboard render submission and target-device acceptance remain separate open gates. This audit is not a production-readiness declaration.
+### Remaining verified gaps
 
+1. Dashboard render-submission control from a saved renderer-compatible draft is still not exposed; the existing storyboard editor is not evidence that this action is available.
+2. Snapshot retention/cleanup policy and operational retention drills need explicit implementation and acceptance.
+3. Target-device workflow acceptance remains open: representative media, edits after snapshot creation, idempotent replay, cancellation, output publication, asset registration and download.
+4. The local renderer remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and generated AI footage are not implemented.
+5. Video-generation provider reconciliation is separate from local FFmpeg rendering. The provider lookup contract exists, but no generation adapter is registered and no active provider-backed reconciliation/output-polling workflow is available.
+
+### Whole-project evidence boundary
+
+Current inventory at main `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`: 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are repository-shape metrics, not a completion percentage.
+
+The post-merge workflows listed above validate configured hosted automation only. Target-device/browser verification, external-account acceptance, clean install/upgrade/rollback and database/media/encryption-key restore drills remain independent release gates. This audit is not a production-readiness declaration.
