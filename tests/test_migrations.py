@@ -264,7 +264,7 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_28_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_29_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
@@ -383,6 +383,20 @@ def test_migrations_19_to_28_upgrade_an_existing_v18_database(tmp_path, monkeypa
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_video_render_analysis'"
     ).fetchone() is not None
+    render_snapshot_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_render_runs)")
+    }
+    assert "snapshot_id" in render_snapshot_columns
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_video_render_runs_snapshot'"
+    ).fetchone() is not None
+    render_snapshot_foreign_keys = {
+        row["table"]: row["on_delete"]
+        for row in connection.execute("PRAGMA foreign_key_list(video_render_runs)")
+    }
+    assert render_snapshot_foreign_keys["video_render_timeline_snapshots"] == "RESTRICT"
     draft_renderer_columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(video_timeline_drafts)")
