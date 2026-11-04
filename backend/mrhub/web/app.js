@@ -821,11 +821,22 @@
       message("#video-render-message", "ابتدا تحلیل کامل با Timeline معتبر لازم است.", "error");
       return;
     }
-    const rendererDraft = activeVideoTimelineDraft
+    const selectedDraft = activeVideoTimelineDraft
       && activeVideoTimelineDraft.analysis_id === requestAnalysisId
-      && activeVideoTimelineDraft.renderer_timeline
-      && activeVideoTimelineDraft.renderer_timeline_sha256
       ? activeVideoTimelineDraft
+      : null;
+    if (
+      selectedDraft
+      && (selectedDraft.renderer_timeline || selectedDraft.renderer_timeline_sha256)
+      && (!selectedDraft.renderer_timeline || !selectedDraft.renderer_timeline_sha256)
+    ) {
+      message("#video-render-message", "Timeline این Draft ناقص است؛ ابتدا «آماده‌سازی Timeline رندر» را اجرا کنید.", "error");
+      return;
+    }
+    const rendererDraft = selectedDraft
+      && selectedDraft.renderer_timeline
+      && selectedDraft.renderer_timeline_sha256
+      ? selectedDraft
       : null;
     const requestIdentity = rendererDraft
       ? "draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version
@@ -1409,9 +1420,6 @@
   }
 
   async function prepareSavedVideoDraftForRender(saved) {
-    if (saved.renderer_timeline && saved.renderer_timeline_sha256) {
-      return saved;
-    }
     const prepared = await api(
       "/video-intelligence/timeline-drafts/" + encodeURIComponent(saved.draft_id) + "/prepare-render-timeline",
       { method: "POST" }
