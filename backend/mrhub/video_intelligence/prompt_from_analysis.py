@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -40,7 +41,7 @@ class AnalysisPromptOptions(BaseModel):
     typography: str | None = Field(default=None, max_length=240)
     sound_design: str | None = Field(default=None, max_length=500)
     final_frame: str | None = Field(default=None, max_length=500)
-    timeline_draft_id: str | None = Field(default=None, min_length=36, max_length=36)
+    timeline_draft_id: UUID | None = None
     timeline_draft_version: int | None = Field(default=None, ge=1, strict=True)
 
     @model_validator(mode="after")
@@ -105,6 +106,11 @@ def compose_prompts_from_analysis(
     if set(technical_by_id) != set(semantic_by_id):
         raise PromptCompositionUnavailable("analysis_result_invalid", "Semantic and technical assets do not match")
 
+    if options.timeline_draft_id is not None and timeline_draft is None:
+        raise PromptCompositionUnavailable(
+            "timeline_draft_unavailable", "The requested timeline draft is unavailable"
+        )
+
     validated_draft: TimelineDraftUpdate | None = None
     draft_asset_id: str | None = None
     draft_id: str | None = None
@@ -123,6 +129,14 @@ def compose_prompts_from_analysis(
         draft_id = timeline_draft["draft_id"]
         draft_asset_id = timeline_draft["asset_id"]
         draft_version = timeline_draft["version"]
+        if (
+            str(options.timeline_draft_id) != draft_id
+            or options.timeline_draft_version != draft_version
+        ):
+            raise PromptCompositionUnavailable(
+                "timeline_draft_version_conflict",
+                "The requested timeline draft reference does not match the saved version",
+            )
         try:
             validated_draft = TimelineDraftUpdate(
                 expected_version=draft_version,

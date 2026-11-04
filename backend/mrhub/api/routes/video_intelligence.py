@@ -86,15 +86,11 @@ class PromptCompositionRequest(BaseModel):
     typography: str | None = Field(default=None, max_length=240)
     sound_design: str | None = Field(default=None, max_length=500)
     final_frame: str | None = Field(default=None, max_length=500)
-    timeline_draft_id: UUID | None = None
-    timeline_draft_version: int | None = Field(default=None, ge=1, strict=True)
 
     @model_validator(mode="after")
     def validate_timeline(self) -> PromptCompositionRequest:
         if any(beat.end_seconds > self.duration_seconds for beat in self.beats):
             raise ValueError("Beat timeline cannot exceed the requested duration")
-        if (self.timeline_draft_id is None) != (self.timeline_draft_version is None):
-            raise ValueError("Timeline draft ID and version must be supplied together")
         return self
 
 
