@@ -31,14 +31,14 @@ class AgentRunRequest(BaseModel):
     goal: str = Field(min_length=1, max_length=1_000)
     context_query: str | None = Field(default=None, min_length=1, max_length=200)
     provider_mode: Literal["local", "remote"] = "local"
-    include_memory: bool = True
-    include_knowledge: bool = True
+    include_memory: bool = Field(default=True, strict=True)
+    include_knowledge: bool = Field(default=True, strict=True)
     knowledge_freshness_policy: Literal[
         "include_all", "owner_reviewed_current_only"
     ] = "include_all"
-    max_turns: int = Field(default=3, ge=1, le=3)
-    max_output_tokens: int = Field(default=512, ge=1, le=512)
-    max_runtime_seconds: int = Field(default=30, ge=1, le=30)
+    max_turns: int = Field(default=3, ge=1, le=3, strict=True)
+    max_output_tokens: int = Field(default=512, ge=1, le=512, strict=True)
+    max_runtime_seconds: int = Field(default=30, ge=1, le=30, strict=True)
 
 
 @router.post("/run")
