@@ -143,7 +143,7 @@ def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
     result = anyio.run(invoke)
     assert not result.is_error
     response = json.loads(result.content[0].text)
-    assert response == {"ok": False, "error_code": "policy_denied"}
+    assert response == {"ok": False, "error_code": "approval_required"}
     assert called == []
 
 
