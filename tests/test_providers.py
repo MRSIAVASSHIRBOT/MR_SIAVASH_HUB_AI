@@ -1,4 +1,11 @@
-from mrhub.providers.base import ProviderRequest
+import pytest
+
+from mrhub.providers.base import (
+    ProviderContractError,
+    ProviderHealth,
+    ProviderRequest,
+    ProviderResponse,
+)
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRequest, ModelRouter
 from mrhub.providers.stub import StubProvider
@@ -102,3 +109,51 @@ def test_router_duplicate_descriptor_does_not_partially_register_provider_adapte
         assert "No provider adapter" in str(exc)
     else:
         raise AssertionError("adapter registry must remain unchanged after rejection")
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "model_name"),
+    [
+        ("unexpected-provider", "stub-text-v1"),
+        ("stub", "unexpected-model"),
+    ],
+)
+def test_router_rejects_response_with_mismatched_provider_identity(provider_name, model_name):
+    class MismatchedProvider:
+        descriptor = StubProvider.descriptor
+
+        def health(self, timeout_seconds=2.0):
+            return ProviderHealth(available=True, reason_code="ready")
+
+        def generate(self, request):
+            return ProviderResponse(
+                provider=provider_name,
+                model=model_name,
+                output_text="response must not pass the router",
+            )
+
+    router = ModelRouter()
+    router.register_provider(MismatchedProvider())
+
+    with pytest.raises(ProviderContractError) as error:
+        router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
+
+    assert error.value.code == "provider_contract_violation"
+    assert "response must not pass" not in str(error.value)
+
+
+def test_router_rejects_non_provider_response_values():
+    class InvalidProvider:
+        descriptor = StubProvider.descriptor
+
+        def health(self, timeout_seconds=2.0):
+            return ProviderHealth(available=True, reason_code="ready")
+
+        def generate(self, request):
+            return {"provider": "stub", "model": "stub-text-v1", "output_text": "invalid"}
+
+    router = ModelRouter()
+    router.register_provider(InvalidProvider())
+
+    with pytest.raises(ProviderContractError, match="invalid response contract"):
+        router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
