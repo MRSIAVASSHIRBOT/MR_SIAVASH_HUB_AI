@@ -40,6 +40,11 @@ class ModelRouter:
         # Preserve the caller's registry as the single adapter authority,
         # including registry implementations that intentionally evaluate false.
         self.registry = registry if registry is not None else ProviderRegistry()
+        # A pre-populated injected registry is authoritative; hydrate the
+        # capability catalog so selection and dispatch see the same adapters.
+        for provider in self.registry.providers():
+            descriptor = provider.descriptor
+            self._providers[(descriptor.provider, descriptor.model)] = descriptor
 
     def register(self, descriptor: ModelDescriptor) -> None:
         key = (descriptor.provider, descriptor.model)
