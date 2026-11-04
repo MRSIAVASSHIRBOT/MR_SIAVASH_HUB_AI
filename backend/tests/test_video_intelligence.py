@@ -682,3 +682,79 @@ def test_prepare_draft_render_timeline_is_idempotent_for_verified_existing_timel
 
     assert result["version"] == 4
     assert result["renderer_timeline_sha256"] == snapshot.timeline_sha256
+
+def test_prepare_draft_render_timeline_returns_conflict_after_concurrent_edit(
+    monkeypatch,
+):
+    import mrhub.api.routes.video_intelligence as routes
+
+    analysis_id = UUID("b72c0b71-b1e0-42f2-8f7a-8b98bcb2d019")
+    draft_id = UUID("b1b0f2c0-8f2c-4c7a-9e1a-3b5b4c8d7e10")
+    selected_asset = "asset-selected"
+    draft = {
+        "draft_id": str(draft_id),
+        "analysis_id": str(analysis_id),
+        "asset_id": selected_asset,
+        "duration_seconds": 6,
+        "aspect_ratio": "16:9",
+        "beats": [{
+            "start_seconds": 0,
+            "end_seconds": 6,
+            "generation_instruction": "Keep the source direction",
+        }],
+        "version": 7,
+    }
+    analysis = {
+        "status": "completed",
+        "result": {
+            "edit_specification": {
+                "schema_version": "1.0",
+                "mode": "faithful_style_reconstruction",
+                "style_strategy": "preserve_reference",
+                "output_aspect_ratio": "9:16",
+                "requested_output_duration_seconds": 10,
+                "sources": [{
+                    "asset_id": selected_asset,
+                    "source_duration_seconds": 8.0,
+                    "scene_start_timestamps": [0.0, 4.0],
+                }],
+                "brand_guidance": {"status": "not_provided"},
+                "custom_edit_guidance": {"status": "none"},
+                "audio_plan_status": "not_requested",
+            }
+        },
+    }
+    state = {"draft": draft, "update_calls": 0}
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            assert owner_user_id == "owner-1"
+            assert requested_draft_id == draft_id
+            return state["draft"]
+
+        def update(self, owner_user_id, requested_draft_id, update):
+            assert owner_user_id == "owner-1"
+            assert requested_draft_id == draft_id
+            assert update.expected_version == 7
+            state["draft"] = {**state["draft"], "version": 8}
+            state["update_calls"] += 1
+            raise routes.TimelineConflict("Timeline draft version changed")
+
+    class Analyses:
+        def get(self, owner_user_id, requested_analysis_id):
+            assert owner_user_id == "owner-1"
+            assert requested_analysis_id == analysis_id
+            return analysis
+
+    monkeypatch.setattr(routes, "_timeline_drafts", Drafts)
+    monkeypatch.setattr(routes, "_analysis_jobs", Analyses)
+
+    with pytest.raises(HTTPException) as error:
+        prepare_video_render_timeline(
+            draft_id,
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+        )
+
+    assert error.value.status_code == 409
+    assert state["update_calls"] == 1
+    assert state["draft"]["version"] == 8
