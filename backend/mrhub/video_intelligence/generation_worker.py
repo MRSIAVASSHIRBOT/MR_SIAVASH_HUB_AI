@@ -59,21 +59,22 @@ class VideoGenerationWorkerHandler:
         request_data = dict(loaded["request"])
         request_data["idempotency_key"] = str(generation_id)
         request = VideoGenerationRequest.model_validate(request_data)
-        if (
-            request.duration_seconds > capability.max_duration_seconds
-            or request.resolution not in {"720p", "1080p"}
-            or (request.resolution == "1080p" and capability.max_resolution != "1080p")
-            or request.aspect_ratio not in capability.supported_aspect_ratios
-        ):
-            if job_status == "queued":
+
+        if job_status == "queued":
+            if (
+                request.duration_seconds > capability.max_duration_seconds
+                or request.resolution not in {"720p", "1080p"}
+                or (
+                    request.resolution == "1080p"
+                    and capability.max_resolution != "1080p"
+                )
+                or request.aspect_ratio not in capability.supported_aspect_ratios
+            ):
                 self.jobs.transition_under_lease(
                     owner, generation_id, "failed", lease=lease,
                     error_code="provider_capability_mismatch",
                 )
                 raise ValueError("Generation request exceeds provider capability")
-            raise ValueError("provider_capability_changed_during_reconciliation")
-
-        if job_status == "queued":
             return self._submit_once(
                 provider, request, provider_name, model_name, owner,
                 generation_id, lease, lease_lost,
