@@ -1095,3 +1095,82 @@ def test_snapshot_and_render_submission_roll_back_together_on_idempotency_confli
             "SELECT COUNT(*) FROM video_render_runs"
         ).fetchone()[0] == 1
 
+
+
+
+def test_snapshot_and_render_submission_share_one_transaction(tmp_path, monkeypatch):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    drafts = VideoTimelineDraftRepository(database)
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    draft = drafts.create(
+        "owner-a",
+        analysis_id,
+        source_id,
+        3,
+        "16:9",
+        [{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Atomic render"}],
+    )
+    analysis = analysis_repository.get("owner-a", analysis_id)
+    assert analysis is not None
+    timeline = VideoTimeline.model_validate(analysis["result"]["timeline"])
+    saved = drafts.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Atomic render"}],
+            renderer_timeline=timeline,
+        ),
+    )
+    assert saved is not None
+    snapshot = VideoRenderTimelineSnapshot.create(
+        owner_user_id="owner-a",
+        analysis_id=analysis_id,
+        draft_id=UUID(draft["draft_id"]),
+        draft_version=saved["version"],
+        timeline=timeline,
+        analysis_source_asset_ids=[str(source_id)],
+    )
+    jobs = VideoRenderJobRepository(database)
+
+    legacy, _ = jobs.submit("owner-a", analysis_id, "atomic-snapshot-key")
+    with pytest.raises(VideoRenderConflict):
+        jobs.submit(
+            "owner-a",
+            analysis_id,
+            "atomic-snapshot-key",
+            snapshot=snapshot,
+        )
+
+    with jobs.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_timeline_snapshots"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_runs"
+        ).fetchone()[0] == 1
+
+    accepted, created = jobs.submit(
+        "owner-a",
+        analysis_id,
+        "atomic-snapshot-key-2",
+        snapshot=snapshot,
+    )
+    assert created is True
+    snapshot_id = UUID(accepted["snapshot_id"])
+    stored = VideoRenderSnapshotRepository(database).get("owner-a", snapshot_id)
+    assert stored is not None
+    assert stored.timeline_sha256 == snapshot.timeline_sha256
+    with jobs.tasks._connection() as connection:
+        linked = connection.execute(
+            "SELECT snapshot_id FROM video_render_runs WHERE render_id = ?",
+            (accepted["render_id"],),
+        ).fetchone()
+        assert linked is not None and linked["snapshot_id"] == str(snapshot_id)
+        assert connection.execute(
+            "SELECT COUNT(*) FROM video_render_runs"
+        ).fetchone()[0] == 2
+    assert legacy["render_id"] != accepted["render_id"]
