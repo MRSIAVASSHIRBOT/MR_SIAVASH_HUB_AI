@@ -13,6 +13,8 @@
   let activeVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_analysis_id");
   let pendingVideoRenderKey = sessionStorage.getItem("mrh_video_render_pending_key");
   let pendingVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_pending_analysis_id");
+  let pendingVideoDraftRenderKey = sessionStorage.getItem("mrh_video_draft_render_pending_key");
+  let pendingVideoDraftRenderFingerprint = sessionStorage.getItem("mrh_video_draft_render_pending_fingerprint");
   let activeVideoRenderStatus = null;
   let activeVideoRenderAssetId = null;
   let canSubmitVideoRender = false;
@@ -22,11 +24,15 @@
     sessionStorage.removeItem("mrh_video_render_analysis_id");
     sessionStorage.removeItem("mrh_video_render_pending_key");
     sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+    sessionStorage.removeItem("mrh_video_draft_render_pending_key");
+    sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
     activeVideoAnalysisId = null;
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
     pendingVideoRenderKey = null;
     pendingVideoRenderAnalysisId = null;
+    pendingVideoDraftRenderKey = null;
+    pendingVideoDraftRenderFingerprint = null;
   }
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
@@ -616,6 +622,12 @@
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
     $("#video-render-submit").disabled = !canSubmitVideoRender;
+    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft;
+    $("#video-storyboard-prepare-render-timeline").disabled = !activeVideoTimelineDraft;
+    sessionStorage.removeItem("mrh_video_draft_render_pending_key");
+    sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
+    pendingVideoDraftRenderKey = null;
+    pendingVideoDraftRenderFingerprint = null;
     message("#video-render-message", "");
   }
 
@@ -895,6 +907,8 @@
     $("#video-storyboard-new").disabled = false;
     $("#video-storyboard-save").disabled = false;
     $("#video-storyboard-compose").disabled = false;
+    $("#video-storyboard-prepare-render-timeline").disabled = false;
+    $("#video-storyboard-render-submit").disabled = false;
   }
 
   async function composeVideoPrompt(timelineDraft = null) {
@@ -1183,6 +1197,97 @@
     }
   }
 
+  async function prepareSavedVideoDraftForRender(saved) {
+    const prepared = await api(
+      "/video-intelligence/timeline-drafts/" + encodeURIComponent(saved.draft_id) + "/prepare-render-timeline",
+      { method: "POST" }
+    );
+    activeVideoTimelineDraft = prepared;
+    videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== prepared.draft_id);
+    videoTimelineDrafts.unshift(prepared);
+    renderVideoStoryboardDraftOptions(prepared.asset_id);
+    return prepared;
+  }
+
+  async function prepareVideoRenderTimeline() {
+    const button = $("#video-storyboard-prepare-render-timeline");
+    button.disabled = true;
+    try {
+      const saved = await persistVideoStoryboardDraft();
+      const prepared = await prepareSavedVideoDraftForRender(saved);
+      const actual = prepared.renderer_timeline
+        ? Number(prepared.renderer_timeline.actual_duration_seconds)
+        : 0;
+      message(
+        "#video-storyboard-message",
+        "Timeline برش‌مستقیم برای نسخه " + prepared.version
+          + " ذخیره شد؛ مدت واقعی خروجی " + actual.toFixed(2) + " ثانیه است.",
+        "success"
+      );
+    } catch (error) {
+      message("#video-storyboard-message", error.message, "error");
+    } finally {
+      button.disabled = !activeVideoTimelineDraft;
+    }
+  }
+
+  async function submitVideoDraftRender() {
+    const button = $("#video-storyboard-render-submit");
+    button.disabled = true;
+    try {
+      let saved = await persistVideoStoryboardDraft();
+      if (!saved.renderer_timeline_sha256) {
+        saved = await prepareSavedVideoDraftForRender(saved);
+      }
+      const fingerprint = saved.draft_id + ":" + saved.version;
+      if (
+        !pendingVideoDraftRenderKey
+        || pendingVideoDraftRenderFingerprint !== fingerprint
+      ) {
+        if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
+          throw new Error("مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.");
+        }
+        pendingVideoDraftRenderKey = window.crypto.randomUUID();
+        pendingVideoDraftRenderFingerprint = fingerprint;
+        sessionStorage.setItem("mrh_video_draft_render_pending_key", pendingVideoDraftRenderKey);
+        sessionStorage.setItem("mrh_video_draft_render_pending_fingerprint", fingerprint);
+      }
+      const accepted = await api(
+        "/video-intelligence/timeline-drafts/" + encodeURIComponent(saved.draft_id) + "/renders",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": pendingVideoDraftRenderKey },
+        }
+      );
+      activeVideoRenderId = accepted.render_id;
+      activeVideoRenderAnalysisId = activeVideoAnalysisId;
+      sessionStorage.setItem("mrh_video_render_id", activeVideoRenderId);
+      sessionStorage.setItem("mrh_video_render_analysis_id", activeVideoRenderAnalysisId);
+      pendingVideoDraftRenderKey = null;
+      pendingVideoDraftRenderFingerprint = null;
+      sessionStorage.removeItem("mrh_video_draft_render_pending_key");
+      sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
+      renderVideoRender(accepted);
+      message(
+        "#video-render-message",
+        accepted.created === false
+          ? "درخواست قبلی همین نسخه بازیابی شد؛ Job تکراری ساخته نشد."
+          : "رندر نسخه " + accepted.draft_version + " ثبت شد. Worker باید فعال باشد.",
+        "success"
+      );
+      await refreshVideoRender();
+    } catch (error) {
+      message(
+        "#video-storyboard-message",
+        error.message + "؛ در تلاش مجدد، کلید idempotency همین نسخه حفظ می‌شود.",
+        "error"
+      );
+    } finally {
+      button.disabled = !activeVideoTimelineDraft
+        || ["accepted", "running"].includes(activeVideoRenderStatus);
+    }
+  }
+
   async function composeVideoPromptFromStoryboard() {
     const button = $("#video-storyboard-compose");
     button.disabled = true;
@@ -1211,6 +1316,8 @@
       selected.beats,
       selectedPrompt ? selectedPrompt.source_timestamp_limit_seconds : 86400
     );
+    $("#video-storyboard-prepare-render-timeline").disabled = false;
+    $("#video-storyboard-render-submit").disabled = false;
     message("#video-storyboard-message", "Storyboard نسخه " + selected.version + " بارگذاری شد.");
   }
 
