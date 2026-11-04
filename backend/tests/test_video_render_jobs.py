@@ -1,17 +1,30 @@
 import base64
 import hashlib
+import sqlite3
 from datetime import UTC, datetime
 from threading import Event
 from types import SimpleNamespace
 from uuid import UUID
+
+import pytest
 
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
+from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
+from mrhub.video_intelligence.render_snapshot_repository import (
+    VideoRenderSnapshotConflict,
+    VideoRenderSnapshotRepository,
+)
 from mrhub.video_intelligence.render_worker import VideoRenderWorkerHandler
 from mrhub.video_intelligence.schemas import AnalysisMode, VideoAnalysisRequest
+from mrhub.video_intelligence.timeline import VideoTimeline
+from mrhub.video_intelligence.timeline_drafts import (
+    TimelineDraftUpdate,
+    VideoTimelineDraftRepository,
+)
 
 
 def _completed_analysis(tmp_path, monkeypatch):
@@ -50,6 +63,7 @@ def _completed_analysis(tmp_path, monkeypatch):
         "owner-a",
         status="completed",
         result={
+            "assets": [{"asset_id": source_id}],
             "timeline": {
                 "schema_version": "1.0",
                 "output_aspect_ratio": "16:9",
@@ -588,3 +602,118 @@ def test_render_worker_observes_preexisting_cancellation_before_media_access(
             (str(task_id),),
         ).fetchone()[0]
     assert locks == 0
+
+
+
+def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    draft_repository = VideoTimelineDraftRepository(database)
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    draft = draft_repository.create(
+        "owner-a",
+        analysis_id,
+        source_id,
+        3,
+        "16:9",
+        [{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use the source interval"}],
+    )
+    analysis = analysis_repository.get("owner-a", analysis_id)
+    assert analysis is not None
+    timeline = VideoTimeline.model_validate(analysis["result"]["timeline"])
+    draft = draft_repository.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Use the source interval"}],
+            renderer_timeline=timeline,
+        ),
+    )
+    assert draft is not None
+    assert draft["renderer_timeline_sha256"]
+    snapshot = VideoRenderTimelineSnapshot.create(
+        owner_user_id="owner-a",
+        analysis_id=analysis_id,
+        draft_id=UUID(draft["draft_id"]),
+        draft_version=2,
+        timeline=timeline,
+        analysis_source_asset_ids=[str(source_id)],
+    )
+    repository = VideoRenderSnapshotRepository(database)
+
+    stored, created = repository.create(snapshot)
+    assert created is True
+    assert stored.snapshot_id == snapshot.snapshot_id
+    assert stored.timeline_sha256 == snapshot.timeline_sha256
+    assert repository.get("owner-a", snapshot.snapshot_id).timeline_json == snapshot.timeline_json
+    assert repository.get("owner-b", snapshot.snapshot_id) is None
+
+    replay, replay_created = repository.create(snapshot)
+    assert replay_created is False
+    assert replay.snapshot_id == stored.snapshot_id
+
+    with repository.tasks._connection() as connection:
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            connection.execute(
+                "UPDATE video_render_timeline_snapshots SET timeline_sha256 = ? WHERE snapshot_id = ?",
+                ("0" * 64, str(snapshot.snapshot_id)),
+            )
+
+
+def test_render_snapshot_repository_rejects_stale_draft_revision(
+    tmp_path, monkeypatch
+):
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    draft_repository = VideoTimelineDraftRepository(database)
+    draft = draft_repository.create(
+        "owner-a",
+        analysis_id,
+        source_id,
+        3,
+        "16:9",
+        [{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Original draft"}],
+    )
+    analysis = analysis_repository.get("owner-a", analysis_id)
+    timeline = VideoTimeline.model_validate(analysis["result"]["timeline"])
+    draft = draft_repository.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Original draft"}],
+            renderer_timeline=timeline,
+        ),
+    )
+    snapshot = VideoRenderTimelineSnapshot.create(
+        owner_user_id="owner-a",
+        analysis_id=analysis_id,
+        draft_id=UUID(draft["draft_id"]),
+        draft_version=2,
+        timeline=timeline,
+        analysis_source_asset_ids=[str(source_id)],
+    )
+    updated_draft = draft_repository.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=2,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "Updated draft"}],
+        ),
+    )
+    assert updated_draft is not None
+    assert updated_draft["renderer_timeline"] is None
+    assert updated_draft["renderer_timeline_sha256"] is None
+
+    with pytest.raises(VideoRenderSnapshotConflict, match="current owner-scoped draft revision"):
+        VideoRenderSnapshotRepository(database).create(snapshot)

@@ -35,7 +35,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
         "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
         "content_publish_schedules", "media_file_cleanup", "media_asset_analysis_leases",
-        "video_render_runs",
+        "video_render_runs", "video_render_timeline_snapshots",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -382,6 +382,24 @@ def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypa
     assert connection.execute(
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_video_render_analysis'"
+    ).fetchone() is not None
+    draft_renderer_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_timeline_drafts)")
+    }
+    assert {"renderer_timeline_json", "renderer_timeline_sha256"} <= draft_renderer_columns
+    snapshot_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_render_timeline_snapshots)")
+    }
+    assert {
+        "snapshot_id", "owner_user_id", "analysis_id", "draft_id",
+        "draft_version", "snapshot_version", "timeline_json",
+        "timeline_sha256", "created_at",
+    } <= snapshot_columns
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+        "AND name = 'trg_video_render_snapshots_immutable'"
     ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()

@@ -747,6 +747,42 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_render_analysis ON video_render_runs(analysis_id, owner_user_id)",
         ),
     ),
+    Migration.build(
+        28,
+        "immutable_owner_scoped_video_render_timeline_snapshots",
+        (
+            "ALTER TABLE video_timeline_drafts ADD COLUMN renderer_timeline_json TEXT CHECK (renderer_timeline_json IS NULL OR length(renderer_timeline_json) <= 100000)",
+            "ALTER TABLE video_timeline_drafts ADD COLUMN renderer_timeline_sha256 TEXT CHECK (renderer_timeline_sha256 IS NULL OR (length(renderer_timeline_sha256) = 64 AND renderer_timeline_sha256 NOT GLOB '*[^a-f0-9]*'))",
+            """CREATE TRIGGER IF NOT EXISTS trg_video_timeline_draft_renderer_pair
+               BEFORE UPDATE OF renderer_timeline_json, renderer_timeline_sha256
+               ON video_timeline_drafts
+               WHEN (NEW.renderer_timeline_json IS NULL) != (NEW.renderer_timeline_sha256 IS NULL)
+               BEGIN
+                   SELECT RAISE(ABORT, 'renderer timeline and hash must be stored together');
+               END""",
+            """CREATE TABLE IF NOT EXISTS video_render_timeline_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                analysis_id TEXT NOT NULL REFERENCES video_analysis_runs(analysis_id) ON DELETE CASCADE,
+                draft_id TEXT NOT NULL REFERENCES video_timeline_drafts(draft_id) ON DELETE CASCADE,
+                draft_version INTEGER NOT NULL CHECK (draft_version > 0),
+                snapshot_version TEXT NOT NULL CHECK (snapshot_version = '1'),
+                timeline_json TEXT NOT NULL CHECK (length(timeline_json) <= 100000),
+                timeline_sha256 TEXT NOT NULL CHECK (
+                    length(timeline_sha256) = 64
+                    AND timeline_sha256 NOT GLOB '*[^a-f0-9]*'
+                ),
+                created_at TEXT NOT NULL,
+                UNIQUE(draft_id, draft_version)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_render_snapshots_owner_analysis ON video_render_timeline_snapshots(owner_user_id, analysis_id, created_at)",
+            """CREATE TRIGGER IF NOT EXISTS trg_video_render_snapshots_immutable
+               BEFORE UPDATE ON video_render_timeline_snapshots
+               BEGIN
+                   SELECT RAISE(ABORT, 'video render timeline snapshots are immutable');
+               END""",
+        ),
+    ),
 )
 
 
