@@ -123,12 +123,6 @@ class VideoRenderJobRepository:
         scope = self._scope(owner_user_id)
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            if snapshot is not None:
-                assert snapshot_repository is not None
-                stored_snapshot, _ = snapshot_repository.persist_in_transaction(
-                    connection, snapshot, assets
-                )
-                snapshot_id = stored_snapshot.snapshot_id
             existing = connection.execute(
                 "SELECT request_digest, task_id FROM idempotency_records "
                 "WHERE scope = ? AND idempotency_key = ?",
@@ -147,6 +141,13 @@ class VideoRenderJobRepository:
                 if row is None:
                     raise VideoRenderConflict("Existing render is unavailable")
                 return self._record(row), False
+
+            if snapshot is not None:
+                assert snapshot_repository is not None
+                stored_snapshot, _ = snapshot_repository.persist_in_transaction(
+                    connection, snapshot, assets
+                )
+                snapshot_id = stored_snapshot.snapshot_id
 
             connection.execute(
                 """INSERT INTO tasks (
