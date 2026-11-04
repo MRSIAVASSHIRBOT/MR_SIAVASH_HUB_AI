@@ -549,3 +549,8 @@ Green CI is not target-device acceptance or production readiness. Whole-product 
 ## Post-merge stale snapshot submission fence — 2026-11-04 UTC
 
 Current main: `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`. PR #273 and PR #276 are merged. The current-draft fence now applies to new render submissions through both snapshot-value and snapshot-ID paths, while accepted idempotent retries and read-only historical snapshot lookup remain supported. PR #276 exact-head checks passed; post-merge Python 3.11/3.12 and aggregate test workflows were still running when this note was refreshed.
+
+
+## Dashboard draft-render follow-up — 2026-11-04 UTC
+
+Current main baseline: `f1dcc6015c70a17f78e537ddabeb3091b84b7865`. PR #273 and PR #276 are merged; PR #281's route-level regression test for concurrent draft changes was merged as `4e9bb24192eb2a0585377ff797dc1f032414bac0`. PR #285 proposes dashboard use of the immutable draft-render endpoint when a selected saved draft includes a renderer-compatible timeline and hash. It retains the legacy analysis-timeline path for beat-only Storyboards, makes the render source explicit, and scopes retry keys to the exact analysis or draft revision. PR #285 remains open pending exact-head CI and review. The current beat-only editor still does not author renderer clip mappings, and no conversion from storyboard beats to source intervals is performed.
