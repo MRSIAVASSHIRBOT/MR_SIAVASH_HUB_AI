@@ -381,8 +381,8 @@ PR #289 proposes the missing operator path from a saved storyboard draft to a de
 
 The PR remains open and is not part of main. On exact head `5e88d8ecdf650e51e4475e6c78fa6dd98154d40b`, Defensive Python Scan had passed while Python 3.11/3.12, Backend CI and Linux/Windows FFmpeg integration were still in progress. The merge gate is all required checks on the exact current head plus source review.
 
-### PR #290 — approval-required durable workflow regression (open)
-This independent test-only PR adds a worker-backed test for a model-proposed high-risk external tool. It verifies that the durable result preserves `approval_required`, the handler is not called and tool-call counters remain zero without explicit approval. It does not grant permissions or implement an approval interface. Python tests and scan had passed; Windows FFmpeg integration was still running at the time of this audit.
+### PR #290 — approval-required durable workflow regression (merged)
+PR #290 merged as `592e98221014ca897edfb09285830a6a3b990a76`. This test-only change adds a worker-backed test for a model-proposed high-risk external tool. It verifies that the durable result preserves `approval_required`, the handler is not called and tool-call counters remain zero without explicit approval. All six exact-head checks passed. It does not grant permissions or implement an approval interface. Post-merge checks on main were still running at the time of this audit.
 
 ### Updated acceptance boundaries
 The dashboard's prepare-and-render path is under review in PR #289; do not call it a merged main capability until it is merged. Snapshot retention/cleanup, target-device Windows workflow, real media acceptance, database/media/encryption-key restore, clean install/upgrade/rollback and external-account verification remain open. The renderer remains silent and hard-cut-only. No production-readiness or whole-project-completion claim is made.
