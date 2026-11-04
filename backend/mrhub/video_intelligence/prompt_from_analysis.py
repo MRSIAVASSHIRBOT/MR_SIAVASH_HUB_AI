@@ -37,7 +37,7 @@ class AnalysisPromptOptions(BaseModel):
 
     aspect_ratio: Literal["9:16", "16:9", "1:1", "4:5"] = "9:16"
     timeline_draft_id: UUID | None = None
-    timeline_draft_version: int | None = Field(default=None, ge=1)
+    timeline_draft_version: int | None = Field(default=None, ge=1, strict=True)
     brand_name: str | None = Field(default=None, max_length=80)
     colors: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=8)
     typography: str | None = Field(default=None, max_length=240)
