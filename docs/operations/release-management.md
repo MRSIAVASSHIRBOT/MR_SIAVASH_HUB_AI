@@ -178,10 +178,10 @@ The project remains **not release-ready**. Remaining gates include target-device
 
 ## Current release-manager baseline — 2026-11-04 17:42 +0330
 
-**Observed main commit:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
+**Observed main commit:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
 **Repository default branch:** `main`  
 **Package metadata:** `0.1.0` (`pyproject.toml`; development metadata, not a published release).  
-**Open release-relevant work:** PR [#276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276), a product-level stale-snapshot submission fence. It is not merged and must not be described as current-main behavior. Its exact head at this review is `8fab7b80f62d6ea666f658fa447c9bdba97eb8a1`.
+**Recently merged release-relevant work:** PR [#276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276) merged as `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`. It closes the stale-snapshot/new-render race for both snapshot-value and snapshot-ID submissions while preserving retries of already accepted idempotent renders. Its exact PR head `8fab7b80f62d6ea666f658fa447c9bdba97eb8a1` passed Python 3.11/3.12, Backend CI, Defensive Python Scan and Linux/Windows FFmpeg integration. Post-merge checks on the new main commit were still running when this note was updated.
 
 ### Current packaging and platform facts
 
@@ -196,7 +196,7 @@ The project remains **not release-ready**. Remaining gates include target-device
 
 ### Release-manager action boundaries
 
-PR #276 changes product behavior and is therefore owned by the relevant product/engineering maintainer. The Release & Update Manager tracks its merge and exact-head CI as release evidence but does not independently rewrite or approve its implementation. Do not merge it solely because checks turn green; source review and the owning maintainer's acceptance remain required.
+PR #276 is merged. The Release & Update Manager records its merge and exact-head CI as release evidence; the post-merge main checks must still complete successfully. Target-device acceptance and the broader release gates remain separate.
 
 ### Current release decision
 
