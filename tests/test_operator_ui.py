@@ -183,3 +183,33 @@ def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
     )[0]
     assert "videoPromptAnalysisId = null" not in render_analysis
     assert "videoPromptAnalysisId = null" in submit_analysis
+
+
+def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    refresh = script.split("async function refreshVideoRender", 1)[1].split(
+        "async function submitVideoRender", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in refresh
+    assert "const renderIdentity = activeVideoRenderIdentity" in refresh
+    assert "activeVideoRenderId !== renderId" in refresh
+    assert "activeVideoRenderIdentity !== renderIdentity" in refresh
+    assert "renderIdentity !== currentVideoRenderIdentity()" in refresh
+
+    submit = script.split("async function submitVideoRender", 1)[1].split(
+        "async function cancelVideoRender", 1
+    )[0]
+    assert "const requestAnalysisId = activeVideoAnalysisId" in submit
+    assert "activeVideoRenderAnalysisId = requestAnalysisId" in submit
+    assert "currentVideoRenderIdentity() === requestIdentity" in submit
+    assert "syncVideoRenderTarget();" in submit
+
+    cancel = script.split("async function cancelVideoRender", 1)[1].split(
+        "async function downloadRenderedVideo", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in cancel
+    assert "const renderIdentity = activeVideoRenderIdentity" in cancel
+    assert "encodeURIComponent(renderId)" in cancel
+    assert "activeVideoRenderId !== renderId" in cancel
+    assert "activeVideoRenderIdentity !== renderIdentity" in cancel
