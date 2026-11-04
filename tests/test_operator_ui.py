@@ -203,3 +203,24 @@ def test_operator_ui_exposes_saved_renderer_draft_render_selection_and_cleanup()
     assert "mrh_video_render_pending_requests" in script.text
     assert 'sessionStorage.removeItem("mrh_video_render_pending_requests")' in script.text
     assert "pendingVideoRenderIdentity = null" in script.text
+
+
+def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    refresh = script.split("async function refreshVideoRender", 1)[1].split(
+        "async function submitVideoRender", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in refresh
+    assert "const renderIdentity = activeVideoRenderIdentity" in refresh
+    assert "activeVideoRenderId !== renderId" in refresh
+    assert "activeVideoRenderIdentity !== renderIdentity" in refresh
+    assert "renderIdentity !== currentVideoRenderIdentity()" in refresh
+
+    submit = script.split("async function submitVideoRender", 1)[1].split(
+        "async function cancelVideoRender", 1
+    )[0]
+    assert "const requestAnalysisId = activeVideoAnalysisId" in submit
+    assert "activeVideoRenderAnalysisId = requestAnalysisId" in submit
+    assert "currentVideoRenderIdentity() === requestIdentity" in submit
+    assert "syncVideoRenderTarget();" in submit
