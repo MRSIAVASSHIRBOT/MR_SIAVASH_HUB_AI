@@ -42,7 +42,10 @@ Read the [release management policy](release-management.md) for the repository b
 - [ ] If macOS is a supported target, run and record a separate macOS acceptance pass. Otherwise state that macOS is not a supported/validated target.
 - [ ] Do not infer Windows or macOS device compatibility from Linux CI or hosted Windows jobs.
 
-## Active change review
-- [ ] Review [PR #276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276) as a product change owned by the video/workflow maintainers. Confirm exact-head Python, coverage, defensive scan and Linux/Windows FFmpeg jobs, then review the race-fence implementation and regression coverage. Do not treat an open PR as merged release behavior.
+## Recent video snapshot integration
+- [x] Review and merge [PR #276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276), which fences new snapshot-backed renders to the exact current draft revision for both snapshot-value and snapshot-ID submissions while preserving accepted idempotent retries.
+- [x] Confirm the exact PR head passed Python 3.11/3.12, Backend CI, Defensive Python Scan and Linux/Windows FFmpeg integration.
+- [ ] Confirm all post-merge checks pass on the exact current `main` commit; do not substitute the PR-head results for post-merge validation.
+- [ ] Complete the Windows real-device and representative-media workflow acceptance, including draft edits after accepted snapshot creation, replay of the accepted idempotency key, rejection of a new render from a stale snapshot, cancellation and output download.
 
 Do not mark a release production-ready while any required gate above remains unverified. A hosted CI pass does not replace target-device acceptance, a coordinated restore drill, or owner approval.
