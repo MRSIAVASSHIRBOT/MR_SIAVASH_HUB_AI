@@ -145,6 +145,73 @@ def test_agent_execute_requires_approval_for_external_tool():
     assert response["blocked"] is True
 
 
+@pytest.mark.parametrize(
+    ("revoked_decision", "expected_error"),
+    [
+        (PolicyDecision.DENY, "policy_denied"),
+        (PolicyDecision.REQUIRE_APPROVAL, "approval_required"),
+    ],
+)
+def test_agent_execute_handles_policy_denial_during_invoke_revalidation(
+    revoked_decision, expected_error
+):
+    from mrhub.security.policy import PolicyResult
+    from mrhub.tools.registry import ToolRegistry
+
+    class RevalidatingPolicy(PolicyEngine):
+        def __init__(self):
+            self.calls = 0
+
+        def evaluate(self, request):
+            self.calls += 1
+            if self.calls == 1:
+                return PolicyResult(
+                    decision=PolicyDecision.ALLOW,
+                    reason="Allowed during planning",
+                )
+            return PolicyResult(
+                decision=revoked_decision,
+                reason="Revoked before invocation",
+            )
+
+    policy = RevalidatingPolicy()
+    registry = ToolRegistry(policy=policy)
+    called = []
+    registry.register(
+        ToolDefinition(
+            name="custom.policy_revalidation",
+            description="Exercise policy revalidation between planning and invocation.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: called.append(True) or {"accepted": True},
+        )
+    )
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry)
+    events = []
+
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Verify policy revocation is enforced at invocation",
+            tools=[{"name": "custom.policy_revalidation", "payload": {}}],
+        ),
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert policy.calls == 2
+    assert called == []
+    assert response["execution_completed"] is False
+    assert response["tools_executed"] is False
+    assert response["blocked"] is True
+    assert response["failed_tool"] == "custom.policy_revalidation"
+    assert response["error_code"] == expected_error
+    assert events == [
+        (2, "running", None),
+        (2, "failed", expected_error),
+    ]
+
+
 def test_agent_execute_stops_after_runtime_failure():
     core = make_core()
     core.tool_registry.register(
