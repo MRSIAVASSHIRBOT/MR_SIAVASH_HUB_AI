@@ -607,6 +607,14 @@
       || ["accepted", "running"].includes(activeVideoRenderStatus);
   }
 
+  function syncStoryboardRenderButtons() {
+    const hasDraft = Boolean(activeVideoTimelineDraft);
+    const renderMayBeActive = Boolean(activeVideoRenderId)
+      && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
+    $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft;
+    $("#video-storyboard-render-submit").disabled = !hasDraft || renderMayBeActive;
+  }
+
   function clearVideoRenderState() {
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
@@ -622,8 +630,7 @@
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
     $("#video-render-submit").disabled = !canSubmitVideoRender;
-    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft;
-    $("#video-storyboard-prepare-render-timeline").disabled = !activeVideoTimelineDraft;
+    syncStoryboardRenderButtons();
     sessionStorage.removeItem("mrh_video_draft_render_pending_key");
     sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
     pendingVideoDraftRenderKey = null;
@@ -665,7 +672,7 @@
     $("#video-render-refresh").disabled = !activeVideoRenderId;
     $("#video-render-cancel").disabled = !active;
     $("#video-render-submit").disabled = !canSubmitVideoRender || active;
-    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || active;
+    syncStoryboardRenderButtons();
   }
 
   async function refreshVideoRender() {
@@ -908,8 +915,7 @@
     $("#video-storyboard-new").disabled = false;
     $("#video-storyboard-save").disabled = false;
     $("#video-storyboard-compose").disabled = false;
-    $("#video-storyboard-prepare-render-timeline").disabled = false;
-    $("#video-storyboard-render-submit").disabled = false;
+    syncStoryboardRenderButtons();
   }
 
   async function composeVideoPrompt(timelineDraft = null) {
@@ -1228,7 +1234,7 @@
     } catch (error) {
       message("#video-storyboard-message", error.message, "error");
     } finally {
-      button.disabled = !activeVideoTimelineDraft;
+      syncStoryboardRenderButtons();
     }
   }
 
@@ -1284,8 +1290,7 @@
         "error"
       );
     } finally {
-      button.disabled = !activeVideoTimelineDraft
-        || ["accepted", "running"].includes(activeVideoRenderStatus);
+      syncStoryboardRenderButtons();
     }
   }
 
@@ -1317,8 +1322,7 @@
       selected.beats,
       selectedPrompt ? selectedPrompt.source_timestamp_limit_seconds : 86400
     );
-    $("#video-storyboard-prepare-render-timeline").disabled = false;
-    $("#video-storyboard-render-submit").disabled = false;
+    syncStoryboardRenderButtons();
     message("#video-storyboard-message", "Storyboard نسخه " + selected.version + " بارگذاری شد.");
   }
 
@@ -1561,6 +1565,8 @@
   $("#video-storyboard-add-beat").addEventListener("click", addVideoStoryboardBeat);
   $("#video-storyboard-save").addEventListener("click", saveVideoStoryboardDraft);
   $("#video-storyboard-compose").addEventListener("click", composeVideoPromptFromStoryboard);
+  $("#video-storyboard-prepare-render-timeline").addEventListener("click", prepareVideoRenderTimeline);
+  $("#video-storyboard-render-submit").addEventListener("click", submitVideoDraftRender);
 
   $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
   $("#media-refresh-button").addEventListener("click", () =>
