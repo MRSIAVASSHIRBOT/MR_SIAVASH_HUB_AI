@@ -13,6 +13,7 @@ from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotRepository
 from mrhub.video_intelligence.timeline import VideoTimeline
 
@@ -44,6 +45,7 @@ class VideoRenderJobRepository:
         idempotency_key: str,
         *,
         snapshot_id: UUID | None = None,
+        snapshot: VideoRenderTimelineSnapshot | None = None,
     ) -> tuple[dict[str, object], bool]:
         key = idempotency_key.strip()
         if not key or len(key) > 255:
@@ -55,17 +57,16 @@ class VideoRenderJobRepository:
             raise LookupError("analysis_not_found")
         if analysis["status"] != "completed" or not isinstance(analysis.get("result"), dict):
             raise ValueError("analysis_not_completed")
-        if snapshot_id is not None:
-            snapshot = VideoRenderSnapshotRepository(self.database_path).get(
-                owner_user_id, snapshot_id
-            )
-            if snapshot is None or snapshot.analysis_id != analysis_id:
-                raise LookupError("render_snapshot_not_found")
-            timeline = snapshot.validated_timeline()
-            source_ids = {clip.source_asset_id for clip in timeline.video_track}
-            assets = analysis["result"].get("assets")
+        if snapshot is not None and snapshot_id is not None:
+            raise ValueError("Provide a snapshot or snapshot_id, not both")
+        assets = analysis["result"].get("assets")
+        if snapshot is not None:
+            if snapshot.owner_user_id != owner_user_id or snapshot.analysis_id != analysis_id:
+                raise ValueError("render_snapshot_scope_mismatch")
             if not isinstance(assets, list):
                 raise ValueError("analysis_assets_unavailable")
+            timeline = snapshot.validated_timeline()
+            source_ids = {clip.source_asset_id for clip in timeline.video_track}
             allowed_asset_ids = {
                 str(item["asset_id"])
                 for item in assets
@@ -74,6 +75,24 @@ class VideoRenderJobRepository:
             if not source_ids or not source_ids.issubset(allowed_asset_ids):
                 raise ValueError("render_snapshot_source_mismatch")
             digest = snapshot.idempotency_digest()
+        elif snapshot_id is not None:
+            stored_snapshot = VideoRenderSnapshotRepository(self.database_path).get(
+                owner_user_id, snapshot_id
+            )
+            if stored_snapshot is None or stored_snapshot.analysis_id != analysis_id:
+                raise LookupError("render_snapshot_not_found")
+            if not isinstance(assets, list):
+                raise ValueError("analysis_assets_unavailable")
+            timeline = stored_snapshot.validated_timeline()
+            source_ids = {clip.source_asset_id for clip in timeline.video_track}
+            allowed_asset_ids = {
+                str(item["asset_id"])
+                for item in assets
+                if isinstance(item, dict) and item.get("asset_id")
+            }
+            if not source_ids or not source_ids.issubset(allowed_asset_ids):
+                raise ValueError("render_snapshot_source_mismatch")
+            digest = stored_snapshot.idempotency_digest()
         else:
             try:
                 timeline = VideoTimeline.model_validate(analysis["result"].get("timeline"))
@@ -98,6 +117,11 @@ class VideoRenderJobRepository:
         scope = self._scope(owner_user_id)
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if snapshot is not None:
+                stored_snapshot, _ = VideoRenderSnapshotRepository(
+                    self.database_path
+                ).persist_in_transaction(connection, snapshot, assets)
+                snapshot_id = stored_snapshot.snapshot_id
             existing = connection.execute(
                 "SELECT request_digest, task_id FROM idempotency_records "
                 "WHERE scope = ? AND idempotency_key = ?",
@@ -107,7 +131,8 @@ class VideoRenderJobRepository:
                 if existing["request_digest"] != digest or not existing["task_id"]:
                     raise VideoRenderConflict("Idempotency key conflicts with an earlier render")
                 row = connection.execute(
-                    """SELECT render_id, task_id, status, output_asset_id, created_at
+                    """SELECT render_id, task_id, status, output_asset_id, created_at,
+                              snapshot_id
                        FROM video_render_runs
                        WHERE task_id = ? AND owner_user_id = ?""",
                     (existing["task_id"], owner_user_id),
@@ -151,6 +176,7 @@ class VideoRenderJobRepository:
             "analysis_id": str(analysis_id),
             "status": "accepted",
             "created_at": now,
+            "snapshot_id": str(snapshot_id) if snapshot_id is not None else None,
         }, True
 
     @staticmethod
@@ -161,6 +187,7 @@ class VideoRenderJobRepository:
             "status": row["status"],
             "output_asset_id": row["output_asset_id"],
             "created_at": row["created_at"],
+            "snapshot_id": row["snapshot_id"] if "snapshot_id" in row.keys() else None,
         }
 
     def get(self, owner_user_id: str, render_id: UUID) -> dict[str, object] | None:
