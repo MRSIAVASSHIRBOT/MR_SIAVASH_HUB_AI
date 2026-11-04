@@ -512,31 +512,39 @@ PR #266 merged as `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`. Its exact PR head 
 
 Post-merge CI for this new main commit was queued at the time of this note and must be rechecked before treating the commit as fully validated.
 
-## Video storyboard and immutable render integration — 2026-11-04 UTC
+## Verified main update after PR #273 — 2026-11-04 UTC
 
-This is the newest video-workstream hand-off and supersedes the earlier storyboard gap recorded above. The current `main` baseline is `589a038d09271ddbcb2e8c07fbbce983499c882a`.
+**Current main:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
+**PR #273 merge commit:** `144b870e54713b3f80196c986b4864d547e301df`  
+**Exact PR head:** `a01f865e907086cdc767a774fb1f2d94b8c57229`
 
-### Merged into main
+### Merged video integration
 
-- **PR #271** (merge commit `e9055ebef035931a36b277b3ce5d76ee58ff60c4`) connects owner-scoped saved storyboard drafts to prompt composition and the dashboard editor. It validates draft identity, analysis/asset membership, exact version, beat intervals and source timestamp bounds. Composition remains text-only and returns `execution=not_started`; it does not invoke a provider or renderer.
-- **PR #272** (merge commit `45c06562999a46861f89fca1438bd5b7776a850a`) adds the immutable renderer-timeline snapshot value object with canonical JSON, SHA-256 integrity, owner/analysis/draft-revision identity and revision-sensitive idempotency.
-- Main commit `589a038d09271ddbcb2e8c07fbbce983499c882a` adds the architecture contract clarifying that storyboard beats and cut-only renderer timelines are distinct representations.
+- **PR #271** (`e9055ebef035931a36b277b3ce5d76ee58ff60c4`) connects saved owner-scoped Storyboard drafts to text-only prompt composition and the dashboard editor. It validates draft, analysis, asset and exact version. Prompt composition does not execute a provider or renderer.
+- **PR #272** (`45c06562999a46861f89fca1438bd5b7776a850a`) adds the immutable, canonicalized, SHA-256-verified renderer-timeline snapshot value object with owner, analysis and draft-revision binding.
+- **PR #273** (`144b870e54713b3f80196c986b4864d547e301df`) persists immutable owner-scoped render snapshots and links render jobs to them. Migrations 28–29 are now part of main. Draft-aware render submission validates ownership, source membership and measured source duration, then atomically commits snapshot, task, render record and idempotency binding. The Worker consumes the validated immutable snapshot and fails closed; it does not fall back to mutable analysis data.
+- PR #273 route tests cover snapshot handoff, missing/foreign drafts, unsaved renderer timelines and malformed saved timelines. Additional coverage includes snapshot immutability, revision fencing, source bounds and transactional rollback.
 
-### PR #273 — open, not merged
+### Exact CI evidence
 
-[PR #273](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/273) extends the snapshot contract with durable persistence and the end-to-end render path. Its current branch implementation includes migrations 28–29, renderer-timeline/hash persistence on drafts, immutable owner-scoped snapshot rows, measured source-duration validation, an atomic snapshot + render-task + render-record + idempotency transaction, and Worker consumption of the immutable snapshot with fail-closed behavior and no fallback to mutable analysis data.
+The exact PR #273 head passed all six required checks: Python 3.11, Python 3.12, Backend CI, Defensive Python Scan, Linux FFmpeg integration and Windows FFmpeg integration.
 
-The branch also adds regression coverage for owner isolation, stale revisions, source bounds, snapshot immutability, snapshot-backed rendering, atomic acceptance and rollback on idempotency conflict. These are branch changes, not main behavior until PR #273 is reviewed and merged.
+All four post-merge workflows on main `8f190eeac4b4627692b60ac27e6dd5c12e4557bc` have successful runs: Backend CI (`41844698187`), Video Render Integration (`41844698033`), Defensive Python Scan (`41844698232`) and CI (`41844698029`). Duplicate later push runs were cancelled; the successful complete set above is the evidence used here.
 
-**CI state must be checked against the live PR head.** Exact-head checks were pending during this status update; no green CI claim or merge approval is made here. PR #273 must remain unmerged until the exact current head passes Python 3.11/3.12, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg integration, followed by source-level review.
+### Remaining video work
 
-### Remaining video acceptance work
+1. Add an operator-dashboard action to submit a render from a saved renderer-compatible draft, with explicit version display and idempotency behavior.
+2. Define and implement snapshot retention/cleanup policy, including safe deletion rules and operational tests.
+3. Complete target-device acceptance on the actual Windows environment using representative media, draft edits, idempotent replay, cancellation, output registration and download.
+4. Preserve the renderer boundary: current local rendering remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and generated footage are not implemented.
+5. Keep provider-backed video generation separate. The read-only idempotency lookup contract exists, but no generation provider is registered and no end-to-end provider reconciliation/polling workflow is active.
 
-1. Add route-level tests for draft owner isolation, analysis association, malformed saved renderer timelines, response shape and HTTP status mapping.
-2. Add a dashboard action to submit a render from a saved renderer-compatible timeline; do not expose it before the API/Worker path is accepted.
-3. Validate the workflow on the target Windows device with representative source media, draft edits, idempotent replay, cancellation, output registration and download.
-4. Preserve the explicit renderer boundary: local output remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and AI-generated footage are separate future capabilities.
-5. Keep video-generation provider reconciliation separate from local FFmpeg rendering. PR #266 supplies only the read-only adapter lookup contract; no provider is registered and no end-to-end reconciliation worker is available.
+### Cross-domain audit checkpoint
 
-Green CI is not target-device acceptance or production readiness. Whole-product install/upgrade/rollback, database/media/key restore, external-account verification and provider acceptance remain independent release gates.
+The same main audit rechecked the Agent context path. It already enforces owner-scoped retrieval, a bounded serialized evidence envelope, explicit untrusted-evidence framing, citation/provenance propagation and an opt-in owner-reviewed-current freshness filter. Existing tests cover hostile retrieved text, JSON-escaping budget overhead, stale/unreviewed/expired knowledge, bounded candidate scans and both synchronous and queued Agent API paths. No speculative Agent-context code change was made during this pass because the inspected contracts already had direct regression coverage.
 
+### Current inventory and release boundary
+
+Main contains 331 recursive tree entries, 95 Python test files, 19 backend package domains, 7 GitHub Actions workflows and schema migrations through version 29. These are inventory counts, not a whole-project completion percentage.
+
+Green hosted CI is not target-device acceptance or production readiness. Browser/Windows target verification, snapshot retention drills, external-account acceptance, clean install/upgrade/rollback and database/media/encryption-key restore remain separate release gates.
