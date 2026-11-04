@@ -1,6 +1,6 @@
 # Video Timeline Draft → Render Contract
 
-**Status:** Snapshot persistence and Worker integration merged via PR #273; the current-draft submission fence merged via PR #276. The operator-facing prepare-and-render flow is proposed in PR #287 and is not yet in main.  
+**Status:** Snapshot persistence and Worker integration merged via PR #273; the current-draft submission fence merged via PR #276. The operator-facing prepare-and-render flow is proposed in PR #289 and is not yet in main.  
 **Main baseline:** `a87855fbaa27e4d9406656937aad5eb329280280` (2026-11-04 UTC)  
 **Scope:** Bind a saved, renderer-compatible timeline revision to a durable MP4 render job without changing analysis-only render semantics.
 
@@ -61,7 +61,7 @@ The proposed authenticated endpoint `POST /video-intelligence/timeline-drafts/{d
 
 The generated timeline is based on measured analysis metadata and scene boundaries. If the selected source is shorter than the requested duration, `actual_duration_seconds` and `duration_shortfall_seconds` remain authoritative; the UI must display actual output duration and must not claim the target duration was achieved. Preparation does not execute FFmpeg, enqueue a render or invoke a generation provider.
 
-The proposed dashboard then submits the prepared revision through the existing draft-aware render endpoint with an idempotency key bound to the draft ID/version. The existing status/cancel/download controls remain the lifecycle UI. Until PR #287 is merged and exact-head checks pass, this operator flow is a branch proposal, not a main capability.
+The proposed dashboard then submits the prepared revision through the existing draft-aware render endpoint with an idempotency key bound to the draft ID/version. The existing status/cancel/download controls remain the lifecycle UI. Until PR #289 is merged and exact-head checks pass, this operator flow is a branch proposal, not a main capability.
 
 ## 4. Worker contract
 
