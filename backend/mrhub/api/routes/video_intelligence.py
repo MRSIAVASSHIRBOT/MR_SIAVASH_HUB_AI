@@ -422,7 +422,10 @@ def compose_prompt_from_analysis(
         if draft_override.get("analysis_id") != str(analysis_id):
             raise HTTPException(status_code=404, detail="Timeline draft not found")
         if draft_override.get("version") != payload.expected_draft_version:
-            raise HTTPException(status_code=409, detail={"code": "timeline_draft_version_conflict"})
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "timeline_draft_version_conflict"},
+            )
     try:
         prompts = compose_prompts_from_analysis(
             result, payload, draft_override=draft_override
