@@ -57,7 +57,7 @@ def test_prompt_composition_uses_scene_cuts_as_per_beat_timing_cues():
             "start_seconds": 0.5,
             "end_seconds": 3.0,
             "source_timestamp_seconds": 0.5,
-            "scene_cut_timestamps": [2.0],
+            "scene_cut_timestamps": [2.0, 3.0],
         },
         {
             "start_seconds": 3.0,
