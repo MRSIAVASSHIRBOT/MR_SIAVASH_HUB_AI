@@ -454,3 +454,24 @@ Latest main snapshot: `a7f4fb453da7ba70d3c20c684011f7076f12235b`.
 - Main push-triggered workflows for `a7f4fb453da7ba70d3c20c684011f7076f12235b` must still be checked independently; PR checks are not a substitute for post-merge main verification.
 
 The project readiness boundary is unchanged: real target-device acceptance, external-account publishing, production restore/key recovery, package install/upgrade/rollback, full video-editor capabilities, and complete connector lifecycle acceptance remain open. No production-ready or whole-project-complete claim is made.
+
+
+
+## Cross-system integration follow-up — 2026-11-04 UTC
+
+Latest main commit: `1c531a97749b26ff05c9efde3944169e1a39b761`.
+
+### Merged changes
+
+- **PR #246** — refreshed readiness documentation after the NEXUS/MCP integration batch.
+- **PR #247** (merge commit `77bf47a04931f6e629fa8f89400f329c1df462b6`) — introduced `ProviderContractError` and enforced response-type plus provider/model identity validation at the shared ModelRouter boundary. Invalid or misattributed adapter responses are rejected before reaching API consumers.
+- **PR #248** (merge commit `80253101dee781d698aad1b9cce7451ea1c857f7`) — fenced content-publication confirmation against concurrent worker recovery. A late provider receipt cannot overwrite a durable `unknown_outcome` state or emit a false publication-success audit event.
+- **PR #249** (merge commit `1c531a97749b26ff05c9efde3944169e1a39b761`) — routed `POST /models/generate-remote` through the shared remote-only ModelRouter, closing the direct-adapter bypass while excluding Stub and local Ollama fallback.
+
+All six exact-head checks passed for PRs #247, #248 and #249: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration. PR #246 documentation checks also passed.
+
+All four push-triggered workflows on main commit `1c531a97749b26ff05c9efde3944169e1a39b761` completed successfully: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration.
+
+### Remaining acceptance boundary
+
+The new tests strengthen provider response provenance and content-publication state integrity; they do not guarantee remote provider uptime, exactly-once delivery on providers without idempotency support, or successful live social-account publishing. Production restore/key-recovery drills, target-device/browser acceptance, package install/upgrade/rollback, full video-editor capabilities and connector permission lifecycle acceptance remain open. No production-ready or whole-project-complete claim is made.

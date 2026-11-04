@@ -222,3 +222,24 @@ Latest main snapshot: `a7f4fb453da7ba70d3c20c684011f7076f12235b`.
 Post-merge main workflows for this SHA require separate verification. Provider health and external inference availability remain runtime-dependent; this change protects registration consistency but does not certify provider uptime or model quality.
 
 Other whole-project acceptance gaps remain open, including real device/browser acceptance, production restore/key recovery, live social-account verification, package install/upgrade/rollback, and full video editor/provider generation acceptance.
+
+
+
+## Cross-system provider and publishing consistency — 2026-11-04 UTC
+
+Latest main commit: `1c531a97749b26ff05c9efde3944169e1a39b761`.
+
+### Merged changes and verified behavior
+
+- **PR #247** (`77bf47a04931f6e629fa8f89400f329c1df462b6`) adds a stable provider contract error and validates response type and provider/model identity at the ModelRouter boundary.
+- **PR #248** (`80253101dee781d698aad1b9cce7451ea1c857f7`) makes the content dispatcher treat the durable `publishing -> published` compare-and-set as the success condition. If recovery/quarantine wins while a provider request is in flight, the late receipt cannot overwrite the durable state or emit the publication-success audit event.
+- **PR #249** (`1c531a97749b26ff05c9efde3944169e1a39b761`) removes the direct-adapter bypass in `POST /models/generate-remote`; the endpoint now uses the remote-only shared router, including its health gate and response identity validation, without Stub or local fallback.
+- **PR #246** refreshed the readiness/status documentation after the preceding NEXUS and MCP work.
+
+All six exact-head checks passed for PRs #247, #248 and #249: Backend CI, Python 3.11 and 3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows. PR #246 checks also passed.
+
+All four main-branch workflows for `1c531a97749b26ff05c9efde3944169e1a39b761` completed successfully: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration. These are post-merge main results, independently verified from the main-commit checks.
+
+### Remaining risks and acceptance gaps
+
+The provider contract guard protects response attribution but does not prove provider quality, uptime, or correctness of generated content. The publication fence prevents a late response from falsifying local state but cannot guarantee exactly-once remote publication when a provider lacks idempotency support. Live social-account acceptance, production restore and protected key recovery, target-device/browser acceptance, package install/upgrade/rollback, full video-editor capabilities, and complete connector permission lifecycle testing remain open. No whole-product production-readiness claim is made.

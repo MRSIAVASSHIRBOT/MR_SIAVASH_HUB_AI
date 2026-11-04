@@ -16,10 +16,11 @@ The adapter rejects non-HTTPS, non-OpenRouter origins, redirects, custom ports, 
 
 ## Explicit invocation and fallback behavior
 
-- `POST /models/generate-remote` sends one authenticated request to the configured OpenRouter model.
+- `POST /models/generate-remote` sends one authenticated request through a remote-only `ModelRouter`; the local Ollama adapter and Stub are excluded from this route.
 - If remote inference is disabled or incompletely configured, the endpoint returns a sanitized 503 and makes no provider request.
+- The shared router performs its bounded provider-health gate before inference and validates that the returned value is a `ProviderResponse` whose provider/model identity matches the selected descriptor. Contract violations return the stable `provider_contract_violation` error.
 - If the remote provider fails, the endpoint returns a sanitized provider error. It never retries through the local stub, Ollama, or another cloud provider.
-- `GET /models/providers` does not perform health checks or inference. Health probes are only run through the explicit health-check endpoint.
+- `GET /models/providers` does not perform health checks or inference. The explicit health-check endpoint remains available for standalone provider diagnostics.
 
 ## Cost and privacy
 
