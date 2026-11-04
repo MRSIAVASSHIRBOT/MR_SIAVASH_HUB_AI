@@ -915,7 +915,11 @@
           ? previousAssetId
           : videoPromptResults[0].asset_id;
         renderSelectedVideoPrompt();
-        await loadVideoTimelineDrafts();
+        try {
+          await loadVideoTimelineDrafts();
+        } catch (draftError) {
+          message("#video-storyboard-message", "Prompt ساخته شد، اما فهرست Storyboardها تازه‌سازی نشد: " + draftError.message, "error");
+        }
         message("#video-prompt-message", timelineDraft
           ? videoPromptResults.length + " Prompt ساخته شد؛ Storyboard نسخه " + timelineDraft.version + " اعمال شد و هیچ Provider اجرا نشد."
           : videoPromptResults.length + " Prompt مستقل از تحلیل ساخته شد؛ Storyboard ذخیره‌شده اعمال نشد و هیچ Provider اجرا نشد.", "success");
