@@ -124,7 +124,7 @@ def compose_prompts_from_analysis(
             try:
                 draft_version = selected_draft.get("version")
                 if isinstance(draft_version, bool) or not isinstance(draft_version, int):
-                    raise ValueError("Invalid draft version")
+                    raise TypeError("Invalid draft version")
                 validated_draft = TimelineDraftUpdate.model_validate(
                     {
                         "expected_version": draft_version,
