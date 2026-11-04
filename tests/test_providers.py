@@ -37,6 +37,47 @@ def test_router_dispatches_only_to_registered_adapter():
     assert response.provider == "stub"
 
 
+def test_router_preserves_an_injected_falsey_provider_registry():
+    class FalseyProviderRegistry(ProviderRegistry):
+        def __bool__(self):
+            return False
+
+    registry = FalseyProviderRegistry()
+    router = ModelRouter(registry=registry)
+    provider = StubProvider()
+
+    assert router.registry is registry
+    router.register_provider(provider)
+    assert registry.get(provider.descriptor.provider, provider.descriptor.model) is provider
+
+
+@pytest.mark.parametrize(
+    "health",
+    [
+        None,
+        object(),
+        type("HealthLike", (), {"available": True, "reason_code": "ready"})(),
+        ProviderHealth(available=1, reason_code="ready"),
+        ProviderHealth(available=True, reason_code=""),
+    ],
+)
+def test_router_rejects_invalid_provider_health_contract(health):
+    class InvalidHealthProvider:
+        descriptor = StubProvider.descriptor
+
+        def health(self, timeout_seconds=2.0):
+            return health
+
+        def generate(self, request):
+            raise AssertionError("generation must not start after an invalid health response")
+
+    router = ModelRouter()
+    router.register_provider(InvalidHealthProvider())
+
+    with pytest.raises(ProviderContractError, match="invalid health contract"):
+        router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
+
+
 def test_router_does_not_fallback_when_local_adapter_is_missing():
     router = ModelRouter()
     router.register(ModelDescriptor(
