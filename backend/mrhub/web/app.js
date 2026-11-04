@@ -969,6 +969,7 @@
     container.replaceChildren();
     if (!Array.isArray(beats) || !beats.length) {
       renderEmpty(container, "برای شروع، Prompt فعلی را به Storyboard تبدیل کنید.");
+      $("#video-storyboard-add-beat").disabled = false;
       return;
     }
     for (const [index, beat] of beats.entries()) {
