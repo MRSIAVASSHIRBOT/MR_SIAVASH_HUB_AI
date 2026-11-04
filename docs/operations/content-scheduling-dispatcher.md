@@ -13,6 +13,8 @@ An adapter is registered by platform name (`telegram` or `instagram`) and implem
 
 ## Safety and recovery
 
+The final provider-confirmation write is conditional on the schedule still being in `publishing`. If stale-worker recovery or another quarantine transition wins while a provider call is in flight, a late receipt cannot overwrite that state or emit a `content.schedule_published` success audit event; the dispatcher returns the durable state with `schedule_state_changed_before_confirmation_commit`.
+
 Before calling an adapter, the dispatcher atomically claims one due schedule and rechecks that its owner-scoped draft remains approved and its version and content hash match the approved snapshot. A stale approval fails closed. A `publishing` record left behind for over five minutes is moved to `unknown_outcome` rather than replayed: a process may have stopped after the provider accepted the post.
 
 The schedule's idempotency key is passed to the adapter, but it only prevents remote duplicates if the provider supports and honors that key. The dispatcher cannot promise exactly-once delivery for providers without idempotency support.
