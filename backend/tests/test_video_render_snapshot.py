@@ -1,8 +1,8 @@
 import hashlib
 from uuid import UUID
 
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.timeline import VideoTimeline
@@ -127,3 +127,8 @@ def test_snapshot_rejects_invalid_or_oversized_timeline_json():
             timeline_json="{}",
             timeline_sha256="0" * 64,
         )
+
+@pytest.mark.parametrize("draft_version", [True, 3.0, "3", 0])
+def test_snapshot_rejects_non_integer_or_invalid_draft_revision(draft_version):
+    with pytest.raises(ValidationError):
+        _snapshot(draft_version=draft_version)
