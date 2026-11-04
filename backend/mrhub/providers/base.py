@@ -58,6 +58,18 @@ class ProviderHealth:
     reason_code: str
 
 
+def validate_provider_health(value: object) -> ProviderHealth:
+    """Validate the runtime health contract shared by routing and diagnostics."""
+    if (
+        not isinstance(value, ProviderHealth)
+        or type(value.available) is not bool
+        or not isinstance(value.reason_code, str)
+        or not value.reason_code
+    ):
+        raise ProviderContractError("Provider returned an invalid health contract")
+    return value
+
+
 class ModelProvider(Protocol):
     """Synchronous provider contract; implementations must enforce their own timeout."""
 
