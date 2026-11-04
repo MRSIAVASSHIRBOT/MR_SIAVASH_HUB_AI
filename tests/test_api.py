@@ -362,3 +362,125 @@ def test_video_render_cancel_endpoint_hides_foreign_or_missing_render(monkeypatc
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Video render not found"
+
+
+def test_video_render_from_draft_hands_off_exact_snapshot_atomically(monkeypatch):
+    from uuid import UUID
+
+    from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    analysis_id = UUID("11111111-1111-4111-8111-111111111111")
+    source_id = UUID("22222222-2222-4222-8222-222222222222")
+    timeline = {
+        "schema_version": "1.0",
+        "output_aspect_ratio": "16:9",
+        "requested_duration_seconds": 3,
+        "actual_duration_seconds": 3.0,
+        "duration_shortfall_seconds": 0.0,
+        "video_track": [{
+            "clip_id": "clip-001",
+            "source_asset_id": str(source_id),
+            "source_scene_index": 0,
+            "source_start_seconds": 0.0,
+            "source_end_seconds": 3.0,
+            "timeline_start_seconds": 0.0,
+            "timeline_end_seconds": 3.0,
+            "transition_in": "none",
+        }],
+        "audio_analysis_status": "not_requested",
+        "audio_render_status": "not_implemented",
+        "timeline_status": "validated_cut_only",
+        "render_status": "not_implemented",
+    }
+    draft = {
+        "draft_id": str(draft_id),
+        "analysis_id": str(analysis_id),
+        "asset_id": str(source_id),
+        "version": 2,
+        "renderer_timeline": timeline,
+        "renderer_timeline_sha256": "a" * 64,
+    }
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            assert owner_user_id
+            assert requested_draft_id == draft_id
+            return draft
+
+    class Analyses:
+        def get(self, owner_user_id, requested_analysis_id):
+            assert owner_user_id
+            assert requested_analysis_id == analysis_id
+            return {
+                "status": "completed",
+                "result": {
+                    "assets": [{
+                        "asset_id": str(source_id),
+                        "technical_metadata": {"duration_seconds": 3.0},
+                    }]
+                },
+            }
+
+    class RenderJobs:
+        def submit(self, owner_user_id, requested_analysis_id, key, *, snapshot=None):
+            assert owner_user_id
+            assert requested_analysis_id == analysis_id
+            assert key == "draft-render-key"
+            assert isinstance(snapshot, VideoRenderTimelineSnapshot)
+            assert snapshot.draft_id == draft_id
+            assert snapshot.draft_version == 2
+            assert snapshot.validated_timeline().video_track[0].source_asset_id == str(source_id)
+            return ({
+                "render_id": "44444444-4444-4444-8444-444444444444",
+                "task_id": "55555555-5555-4555-8555-555555555555",
+                "analysis_id": str(analysis_id),
+                "status": "accepted",
+                "created_at": "2026-11-04T00:00:00+00:00",
+                "snapshot_id": str(snapshot.snapshot_id),
+            }, True)
+
+    monkeypatch.setattr(video_routes, "_timeline_drafts", lambda: Drafts())
+    monkeypatch.setattr(video_routes, "_analysis_jobs", lambda: Analyses())
+    monkeypatch.setattr(video_routes, "_render_jobs", lambda: RenderJobs())
+
+    response = authenticated_client().post(
+        f"/video-intelligence/timeline-drafts/{draft_id}/renders",
+        headers={"Idempotency-Key": "draft-render-key"},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["draft_id"] == str(draft_id)
+    assert body["draft_version"] == 2
+    assert body["snapshot_id"]
+    assert body["created"] is True
+    assert "task_id" not in body
+
+
+def test_video_render_from_draft_requires_saved_renderer_timeline(monkeypatch):
+    draft_id = "33333333-3333-4333-8333-333333333333"
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            return {
+                "draft_id": draft_id,
+                "analysis_id": "11111111-1111-4111-8111-111111111111",
+                "version": 1,
+                "renderer_timeline": None,
+                "renderer_timeline_sha256": None,
+            }
+
+    def unexpected_render_jobs():
+        raise AssertionError("A render must not be submitted without a saved renderer timeline")
+
+    monkeypatch.setattr(video_routes, "_timeline_drafts", lambda: Drafts())
+    monkeypatch.setattr(video_routes, "_render_jobs", unexpected_render_jobs)
+
+    response = authenticated_client().post(
+        f"/video-intelligence/timeline-drafts/{draft_id}/renders",
+        headers={"Idempotency-Key": "draft-render-key"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "renderer_timeline_not_saved"
