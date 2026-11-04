@@ -83,6 +83,35 @@ class EmptyOutput(BaseModel):
     ok: bool
 
 
+@pytest.mark.anyio
+async def test_mcp_bridge_preserves_approval_required_policy_decision():
+    registry = ToolRegistry()
+    called = []
+
+    registry.register(
+        ToolDefinition(
+            name="custom.approval_required",
+            description="Test-only operation requiring explicit approval.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: called.append(True) or {"ok": True},
+            risk_class=RiskClass.HIGH,
+        )
+    )
+    server = create_mcp_server(registry)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "hub.invoke_tool",
+            {"name": "custom.approval_required", "payload": {}},
+        )
+
+    assert json.loads(result.content[0].text) == {
+        "ok": False,
+        "error_code": "approval_required",
+    }
+    assert called == []
+
+
 def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
     registry = ToolRegistry()
     called = []
