@@ -389,7 +389,7 @@ The dashboard's prepare-and-render path is merged to main through PR #289. Hoste
 
 ## 12. Video-generation outcome reconciliation — 2026-11-04 UTC
 
-**Main baseline:** `a4f89e6addaba6b7221b8b05aab3e2bdf63f8e0b`. PR #293 is an open, unmerged proposal on `feat/video-generation-outcome-reconciliation-clean`. Latest compare against main: 33 commits ahead, 0 behind. This does not imply merge approval.
+**Main baseline:** `6cabc1e81dfc97c704c3ecd1506553a481bedb69`. PR #293 is an open, unmerged proposal on `feat/video-generation-outcome-reconciliation-clean`. Latest compare against main: 36 commits ahead, 0 behind. This does not imply merge approval.
 
 ### Proposed capability
 - Owner-scoped API exposes durable generation status and accepts an explicit reconciliation request.
