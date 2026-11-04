@@ -60,3 +60,7 @@ Before deploying beyond a local/test environment:
 - Verify the actual API and worker processes share the intended database and encryption key.
 - Configure monitoring for queue age, expired leases, recovery-required workflows, and worker process liveness.
 - Treat hosted CI as automated evidence only; complete target-runtime, recovery, monitoring, and owner acceptance gates before any production release.
+
+### Scheduled development agent quota handling
+
+The scheduled OpenCode development cycle uses the configured free OpenRouter model. If the provider explicitly returns `free-models-per-day` rate limiting, the cycle exits as a successful no-op, emits a warning, and produces no proposal artifact; the publisher therefore has nothing to apply. Missing credentials and all other agent errors remain failures. This avoids treating exhausted free quota as a code regression and does not add paid retries or alter workflow permissions.
