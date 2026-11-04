@@ -470,7 +470,7 @@ Latest main commit: `1c531a97749b26ff05c9efde3944169e1a39b761`.
 
 All six exact-head checks passed for PRs #247, #248 and #249: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration. PR #246 documentation checks also passed.
 
-The four push-triggered workflows on main commit `1c531a97749b26ff05c9efde3944169e1a39b761` were queued when this snapshot was written. Verify their final conclusions independently before reporting post-merge main CI as green.
+All four push-triggered workflows on main commit `1c531a97749b26ff05c9efde3944169e1a39b761` completed successfully: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration.
 
 ### Remaining acceptance boundary
 
