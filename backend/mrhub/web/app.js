@@ -663,6 +663,7 @@
     $("#video-render-submit").disabled = !canSubmitVideoRender
       || (Boolean(activeVideoRenderId) && !activeVideoRenderStatus)
       || ["accepted", "running"].includes(activeVideoRenderStatus);
+    syncStoryboardRenderButtons();
   }
 
   function syncStoryboardRenderButtons() {
@@ -1313,6 +1314,7 @@
           body: { ...payload, analysis_id: activeVideoAnalysisId, asset_id: selected.asset_id },
         });
     activeVideoTimelineDraft = saved;
+    syncStoryboardRenderButtons();
     videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== saved.draft_id);
     videoTimelineDrafts.unshift(saved);
     renderVideoStoryboardDraftOptions(selected.asset_id);
@@ -1338,6 +1340,7 @@
       { method: "POST" }
     );
     activeVideoTimelineDraft = prepared;
+    syncStoryboardRenderButtons();
     videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== prepared.draft_id);
     videoTimelineDrafts.unshift(prepared);
     renderVideoStoryboardDraftOptions(prepared.asset_id);
@@ -1402,6 +1405,7 @@
     const selected = videoPromptResults.find((item) => item.asset_id === $("#video-prompt-source").value);
     if (!selected) return;
     activeVideoTimelineDraft = videoTimelineDrafts.find((draft) => draft.asset_id === selected.asset_id) || null;
+    syncStoryboardRenderButtons();
     $("#video-storyboard-draft-select").value = activeVideoTimelineDraft
       ? activeVideoTimelineDraft.draft_id
       : "";
