@@ -175,7 +175,13 @@ def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision()
     assert 'mrh_video_render_identity' in script
     assert "function currentVideoRenderIdentity()" in script
     assert "function syncVideoRenderTarget()" in script
+    assert script.count("function currentVideoRenderIdentity()") == 1
+    assert script.count("function syncVideoRenderTarget()") == 1
     assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in script
+    lock = script.split("function lockVideoStoryboardControls", 1)[1].split(
+        "function clearVideoRenderState", 1
+    )[0]
+    assert '$("#video-render-submit")' in lock
     assert "syncVideoRenderTarget();" in script
     assert "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است" in script
     assert 'const renderMayBeActive = Boolean(activeVideoRenderId)' in script
