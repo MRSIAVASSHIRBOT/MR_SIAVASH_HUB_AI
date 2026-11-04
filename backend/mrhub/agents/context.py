@@ -188,7 +188,7 @@ class AgentContextAssembler:
                     "freshness_review_max_age_days": MAX_FRESHNESS_REVIEW_AGE_DAYS,
                     "freshness_is_automatically_verified": False,
                     "content_integrity_verified": item.get(
-                        "content_integrity_verified", True
+                        "content_integrity_verified", False
                     ),
                     "document_hash": item["document_hash"],
                     "chunk_hash": item["chunk_hash"],
