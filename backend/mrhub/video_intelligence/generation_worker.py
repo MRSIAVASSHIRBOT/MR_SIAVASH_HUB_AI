@@ -146,7 +146,11 @@ class VideoGenerationWorkerHandler:
             self.jobs.transition_under_lease(
                 owner, generation_id, target, lease=lease,
                 provider_job_id=submission.provider_job_id,
-                error_code="provider_rejected_generation",
+                error_code=(
+                    "provider_generation_cancelled"
+                    if submission.status is GenerationStatus.CANCELLED
+                    else "provider_generation_failed"
+                ),
             )
             return {"generation_id": str(generation_id), "status": target}
 
@@ -200,7 +204,11 @@ class VideoGenerationWorkerHandler:
                 self.jobs.transition_under_lease(
                     owner, generation_id, target, lease=lease,
                     provider_job_id=submission.provider_job_id,
-                    error_code="provider_reconciled_terminal_failure",
+                    error_code=(
+                    "provider_generation_cancelled"
+                    if submission.status is GenerationStatus.CANCELLED
+                    else "provider_generation_failed"
+                ),
                 )
                 return {"generation_id": str(generation_id), "status": target}
             if submission.status is GenerationStatus.UNKNOWN_OUTCOME:
@@ -264,7 +272,12 @@ class VideoGenerationWorkerHandler:
             self.jobs.transition_under_lease(
                 owner, generation_id, target, lease=lease,
                 provider_job_id=provider_job_id,
-                error_code=result.error_code or "provider_generation_failed",
+                error_code=result.error_code
+                or (
+                    "provider_generation_cancelled"
+                    if result.status is GenerationStatus.CANCELLED
+                    else "provider_generation_failed"
+                ),
             )
             return {"generation_id": str(generation_id), "status": target}
         if result.status is GenerationStatus.UNKNOWN_OUTCOME:
