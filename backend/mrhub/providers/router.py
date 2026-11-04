@@ -2,7 +2,12 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from mrhub.providers.base import ModelProvider, ProviderRequest, ProviderResponse
+from mrhub.providers.base import (
+    ModelProvider,
+    ProviderContractError,
+    ProviderRequest,
+    ProviderResponse,
+)
 from mrhub.providers.registry import ProviderRegistry
 from mrhub.providers.types import ModelCapability, ModelDescriptor
 
@@ -91,4 +96,12 @@ class ModelRouter:
         health = provider.health()
         if not health.available:
             raise LookupError("Selected provider is unavailable")
-        return provider.generate(payload)
+
+        response = provider.generate(payload)
+        if not isinstance(response, ProviderResponse):
+            raise ProviderContractError("Provider returned an invalid response contract")
+        if response.provider != selection.provider or response.model != selection.model:
+            raise ProviderContractError(
+                "Provider response identity does not match the selected model"
+            )
+        return response
