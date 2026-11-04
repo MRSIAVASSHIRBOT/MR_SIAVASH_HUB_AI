@@ -11,7 +11,12 @@ from mrhub.config import get_settings
 from mrhub.diagnostics.model_profiles import get_model_profile, list_model_profiles
 from mrhub.diagnostics.model_recommender import recommend_model_profiles
 from mrhub.diagnostics.resource_advisor import assess_model_resources
-from mrhub.providers.base import ProviderError, ProviderRequest
+from mrhub.providers.base import (
+    ProviderContractError,
+    ProviderError,
+    ProviderRequest,
+    validate_provider_health,
+)
 from mrhub.providers.ollama import OllamaProvider
 from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
@@ -159,9 +164,14 @@ def check_provider_health(payload: ProviderHealthCheckRequest) -> dict[str, obje
         model_name = descriptor.model
         started = perf_counter()
         try:
-            health = provider.health(timeout_seconds=payload.timeout_seconds)
+            health = validate_provider_health(
+                provider.health(timeout_seconds=payload.timeout_seconds)
+            )
             available = health.available
             reason_code = health.reason_code
+        except ProviderContractError:
+            available = False
+            reason_code = "provider_contract_violation"
         except ProviderError:
             available = False
             reason_code = "provider_probe_error"
