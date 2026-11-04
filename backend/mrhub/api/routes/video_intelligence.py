@@ -414,8 +414,7 @@ def compose_prompt_from_analysis(
                 "message": "Video analysis result is unavailable",
             },
         )
-    try:
-        draft_override = None
+    draft_override = None
     if payload.draft_id is not None:
         draft_override = _timeline_drafts().get(user.user_id, UUID(payload.draft_id))
         if draft_override is None:
@@ -424,7 +423,10 @@ def compose_prompt_from_analysis(
             raise HTTPException(status_code=404, detail="Timeline draft not found")
         if draft_override.get("version") != payload.expected_draft_version:
             raise HTTPException(status_code=409, detail={"code": "timeline_draft_version_conflict"})
-    prompts = compose_prompts_from_analysis(result, payload, draft_override=draft_override)
+    try:
+        prompts = compose_prompts_from_analysis(
+            result, payload, draft_override=draft_override
+        )
     except PromptCompositionUnavailable as exc:
         raise HTTPException(
             status_code=409,
