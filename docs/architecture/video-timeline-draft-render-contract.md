@@ -1,7 +1,7 @@
 # Video Timeline Draft → Render Contract
 
-**Status:** Snapshot persistence and Worker integration merged via PR #273; the current-draft submission fence merged via PR #276. The operator-facing prepare-and-render flow is proposed in PR #284 and is not yet in main.  
-**Main baseline:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2` (2026-11-04 UTC)  
+**Status:** Snapshot persistence and Worker integration merged via PR #273; the current-draft submission fence merged via PR #276. The operator-facing prepare-and-render flow is proposed in PR #287 and is not yet in main.  
+**Main baseline:** `f1dcc6015c70a17f78e537ddabeb3091b84b7865` (2026-11-04 UTC)  
 **Scope:** Bind a saved, renderer-compatible timeline revision to a durable MP4 render job without changing analysis-only render semantics.
 
 ## 1. Three distinct timeline representations
