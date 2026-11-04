@@ -199,3 +199,13 @@ def test_timeline_draft_update_requires_a_strict_positive_version():
                 "generation_instruction": "Create an original scene",
             }],
         )
+
+@pytest.mark.parametrize("duration", [True, 10.0, "10", 2])
+def test_timeline_draft_rejects_non_integer_or_out_of_range_duration(duration):
+    with pytest.raises(ValidationError):
+        TimelineDraftUpdate(
+            expected_version=1,
+            duration_seconds=duration,
+            aspect_ratio="9:16",
+            beats=_beats(),
+        )
