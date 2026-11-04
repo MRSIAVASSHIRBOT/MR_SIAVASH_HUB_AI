@@ -61,7 +61,7 @@ def test_prompt_composition_uses_scene_cuts_as_per_beat_timing_cues():
             "start_seconds": 0.5,
             "end_seconds": 3.0,
             "source_timestamp_seconds": 0.5,
-            "scene_cut_timestamps": [2.0, 3.0],
+            "scene_cut_timestamps": [2.0],
         },
         {
             "start_seconds": 3.0,
@@ -246,10 +246,12 @@ def test_prompt_composition_rejects_storyboard_source_timestamp_outside_analysis
     draft_id = UUID("33333333-3333-4333-8333-333333333333")
     draft = _storyboard_draft(draft_id)
     draft["beats"][1]["source_timestamp_seconds"] = 5.0
+    analysis_result = _analysis_result([0.0, 2.0, 3.0, 4.0])
+    analysis_result["assets"][0].pop("technical_metadata")
 
     with pytest.raises(PromptCompositionUnavailable) as error:
         compose_prompts_from_analysis(
-            _analysis_result([0.0, 2.0, 3.0, 4.0]),
+            analysis_result,
             AnalysisPromptOptions(
                 timeline_draft_id=draft_id,
                 timeline_draft_version=4,
