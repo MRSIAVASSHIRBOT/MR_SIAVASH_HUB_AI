@@ -408,7 +408,7 @@ def test_draft_render_api_freezes_exact_saved_revision_and_queues_snapshot(
     monkeypatch.setattr(routes, "_render_snapshots", Snapshots)
     monkeypatch.setattr(routes, "_render_jobs", lambda: render_jobs)
 
-    response = Response()
+    response = Response(status_code=202)
     result = submit_video_render_from_timeline_draft(
         draft_id,
         response,
