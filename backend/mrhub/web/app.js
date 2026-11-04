@@ -854,7 +854,11 @@
         syncVideoRenderTarget();
       }
     } catch (error) {
-      message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
+      if (currentVideoRenderIdentity() === requestIdentity) {
+        message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
+      } else {
+        syncVideoRenderTarget();
+      }
     } finally {
       if (activeVideoRenderId && activeVideoRenderIdentity) {
         syncVideoRenderTarget();
@@ -867,13 +871,23 @@
   async function cancelVideoRender() {
     if (!activeVideoRenderId) return;
     if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
+    const renderId = activeVideoRenderId;
+    const renderIdentity = activeVideoRenderIdentity;
     const button = $("#video-render-cancel");
     button.disabled = true;
     try {
       const result = await api(
-        "/video-intelligence/renders/" + encodeURIComponent(activeVideoRenderId),
+        "/video-intelligence/renders/" + encodeURIComponent(renderId),
         { method: "DELETE" }
       );
+      if (
+        activeVideoRenderId !== renderId
+        || activeVideoRenderIdentity !== renderIdentity
+        || (renderIdentity && renderIdentity !== currentVideoRenderIdentity())
+      ) {
+        syncVideoRenderTarget();
+        return;
+      }
       renderVideoRender(result);
       await refreshVideoRender();
       if (result.cancellation_requested) {
@@ -884,8 +898,12 @@
         );
       }
     } catch (error) {
-      message("#video-render-message", error.message, "error");
-      button.disabled = false;
+      if (activeVideoRenderId === renderId && activeVideoRenderIdentity === renderIdentity) {
+        message("#video-render-message", error.message, "error");
+        button.disabled = false;
+      } else {
+        syncVideoRenderTarget();
+      }
     }
   }
 
