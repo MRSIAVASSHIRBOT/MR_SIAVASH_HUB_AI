@@ -349,6 +349,7 @@ def test_orchestrator_returns_budget_result_when_single_provider_prompt_exceeds_
 
 def test_orchestrator_preserves_approval_required_policy_outcome():
     from pydantic import BaseModel
+
     from mrhub.domain.tasks import RiskClass
     from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
@@ -390,6 +391,7 @@ def test_orchestrator_preserves_approval_required_policy_outcome():
 
 def test_orchestrator_preserves_policy_denial_without_executing_tool():
     from pydantic import BaseModel
+
     from mrhub.domain.tasks import RiskClass
     from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
