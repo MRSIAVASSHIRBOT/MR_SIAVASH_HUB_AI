@@ -439,7 +439,7 @@ def test_prompt_composition_hides_draft_linked_to_another_analysis(monkeypatch):
     with pytest.raises(HTTPException) as error:
         video_intelligence.compose_prompt_from_analysis(
             analysis_id,
-            AnalysisPromptOptions(timeline_draft_id=draft_id),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=3),
             AuthenticatedUser(user_id="owner-a", username="owner"),
         )
     assert error.value.status_code == 404
