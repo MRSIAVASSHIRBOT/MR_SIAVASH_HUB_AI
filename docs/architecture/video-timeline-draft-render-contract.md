@@ -1,151 +1,100 @@
 # Video Timeline Draft → Render Contract
 
-**Status:** Contract adopted; immutable snapshot value object implemented, persistence and worker integration pending  
-**Baseline:** `main` at `45c06562999a46861f89fca1438bd5b7776a850a` (2026-11-04 UTC)  
-**Scope:** Connect owner-scoped editable timeline drafts to durable MP4 render jobs without changing existing render semantics for callers that do not supply a draft.
+**Status:** Implemented on PR #273 branch; exact-head CI and review are pending. The current `main` baseline does not yet contain this persistence/worker integration.  
+**Main baseline:** `589a038d09271ddbcb2e8c07fbbce983499c882a` (2026-11-04 UTC)  
+**Scope:** Bind a saved, renderer-compatible timeline revision to a durable MP4 render job without changing analysis-only render semantics.
 
-## 1. Verified current boundary
+## 1. Three distinct timeline representations
 
-The current implementation has three distinct representations:
+1. `VideoTimelineDraftRepository` stores owner-scoped, versioned storyboard drafts. A draft contains bounded `TimelineBeat` instructions and, when saved for rendering, an optional renderer-compatible `VideoTimeline` plus its canonical SHA-256.
+2. `VideoTimeline` is the renderer input: a validated contiguous `video_track` of `TimelineClip` records with source asset IDs and source/timeline intervals.
+3. `VideoRenderTimelineSnapshot` is an immutable value object that binds canonical `VideoTimeline` JSON to owner, analysis, draft ID and exact draft version. It validates canonical JSON and content hash.
 
-1. `VideoTimelineDraftRepository` persists an owner-scoped, versioned draft containing duration, aspect ratio, and ordered `TimelineBeat` values. A beat contains timing, a generation instruction, transition text, and optional source timestamp/confidence.
-2. `VideoTimeline` is the renderer input. It contains a contiguous `video_track` of `TimelineClip` values, each with source asset identity and source/timeline intervals. The renderer validates this structure before FFmpeg execution.
-3. `VideoRenderJobRepository.submit(owner_user_id, analysis_id, idempotency_key)` currently loads the completed analysis timeline, computes its digest, and creates a durable task. `VideoRenderWorkerHandler` independently reloads that analysis timeline and renders it.
-4. `VideoRenderTimelineSnapshot` is now an immutable in-memory value object. It validates a renderer-compatible `VideoTimeline`, canonicalizes its JSON, computes SHA-256 and an idempotency digest, and binds the snapshot to owner/analysis/draft identity. It is not yet persisted, attached atomically to a render task, or consumed by the worker.
+A beat-only storyboard is not a renderer edit-decision list. Its natural-language instructions and transitions must never be passed directly to FFmpeg. The renderer-compatible timeline retains the source identities and intervals required to render the intended media.
 
-The draft beat schema does **not** contain the source asset identity and source in/out intervals required by `TimelineClip`. Consequently, a draft cannot safely be converted into a renderable `VideoTimeline` by merely replacing duration or aspect-ratio fields. A guessed mapping could render the wrong source segment or silently discard user edits.
+## 2. Persisted draft and snapshot contract
 
-## 2. Required design decision
+Migration 28 adds `renderer_timeline_json` and `renderer_timeline_sha256` to `video_timeline_drafts`, with a paired-value constraint enforced for both INSERT and UPDATE. It creates `video_render_timeline_snapshots` with:
 
-Do not treat free-form `TimelineBeat` instructions as a renderer timeline.
+- a unique snapshot ID and unique `(draft_id, draft_version)`;
+- owner, analysis, draft and exact draft-version identity;
+- snapshot schema version, canonical timeline JSON, SHA-256 and creation timestamp;
+- `RESTRICT` foreign keys to the owner-scoped analysis and draft so parent deletion cannot silently invalidate an accepted render;
+- an UPDATE trigger that rejects mutation of a persisted snapshot.
 
-Introduce a renderer-compatible, versioned draft representation that preserves the complete validated `VideoTimeline` structure. The editing contract may expose user-friendly beat controls, but the server-side canonical draft must retain:
+Migration 29 adds nullable `snapshot_id` to `video_render_runs` with a restrictive foreign key and lookup index. Nullable linkage preserves the existing analysis-only render path.
 
-- source asset ID for every clip;
-- source start/end timestamps;
-- timeline start/end timestamps;
-- clip order and contiguous-track invariants;
-- output aspect ratio and requested duration;
-- schema version and optimistic draft version.
+The snapshot repository verifies that the draft still belongs to the authenticated owner, references the same analysis and source asset, has the exact expected database version, and contains the same canonical timeline/hash. It rechecks source asset membership and measured per-asset media duration before persistence. Missing or invalid duration metadata fails closed.
 
-Existing beat-only drafts remain readable and editable through their existing API. They must not be silently promoted to renderable snapshots. A compatibility adapter may be introduced only when it can derive every source mapping unambiguously from the original analysis and validate the result against the canonical timeline schema.
+## 3. Atomic render submission
 
-## 3. Immutable render snapshot
+The draft-aware endpoint is:
 
-The pure snapshot contract is implemented in `backend/mrhub/video_intelligence/render_snapshot.py` (PR #272). It is currently an in-memory value object only. Add a new append-only snapshot record associated with each render task. Recommended migration (next available schema version; verify migration sequence immediately before implementation):
+`POST /video-intelligence/timeline-drafts/{draft_id}/renders`
 
-```sql
-CREATE TABLE video_render_timeline_snapshots (
-    render_id TEXT PRIMARY KEY
-        REFERENCES video_render_runs(render_id) ON DELETE CASCADE,
-    owner_user_id TEXT NOT NULL
-        REFERENCES auth_users(user_id) ON DELETE CASCADE,
-    draft_id TEXT,
-    draft_version INTEGER,
-    timeline_schema_version TEXT NOT NULL,
-    timeline_json TEXT NOT NULL CHECK (length(timeline_json) <= 60000),
-    timeline_sha256 TEXT NOT NULL CHECK (length(timeline_sha256) = 64),
-    created_at TEXT NOT NULL,
-    CHECK (
-      (draft_id IS NULL AND draft_version IS NULL)
-      OR (draft_id IS NOT NULL AND draft_version IS NOT NULL AND draft_version > 0)
-    )
-);
-```
+It requires an authenticated owner and an `Idempotency-Key` header. The API reads the owner's draft and completed analysis, validates the saved renderer timeline, and creates a snapshot value object. It does not accept arbitrary timeline JSON, filesystem paths, FFmpeg arguments, filter strings or remote URLs.
 
-The snapshot is immutable after task acceptance. The worker must never reload the mutable draft or the analysis timeline as a fallback for a render that has a snapshot. The snapshot row and task/render rows must be committed atomically.
+The render repository then uses one `BEGIN IMMEDIATE` transaction to:
 
-The table intentionally retains a JSON snapshot instead of relying on a foreign key to the mutable draft version. This allows later draft edits and retention policies to coexist with the exact input used by an already accepted render.
+1. revalidate the exact owner-scoped draft revision and its canonical renderer timeline;
+2. insert or resolve the immutable snapshot for that draft revision;
+3. create the durable task and render row bound to that snapshot;
+4. create the idempotency record.
 
-## 4. API and repository contract
+A stale draft, snapshot conflict, or idempotency conflict aborts the transaction; no partial snapshot/task/render/idempotency state is committed. A replay with the same immutable input resolves to the original snapshot and render record. The response includes the exact draft ID/version and snapshot ID.
 
-Add a draft-aware submission path while preserving the existing analysis-only route:
+The endpoint renders the currently persisted draft revision observed by the server and fenced in the transaction. It does not currently accept a caller-supplied historical draft version. The legacy `POST /video-intelligence/analyses/{analysis_id}/renders` route remains available and retains analysis-timeline behavior.
 
-- Existing: `POST /analyses/{analysis_id}/renders` keeps its current behavior when no draft is supplied.
-- Draft-aware: accept an explicit `draft_id` (prefer a dedicated route or a strict request model; do not overload an ambiguous optional field).
-- Resolve the draft by both authenticated owner and draft ID. Return not-found for a draft owned by another user.
-- Verify that the draft belongs to the supplied analysis and an asset included in that analysis.
-- Read and validate the current draft version once, then construct the immutable renderer-compatible snapshot.
-- Require the caller's expected draft version for submission. Reject stale versions with HTTP 409; do not silently render the latest version.
-- Compute the idempotency digest from analysis ID, draft ID, draft version, canonical timeline schema version, and canonical serialized timeline hash.
-- Reusing an idempotency key for a different draft version or timeline hash must return conflict. Replaying the same request returns the original render record.
+## 4. Worker contract
 
-Repository-level transaction must fence the draft version and create the render, task, idempotency record, and snapshot atomically. If the draft changes between read and commit, abort the transaction and report a version conflict.
+For a snapshot-backed task, the Worker:
 
-## 5. Worker contract
+1. verifies its task lease and fencing token;
+2. loads the snapshot using both owner ID and snapshot ID;
+3. validates canonical JSON, snapshot identity and SHA-256 through the strict snapshot model;
+4. validates the timeline and source asset membership against the completed owner-scoped analysis;
+5. checks each source interval against measured media duration;
+6. resolves source assets through the authenticated owner's media repository and acquires task/fencing-token-bound media-use leases;
+7. renders only the validated snapshot timeline.
 
-Change worker loading to return the immutable snapshot reference/data in addition to owner, render ID, analysis ID, and reserved output key.
+A missing, corrupt, owner-mismatched or invalid snapshot fails closed. The Worker never falls back to the mutable draft or analysis timeline for a snapshot-backed job. Existing analysis-only jobs continue to use the validated analysis timeline. Cancellation, lease loss, output cleanup, FFprobe verification and atomic output registration retain their existing fences.
 
-Before any source-media access:
+## 5. Security and integrity invariants
 
-1. Verify the task lease and fencing token using existing lease checks.
-2. Load the snapshot using render ID **and** owner ID.
-3. Verify the SHA-256 of the exact stored UTF-8 canonical JSON bytes.
-4. Parse with the current strict `VideoTimeline` schema; reject unknown fields and invalid intervals.
-5. Derive source IDs only from the validated snapshot.
-6. Resolve every source asset through the authenticated owner's media repository and retain existing media-use lease protections.
-7. Render the validated snapshot; do not substitute analysis results if snapshot loading, hashing, or validation fails.
+- Draft and snapshot reads are owner-scoped; IDs are untrusted until owner and analysis membership are checked.
+- Source assets must belong to the completed analysis and have valid measured duration metadata.
+- Client-controlled timeline data is validated by the strict Pydantic timeline schema before it can reach the renderer.
+- No client-supplied paths, storage keys, FFmpeg command fragments or remote URLs are accepted.
+- SHA-256 detects content mismatch; it is not an authorization mechanism and does not replace owner checks or worker lease fencing.
+- A render remains bound to its immutable snapshot even if the mutable draft is subsequently edited.
+- Idempotency is bound to the exact draft revision and canonical renderer timeline, not only the analysis ID.
+- Snapshot retention uses restrictive parent references; cleanup must be explicit and must not remove a snapshot referenced by a render.
+- Existing cancellation, recovery, quarantine, media-use locking and output-publication fences remain mandatory.
 
-Any failure must produce a bounded internal error code, leave no published output, and follow existing lease-fenced terminal transitions. Cancellation and lease-loss behavior must remain unchanged.
+## 6. Automated test coverage on the PR branch
 
-## 6. Security and integrity invariants
+- Snapshot canonicalization, SHA-256 validation, owner/analysis/draft identity and revision-sensitive idempotency.
+- Draft revision fencing and rejection of changed/stale revisions.
+- Source asset membership and measured source-duration bounds, including revalidation at persistence.
+- Immutable snapshot update rejection and parent-deletion restriction.
+- Renderer timeline/hash pair enforcement on INSERT and UPDATE.
+- Snapshot-backed Worker execution using the frozen source interval rather than the analysis timeline.
+- Atomic snapshot + render submission and rollback when the idempotency key conflicts.
+- Existing analysis-only render behavior and Linux/Windows real FFmpeg integration remain part of the broader CI gate.
 
-- Owner isolation applies to draft reads, snapshot creation, render status, and output retrieval.
-- Draft IDs and asset IDs are untrusted references until checked against owner and analysis scope.
-- Client-supplied timeline JSON is never passed directly to FFmpeg; it must pass the strict Pydantic timeline schema.
-- No client-supplied file paths, FFmpeg arguments, filter strings, or storage keys are accepted.
-- The worker uses only the reserved output storage key and owner-scoped source media.
-- Snapshot hash is an integrity check, not an authenticity or authorization mechanism; database ownership and task lease checks remain mandatory.
-- An accepted render is reproducible against its snapshot even after the draft is edited.
-- Idempotency is based on the immutable render input, not merely the analysis ID.
-- Existing cancellation, recovery, quarantine, and output-publication fences must remain in force.
+Exact-head CI must pass before merge. No local test execution or target-device acceptance is claimed.
 
-## 7. Test matrix
+## 7. Remaining acceptance work
 
-### Schema and draft repository
-- Valid renderer-compatible draft round-trips without loss of source IDs or timestamps.
-- Reject unknown fields, non-finite numbers, negative intervals, gaps, overlaps, out-of-range duration, and unsupported aspect ratio.
-- Owner A cannot read or submit Owner B's draft.
-- Stale expected version fails without creating a task, render, idempotency record, or snapshot.
-- Draft update after render acceptance does not mutate the stored snapshot.
+- Route-level tests now cover authenticated snapshot handoff, owner-scoped missing/foreign drafts, rejection when no renderer timeline is saved, and malformed saved timeline input. Keep the tests aligned with any future API response or status changes.
+- Add a dashboard action for submitting a render from the selected saved renderer timeline; do not expose a control before the complete API/Worker path is available.
+- Verify the user-facing workflow on the target Windows device with representative media, cancellation, stale draft edits and output download.
+- Keep the renderer explicitly silent and cut-only. Audio, captions, graphics, motion effects, transitions beyond hard cuts and AI-generated footage require separate validated contracts and are not implemented here.
+- Reconcile this document, the project status ledger, dependency map and whole-project audit whenever the main baseline changes.
 
-### Render submission and idempotency
-- Same key + same draft ID/version/hash returns the original render.
-- Same key + changed draft version or hash returns conflict.
-- Different keys create distinct render tasks with independently immutable snapshots.
-- Transaction rollback leaves no partial task/render/snapshot/idempotency rows.
-- Concurrent draft update versus submission is resolved by optimistic version fencing.
+## 8. Explicit non-goals
 
-### Worker and recovery
-- Worker renders the snapshot even when the live draft has subsequently changed.
-- Worker never falls back to analysis timeline if snapshot is missing, corrupt, owner-mismatched, or schema-invalid.
-- Hash mismatch fails closed before source media acquisition.
-- Lease loss and cancellation prevent publication and release acquired media locks.
-- Recovery handles interrupted renders without deleting unrelated output or snapshot records.
-- Existing analysis-only render tests remain unchanged and pass.
-
-### API and integration
-- Draft-aware route returns accepted render metadata and exact draft version/hash reference.
-- Stale version maps to 409; foreign/missing draft maps to 404.
-- Status and download remain owner-scoped.
-- Real FFmpeg integration renders the accepted snapshot on Linux and Windows.
-
-## 8. Delivery sequence
-
-1. Add renderer-compatible draft schema and validation tests without changing existing beat-only behavior.
-2. Add the immutable snapshot migration and repository transaction tests.
-3. Add draft-aware render submission and idempotency conflict tests.
-4. Update worker snapshot loading, hash verification, and no-fallback behavior.
-5. Extend API contract tests and operator UI to display draft version, render status, and output.
-6. Add Linux/Windows FFmpeg integration coverage and recovery tests.
-7. Update OpenAPI, operator documentation, dependency map, readiness audit, and changelog together.
-
-Each step must be a separate reviewable commit or PR. Do not activate a UI control before the complete API/worker path is available.
-
-## 9. Explicit non-goals
-
-- No provider generation submission is triggered by timeline rendering.
+- No video-generation provider submission is triggered by timeline rendering.
 - No automatic retry is introduced for ambiguous external provider outcomes.
-- No change to FFmpeg execution policy or arbitrary filter support.
-- No claim of full nonlinear video-editor functionality; this is a bounded, validated cut-only render pipeline.
-- No production-readiness claim based solely on green CI.
+- No arbitrary FFmpeg filters or user-supplied commands are accepted.
+- No claim of a full nonlinear video editor or production readiness is made.

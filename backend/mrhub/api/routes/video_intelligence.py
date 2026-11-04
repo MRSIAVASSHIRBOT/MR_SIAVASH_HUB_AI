@@ -41,6 +41,8 @@ from mrhub.video_intelligence.render_jobs import (
     VideoRenderConflict,
     VideoRenderJobRepository,
 )
+from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
+from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
@@ -49,6 +51,7 @@ from mrhub.video_intelligence.schemas import (
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
+from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import (
     TimelineBeat,
     TimelineConflict,
@@ -559,6 +562,87 @@ def update_timeline_draft(
 
 def _render_jobs() -> VideoRenderJobRepository:
     return VideoRenderJobRepository(get_settings().database_path)
+
+
+@router.post(
+    "/timeline-drafts/{draft_id}/renders",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_video_render_from_timeline_draft(
+    draft_id: UUID,
+    response: Response,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Freeze the saved renderer timeline and queue a render bound to that snapshot."""
+    draft = _timeline_drafts().get(user.user_id, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Timeline draft not found")
+    renderer_timeline_data = draft.get("renderer_timeline")
+    if not isinstance(renderer_timeline_data, dict) or not draft.get(
+        "renderer_timeline_sha256"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "renderer_timeline_not_saved",
+                "message": "Save a renderer-compatible timeline before submitting a render",
+            },
+        )
+
+    try:
+        analysis_id = UUID(str(draft["analysis_id"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="Timeline draft analysis is invalid") from exc
+    analysis = _analysis_jobs().get(user.user_id, analysis_id)
+    if (
+        analysis is None
+        or analysis["status"] != "completed"
+        or not isinstance(analysis.get("result"), dict)
+    ):
+        raise HTTPException(status_code=409, detail="Video analysis is not completed")
+    assets = analysis["result"].get("assets")
+    if not isinstance(assets, list):
+        raise HTTPException(status_code=409, detail="Analysis source assets are unavailable")
+
+    try:
+        timeline = VideoTimeline.model_validate(renderer_timeline_data)
+        snapshot = VideoRenderTimelineSnapshot.create(
+            owner_user_id=user.user_id,
+            analysis_id=analysis_id,
+            draft_id=draft_id,
+            draft_version=int(draft["version"]),
+            timeline=timeline,
+            analysis_source_asset_ids=[
+                str(item["asset_id"])
+                for item in assets
+                if isinstance(item, dict) and item.get("asset_id")
+            ],
+        )
+        accepted, created = _render_jobs().submit(
+            user.user_id,
+            analysis_id,
+            idempotency_key,
+            snapshot=snapshot,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Render snapshot not found") from exc
+    except VideoRenderSnapshotConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except VideoRenderConflict as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return {
+        **{key: value for key, value in accepted.items() if key != "task_id"},
+        "snapshot_id": accepted.get("snapshot_id"),
+        "draft_id": str(draft_id),
+        "draft_version": int(draft["version"]),
+        "created": created,
+    }
 
 
 @router.post("/analyses/{analysis_id}/renders", status_code=status.HTTP_202_ACCEPTED)

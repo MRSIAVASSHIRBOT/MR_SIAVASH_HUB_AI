@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +13,8 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.timeline import VideoTimeline
 
 
 class TimelineConflict(ValueError):
@@ -41,6 +45,7 @@ class TimelineDraftUpdate(BaseModel):
     duration_seconds: int = Field(ge=3, le=60, strict=True)
     aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
     beats: list[TimelineBeat] = Field(min_length=1, max_length=20)
+    renderer_timeline: VideoTimeline | None = None
 
     @model_validator(mode="after")
     def validate_timeline(self) -> TimelineDraftUpdate:
@@ -51,15 +56,50 @@ class TimelineDraftUpdate(BaseModel):
             if beat.start_seconds < previous_end:
                 raise ValueError("Timeline beats must be ordered and cannot overlap")
             previous_end = beat.end_seconds
+        if self.renderer_timeline is not None:
+            if self.renderer_timeline.requested_duration_seconds != self.duration_seconds:
+                raise ValueError("Renderer timeline duration must match the draft duration")
+            if self.renderer_timeline.output_aspect_ratio != self.aspect_ratio:
+                raise ValueError("Renderer timeline aspect ratio must match the draft")
         return self
+
+
+
+def validate_renderer_timeline_source_bounds(
+    timeline: VideoTimeline, assets: list[object]
+) -> None:
+    """Require every clip interval to fit its analyzed source media duration."""
+    source_durations: dict[str, float] = {}
+    for item in assets:
+        if not isinstance(item, dict):
+            continue
+        asset_id = item.get("asset_id")
+        metadata = item.get("technical_metadata")
+        if not isinstance(asset_id, str) or not isinstance(metadata, dict):
+            continue
+        raw_duration = metadata.get("duration_seconds")
+        if isinstance(raw_duration, bool) or not isinstance(raw_duration, (int, float)):
+            continue
+        duration = float(raw_duration)
+        if math.isfinite(duration) and duration > 0:
+            source_durations[asset_id] = duration
+
+    for clip in timeline.video_track:
+        source_duration = source_durations.get(clip.source_asset_id)
+        if source_duration is None:
+            raise ValueError("Renderer timeline source duration is unavailable")
+        if clip.source_end_seconds > source_duration + 0.001:
+            raise ValueError("Renderer timeline source interval exceeds source duration")
 
 
 class VideoTimelineDraftRepository:
     """Persist bounded editable timelines with owner checks and version fencing."""
 
     MAX_TIMELINE_BYTES = 60_000
+    MAX_RENDERER_TIMELINE_BYTES = 100_000
 
     def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
         self.tasks = TaskRepository(database_path)
         self.tasks.initialize()
 
@@ -68,7 +108,56 @@ class VideoTimelineDraftRepository:
         return datetime.now(UTC).isoformat()
 
     @staticmethod
+    def _canonical_renderer_timeline(timeline: VideoTimeline) -> str:
+        return json.dumps(
+            timeline.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+
+    def _validate_renderer_timeline(
+        self,
+        owner_user_id: str,
+        analysis_id: str,
+        asset_id: str,
+        timeline: VideoTimeline,
+    ) -> tuple[str, str]:
+        analysis = VideoAnalysisJobRepository(self.database_path).get(
+            owner_user_id, UUID(analysis_id)
+        )
+        if (
+            analysis is None
+            or analysis["status"] != "completed"
+            or not isinstance(analysis.get("result"), dict)
+        ):
+            raise ValueError("Renderer timeline requires a completed owned analysis")
+        assets = analysis["result"].get("assets")
+        if not isinstance(assets, list):
+            raise TypeError("Completed analysis source assets are unavailable")
+        allowed_asset_ids = {
+            str(item["asset_id"])
+            for item in assets
+            if isinstance(item, dict) and item.get("asset_id")
+        }
+        referenced_asset_ids = {clip.source_asset_id for clip in timeline.video_track}
+        if (
+            not referenced_asset_ids
+            or not referenced_asset_ids.issubset(allowed_asset_ids)
+            or asset_id not in referenced_asset_ids
+        ):
+            raise ValueError("Renderer timeline references an asset outside the draft analysis")
+        validate_renderer_timeline_source_bounds(timeline, assets)
+        encoded = self._canonical_renderer_timeline(timeline)
+        if len(encoded.encode("utf-8")) > self.MAX_RENDERER_TIMELINE_BYTES:
+            raise ValueError("Renderer timeline exceeds the storage limit")
+        digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        return encoded, digest
+
+    @staticmethod
     def _record(row: sqlite3.Row) -> dict[str, object]:
+        renderer_timeline_json = row["renderer_timeline_json"]
         return {
             "draft_id": row["draft_id"],
             "analysis_id": row["analysis_id"],
@@ -76,6 +165,12 @@ class VideoTimelineDraftRepository:
             "duration_seconds": row["duration_seconds"],
             "aspect_ratio": row["aspect_ratio"],
             "beats": json.loads(row["timeline_json"]),
+            "renderer_timeline": (
+                json.loads(renderer_timeline_json)
+                if renderer_timeline_json is not None
+                else None
+            ),
+            "renderer_timeline_sha256": row["renderer_timeline_sha256"],
             "version": row["version"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -151,17 +246,44 @@ class VideoTimelineDraftRepository:
         )
         if len(timeline_json.encode("utf-8")) > self.MAX_TIMELINE_BYTES:
             raise ValueError("Timeline payload exceeds the storage limit")
+
+        with self.tasks._connection() as connection:
+            current = connection.execute(
+                """SELECT analysis_id, asset_id, version
+                   FROM video_timeline_drafts
+                   WHERE draft_id = ? AND owner_user_id = ?""",
+                (str(draft_id), owner_user_id),
+            ).fetchone()
+        if current is None:
+            return None
+        if int(current["version"]) != update.expected_version:
+            raise TimelineConflict("Timeline draft version is stale")
+
+        renderer_timeline_json = None
+        renderer_timeline_sha256 = None
+        if update.renderer_timeline is not None:
+            renderer_timeline_json, renderer_timeline_sha256 = (
+                self._validate_renderer_timeline(
+                    owner_user_id,
+                    str(current["analysis_id"]),
+                    str(current["asset_id"]),
+                    update.renderer_timeline,
+                )
+            )
+
         now = self._now()
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
                 """UPDATE video_timeline_drafts
                    SET duration_seconds = ?, aspect_ratio = ?, timeline_json = ?,
+                       renderer_timeline_json = ?, renderer_timeline_sha256 = ?,
                        version = version + 1, updated_at = ?
                    WHERE draft_id = ? AND owner_user_id = ? AND version = ?""",
                 (
                     update.duration_seconds, update.aspect_ratio, timeline_json,
-                    now, str(draft_id), owner_user_id, update.expected_version,
+                    renderer_timeline_json, renderer_timeline_sha256, now,
+                    str(draft_id), owner_user_id, update.expected_version,
                 ),
             )
             if cursor.rowcount != 1:

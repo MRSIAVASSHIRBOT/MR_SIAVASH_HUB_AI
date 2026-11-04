@@ -511,3 +511,32 @@ The latest main inventory at this commit contains 327 recursive tree entries, 94
 PR #266 merged as `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`. Its exact PR head passed all six required checks. The video-generation adapter protocol now requires a read-only `find_by_idempotency_key` lookup, and the registry rejects adapters that omit it. This is a contract and registration gate only: there is still no registered provider, no reconciliation worker/API that calls the lookup, and no status-poll/output-finalization path for a recovered job. The next generation milestone must implement and test the owner-scoped non-replayable reconciliation flow before any adapter is enabled.
 
 Post-merge CI for this new main commit was queued at the time of this note and must be rechecked before treating the commit as fully validated.
+
+## Video storyboard and immutable render integration — 2026-11-04 UTC
+
+This is the newest video-workstream hand-off and supersedes the earlier storyboard gap recorded above. The current `main` baseline is `589a038d09271ddbcb2e8c07fbbce983499c882a`.
+
+### Merged into main
+
+- **PR #271** (merge commit `e9055ebef035931a36b277b3ce5d76ee58ff60c4`) connects owner-scoped saved storyboard drafts to prompt composition and the dashboard editor. It validates draft identity, analysis/asset membership, exact version, beat intervals and source timestamp bounds. Composition remains text-only and returns `execution=not_started`; it does not invoke a provider or renderer.
+- **PR #272** (merge commit `45c06562999a46861f89fca1438bd5b7776a850a`) adds the immutable renderer-timeline snapshot value object with canonical JSON, SHA-256 integrity, owner/analysis/draft-revision identity and revision-sensitive idempotency.
+- Main commit `589a038d09271ddbcb2e8c07fbbce983499c882a` adds the architecture contract clarifying that storyboard beats and cut-only renderer timelines are distinct representations.
+
+### PR #273 — open, not merged
+
+[PR #273](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/273) extends the snapshot contract with durable persistence and the end-to-end render path. Its current branch implementation includes migrations 28–29, renderer-timeline/hash persistence on drafts, immutable owner-scoped snapshot rows, measured source-duration validation, an atomic snapshot + render-task + render-record + idempotency transaction, and Worker consumption of the immutable snapshot with fail-closed behavior and no fallback to mutable analysis data.
+
+The branch also adds regression coverage for owner isolation, stale revisions, source bounds, snapshot immutability, snapshot-backed rendering, atomic acceptance and rollback on idempotency conflict. These are branch changes, not main behavior until PR #273 is reviewed and merged.
+
+**CI state must be checked against the live PR head.** Exact-head checks were pending during this status update; no green CI claim or merge approval is made here. PR #273 must remain unmerged until the exact current head passes Python 3.11/3.12, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg integration, followed by source-level review.
+
+### Remaining video acceptance work
+
+1. Add route-level tests for draft owner isolation, analysis association, malformed saved renderer timelines, response shape and HTTP status mapping.
+2. Add a dashboard action to submit a render from a saved renderer-compatible timeline; do not expose it before the API/Worker path is accepted.
+3. Validate the workflow on the target Windows device with representative source media, draft edits, idempotent replay, cancellation, output registration and download.
+4. Preserve the explicit renderer boundary: local output remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and AI-generated footage are separate future capabilities.
+5. Keep video-generation provider reconciliation separate from local FFmpeg rendering. PR #266 supplies only the read-only adapter lookup contract; no provider is registered and no end-to-end reconciliation worker is available.
+
+Green CI is not target-device acceptance or production readiness. Whole-product install/upgrade/rollback, database/media/key restore, external-account verification and provider acceptance remain independent release gates.
+

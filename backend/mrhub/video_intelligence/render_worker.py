@@ -12,7 +12,9 @@ from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.render import VideoRenderError, render_video_timeline
 from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
+from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotRepository
 from mrhub.video_intelligence.timeline import VideoTimeline
+from mrhub.video_intelligence.timeline_drafts import validate_renderer_timeline_source_bounds
 
 
 class VideoRenderWorkerHandler:
@@ -22,6 +24,7 @@ class VideoRenderWorkerHandler:
         self.tasks = repository
         self.jobs = VideoRenderJobRepository(repository.database_path)
         self.analyses = VideoAnalysisJobRepository(repository.database_path)
+        self.snapshots = VideoRenderSnapshotRepository(repository.database_path)
         self.media = MediaAssetRepository(repository.database_path)
 
     def __call__(
@@ -30,7 +33,7 @@ class VideoRenderWorkerHandler:
         loaded = self.jobs.load_for_worker(task.task_id)
         if loaded is None:
             raise ValueError("Video render request is unavailable")
-        owner_user_id, render_id, analysis_id, output_storage_key = loaded
+        owner_user_id, render_id, analysis_id, output_storage_key, snapshot_id = loaded
         if lease_lost.is_set() or not self.jobs.mark_running(
             task.task_id, owner_user_id, lease=lease
         ):
@@ -52,10 +55,34 @@ class VideoRenderWorkerHandler:
             result = analysis.get("result")
             if not isinstance(result, dict):
                 raise TypeError("source_analysis_invalid")
-            timeline = VideoTimeline.model_validate(result.get("timeline"))
+            assets = result.get("assets")
+            if not isinstance(assets, list):
+                raise TypeError("source_analysis_assets_invalid")
+
+            if snapshot_id is not None:
+                # Snapshot-backed tasks are fail-closed: never fall back to the
+                # mutable analysis timeline if the immutable snapshot is missing.
+                snapshot = self.snapshots.get(owner_user_id, snapshot_id)
+                if snapshot is None or snapshot.analysis_id != analysis_id:
+                    raise ValueError("render_snapshot_unavailable")
+                timeline = snapshot.validated_timeline()
+            else:
+                timeline = VideoTimeline.model_validate(result.get("timeline"))
+
             source_ids = {clip.source_asset_id for clip in timeline.video_track}
-            if not source_ids or len(source_ids) > 125:
-                raise ValueError("render_source_count_invalid")
+            allowed_asset_ids = {
+                str(item["asset_id"])
+                for item in assets
+                if isinstance(item, dict) and item.get("asset_id")
+            }
+            if (
+                not source_ids
+                or len(source_ids) > 125
+                or not source_ids.issubset(allowed_asset_ids)
+            ):
+                raise ValueError("render_source_count_or_ownership_invalid")
+            if snapshot_id is not None:
+                validate_renderer_timeline_source_bounds(timeline, assets)
 
             source_paths = {}
             for asset_value in source_ids:

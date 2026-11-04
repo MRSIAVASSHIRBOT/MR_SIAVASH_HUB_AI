@@ -35,7 +35,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "memory_entries", "knowledge_sources", "knowledge_documents", "knowledge_chunks",
         "memory_entries_fts", "knowledge_chunks_fts", "content_drafts", "content_draft_versions", "content_assets",
         "content_publish_schedules", "media_file_cleanup", "media_asset_analysis_leases",
-        "video_render_runs",
+        "video_render_runs", "video_render_timeline_snapshots",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -264,7 +264,7 @@ def test_v6_preserves_historical_agent_runs_as_unowned(tmp_path, monkeypatch):
 
 
 
-def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
+def test_migrations_19_to_29_upgrade_an_existing_v18_database(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations
 
     connection = connect(tmp_path / "version-18.sqlite3")
@@ -383,6 +383,76 @@ def test_migrations_19_to_27_upgrade_an_existing_v18_database(tmp_path, monkeypa
         "SELECT name FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_video_render_analysis'"
     ).fetchone() is not None
+    render_snapshot_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_render_runs)")
+    }
+    assert "snapshot_id" in render_snapshot_columns
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_video_render_runs_snapshot'"
+    ).fetchone() is not None
+    render_snapshot_foreign_keys = {
+        row["table"]: row["on_delete"]
+        for row in connection.execute("PRAGMA foreign_key_list(video_render_runs)")
+    }
+    assert render_snapshot_foreign_keys["video_render_timeline_snapshots"] == "RESTRICT"
+    draft_renderer_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_timeline_drafts)")
+    }
+    assert {"renderer_timeline_json", "renderer_timeline_sha256"} <= draft_renderer_columns
+    snapshot_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_render_timeline_snapshots)")
+    }
+    assert {
+        "snapshot_id", "owner_user_id", "analysis_id", "draft_id",
+        "draft_version", "snapshot_version", "timeline_json",
+        "timeline_sha256", "created_at",
+    } <= snapshot_columns
+    assert connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+        "AND name = 'trg_video_render_snapshots_immutable'"
+    ).fetchone() is not None
     assert SchemaMigrator(connection).migrate() == []
     connection.close()
 
+
+
+
+def test_v28_renderer_snapshot_schema_enforces_pair_and_retention_policy(tmp_path):
+    connection = connect(tmp_path / "renderer-snapshot-schema.sqlite3")
+    try:
+        SchemaMigrator(connection).migrate()
+
+        triggers = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'trigger'"
+            )
+        }
+        assert "trg_video_timeline_draft_renderer_pair" in triggers
+        assert "trg_video_timeline_draft_renderer_pair_insert" in triggers
+        assert "trg_video_render_snapshots_immutable" in triggers
+
+        foreign_keys = {
+            row["table"]: row["on_delete"]
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(video_render_timeline_snapshots)"
+            )
+        }
+        assert foreign_keys == {
+            "video_timeline_drafts": "RESTRICT",
+            "video_analysis_runs": "RESTRICT",
+            "auth_users": "CASCADE",
+        }
+        draft_foreign_keys = {
+            row["table"]: row["on_delete"]
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(video_timeline_drafts)"
+            )
+        }
+        assert draft_foreign_keys["video_analysis_runs"] == "CASCADE"
+    finally:
+        connection.close()
