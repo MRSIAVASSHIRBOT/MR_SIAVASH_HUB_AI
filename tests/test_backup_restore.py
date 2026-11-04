@@ -345,7 +345,7 @@ def test_clean_destination_restore_recovers_database_and_media_asset(
     )
     get_settings.cache_clear()
 
-    media_payload = b"\\x89PNG\\r\\n\\x1a\\nrecovery-fixture"
+    media_payload = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + b"recovery-fixture"
     with TestClient(create_app()) as source_client:
         setup = source_client.post(
             "/auth/setup",
