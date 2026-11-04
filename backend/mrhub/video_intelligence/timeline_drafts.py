@@ -37,8 +37,8 @@ class TimelineBeat(BaseModel):
 class TimelineDraftUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    expected_version: int = Field(ge=1)
-    duration_seconds: int = Field(ge=3, le=60)
+    expected_version: int = Field(ge=1, strict=True)
+    duration_seconds: int = Field(ge=3, le=60, strict=True)
     aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
     beats: list[TimelineBeat] = Field(min_length=1, max_length=20)
 
@@ -179,3 +179,18 @@ class VideoTimelineDraftRepository:
                 (str(draft_id), owner_user_id),
             ).fetchone()
         return self._record(row) if row is not None else None
+
+
+    def list_for_analysis(
+        self, owner_user_id: str, analysis_id: UUID, limit: int = 5
+    ) -> list[dict[str, object]]:
+        """List only this owner's bounded storyboard drafts for one analysis."""
+        bounded_limit = max(1, min(limit, 5))
+        with self.tasks._connection() as connection:
+            rows = connection.execute(
+                """SELECT * FROM video_timeline_drafts
+                   WHERE owner_user_id = ? AND analysis_id = ?
+                   ORDER BY updated_at DESC, draft_id ASC LIMIT ?""",
+                (owner_user_id, str(analysis_id), bounded_limit),
+            ).fetchall()
+        return [self._record(row) for row in rows]

@@ -3,7 +3,7 @@ name: Backend CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main", "architecture/**", "feature/**"]
+    branches: ["main", "architecture/**", "feature/**", "feat/**", "fix/**"]
   pull_request:
     branches: ["main", "architecture/**"]
 

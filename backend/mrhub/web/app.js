@@ -31,6 +31,9 @@
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
   let videoPromptResults = [];
+  let videoPromptAnalysisId = null;
+  let videoTimelineDrafts = [];
+  let activeVideoTimelineDraft = null;
 
   function message(target, text, kind = "") {
     const node = $(target);
@@ -64,6 +67,11 @@
     pendingVideoAnalysisKey = null;
     pendingVideoAnalysisFingerprint = null;
     videoPromptResults = [];
+    videoTimelineDrafts = [];
+    activeVideoTimelineDraft = null;
+    videoPromptAnalysisId = null;
+    $("#video-storyboard-panel").hidden = true;
+    $("#video-storyboard-beats").replaceChildren();
     $("#video-analysis-result").replaceChildren();
     $("#video-prompt-output").value = "";
     $("#video-prompt-timeline").replaceChildren();
@@ -497,6 +505,17 @@
   }
 
   function renderVideoAnalysis(analysis) {
+    const incomingAnalysisId = analysis.analysis_id || activeVideoAnalysisId;
+    if (videoPromptAnalysisId !== incomingAnalysisId) {
+      videoPromptAnalysisId = incomingAnalysisId;
+      videoPromptResults = [];
+      videoTimelineDrafts = [];
+      activeVideoTimelineDraft = null;
+      $("#video-storyboard-panel").hidden = true;
+      $("#video-storyboard-beats").replaceChildren();
+      $("#video-prompt-output").value = "";
+      $("#video-prompt-timeline").replaceChildren();
+    }
     const container = $("#video-analysis-result");
     container.replaceChildren();
     const labels = {
@@ -546,10 +565,13 @@
       source.disabled = true;
     }
     $("#video-compose-prompt").disabled = !canCompose;
-    $("#video-copy-prompt").disabled = true;
-    $("#video-prompt-output").value = "";
-    $("#video-prompt-timeline").replaceChildren();
-    videoPromptResults = [];
+    if (videoPromptResults.length) {
+      renderSelectedVideoPrompt();
+    } else {
+      $("#video-copy-prompt").disabled = true;
+      $("#video-prompt-output").value = "";
+      $("#video-prompt-timeline").replaceChildren();
+    }
 
     if (result) {
       const assets = Array.isArray(result.assets) ? result.assets : [];
@@ -806,6 +828,11 @@
       pendingVideoAnalysisKey = null;
       pendingVideoAnalysisFingerprint = null;
       videoPromptResults = [];
+      videoTimelineDrafts = [];
+      activeVideoTimelineDraft = null;
+      videoPromptAnalysisId = null;
+      $("#video-storyboard-panel").hidden = true;
+      $("#video-storyboard-beats").replaceChildren();
       $("#video-prompt-output").value = "";
       $("#video-prompt-source").replaceChildren(element("option", "پس از تکمیل تحلیل فعال می‌شود"));
       $("#video-prompt-source").disabled = true;
@@ -834,33 +861,66 @@
     if (!selected) {
       output.value = "";
       $("#video-copy-prompt").disabled = true;
+      $("#video-storyboard-panel").hidden = true;
       return;
     }
     output.value = selected.prompt;
     $("#video-copy-prompt").disabled = !selected.prompt;
     for (const beat of selected.timeline || []) {
+      const sourceTime = Number.isFinite(Number(beat.source_timestamp_seconds))
+        ? "Timestamp منبع: " + Number(beat.source_timestamp_seconds).toFixed(3) + "s"
+        : "Timestamp منبع تعیین نشده است.";
       timeline.append(recordCard(
-        `Beat ${Number(beat.start_seconds).toFixed(2)}s – ${Number(beat.end_seconds).toFixed(2)}s`,
-        `Timestamp منبع: ${Number(beat.source_timestamp_seconds).toFixed(3)}s`,
-        "این بازه از مشاهدهٔ واقعی فریم نمونه‌برداری‌شده ساخته شده است."
+        "Beat " + Number(beat.start_seconds).toFixed(2) + "s – " + Number(beat.end_seconds).toFixed(2) + "s",
+        sourceTime,
+        beat.confidence === undefined ? "بازهٔ زمانی Storyboard" : "Confidence: " + Number(beat.confidence).toFixed(2)
       ));
     }
+    const savedDraft = activeVideoTimelineDraft && activeVideoTimelineDraft.asset_id === assetId
+      ? activeVideoTimelineDraft
+      : videoTimelineDrafts.find((item) => item.asset_id === assetId) || null;
+    activeVideoTimelineDraft = savedDraft;
+    renderVideoStoryboardDraftOptions(assetId);
+    $("#video-storyboard-duration").value = String(
+      savedDraft ? savedDraft.duration_seconds : selected.duration_seconds
+    );
+    $("#video-prompt-aspect-ratio").value = savedDraft
+      ? savedDraft.aspect_ratio
+      : (selected.aspect_ratio || $("#video-prompt-aspect-ratio").value);
+    renderVideoStoryboardEditor(
+      savedDraft ? savedDraft.beats : selected.beats,
+      selected.source_timestamp_limit_seconds
+    );
+    $("#video-storyboard-panel").hidden = false;
+    $("#video-storyboard-new").disabled = false;
+    $("#video-storyboard-save").disabled = false;
+    $("#video-storyboard-compose").disabled = false;
   }
 
-  async function composeVideoPrompt() {
-    if (!activeVideoAnalysisId) return;
+  async function composeVideoPrompt(timelineDraft = null) {
+    if (!activeVideoAnalysisId) return false;
+    let composed = false;
     const button = $("#video-compose-prompt");
     button.disabled = true;
-    message("#video-prompt-message", "در حال ساخت Prompt از مشاهدات معتبر…");
+    message("#video-prompt-message", timelineDraft
+      ? "در حال ساخت Prompt از نسخهٔ دقیق Storyboard ذخیره‌شده…"
+      : "در حال ساخت Prompt از مشاهدات معتبر…");
     try {
       const response = await api(
         `/video-intelligence/analyses/${encodeURIComponent(activeVideoAnalysisId)}/prompts/compose`,
         {
           method: "POST",
-          body: { aspect_ratio: $("#video-prompt-aspect-ratio").value },
+          body: {
+            aspect_ratio: $("#video-prompt-aspect-ratio").value,
+            ...(timelineDraft ? {
+              timeline_draft_id: timelineDraft.draft_id,
+              timeline_draft_version: timelineDraft.version,
+            } : {}),
+          },
         }
       );
       videoPromptResults = Array.isArray(response.prompts) ? response.prompts : [];
+      videoPromptAnalysisId = activeVideoAnalysisId;
       const source = $("#video-prompt-source");
       const previousAssetId = source.value;
       if (videoPromptResults.length) {
@@ -876,15 +936,31 @@
           ? previousAssetId
           : videoPromptResults[0].asset_id;
         renderSelectedVideoPrompt();
-        message("#video-prompt-message", `${videoPromptResults.length} Prompt مستقل ساخته شد؛ هیچ موتور تولیدی فراخوانی نشد.`, "success");
+        try {
+          await loadVideoTimelineDrafts();
+        } catch (draftError) {
+          message("#video-storyboard-message", "Prompt ساخته شد، اما فهرست Storyboardها تازه‌سازی نشد: " + draftError.message, "error");
+        }
+        message("#video-prompt-message", timelineDraft
+          ? videoPromptResults.length + " Prompt ساخته شد؛ Storyboard نسخه " + timelineDraft.version + " اعمال شد و هیچ Provider اجرا نشد."
+          : videoPromptResults.length + " Prompt مستقل از تحلیل ساخته شد؛ Storyboard ذخیره‌شده اعمال نشد و هیچ Provider اجرا نشد.", "success");
+        composed = true;
       } else {
         message("#video-prompt-message", "تحلیل معنایی معتبر برای ساخت Prompt وجود ندارد.", "error");
       }
     } catch (error) {
       message("#video-prompt-message", error.message, "error");
+      if (timelineDraft) {
+        try {
+          await loadVideoTimelineDrafts();
+        } catch {
+          // Keep the original composition error visible.
+        }
+      }
     } finally {
       button.disabled = false;
     }
+    return composed;
   }
 
   async function copyVideoPrompt() {
@@ -895,6 +971,271 @@
       message("#video-prompt-message", "Prompt کپی شد.", "success");
     } catch {
       message("#video-prompt-message", "دسترسی Clipboard در این مرورگر فعال نیست؛ متن را دستی کپی کنید.", "error");
+    }
+  }
+
+  function renderVideoStoryboardDraftOptions(assetId) {
+    const select = $("#video-storyboard-draft-select");
+    const matching = videoTimelineDrafts.filter((draft) => draft.asset_id === assetId);
+    select.replaceChildren();
+    if (!matching.length) {
+      const emptyOption = element("option", "برای این ویدئو Storyboard ذخیره‌شده‌ای وجود ندارد");
+      emptyOption.value = "";
+      select.append(emptyOption);
+      select.value = "";
+      select.disabled = true;
+      return;
+    }
+    const placeholder = element("option", "Storyboard ذخیره‌شده را انتخاب کنید");
+    placeholder.value = "";
+    select.append(placeholder);
+    for (const draft of matching) {
+      const option = element("option", "نسخه " + draft.version + " · " + draft.updated_at);
+      option.value = draft.draft_id;
+      select.append(option);
+    }
+    select.disabled = false;
+    if (activeVideoTimelineDraft && activeVideoTimelineDraft.asset_id === assetId) {
+      select.value = activeVideoTimelineDraft.draft_id;
+    } else {
+      select.value = "";
+    }
+  }
+
+  function renderVideoStoryboardEditor(beats, sourceTimestampLimitSeconds = 86400) {
+    const container = $("#video-storyboard-beats");
+    const sourceTimestampMax = Number.isFinite(Number(sourceTimestampLimitSeconds))
+      ? Math.min(86400, Math.max(0, Number(sourceTimestampLimitSeconds) - 0.001))
+      : 86400;
+    container.replaceChildren();
+    if (!Array.isArray(beats) || !beats.length) {
+      renderEmpty(container, "برای شروع، Prompt فعلی را به Storyboard تبدیل کنید.");
+      $("#video-storyboard-add-beat").disabled = false;
+      return;
+    }
+    for (const [index, beat] of beats.entries()) {
+      const card = element("article", undefined, "record");
+      const header = element("div", undefined, "record-head");
+      header.append(element("strong", "Beat " + (index + 1)));
+      card.append(header);
+      const grid = element("div", undefined, "form-grid");
+      const addField = (labelText, fieldName, value, type, attributes = {}) => {
+        const label = element("label", labelText);
+        const control = document.createElement(type === "textarea" ? "textarea" : "input");
+        if (type !== "textarea") control.type = type;
+        control.dataset.storyboardField = fieldName;
+        control.value = value === null || value === undefined ? "" : String(value);
+        for (const [key, attributeValue] of Object.entries(attributes)) {
+          control.setAttribute(key, String(attributeValue));
+        }
+        label.append(control);
+        grid.append(label);
+      };
+      addField("شروع (ثانیه)", "start_seconds", beat.start_seconds, "number", { min: 0, max: 60, step: 0.1, required: true });
+      addField("پایان (ثانیه)", "end_seconds", beat.end_seconds, "number", { min: 0, max: 60, step: 0.1, required: true });
+      addField("Timestamp منبع (اختیاری)", "source_timestamp_seconds", beat.source_timestamp_seconds, "number", { min: 0, max: sourceTimestampMax, step: 0.001 });
+      addField("دستور بصری Beat", "generation_instruction", beat.generation_instruction, "textarea", { maxlength: 1200, rows: 3, required: true });
+      addField("انتقال به Beat بعدی", "transition_to_next", beat.transition_to_next || "clean cinematic cut", "text", { maxlength: 240 });
+      card.dataset.confidence = beat.confidence === null || beat.confidence === undefined ? "" : String(beat.confidence);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button-quiet";
+      remove.textContent = "حذف Beat";
+      remove.addEventListener("click", () => {
+        card.remove();
+        renumberVideoStoryboardBeats();
+      });
+      const actions = element("div", undefined, "button-row");
+      actions.append(remove);
+      card.append(grid, actions);
+      container.append(card);
+    }
+    $("#video-storyboard-add-beat").disabled = beats.length >= 20;
+  }
+
+  function renumberVideoStoryboardBeats() {
+    const cards = Array.from($("#video-storyboard-beats").querySelectorAll("article.record"));
+    cards.forEach((card, index) => {
+      const title = card.querySelector(".record-head strong");
+      if (title) title.textContent = "Beat " + (index + 1);
+    });
+    $("#video-storyboard-add-beat").disabled = cards.length >= 20;
+  }
+
+  function readVideoStoryboardBeats() {
+    const cards = Array.from($("#video-storyboard-beats").querySelectorAll("article.record"));
+    return cards.map((card) => {
+      const value = (name) => {
+        const field = card.querySelector('[data-storyboard-field="' + name + '"]');
+        return field ? field.value.trim() : "";
+      };
+      const beat = {
+        start_seconds: Number(value("start_seconds")),
+        end_seconds: Number(value("end_seconds")),
+        generation_instruction: value("generation_instruction"),
+        transition_to_next: value("transition_to_next") || "clean cinematic cut",
+      };
+      const sourceTimestamp = value("source_timestamp_seconds");
+      beat.source_timestamp_seconds = sourceTimestamp === "" ? null : Number(sourceTimestamp);
+      beat.confidence = card.dataset.confidence === "" ? null : Number(card.dataset.confidence);
+      return beat;
+    });
+  }
+
+  function addVideoStoryboardBeat() {
+    const beats = readVideoStoryboardBeats();
+    if (beats.length >= 20) {
+      message("#video-storyboard-message", "حداکثر ۲۰ Beat مجاز است.", "error");
+      return;
+    }
+    const duration = Number($("#video-storyboard-duration").value);
+    const start = beats.length ? beats[beats.length - 1].end_seconds : 0;
+    const end = Math.min(duration, start + 2);
+    if (!Number.isFinite(duration) || end <= start) {
+      message("#video-storyboard-message", "برای افزودن Beat، ابتدا مدت هدف را افزایش دهید.", "error");
+      return;
+    }
+    beats.push({
+      start_seconds: start,
+      end_seconds: end,
+      generation_instruction: "یک صحنهٔ اصیل با ترکیب‌بندی واضح بساز.",
+      transition_to_next: "clean cinematic cut",
+    });
+    const selected = videoPromptResults.find((item) => item.asset_id === $("#video-prompt-source").value);
+    renderVideoStoryboardEditor(
+      beats,
+      selected ? selected.source_timestamp_limit_seconds : 86400
+    );
+    message("#video-storyboard-message", "Beat جدید اضافه شد؛ برای اعمال آن Storyboard را ذخیره کنید.");
+  }
+
+  async function loadVideoTimelineDrafts() {
+    if (!activeVideoAnalysisId) return;
+    const response = await api(
+      "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/timeline-drafts"
+    );
+    videoTimelineDrafts = Array.isArray(response.drafts) ? response.drafts : [];
+    const assetId = $("#video-prompt-source").value;
+    const existing = videoTimelineDrafts.find((draft) => draft.asset_id === assetId);
+    if (existing) {
+      activeVideoTimelineDraft = existing;
+    } else if (
+      activeVideoTimelineDraft &&
+      activeVideoTimelineDraft.asset_id === assetId
+    ) {
+      activeVideoTimelineDraft = null;
+    }
+    if (assetId) renderSelectedVideoPrompt();
+  }
+
+  async function persistVideoStoryboardDraft() {
+    const selected = videoPromptResults.find((item) => item.asset_id === $("#video-prompt-source").value);
+    if (!activeVideoAnalysisId || !selected) throw new Error("ابتدا یک Prompt و ویدئوی منبع انتخاب کنید.");
+    const duration = Number($("#video-storyboard-duration").value);
+    const beats = readVideoStoryboardBeats();
+    if (!Number.isInteger(duration) || duration < 3 || duration > 60) {
+      throw new Error("مدت Storyboard باید عدد صحیح بین ۳ تا ۶۰ ثانیه باشد.");
+    }
+    if (!beats.length || beats.length > 20) {
+      throw new Error("Storyboard باید بین ۱ تا ۲۰ Beat داشته باشد.");
+    }
+    const payload = {
+      duration_seconds: duration,
+      aspect_ratio: $("#video-prompt-aspect-ratio").value,
+      beats,
+    };
+    const isUpdate = activeVideoTimelineDraft && activeVideoTimelineDraft.asset_id === selected.asset_id;
+    if (
+      isUpdate &&
+      activeVideoTimelineDraft.duration_seconds === duration &&
+      activeVideoTimelineDraft.aspect_ratio === payload.aspect_ratio &&
+      JSON.stringify(activeVideoTimelineDraft.beats) === JSON.stringify(beats)
+    ) {
+      message("#video-storyboard-message", "تغییری وجود ندارد؛ همان نسخه " + activeVideoTimelineDraft.version + " حفظ شد.");
+      return activeVideoTimelineDraft;
+    }
+    const saved = isUpdate
+      ? await api("/video-intelligence/timeline-drafts/" + encodeURIComponent(activeVideoTimelineDraft.draft_id), {
+          method: "PUT",
+          body: { ...payload, expected_version: activeVideoTimelineDraft.version },
+        })
+      : await api("/video-intelligence/timeline-drafts", {
+          method: "POST",
+          body: { ...payload, analysis_id: activeVideoAnalysisId, asset_id: selected.asset_id },
+        });
+    activeVideoTimelineDraft = saved;
+    videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== saved.draft_id);
+    videoTimelineDrafts.unshift(saved);
+    renderVideoStoryboardDraftOptions(selected.asset_id);
+    message("#video-storyboard-message", "Storyboard نسخه " + saved.version + " ذخیره شد.", "success");
+    return saved;
+  }
+
+  async function saveVideoStoryboardDraft() {
+    const button = $("#video-storyboard-save");
+    button.disabled = true;
+    try {
+      await persistVideoStoryboardDraft();
+    } catch (error) {
+      message("#video-storyboard-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function composeVideoPromptFromStoryboard() {
+    const button = $("#video-storyboard-compose");
+    button.disabled = true;
+    try {
+      const saved = await persistVideoStoryboardDraft();
+      const composed = await composeVideoPrompt(saved);
+      if (composed) {
+        message("#video-storyboard-message", "Prompt با Storyboard نسخه " + saved.version + " ساخته شد؛ اجرای Provider آغاز نشده است.", "success");
+      }
+    } catch (error) {
+      message("#video-storyboard-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function selectVideoStoryboardDraft() {
+    const draftId = $("#video-storyboard-draft-select").value;
+    const selected = videoTimelineDrafts.find((draft) => draft.draft_id === draftId);
+    if (!selected) return;
+    activeVideoTimelineDraft = selected;
+    $("#video-storyboard-duration").value = String(selected.duration_seconds);
+    $("#video-prompt-aspect-ratio").value = selected.aspect_ratio;
+    const selectedPrompt = videoPromptResults.find((item) => item.asset_id === selected.asset_id);
+    renderVideoStoryboardEditor(
+      selected.beats,
+      selectedPrompt ? selectedPrompt.source_timestamp_limit_seconds : 86400
+    );
+    message("#video-storyboard-message", "Storyboard نسخه " + selected.version + " بارگذاری شد.");
+  }
+
+  function startNewVideoStoryboard() {
+    const selected = videoPromptResults.find((item) => item.asset_id === $("#video-prompt-source").value);
+    if (!selected) return;
+    activeVideoTimelineDraft = videoTimelineDrafts.find((draft) => draft.asset_id === selected.asset_id) || null;
+    $("#video-storyboard-draft-select").value = activeVideoTimelineDraft
+      ? activeVideoTimelineDraft.draft_id
+      : "";
+    $("#video-storyboard-duration").value = String(selected.duration_seconds);
+    $("#video-prompt-aspect-ratio").value = selected.aspect_ratio || "9:16";
+    renderVideoStoryboardEditor(selected.beats, selected.source_timestamp_limit_seconds);
+    message("#video-storyboard-message", activeVideoTimelineDraft
+      ? "Beatها به Prompt فعلی بازنشانی شدند؛ ذخیره، نسخهٔ موجود را با کنترل نسخه به‌روزرسانی می‌کند."
+      : "نسخهٔ اولیه از Beatهای Prompt فعلی ساخته شد؛ هنوز ذخیره نشده است.");
+  }
+
+  async function handleVideoPromptSourceChange() {
+    activeVideoTimelineDraft = null;
+    renderSelectedVideoPrompt();
+    try {
+      await loadVideoTimelineDrafts();
+    } catch (error) {
+      message("#video-storyboard-message", error.message, "error");
     }
   }
 
@@ -1104,9 +1445,14 @@
   $("#video-render-submit").addEventListener("click", submitVideoRender);
   $("#video-render-refresh").addEventListener("click", refreshVideoRender);
   $("#video-render-cancel").addEventListener("click", cancelVideoRender);
-  $("#video-compose-prompt").addEventListener("click", composeVideoPrompt);
-  $("#video-prompt-source").addEventListener("change", renderSelectedVideoPrompt);
+  $("#video-compose-prompt").addEventListener("click", () => composeVideoPrompt());
+  $("#video-prompt-source").addEventListener("change", handleVideoPromptSourceChange);
   $("#video-copy-prompt").addEventListener("click", copyVideoPrompt);
+  $("#video-storyboard-draft-select").addEventListener("change", selectVideoStoryboardDraft);
+  $("#video-storyboard-new").addEventListener("click", startNewVideoStoryboard);
+  $("#video-storyboard-add-beat").addEventListener("click", addVideoStoryboardBeat);
+  $("#video-storyboard-save").addEventListener("click", saveVideoStoryboardDraft);
+  $("#video-storyboard-compose").addEventListener("click", composeVideoPromptFromStoryboard);
 
   $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
   $("#media-refresh-button").addEventListener("click", () =>
