@@ -8,7 +8,7 @@ Read the [release management policy](release-management.md) for the repository b
 - [ ] Complete the [Windows Local Acceptance Checklist](windows-acceptance-checklist.md) on a real Windows machine and record the tested commit SHA and sanitized results.
 
 ## Clean installation
-- [ ] Create a fresh Python 3.11 and/or 3.12 environment and install the approved dependency set from the checked-out commit.
+- [ ] Create fresh Python 3.11 and 3.12 environments and install the approved dependency set from the checked-out commit; record exact interpreter versions.
 - [ ] Confirm the installed package imports and the documented local startup command works.
 - [ ] Build a wheel, inspect its package data, install it into a clean virtual environment, and run the health smoke test.
 - [ ] Start with a new database and verify all schema migrations apply once and remain idempotent.
@@ -30,15 +30,19 @@ Read the [release management policy](release-management.md) for the repository b
 - [ ] For a migration rollback drill, restore the matching pre-upgrade backup to a new path and prove the previous application can start against it.
 
 ## CI and integration acceptance
-- [ ] Confirm all required checks pass on the exact release commit.
+- [ ] Confirm all required checks pass on the exact release commit, including Python 3.11/3.12 CI, Backend CI, Defensive Python Scan, and applicable FFmpeg/FFprobe integration jobs.
 - [ ] Run dependency auditing and review all findings.
 - [ ] Exercise provider adapters with mocks and verify ambiguous external outcomes are quarantined rather than blindly retried.
 - [ ] For any real external account, perform a controlled test only after explicit configuration and approval; verify provider-side results manually.
 - [ ] Document known limitations and rollback steps before release.
 
 ## Platform acceptance
-- [ ] Complete the Windows real-device checklist from [PR #101](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/101) on a real Windows machine; record the tested commit SHA and sanitized results.
+- [ ] Complete [Windows Local Acceptance Checklist](windows-acceptance-checklist.md) on a real Windows machine; record the tested commit SHA and sanitized results. The checklist is a manual gate, not a claim of completion.
+- [ ] Confirm the supported-platform statement explicitly. Current automated coverage includes Linux and Windows hosted FFmpeg integration; this is not equivalent to owner-device acceptance.
 - [ ] If macOS is a supported target, run and record a separate macOS acceptance pass. Otherwise state that macOS is not a supported/validated target.
-- [ ] Do not infer Windows or macOS support from Linux CI.
+- [ ] Do not infer Windows or macOS device compatibility from Linux CI or hosted Windows jobs.
 
-Do not mark a release production-ready while any required gate above remains unverified.
+## Active change review
+- [ ] Review [PR #276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276) as a product change owned by the video/workflow maintainers. Confirm exact-head Python, coverage, defensive scan and Linux/Windows FFmpeg jobs, then review the race-fence implementation and regression coverage. Do not treat an open PR as merged release behavior.
+
+Do not mark a release production-ready while any required gate above remains unverified. A hosted CI pass does not replace target-device acceptance, a coordinated restore drill, or owner approval.
