@@ -464,3 +464,50 @@ def test_remote_generation_uses_router_contract_and_never_constructs_local_fallb
     assert response.status_code == 503
     assert response.json()["detail"] == "provider_contract_violation"
     get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "health",
+    [
+        None,
+        object(),
+        type("HealthLike", (), {"available": True, "reason_code": "ready"})(),
+        type("HealthLike", (), {"available": 1, "reason_code": "ready"})(),
+        type("HealthLike", (), {"available": True, "reason_code": ""})(),
+    ],
+)
+def test_provider_health_endpoint_fails_closed_on_invalid_health_contract(
+    tmp_path, monkeypatch, health
+):
+    from mrhub.api.routes import models
+    from mrhub.providers.router import ModelRouter
+    from mrhub.providers.stub import StubProvider
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+
+    class InvalidHealthProvider:
+        descriptor = StubProvider.descriptor
+
+        def health(self, timeout_seconds=2.0):
+            return health
+
+        def generate(self, request):
+            raise AssertionError("health diagnostics must never start inference")
+
+    model_router = ModelRouter()
+    model_router.register_provider(InvalidHealthProvider())
+    monkeypatch.setattr(models, "build_model_router", lambda: model_router)
+
+    response = authenticated_client().post(
+        "/models/providers/health-check", json={"timeout_seconds": 1.0}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["available"] is False
+    assert body["results"][0]["status"] == "unavailable"
+    assert body["results"][0]["reason_code"] == "provider_contract_violation"
+    assert body["inference_started"] is False
+    get_settings.cache_clear()
