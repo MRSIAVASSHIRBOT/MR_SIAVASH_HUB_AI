@@ -416,7 +416,7 @@ def compose_prompt_from_analysis(
         )
     draft_override = None
     if payload.draft_id is not None:
-        draft_override = _timeline_drafts().get(user.user_id, UUID(payload.draft_id))
+        draft_override = _timeline_drafts().get(user.user_id, payload.draft_id)
         if draft_override is None:
             raise HTTPException(status_code=404, detail="Timeline draft not found")
         if draft_override.get("analysis_id") != str(analysis_id):
