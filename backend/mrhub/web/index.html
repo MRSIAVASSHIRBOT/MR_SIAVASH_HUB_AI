@@ -336,7 +336,7 @@
               <h4 id="video-storyboard-heading">ویرایش Storyboard</h4>
               <span class="status-pill status-muted">فقط تدوین Prompt</span>
             </div>
-            <p class="muted">Beatها را ویرایش و نسخه‌دار ذخیره کنید. استفاده از Storyboard فقط Prompt را تغییر می‌دهد؛ هیچ Provider، رندر یا انتشار خودکاری اجرا نمی‌شود.</p>
+            <p class="muted">Beatها راهنمای Prompt هستند و مستقیماً روی پیکسل‌های خروجی اعمال نمی‌شوند. برای رندر محلی، Timeline برش‌مستقیم جداگانه از Edit Specification معتبر تحلیل ساخته و در همان نسخهٔ Draft ذخیره می‌شود؛ هیچ Provider یا انتشار خودکاری اجرا نمی‌شود.</p>
             <div class="form-grid">
               <label>Storyboard ذخیره‌شده
                 <select id="video-storyboard-draft-select" disabled>
@@ -350,6 +350,8 @@
               <button id="video-storyboard-add-beat" class="button button-quiet" type="button" disabled>افزودن Beat</button>
               <button id="video-storyboard-save" class="button button-primary" type="button" disabled>ذخیرهٔ Storyboard</button>
               <button id="video-storyboard-compose" class="button button-secondary" type="button" disabled>ساخت Prompt از Storyboard</button>
+              <button id="video-storyboard-prepare-render-timeline" class="button button-quiet" type="button" disabled>آماده‌سازی Timeline رندر</button>
+              <button id="video-storyboard-render-submit" class="button button-primary" type="button" disabled>رندر از Storyboard ذخیره‌شده</button>
             </div>
             <div id="video-storyboard-beats" class="record-list"></div>
             <p id="video-storyboard-message" class="message" role="status" aria-live="polite"></p>
