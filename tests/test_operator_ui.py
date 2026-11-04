@@ -151,28 +151,21 @@ def test_operator_ui_static_id_selectors_resolve_and_ids_are_unique():
 
 
 
-def test_operator_ui_exposes_saved_storyboard_render_workflow():
+def test_operator_ui_exposes_saved_storyboard_timeline_preparation():
     client = TestClient(create_app())
     page = client.get("/ui/")
     script = client.get("/ui/app.js")
 
     assert page.status_code == 200
     assert script.status_code == 200
-    for element_id in (
-        "video-storyboard-prepare-render-timeline",
-        "video-storyboard-render-submit",
-    ):
-        assert f'id="{element_id}"' in page.text
-
+    assert 'id="video-storyboard-prepare-render-timeline"' in page.text
+    assert 'id="video-render-submit"' in page.text
     assert "/prepare-render-timeline" in script.text
-    assert "/timeline-drafts/" in script.text
-    assert "submitVideoDraftRender" in script.text
-    assert "mrh_video_draft_render_pending_key" in script.text
-    assert "mrh_video_draft_render_pending_fingerprint" in script.text
-    assert "Idempotency-Key" in script.text
-    assert "renderer_timeline_sha256" in script.text
+    assert "prepareSavedVideoDraftForRender" in script.text
     assert '$("#video-storyboard-prepare-render-timeline").addEventListener("click", prepareVideoRenderTimeline)' in script.text
-    assert '$("#video-storyboard-render-submit").addEventListener("click", submitVideoDraftRender)' in script.text
+    assert "renderer_timeline_sha256" in script.text
+    assert "video-storyboard-render-submit" not in page.text
+    assert "submitVideoDraftRender" not in script.text
     assert "function syncStoryboardRenderButtons()" in script.text
 
 
