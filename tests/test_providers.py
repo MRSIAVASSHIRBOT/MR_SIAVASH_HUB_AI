@@ -37,6 +37,22 @@ def test_router_dispatches_only_to_registered_adapter():
     assert response.provider == "stub"
 
 
+def test_router_hydrates_capabilities_from_a_prepopulated_registry():
+    registry = ProviderRegistry()
+    provider = StubProvider()
+    registry.register(provider)
+
+    router = ModelRouter(registry=registry)
+
+    assert router.catalog() == [provider.descriptor]
+    response = router.generate(
+        ModelRequest(prefer_local=True),
+        ProviderRequest(input_text="injected registry"),
+    )
+    assert response.provider == provider.descriptor.provider
+    assert response.model == provider.descriptor.model
+
+
 def test_router_preserves_an_injected_falsey_provider_registry():
     class FalseyProviderRegistry(ProviderRegistry):
         def __bool__(self):
