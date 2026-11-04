@@ -46,9 +46,12 @@ def download_and_register_generation_output(
 
     asset_id, storage_key, output_path = media.new_output_target()
     with media.create_output_sink(storage_key, max_bytes=MAX_OUTPUT_BYTES) as sink:
-        reported_bytes = provider.download_output(
-            result.provider_job_id, sink, max_bytes=MAX_OUTPUT_BYTES
-        )
+        try:
+            reported_bytes = provider.download_output(
+                result.provider_job_id, sink, max_bytes=MAX_OUTPUT_BYTES
+            )
+        except Exception:  # noqa: BLE001 - adapter errors may contain credentials or URLs
+            raise ValueError("provider_output_download_failed") from None
         if (
             type(reported_bytes) is not int
             or reported_bytes <= 0
