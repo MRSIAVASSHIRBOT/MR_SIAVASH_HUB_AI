@@ -95,6 +95,40 @@
     );
   }
 
+  function currentVideoRenderIdentity() {
+    const draft = activeVideoTimelineDraft
+      && activeVideoTimelineDraft.analysis_id === activeVideoAnalysisId
+      && activeVideoTimelineDraft.renderer_timeline
+      && activeVideoTimelineDraft.renderer_timeline_sha256
+      ? activeVideoTimelineDraft
+      : null;
+    return draft
+      ? "draft:" + draft.draft_id + ":v" + draft.version + ":" + draft.renderer_timeline_sha256
+      : activeVideoAnalysisId ? "analysis:" + activeVideoAnalysisId : null;
+  }
+
+  function syncVideoRenderTarget() {
+    if (!activeVideoRenderId || !activeVideoRenderIdentity) return;
+    const renderMayBeActive = !activeVideoRenderStatus
+      || ["accepted", "running"].includes(activeVideoRenderStatus);
+    if (activeVideoRenderIdentity === currentVideoRenderIdentity()) {
+      $("#video-render-refresh").disabled = false;
+      $("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);
+      $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
+      syncStoryboardRenderButtons();
+      return;
+    }
+    $("#video-render-result").replaceChildren();
+    $("#video-render-refresh").disabled = true;
+    $("#video-render-cancel").disabled = true;
+    $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
+    syncStoryboardRenderButtons();
+    message(
+      "#video-render-message",
+      "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است؛ برای مشاهده یا لغو آن، همان Draft را دوباره انتخاب کنید."
+    );
+  }
+
   function message(target, text, kind = "") {
     const node = $(target);
     node.textContent = text || "";
