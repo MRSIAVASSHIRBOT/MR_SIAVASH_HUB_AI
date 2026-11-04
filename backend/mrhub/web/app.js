@@ -84,6 +84,10 @@
     token = null;
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_pending_identity");
+    sessionStorage.removeItem("mrh_video_render_pending_requests");
+    pendingVideoRenderIdentity = null;
+    pendingVideoRenderRequests = Object.create(null);
     activeVideoAnalysisId = null;
     canSubmitVideoRender = false;
     clearVideoRenderState();
