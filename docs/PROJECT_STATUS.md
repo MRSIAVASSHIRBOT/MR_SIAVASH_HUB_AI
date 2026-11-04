@@ -512,26 +512,48 @@ PR #266 merged as `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`. Its exact PR head 
 
 Post-merge CI for this new main commit was queued at the time of this note and must be rechecked before treating the commit as fully validated.
 
-## Verified main update after PR #273 — 2026-11-04 UTC
+## Video storyboard and immutable render integration — 2026-11-04 UTC
 
-**Current main:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`  
-**PR #273 merge commit:** `144b870e54713b3f80196c986b4864d547e301df`  
-**Exact PR head:** `a01f865e907086cdc767a774fb1f2d94b8c57229`
+This is the newest video-workstream hand-off and supersedes the earlier storyboard gap recorded above. The current `main` baseline is `589a038d09271ddbcb2e8c07fbbce983499c882a`.
 
-### Merged video integration
+### Merged into main
 
-- **PR #271** (`e9055ebef035931a36b277b3ce5d76ee58ff60c4`) connects saved owner-scoped Storyboard drafts to text-only prompt composition and the dashboard editor. It validates draft, analysis, asset and exact version. Prompt composition does not execute a provider or renderer.
-- **PR #272** (`45c06562999a46861f89fca1438bd5b7776a850a`) adds the immutable, canonicalized, SHA-256-verified renderer-timeline snapshot value object with owner, analysis and draft-revision binding.
-- **PR #273** (`144b870e54713b3f80196c986b4864d547e301df`) persists immutable owner-scoped render snapshots and links render jobs to them. Migrations 28–29 are now part of main. Draft-aware render submission validates ownership, source membership and measured source duration, then atomically commits snapshot, task, render record and idempotency binding. The Worker consumes the validated immutable snapshot and fails closed; it does not fall back to mutable analysis data.
-- PR #273 route tests cover snapshot handoff, missing/foreign drafts, unsaved renderer timelines and malformed saved timelines. Additional coverage includes snapshot immutability, revision fencing, source bounds and transactional rollback.
+- **PR #271** (merge commit `e9055ebef035931a36b277b3ce5d76ee58ff60c4`) connects owner-scoped saved storyboard drafts to prompt composition and the dashboard editor. It validates draft identity, analysis/asset membership, exact version, beat intervals and source timestamp bounds. Composition remains text-only and returns `execution=not_started`; it does not invoke a provider or renderer.
+- **PR #272** (merge commit `45c06562999a46861f89fca1438bd5b7776a850a`) adds the immutable renderer-timeline snapshot value object with canonical JSON, SHA-256 integrity, owner/analysis/draft-revision identity and revision-sensitive idempotency.
+- Main commit `589a038d09271ddbcb2e8c07fbbce983499c882a` adds the architecture contract clarifying that storyboard beats and cut-only renderer timelines are distinct representations.
 
-### Exact CI evidence
+### PR #273 — merged
 
-The exact PR #273 head passed all six required checks: Python 3.11, Python 3.12, Backend CI, Defensive Python Scan, Linux FFmpeg integration and Windows FFmpeg integration.
+[PR #273](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/273) was merged as `144b870e54713b3f80196c986b4864d547e301df`. Main now contains migrations 28–29, renderer-timeline/hash persistence on drafts, immutable owner-scoped snapshot rows, measured source-duration validation, atomic snapshot + render-task + render-record + idempotency persistence, and Worker consumption of immutable snapshots with fail-closed behavior and no fallback to mutable analysis data.
 
-All four post-merge workflows on main `8f190eeac4b4627692b60ac27e6dd5c12e4557bc` have successful runs: Backend CI (`41844698187`), Video Render Integration (`41844698033`), Defensive Python Scan (`41844698232`) and CI (`41844698029`). Duplicate later push runs were cancelled; the successful complete set above is the evidence used here.
+The merged PR head was `a01f865e907086cdc767a774fb1f2d94b8c57229`; its recorded Python 3.11/3.12, Defensive Python Scan, and Linux/Windows FFmpeg checks passed. A subsequent review found a narrower race: if a snapshot already existed and the draft advanced before a *new* render submission, the existing-snapshot replay path could bypass the current-draft fence. This does not invalidate already accepted immutable renders or their legitimate idempotent retries, but it must be fixed for new submissions.
 
-### Remaining video work
+### PR #276 — post-merge stale-revision fence
+
+PR #276 is the follow-up candidate based on current main. It keeps historical snapshot reads/replays available while requiring every new snapshot-backed render submission to match the exact current owner-scoped draft revision inside the same SQLite transaction. It adds a regression test proving that a stale existing snapshot cannot create a second render after the draft advances. The follow-up remains unmerged until exact-head CI and review pass.
+
+### Remaining video acceptance work
+
+1. Add route-level tests for draft owner isolation, analysis association, malformed saved renderer timelines, response shape and HTTP status mapping.
+2. Add a dashboard action to submit a render from a saved renderer-compatible timeline; do not expose it before the API/Worker path is accepted.
+3. Validate the workflow on the target Windows device with representative source media, draft edits, idempotent replay, cancellation, output registration and download.
+4. Preserve the explicit renderer boundary: local output remains silent and hard-cut-only. Audio, captions, graphics, motion effects, non-cut transitions and AI-generated footage are separate future capabilities.
+5. Keep video-generation provider reconciliation separate from local FFmpeg rendering. PR #266 supplies only the read-only adapter lookup contract; no provider is registered and no end-to-end reconciliation worker is available.
+
+Green CI is not target-device acceptance or production readiness. Whole-product install/upgrade/rollback, database/media/key restore, external-account verification and provider acceptance remain independent release gates.
+
+
+
+## Post-merge stale snapshot submission fence — 2026-11-04 UTC
+
+**Current main:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`  
+**PR #276 merge commit:** `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`
+
+PR #276 is merged. New snapshot-backed render submissions now verify the exact current owner-scoped draft revision inside the same SQLite transaction, regardless of whether the request supplies a snapshot value or an existing `snapshot_id`. The guard checks owner, analysis, asset membership, draft version, canonical renderer timeline and SHA-256. The regression suite also confirms that an already accepted render can still be replayed with its original idempotency key after the draft advances, while a new render using that stale snapshot is rejected without creating another render row.
+
+All exact-head checks on PR #276 passed: Python 3.11/3.12, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg integration. Post-merge checks on the new main SHA were still running at the time of this update: scan and both hosted FFmpeg integrations had passed; Python 3.11, Python 3.12 and the aggregate test workflow were in progress.
+
+### Remaining video acceptance work
 
 1. Add an operator-dashboard action to submit a render from a saved renderer-compatible draft, with explicit version display and idempotency behavior.
 2. Define and implement snapshot retention/cleanup policy, including safe deletion rules and operational tests.
@@ -541,7 +563,7 @@ All four post-merge workflows on main `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`
 
 ### Cross-domain audit checkpoint
 
-The same main audit rechecked the Agent context path. It already enforces owner-scoped retrieval, a bounded serialized evidence envelope, explicit untrusted-evidence framing, citation/provenance propagation and an opt-in owner-reviewed-current freshness filter. Existing tests cover hostile retrieved text, JSON-escaping budget overhead, stale/unreviewed/expired knowledge, bounded candidate scans and both synchronous and queued Agent API paths. No speculative Agent-context code change was made during this pass because the inspected contracts already had direct regression coverage.
+The Agent context path was rechecked on main after PR #275. It preserves owner-scoped retrieval, a bounded serialized evidence envelope, explicit untrusted-evidence framing, citation/provenance propagation and an opt-in owner-reviewed-current freshness filter. Missing content-integrity metadata now fails closed; explicit `true` is retained only when supplied by the repository contract. This verifies the integrity flag's provenance, not the authenticity of the original external publisher.
 
 ### Current inventory and release boundary
 
