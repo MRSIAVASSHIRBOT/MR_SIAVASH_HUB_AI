@@ -13,6 +13,7 @@
   let activeVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_analysis_id");
   let pendingVideoRenderKey = sessionStorage.getItem("mrh_video_render_pending_key");
   let pendingVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_pending_analysis_id");
+  let pendingVideoRenderIdentity = sessionStorage.getItem("mrh_video_render_pending_identity");
   let activeVideoRenderStatus = null;
   let activeVideoRenderAssetId = null;
   let canSubmitVideoRender = false;
@@ -22,6 +23,7 @@
     sessionStorage.removeItem("mrh_video_render_analysis_id");
     sessionStorage.removeItem("mrh_video_render_pending_key");
     sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+    sessionStorage.removeItem("mrh_video_render_pending_identity");
     activeVideoAnalysisId = null;
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
@@ -681,22 +683,46 @@
       message("#video-render-message", "ابتدا تحلیل کامل با Timeline معتبر لازم است.", "error");
       return;
     }
-    if (!pendingVideoRenderKey || pendingVideoRenderAnalysisId !== activeVideoAnalysisId) {
+    const rendererDraft = activeVideoTimelineDraft
+      && activeVideoTimelineDraft.analysis_id === activeVideoAnalysisId
+      && activeVideoTimelineDraft.renderer_timeline
+      && activeVideoTimelineDraft.renderer_timeline_sha256
+      ? activeVideoTimelineDraft
+      : null;
+    const requestIdentity = rendererDraft
+      ? "draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version
+        + ":" + rendererDraft.renderer_timeline_sha256
+      : "analysis:" + activeVideoAnalysisId;
+    if (
+      !pendingVideoRenderKey
+      || pendingVideoRenderAnalysisId !== activeVideoAnalysisId
+      || pendingVideoRenderIdentity !== requestIdentity
+    ) {
       if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
         message("#video-render-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
         return;
       }
       pendingVideoRenderKey = window.crypto.randomUUID();
       pendingVideoRenderAnalysisId = activeVideoAnalysisId;
+      pendingVideoRenderIdentity = requestIdentity;
       sessionStorage.setItem("mrh_video_render_pending_key", pendingVideoRenderKey);
       sessionStorage.setItem("mrh_video_render_pending_analysis_id", pendingVideoRenderAnalysisId);
+      sessionStorage.setItem("mrh_video_render_pending_identity", pendingVideoRenderIdentity);
     }
     const button = $("#video-render-submit");
     button.disabled = true;
-    message("#video-render-message", "در حال ثبت Job رندر در صف Worker…");
+    message(
+      "#video-render-message",
+      rendererDraft
+        ? "در حال ثبت رندر از نسخهٔ ذخیره‌شدهٔ Draft و Snapshot تغییرناپذیر…"
+        : "در حال ثبت رندر از Timeline اصلی تحلیل…"
+    );
     try {
+      const renderEndpoint = rendererDraft
+        ? "/video-intelligence/timeline-drafts/" + encodeURIComponent(rendererDraft.draft_id) + "/renders"
+        : "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/renders";
       const accepted = await api(
-        "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/renders",
+        renderEndpoint,
         { method: "POST", headers: { "Idempotency-Key": pendingVideoRenderKey } }
       );
       activeVideoRenderId = accepted.render_id;
@@ -707,12 +733,16 @@
       pendingVideoRenderAnalysisId = null;
       sessionStorage.removeItem("mrh_video_render_pending_key");
       sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
+      sessionStorage.removeItem("mrh_video_render_pending_identity");
+      pendingVideoRenderIdentity = null;
       renderVideoRender(accepted);
       message(
         "#video-render-message",
         accepted.created === false
           ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
-          : "درخواست ثبت شد. Worker باید فعال باشد تا رندر اجرا شود.",
+          : rendererDraft
+            ? "رندر از نسخهٔ ذخیره‌شدهٔ Draft ثبت شد؛ Worker باید فعال باشد تا اجرا شود."
+            : "رندر از Timeline اصلی تحلیل ثبت شد؛ Storyboardهای Beat-only در این خروجی دخالت ندارند.",
         "success"
       );
       await refreshVideoRender();
@@ -891,6 +921,14 @@
       savedDraft ? savedDraft.beats : selected.beats,
       selected.source_timestamp_limit_seconds
     );
+    const renderSourceNote = $("#video-render-source-note");
+    if (renderSourceNote) {
+      renderSourceNote.textContent = savedDraft && savedDraft.renderer_timeline
+        && savedDraft.renderer_timeline_sha256
+        ? "منبع رندر: نسخهٔ ذخیره‌شدهٔ Draft " + savedDraft.version
+          + "؛ ثبت رندر با Snapshot تغییرناپذیر انجام می‌شود."
+        : "این Storyboard فقط Beatهای Prompt را نگه می‌دارد؛ رندر فعلی از Timeline اصلی تحلیل استفاده می‌کند و ویرایش Beatها برش‌های MP4 را تغییر نمی‌دهد.";
+    }
     $("#video-storyboard-panel").hidden = false;
     $("#video-storyboard-new").disabled = false;
     $("#video-storyboard-save").disabled = false;
