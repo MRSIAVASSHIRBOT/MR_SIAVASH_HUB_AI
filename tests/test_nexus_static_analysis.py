@@ -171,3 +171,22 @@ def test_static_analysis_detects_os_system_and_os_popen_without_aliases():
     )
 
     assert [item["rule_id"] for item in result["findings"]] == ["PY105", "PY105"]
+
+
+def test_static_analysis_detects_requests_tls_verification_disabled_and_import_aliases():
+    result = analyze_python_source(
+        "import requests as http\\n"
+        "from requests import post as send\\n"
+        "http.get(url, verify=False)\\n"
+        "send(url, verify=False)\\n"
+        "http.get(secure_url, verify=True)\\n",
+        path="src/http_client.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert len(findings) == 2
+    assert [item["line"] for item in findings] == [3, 4]
+    assert all(item["severity"] == "high" for item in findings)
+    assert all("TLS certificate verification" in item["message"] for item in findings)
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
