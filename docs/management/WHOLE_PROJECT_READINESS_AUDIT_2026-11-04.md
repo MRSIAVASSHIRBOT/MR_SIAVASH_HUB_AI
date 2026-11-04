@@ -369,8 +369,8 @@ The post-merge workflows listed above validate configured hosted automation only
 
 **Main baseline at review start:** `a87855fbaa27e4d9406656937aad5eb329280280`. This section supersedes older readiness statements that still list the dashboard render-submission action as entirely absent.
 
-### PR #289 — prepare-and-render operator workflow (open)
-PR #289 proposes the missing operator path from a saved storyboard draft to a deterministic local render:
+### PR #289 — prepare-and-render operator workflow (merged)
+PR #289 merged to main as `13c8acebc9c32d36b4d4f3de3f8e08d1866cb959` and adds the operator path from a saved storyboard draft to a deterministic local render:
 - The API derives renderer input from the validated completed-analysis Edit Specification; clients cannot submit arbitrary renderer timeline JSON.
 - The selected draft asset is isolated from other assets in a multi-source analysis.
 - Draft duration and aspect ratio are applied server-side, with actual duration and shortfall retained as explicit output facts.
@@ -379,11 +379,11 @@ PR #289 proposes the missing operator path from a saved storyboard draft to a de
 - Render status, retry identity and cancellation are scoped to the exact analysis/draft revision.
 - Storyboard beats remain prompt guidance; they are not mapped to FFmpeg clip cuts.
 
-The PR remains open and is not part of main. On exact head `5e88d8ecdf650e51e4475e6c78fa6dd98154d40b`, Defensive Python Scan had passed while Python 3.11/3.12, Backend CI and Linux/Windows FFmpeg integration were still in progress. The merge gate is all required checks on the exact current head plus source review.
+All six exact-head checks on PR head `df11bfed5b59797ce5d82a5f5a87364761732a3d` passed: Python 3.11/3.12, Backend CI, Defensive Python Scan, aggregate CI and Linux/Windows FFmpeg integration. Post-merge checks on main commit `13c8acebc9c32d36b4d4f3de3f8e08d1866cb959` were still in progress at the time of this audit.
 
 ### PR #290 — approval-required durable workflow regression (merged)
 PR #290 merged as `592e98221014ca897edfb09285830a6a3b990a76`. This test-only change adds a worker-backed test for a model-proposed high-risk external tool. It verifies that the durable result preserves `approval_required`, the handler is not called and tool-call counters remain zero without explicit approval. All six exact-head checks passed. It does not grant permissions or implement an approval interface. Post-merge checks on main were still running at the time of this audit.
 
 ### Updated acceptance boundaries
-The dashboard's prepare-and-render path is under review in PR #289; do not call it a merged main capability until it is merged. Snapshot retention/cleanup, target-device Windows workflow, real media acceptance, database/media/encryption-key restore, clean install/upgrade/rollback and external-account verification remain open. The renderer remains silent and hard-cut-only. No production-readiness or whole-project-completion claim is made.
+The dashboard's prepare-and-render path is merged to main through PR #289. Hosted CI passed on the exact PR head; post-merge main validation and target-device/browser acceptance remain separate gates. Snapshot retention/cleanup, target-device Windows workflow, real media acceptance, database/media/encryption-key restore, clean install/upgrade/rollback and external-account verification remain open. The renderer remains silent and hard-cut-only. No production-readiness or whole-project-completion claim is made.
 
