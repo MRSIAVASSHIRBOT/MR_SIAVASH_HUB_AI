@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -40,7 +41,7 @@ class AnalysisPromptOptions(BaseModel):
     typography: str | None = Field(default=None, max_length=240)
     sound_design: str | None = Field(default=None, max_length=500)
     final_frame: str | None = Field(default=None, max_length=500)
-    draft_id: str | None = Field(default=None, min_length=36, max_length=36)
+    draft_id: UUID | None = None
     expected_draft_version: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
@@ -177,10 +178,7 @@ def compose_prompts_from_analysis(
                 BeatInstruction(
                     start_seconds=beat.start_seconds,
                     end_seconds=beat.end_seconds,
-                    generation_instruction=(
-                        "Owner-authored creative direction for this scene: "
-                        + beat.generation_instruction
-                    )[:1200],
+                    generation_instruction=beat.generation_instruction,
                     transition_to_next=beat.transition_to_next,
                 )
                 for beat in validated_draft.beats
