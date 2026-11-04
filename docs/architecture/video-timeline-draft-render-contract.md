@@ -1,7 +1,7 @@
 # Video Timeline Draft → Render Contract
 
-**Status:** Proposed implementation contract  
-**Baseline:** `main` at `cbc12c0adf3994f28c49ca3ac4ff447ec029bade` (2026-11-04 UTC)  
+**Status:** Contract adopted; immutable snapshot value object implemented, persistence and worker integration pending  
+**Baseline:** `main` at `45c06562999a46861f89fca1438bd5b7776a850a` (2026-11-04 UTC)  
 **Scope:** Connect owner-scoped editable timeline drafts to durable MP4 render jobs without changing existing render semantics for callers that do not supply a draft.
 
 ## 1. Verified current boundary
@@ -11,6 +11,7 @@ The current implementation has three distinct representations:
 1. `VideoTimelineDraftRepository` persists an owner-scoped, versioned draft containing duration, aspect ratio, and ordered `TimelineBeat` values. A beat contains timing, a generation instruction, transition text, and optional source timestamp/confidence.
 2. `VideoTimeline` is the renderer input. It contains a contiguous `video_track` of `TimelineClip` values, each with source asset identity and source/timeline intervals. The renderer validates this structure before FFmpeg execution.
 3. `VideoRenderJobRepository.submit(owner_user_id, analysis_id, idempotency_key)` currently loads the completed analysis timeline, computes its digest, and creates a durable task. `VideoRenderWorkerHandler` independently reloads that analysis timeline and renders it.
+4. `VideoRenderTimelineSnapshot` is now an immutable in-memory value object. It validates a renderer-compatible `VideoTimeline`, canonicalizes its JSON, computes SHA-256 and an idempotency digest, and binds the snapshot to owner/analysis/draft identity. It is not yet persisted, attached atomically to a render task, or consumed by the worker.
 
 The draft beat schema does **not** contain the source asset identity and source in/out intervals required by `TimelineClip`. Consequently, a draft cannot safely be converted into a renderable `VideoTimeline` by merely replacing duration or aspect-ratio fields. A guessed mapping could render the wrong source segment or silently discard user edits.
 
@@ -31,7 +32,7 @@ Existing beat-only drafts remain readable and editable through their existing AP
 
 ## 3. Immutable render snapshot
 
-Add a new append-only snapshot record associated with each render task. Recommended migration (next available schema version; verify migration sequence immediately before implementation):
+The pure snapshot contract is implemented in `backend/mrhub/video_intelligence/render_snapshot.py` (PR #272). It is currently an in-memory value object only. Add a new append-only snapshot record associated with each render task. Recommended migration (next available schema version; verify migration sequence immediately before implementation):
 
 ```sql
 CREATE TABLE video_render_timeline_snapshots (
