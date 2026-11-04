@@ -42,7 +42,7 @@ jobs:
             echo "::error::Repository secret MR_SIAVASH_HUB_AI is missing or empty."
             exit 1
           fi
-          opencode run --model "$MODEL" --title "Scheduled MR HUB development" "$(cat <<'PROMPT'
+          if opencode run --model "$MODEL" --title "Scheduled MR HUB development" "$(cat <<'PROMPT'
           You are the scheduled engineering agent for MR_SIAVASH_HUB_AI.
 
           Read AGENTS.md and project documentation first. Inspect the repository,
@@ -61,7 +61,16 @@ jobs:
           leave the tree unchanged and explain why. Summarize exact files changed,
           tests and results, risks, and next priority.
           PROMPT
-          )"
+          )" 2>&1 | tee "$RUNNER_TEMP/opencode.log"; then
+            :
+          else
+            agent_status=${PIPESTATUS[0]}
+            if grep -Fq "Rate limit exceeded: free-models-per-day" "$RUNNER_TEMP/opencode.log"; then
+              echo "::warning::The free OpenRouter model quota is exhausted; this scheduled cycle is a no-op and no patch will be published."
+              exit 0
+            fi
+            exit "$agent_status"
+          fi
 
       - name: Detect and package changes
         id: changes
