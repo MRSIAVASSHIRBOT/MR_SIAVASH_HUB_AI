@@ -319,3 +319,52 @@ def test_worker_processes_at_most_one_due_content_schedule_per_cycle():
     assert published.status_code == 200
     published_ids = {item["schedule_id"] for item in published.json()["schedules"]}
     assert {first["schedule_id"], second["schedule_id"]}.issubset(published_ids)
+
+
+
+def test_dispatcher_does_not_report_late_confirmation_after_recovery_quarantine() -> None:
+    client = authenticated_client()
+    schedule = _scheduled_due_post(client)
+    database_path = get_settings().database_path
+
+    class LateConfirmingAdapter:
+        def publish(self, draft: dict[str, object], *, idempotency_key: str) -> PublishReceipt:
+            # Simulate stale-worker recovery winning while the provider request
+            # is still in flight. A late response must not overwrite quarantine.
+            with TaskRepository(database_path)._connection() as connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE content_publish_schedules
+                    SET status = 'unknown_outcome',
+                        last_error_code = 'worker_interrupted',
+                        updated_at = ?
+                    WHERE schedule_id = ? AND status = 'publishing'
+                    """,
+                    (datetime.now(UTC).isoformat(), schedule["schedule_id"]),
+                )
+                assert cursor.rowcount == 1
+            return PublishReceipt(provider_post_id="late-provider-confirmation")
+
+    dispatcher = ContentScheduleDispatcher(
+        database_path, adapters={"telegram": LateConfirmingAdapter()}
+    )
+
+    result = dispatcher.run_once()
+
+    assert result == {
+        "schedule_id": schedule["schedule_id"],
+        "status": "unknown_outcome",
+        "reason_code": "schedule_state_changed_before_confirmation_commit",
+    }
+    with TaskRepository(database_path)._connection() as connection:
+        stored = connection.execute(
+            """
+            SELECT status, provider_post_id, published_at
+            FROM content_publish_schedules WHERE schedule_id = ?
+            """,
+            (schedule["schedule_id"],),
+        ).fetchone()
+    assert stored is not None
+    assert stored["status"] == "unknown_outcome"
+    assert stored["provider_post_id"] is None
+    assert stored["published_at"] is None
