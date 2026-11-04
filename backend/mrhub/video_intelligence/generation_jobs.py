@@ -338,6 +338,8 @@ class VideoGenerationJobRepository:
             not provider_job_id or len(provider_job_id) > 255
         ):
             raise ValueError("Provider job identifier is invalid")
+        if error_code is not None and (not error_code or len(error_code) > 80):
+            raise ValueError("Generation error code is invalid")
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             link = connection.execute(
