@@ -904,21 +904,25 @@
       sessionStorage.setItem("mrh_video_render_pending_requests", JSON.stringify(pendingVideoRenderRequests));
       if (currentVideoRenderIdentity() === requestIdentity) {
         renderVideoRender(accepted);
+        message(
+          "#video-render-message",
+          accepted.created === false
+            ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
+            : rendererDraft
+              ? "رندر از Timeline آماده‌شدهٔ Draft ثبت شد؛ Worker باید فعال باشد."
+              : "رندر از Timeline اصلی تحلیل ثبت شد؛ Beatهای Storyboard برش‌های MP4 را تغییر نمی‌دهند.",
+          "success"
+        );
+        await refreshVideoRender();
       } else {
         syncVideoRenderTarget();
       }
-      message(
-        "#video-render-message",
-        accepted.created === false
-          ? "درخواست قبلی بازیابی شد؛ Job تکراری ساخته نشد."
-          : rendererDraft
-            ? "رندر از Timeline آماده‌شدهٔ Draft ثبت شد؛ Worker باید فعال باشد."
-            : "رندر از Timeline اصلی تحلیل ثبت شد؛ Beatهای Storyboard برش‌های MP4 را تغییر نمی‌دهند.",
-        "success"
-      );
-      await refreshVideoRender();
     } catch (error) {
-      message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
+      if (currentVideoRenderIdentity() === requestIdentity) {
+        message("#video-render-message", error.message + "؛ در تلاش مجدد، کلید idempotency حفظ می‌شود.", "error");
+      } else {
+        syncVideoRenderTarget();
+      }
     } finally {
       if (activeVideoRenderId && activeVideoRenderIdentity) {
         syncVideoRenderTarget();
