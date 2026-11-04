@@ -74,11 +74,12 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 
 ## 6. Defensive Cybersecurity Lab
 
-**Existing foundation:** authenticated offline configuration review with exact asset matching, expiring authorization, file/line evidence, confidence and remediation; offline requirements-manifest inventory without installation or network resolution; and metadata-only audit events.
+**Existing foundation:** authenticated offline configuration review with exact asset matching and expiring authorization; offline requirements-manifest inventory without installation or network resolution; metadata-only audit events; and offline structured JSONL security-log review with bounded parsing, pseudonymized correlation, five focused event rules, and evidence-linked findings. Log review is a triage aid, not a SIEM or attribution system.
 
 **Remaining work**
 - Add vulnerability-database review using an explicitly approved advisory snapshot; no implicit network access.
-- Add log analysis and authorized asset inventory as separate, scope-bound defensive capabilities.
+- Broaden supported normalized event schemas and test representative malformed, oversized, and adversarial log inputs without returning raw identifiers or values.
+- Add authorized asset inventory as a separate, scope-bound defensive capability.
 - Add reproducible finding evidence and remediation reports; keep all operations non-destructive and within the declared authorization scope.
 - Keep exploit deployment, credential collection, stealth, evasion, and malware/payload generation out of scope.
 
