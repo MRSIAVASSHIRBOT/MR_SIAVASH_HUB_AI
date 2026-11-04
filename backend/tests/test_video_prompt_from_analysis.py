@@ -156,6 +156,7 @@ def test_prompt_composition_uses_versioned_storyboard_for_its_asset():
     assert "8-second video in 16:9 aspect ratio" in result["prompt"]
     assert result["duration_seconds"] == 8
     assert result["aspect_ratio"] == "16:9"
+    assert result["source_timestamp_limit_seconds"] == 20.0
     assert result["timeline_draft_id"] == str(draft_id)
     assert result["timeline_draft_version"] == 4
     assert result["beats"][0]["confidence"] == 0.7
