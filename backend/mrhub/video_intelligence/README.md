@@ -142,8 +142,3 @@ The render Worker loads the snapshot referenced by the render job, verifies its 
 Migrations 28 and 29 add renderer-timeline/hash persistence and bind render jobs to immutable snapshot records. Regression coverage includes owner isolation, exact revision binding, source bounds, immutable snapshot storage, route-level handoff, rejection of missing/foreign or malformed drafts, atomic rollback, and stale-snapshot submission fencing. Already accepted idempotent retries remain valid after the draft advances; a new render using the stale snapshot is rejected.
 
 This integration does not make the local renderer a full video editor. Rendering remains silent and hard-cut-only. Audio mixing, captions, graphics, motion effects, non-cut transitions and AI-generated footage remain separate capabilities. The dashboard currently has storyboard editing and prompt composition, but an operator-facing action to submit a render from the saved renderer-compatible draft remains a follow-up. Snapshot retention/cleanup policy and target-device workflow acceptance are also outstanding. No external video-generation provider is registered by this change.
-
-
-## Dashboard draft-render handoff
-
-The dashboard integration proposed in PR #285 selects `POST /video-intelligence/timeline-drafts/{draft_id}/renders` only when the selected saved draft contains a renderer-compatible timeline and its persisted SHA-256. Legacy beat-only Storyboards remain prompt-only and continue to use the analysis-timeline render endpoint. The UI does not infer source clips or source intervals from editorial beats; server-side ownership, version, hash and media-bound checks remain authoritative. PR #285 is pending exact-head validation and review.
