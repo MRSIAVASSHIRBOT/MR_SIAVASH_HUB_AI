@@ -661,6 +661,26 @@ def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
     assert replay_created is False
     assert replay.snapshot_id == stored.snapshot_id
 
+    render_jobs = VideoRenderJobRepository(database)
+    accepted_render, render_created = render_jobs.submit(
+        "owner-a",
+        analysis_id,
+        "snapshot-persistence-render-key",
+        snapshot_id=stored.snapshot_id,
+    )
+    assert render_created is True
+    loaded_render = render_jobs.load_for_worker(UUID(accepted_render["task_id"]))
+    assert loaded_render is not None
+    assert loaded_render[4] == stored.snapshot_id
+    replay_render, replay_render_created = render_jobs.submit(
+        "owner-a",
+        analysis_id,
+        "snapshot-persistence-render-key",
+        snapshot_id=stored.snapshot_id,
+    )
+    assert replay_render_created is False
+    assert replay_render["render_id"] == accepted_render["render_id"]
+
     advanced = draft_repository.update(
         "owner-a",
         UUID(draft["draft_id"]),
