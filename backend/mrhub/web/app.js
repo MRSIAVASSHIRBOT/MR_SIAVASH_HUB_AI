@@ -665,6 +665,7 @@
     $("#video-render-refresh").disabled = !activeVideoRenderId;
     $("#video-render-cancel").disabled = !active;
     $("#video-render-submit").disabled = !canSubmitVideoRender || active;
+    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || active;
   }
 
   async function refreshVideoRender() {
