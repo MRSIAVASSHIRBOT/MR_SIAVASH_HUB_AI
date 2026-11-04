@@ -549,3 +549,28 @@ Green CI is not target-device acceptance or production readiness. Whole-product 
 ## Post-merge stale snapshot submission fence — 2026-11-04 UTC
 
 Current main: `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2`. PR #273 and PR #276 are merged. The current-draft fence now applies to new render submissions through both snapshot-value and snapshot-ID paths, while accepted idempotent retries and read-only historical snapshot lookup remain supported. PR #276 exact-head checks passed; post-merge Python 3.11/3.12 and aggregate test workflows were still running when this note was refreshed.
+
+## Current cross-domain hand-off — 2026-11-04 UTC
+
+**Main baseline at review start:** `a87855fbaa27e4d9406656937aad5eb329280280`. Earlier sections are historical snapshots and should not be read as current state where this section supersedes them.
+
+### Recent mainline integration
+- PR #273 introduced durable immutable renderer snapshots, atomic render acceptance and snapshot-backed Worker execution.
+- PR #276 closed stale-snapshot submission races for both snapshot-value and snapshot-ID requests while preserving accepted idempotent replay.
+- The current main commit also includes the Agent policy-outcome preservation fix. The recorded check set includes successful Python 3.11/3.12, scan, aggregate test and Linux/Windows FFmpeg runs, alongside cancelled duplicate runs. Successful exact-head checks are the evidence; cancelled duplicates are not failures.
+
+### PR #289 — operator-facing saved storyboard prepare-and-render
+PR #289 is open and not merged. It adds an owner-scoped preparation endpoint that validates the completed analysis Edit Specification, restricts the source to the selected draft asset, applies the saved duration/aspect ratio, derives a deterministic cut-only renderer timeline, and persists it with optimistic version fencing. The dashboard exposes an explicit preparation action and submits the prepared revision through the immutable snapshot render route. It also scopes render status, retry identity and cancellation to the exact analysis/draft revision. Preparation does not invoke FFmpeg, a generation provider or publishing. Storyboard beat instructions and transition labels remain prompt/editorial metadata and do not directly define MP4 cuts.
+
+The branch has route, persistence, UI and concurrency regression coverage. At the time of this update, Python/Backend CI and Linux/Windows FFmpeg integration were still running on exact PR head `5e88d8ecdf650e51e4475e6c78fa6dd98154d40b`; Defensive Python Scan had passed. Do not merge until every required exact-head check passes and the complete route/UI diff has been reviewed.
+
+### PR #290 — durable Agent approval-required regression
+PR #290 is an independent test-only change. It verifies that a high-risk external tool proposed by the model returns `approval_required` through the durable worker result, while the handler and tool-call counters remain untouched without explicit approval. The Python tests and scan passed on its exact head; Windows FFmpeg integration was still running at this update. This test-only PR does not introduce an approval UI or grant tool permissions.
+
+### Remaining acceptance gates
+- Snapshot retention/cleanup policy and tests for safe deletion of snapshots referenced by renders.
+- Target Windows device acceptance with real media, prepared draft, render status, cancellation, retry and download.
+- Audio, captions, graphics, motion effects, non-cut transitions and AI-generated footage remain unimplemented; local output remains silent and hard-cut-only.
+- Provider reconciliation is separate from local FFmpeg rendering; no external generation provider is registered.
+- Clean install/upgrade/rollback, database/media/key restore and external-account verification remain independent release gates.
+
