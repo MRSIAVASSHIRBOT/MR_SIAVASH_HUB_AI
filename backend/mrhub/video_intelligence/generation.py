@@ -105,6 +105,20 @@ class VideoGenerationProvider(Protocol):
     def get_status(self, provider_job_id: str) -> VideoGenerationResult:
         ...
 
+    def find_by_idempotency_key(
+        self, idempotency_key: str
+    ) -> VideoGenerationSubmission | None:
+        """Find an earlier submission without creating or replaying a request.
+
+        This lookup is required to recover a provider job reference when submit()
+        may have succeeded remotely but its response was lost. Return a submission
+        only when it is authoritatively associated with this exact key. Return None
+        when no matching submission is currently discoverable; callers must keep
+        the local job in unknown_outcome and must never infer that resubmission is
+        safe. Lookup timeouts and provider errors must raise and remain ambiguous.
+        """
+        ...
+
     def download_output(
         self,
         provider_job_id: str,
