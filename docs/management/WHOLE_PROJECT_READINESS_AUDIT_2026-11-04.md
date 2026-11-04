@@ -161,3 +161,32 @@ This follow-up supersedes the audited-main pointer and inventory count above wit
 - The latest verified product boundary remains unchanged: hosted CI and static tests do not establish browser acceptance, Windows/laptop acceptance, real social/provider account operation, or a successful clean-destination restore drill.
 
 The top-level status ledger review date is being refreshed in the same documentation-maintenance cycle; historical commit evidence remains preserved.
+
+
+## Superseding mainline verification — 2026-11-04 UTC
+
+This section supersedes the earlier live-PR snapshot and audited-main pointer above. Current main at this review is `c5cd2ad114aa558099be6a2cf966df4564031853`.
+
+### Mainline integrations after the prior audit
+
+- **PR #235** (`d69c02544ec84fd40aa3871dd7c04300cf028f3f`) merged bounded Worker-cycle dispatch regression coverage. A cycle executes at most one queued task and dispatches at most one due scheduled content item; later cycles advance without duplicate publication.
+- **PR #237** (`57240dad59c50b7100554f57c5d7adc784428e75`) merged a clean-destination synthetic recovery integration test. It backs up a temporary SQLite database, restores it to a new location, copies the corresponding media directory, verifies media metadata/hash, then validates fresh-app owner login, listing and authenticated byte-for-byte media download. This does not prove production backup handling, protected key recovery, or a real target-device restore.
+- **PR #239** (`c5cd2ad114aa558099be6a2cf966df4564031853`) merged exact handling of OpenRouter's `free-models-per-day` quota response in the scheduled OpenCode workflow. Only that explicit quota failure becomes a warning/no-op; missing credentials and unrelated failures remain non-zero. No paid retry, workflow permission expansion, or automatic publishing path was introduced.
+
+PR #232 was closed without merging and superseded by PR #235. PR #236 and PR #238 were closed as superseded attempts; their corrected final work is represented by PR #237 and PR #239 respectively.
+
+### Exact-head validation
+
+All six required check runs on PR #239 head `ad35941e02732729dc4369d261af43c425a70a7f` completed successfully: Backend CI, Python 3.11 CI, Python 3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows.
+
+The four push-triggered workflows on post-merge main `c5cd2ad114aa558099be6a2cf966df4564031853` were still in progress when this section was drafted. Their final outcomes must be checked before asserting that the current main push workflows are green.
+
+### Updated delivery boundaries
+
+- Worker dispatch now has a bounded-cycle regression test; this does not by itself establish a production scheduler service or live external-account publishing.
+- Clean-destination database/media recovery is now covered with synthetic fixtures in CI; production data restore, protected key/credential recovery, and target-device drills remain open.
+- Free-provider quota exhaustion is now distinguished from genuine scheduled-agent failures; the change does not increase free quota or guarantee that the provider is available.
+- Video output remains silent and hard-cut-only; AI video generation, audio, transitions, captions, graphics and motion effects remain unimplemented unless separately verified by later work.
+- Whole-product acceptance remains incomplete: real Windows target-device/browser acceptance, external provider/social-account verification, package install/upgrade/rollback, protected recovery drills, and owner-approved release gates remain open.
+
+No production-ready or whole-project-complete claim is made.
