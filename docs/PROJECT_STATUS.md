@@ -564,8 +564,8 @@ PR #289 is open and not merged. It adds an owner-scoped preparation endpoint tha
 
 The branch has route, persistence, UI and concurrency regression coverage. At the time of this update, Python/Backend CI and Linux/Windows FFmpeg integration were still running on exact PR head `5e88d8ecdf650e51e4475e6c78fa6dd98154d40b`; Defensive Python Scan had passed. Do not merge until every required exact-head check passes and the complete route/UI diff has been reviewed.
 
-### PR #290 — durable Agent approval-required regression
-PR #290 is an independent test-only change. It verifies that a high-risk external tool proposed by the model returns `approval_required` through the durable worker result, while the handler and tool-call counters remain untouched without explicit approval. The Python tests and scan passed on its exact head; Windows FFmpeg integration was still running at this update. This test-only PR does not introduce an approval UI or grant tool permissions.
+### PR #290 — merged durable Agent approval-required regression
+PR #290 merged as `592e98221014ca897edfb09285830a6a3b990a76`. The test-only regression verifies that a high-risk external tool proposed by the model returns `approval_required` through the durable worker result, while the handler and tool-call counters remain untouched without explicit approval. All six exact-head checks passed, including Python 3.11/3.12, scan, aggregate tests and Linux/Windows FFmpeg integration. It does not introduce an approval UI or grant tool permissions. Post-merge checks on main were still running at this update.
 
 ### Remaining acceptance gates
 - Snapshot retention/cleanup policy and tests for safe deletion of snapshots referenced by renders.
