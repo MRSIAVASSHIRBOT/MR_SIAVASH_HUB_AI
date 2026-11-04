@@ -1,6 +1,6 @@
 # Remaining Work Dependency Map
 
-Reviewed against `main` at `3134fb50d47f7ab87934971a27e2ba90c85263d8` on 2026-11-04.
+Reviewed against `main` at `cbc12c0adf3994f28c49ca3ac4ff447ec029bade` on 2026-11-04.
 
 This plan defines seven remaining delivery workstreams. They are ordered by dependency and risk, not by visual feature appeal. A workstream is complete only when its acceptance gates are met on the exact proposed commit. Green CI alone is not a production-readiness claim.
 
@@ -40,7 +40,7 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 - Complete public HTTPS media-origin configuration, edge controls, Graph API scopes/credentials, and a controlled real-account acceptance test.
 - Add/verify provider-specific reconciliation for ambiguous social-publishing outcomes, schedule deduplication and operator-visible failure states.
 - Connect versioned storyboard drafts to prompt composition; validate owner, analysis, asset and draft version, and return the exact draft revision with the composed prompt. Keep the cut-only FFmpeg renderer on its separate validated `VideoTimeline` contract.
-- Keep external generation providers optional, reviewed, disabled by default and approval-gated; no video-generation adapter is currently registered.
+- Keep external generation providers optional, reviewed, disabled by default and approval-gated; no video-generation adapter is currently registered. PR #266 now requires read-only lookup by idempotency key in every adapter contract, but no end-to-end reconciliation service or adapter is implemented.
 
 **Depends on:** existing asset store, schedule dispatcher, approval policy, and secret configuration.
 
