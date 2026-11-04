@@ -707,7 +707,6 @@
     const renderMayBeActive = Boolean(activeVideoRenderId)
       && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
     $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft;
-    $("#video-storyboard-render-submit").disabled = !hasDraft || renderMayBeActive;
   }
 
   function lockVideoStoryboardControls() {
@@ -726,7 +725,6 @@
     videoStoryboardControlsLocked = true;
     nodes.forEach((node) => { node.disabled = true; });
     $("#video-storyboard-prepare-render-timeline").disabled = true;
-    $("#video-storyboard-render-submit").disabled = true;
     return () => {
       videoStoryboardControlsLocked = false;
       if (!token) return;
@@ -1440,34 +1438,6 @@
       );
     } catch (error) {
       message("#video-storyboard-message", error.message, "error");
-    } finally {
-      unlock();
-    }
-  }
-
-  async function submitVideoDraftRender() {
-    const unlock = lockVideoStoryboardControls();
-    try {
-      const requestAnalysisId = activeVideoAnalysisId;
-      const savedDraft = await persistVideoStoryboardDraft();
-      if (activeVideoAnalysisId !== requestAnalysisId) {
-        throw new Error("تحلیل فعال تغییر کرده است؛ رندر را دوباره از نسخهٔ انتخاب‌شده ثبت کنید.");
-      }
-      const prepared = await prepareSavedVideoDraftForRender(savedDraft);
-      if (
-        activeVideoAnalysisId !== requestAnalysisId
-        || !prepared.renderer_timeline
-        || !prepared.renderer_timeline_sha256
-      ) {
-        throw new Error("Timeline معتبر برای همین نسخهٔ Draft آماده نشد.");
-      }
-      await submitVideoRender();
-    } catch (error) {
-      message(
-        "#video-storyboard-message",
-        error.message + "؛ کلید idempotency نسخهٔ ذخیره‌شده برای تلاش مجدد حفظ می‌شود.",
-        "error"
-      );
     } finally {
       unlock();
     }
