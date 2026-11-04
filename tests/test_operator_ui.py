@@ -224,3 +224,12 @@ def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
     assert "activeVideoRenderAnalysisId = requestAnalysisId" in submit
     assert "currentVideoRenderIdentity() === requestIdentity" in submit
     assert "syncVideoRenderTarget();" in submit
+
+    cancel = script.split("async function cancelVideoRender", 1)[1].split(
+        "async function downloadRenderedVideo", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in cancel
+    assert "const renderIdentity = activeVideoRenderIdentity" in cancel
+    assert "encodeURIComponent(renderId)" in cancel
+    assert "activeVideoRenderId !== renderId" in cancel
+    assert "activeVideoRenderIdentity !== renderIdentity" in cancel
