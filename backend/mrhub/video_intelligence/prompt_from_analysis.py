@@ -161,6 +161,21 @@ def compose_prompts_from_analysis(
             raise PromptCompositionUnavailable("analysis_result_invalid", "Analysis duration is invalid")
         duration_seconds = max(3, min(60, math.ceil(window)))
         aspect_ratio = options.aspect_ratio
+        raw_metadata = technical.get("technical_metadata")
+        source_duration: float | None = None
+        if raw_metadata is not None:
+            if not isinstance(raw_metadata, dict):
+                raise PromptCompositionUnavailable(
+                    "analysis_result_invalid", "Technical metadata is invalid"
+                )
+            raw_source_duration = raw_metadata.get("duration_seconds")
+            if raw_source_duration is not None:
+                if not _is_finite_number(raw_source_duration) or raw_source_duration <= 0:
+                    raise PromptCompositionUnavailable(
+                        "analysis_result_invalid", "Source duration metadata is invalid"
+                    )
+                source_duration = float(raw_source_duration)
+        source_reference_limit = source_duration if source_duration is not None else float(window)
 
         raw_scene_starts = technical.get("scene_start_timestamps", [])
         if not isinstance(raw_scene_starts, list) or len(raw_scene_starts) > 25:
@@ -219,11 +234,11 @@ def compose_prompts_from_analysis(
             for draft_beat in draft_update.beats:
                 if (
                     draft_beat.source_timestamp_seconds is not None
-                    and draft_beat.source_timestamp_seconds >= window
+                    and draft_beat.source_timestamp_seconds >= source_reference_limit
                 ):
                     raise PromptCompositionUnavailable(
                         "timeline_draft_invalid",
-                        "Storyboard source timestamp exceeds the measured analysis window",
+                        "Storyboard source timestamp exceeds the available source duration",
                     )
                 beats.append(BeatInstruction(
                     start_seconds=draft_beat.start_seconds,
