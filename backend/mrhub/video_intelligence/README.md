@@ -44,6 +44,7 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/analyses/{analysis_id}/timeline-drafts` — list the current owner's bounded storyboard drafts for one completed analysis.
 - `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned storyboard draft.
 - `PUT /video-intelligence/timeline-drafts/{draft_id}` — update an owned draft using `expected_version` optimistic concurrency; stale writes return `409`.
+- `POST /video-intelligence/timeline-drafts/{draft_id}/prepare-render-timeline` — build a renderer-compatible cut-only timeline from the completed analysis `edit_specification`, scoped to the draft's selected source asset and exact duration/aspect ratio, then persist it with optimistic draft-version fencing. It does not execute FFmpeg or invoke a provider.
 - `POST /video-intelligence/timeline-drafts/{draft_id}/renders` — freeze the saved renderer-compatible draft revision into an immutable owner-scoped snapshot, then queue a cut-only MP4 render bound to that snapshot; requires an `Idempotency-Key` header. A draft without a saved renderer timeline returns `409`.
 - `POST /video-intelligence/analyses/{analysis_id}/renders` — legacy-compatible path that queues a silent cut-only MP4 render from the completed analysis timeline; requires an `Idempotency-Key` header.
 - `GET /video-intelligence/renders/{render_id}` — retrieve owner-scoped render status and output asset metadata.
@@ -128,3 +129,12 @@ Authenticated owners can cancel an accepted analysis before the worker claims it
 The renderer consumes only a validated `VideoTimeline` and source paths resolved from the authenticated owner's media repository. It does not accept user-supplied FFmpeg arguments, filter fragments, filesystem paths, or remote URLs. The worker acquires the existing task/fencing-token-bound media-use lease for every unique source before FFmpeg starts, retains all leases through FFprobe verification and output registration, and releases them in `finally`. Deletion/transcoding therefore cannot race the render. Stale recovery releases orphaned source-use locks only after the worker lease has expired and the task has exceeded the recovery threshold.
 
 The current renderer is deliberately silent and cut-only. Output is limited to 125 clips, 60 seconds, fixed aspect-ratio presets, 1920-pixel maximum dimension, a 180-second FFmpeg timeout, and the repository's 100 MB output ceiling. A separate FFprobe process must confirm MP4 format, one video stream, expected dimensions, and duration before publication. Failed or cancelled jobs do not publish an asset. This does not constitute Windows or real-media runtime acceptance.
+
+
+## Saved storyboard to local render
+
+The operator can now save an editable storyboard, prepare a renderer timeline, and explicitly submit a local MP4 render from that exact draft revision. Timeline preparation is a separate authenticated API action: it loads the completed analysis's validated `EditSpecification`, narrows the source set to the draft's selected asset, applies the draft's requested duration and aspect ratio, builds a validated contiguous `VideoTimeline`, and persists it through the draft repository's optimistic version check. A concurrent draft edit returns a conflict rather than overwriting the newer version.
+
+Storyboard `TimelineBeat` instructions remain prompt guidance. They are not translated into FFmpeg transitions or visual effects. The renderer timeline is derived from measured analysis/source evidence and remains silent and hard-cut-only. If the selected source cannot satisfy the requested duration, the timeline reports its measured shortfall; the UI must show the actual duration rather than implying the requested duration was achieved.
+
+The UI submits the prepared draft through `POST /timeline-drafts/{draft_id}/renders` with an idempotency key scoped to the exact draft ID/version. It uses the existing owner-scoped render status, cancellation and download controls. No video-generation provider is invoked by timeline preparation or local rendering.
