@@ -959,12 +959,16 @@
     const matching = videoTimelineDrafts.filter((draft) => draft.asset_id === assetId);
     select.replaceChildren();
     if (!matching.length) {
-      select.append(element("option", "برای این ویدئو Storyboard ذخیره‌شده‌ای وجود ندارد"));
+      const emptyOption = element("option", "برای این ویدئو Storyboard ذخیره‌شده‌ای وجود ندارد");
+      emptyOption.value = "";
+      select.append(emptyOption);
       select.value = "";
       select.disabled = true;
       return;
     }
-    select.append(element("option", "Storyboard ذخیره‌شده را انتخاب کنید"));
+    const placeholder = element("option", "Storyboard ذخیره‌شده را انتخاب کنید");
+    placeholder.value = "";
+    select.append(placeholder);
     for (const draft of matching) {
       const option = element("option", "نسخه " + draft.version + " · " + draft.updated_at);
       option.value = draft.draft_id;
