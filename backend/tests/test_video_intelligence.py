@@ -574,3 +574,90 @@ def test_draft_render_api_freezes_exact_saved_revision_and_queues_snapshot(
             "draft-render-after-concurrent-edit",
         )
     assert error.value.status_code == 409
+
+def test_prepare_draft_render_timeline_is_idempotent_for_verified_existing_timeline(
+    monkeypatch,
+):
+    import mrhub.api.routes.video_intelligence as routes
+
+    from mrhub.video_intelligence.edit_spec import EditSpecification
+    from mrhub.video_intelligence.timeline import build_video_timeline
+
+    analysis_id = UUID("b72c0b71-b1e0-42f2-8f7a-8b98bcb2d019")
+    draft_id = UUID("b1b0f2c0-8f2c-4c7a-9e1a-3b5b4c8d7e10")
+    selected_asset = "asset-selected"
+    specification = {
+        "schema_version": "1.0",
+        "mode": "faithful_style_reconstruction",
+        "style_strategy": "preserve_reference",
+        "output_aspect_ratio": "9:16",
+        "requested_output_duration_seconds": 10,
+        "sources": [{
+            "asset_id": selected_asset,
+            "source_duration_seconds": 8.0,
+            "scene_start_timestamps": [0.0, 4.0],
+        }],
+        "brand_guidance": {"status": "not_provided"},
+        "custom_edit_guidance": {"status": "none"},
+        "audio_plan_status": "not_requested",
+    }
+    renderer_timeline = build_video_timeline(
+        EditSpecification.model_validate({
+            **specification,
+            "requested_output_duration_seconds": 6,
+            "output_aspect_ratio": "16:9",
+        })
+    )
+    snapshot = VideoRenderTimelineSnapshot.create(
+        owner_user_id="owner-1",
+        analysis_id=analysis_id,
+        draft_id=draft_id,
+        draft_version=4,
+        timeline=renderer_timeline,
+        analysis_source_asset_ids=[selected_asset],
+    )
+    draft = {
+        "draft_id": str(draft_id),
+        "analysis_id": str(analysis_id),
+        "asset_id": selected_asset,
+        "duration_seconds": 6,
+        "aspect_ratio": "16:9",
+        "beats": [{
+            "start_seconds": 0,
+            "end_seconds": 6,
+            "generation_instruction": "Keep the source direction",
+        }],
+        "version": 4,
+        "renderer_timeline": renderer_timeline.model_dump(mode="json"),
+        "renderer_timeline_sha256": snapshot.timeline_sha256,
+    }
+    analysis = {
+        "status": "completed",
+        "result": {"edit_specification": specification},
+    }
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            assert owner_user_id == "owner-1"
+            assert requested_draft_id == draft_id
+            return draft
+
+        def update(self, *_args, **_kwargs):
+            raise AssertionError("An unchanged verified render timeline must not bump the draft")
+
+    class Analyses:
+        def get(self, owner_user_id, requested_analysis_id):
+            assert owner_user_id == "owner-1"
+            assert requested_analysis_id == analysis_id
+            return analysis
+
+    monkeypatch.setattr(routes, "_timeline_drafts", Drafts)
+    monkeypatch.setattr(routes, "_analysis_jobs", Analyses)
+
+    result = prepare_video_render_timeline(
+        draft_id,
+        AuthenticatedUser(user_id="owner-1", username="owner"),
+    )
+
+    assert result["version"] == 4
+    assert result["renderer_timeline_sha256"] == snapshot.timeline_sha256
