@@ -225,7 +225,6 @@ class DenyEchoPolicy:
 
 
 def test_agent_plan_uses_the_tool_registry_policy_authority():
-    from mrhub.security.policy import PolicyEngine
     from mrhub.tools.registry import ToolRegistry
 
     policy = DenyEchoPolicy()
