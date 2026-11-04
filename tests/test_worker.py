@@ -6,7 +6,7 @@ from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.idempotency import IdempotencyRepository
-from mrhub.jobs.leases import WorkerLease
+from mrhub.jobs.leases import LeaseManager, WorkerLease
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
 
@@ -15,6 +15,22 @@ def make_worker(tmp_path, clock=None):
     repository = TaskRepository(tmp_path / "worker.sqlite3")
     repository.initialize()
     return repository, WorkerEngine(repository, clock=clock)
+
+
+def start_task_linked_workflow(repository, recovery, task, workflow_id, *, active_step=False):
+    """Prepare a task-backed workflow under a real lease for recovery tests."""
+    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
+    lease = LeaseManager(repository.database_path).acquire(
+        str(task.task_id), "worker-recovery-test"
+    )
+    assert lease is not None
+    recovery.start_run(workflow_id, lease=lease)
+    attempt = (
+        recovery.start_step(workflow_id, 1, lease=lease)
+        if active_step
+        else None
+    )
+    return lease, attempt
 
 
 def test_worker_executes_only_registered_echo_handler(tmp_path):
@@ -429,13 +445,17 @@ def test_worker_recovery_marks_interrupted_workflow_for_reconciliation(tmp_path)
         [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
         task=task,
     )
-    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
-    recovery.start_run(workflow_id)
-    recovery.start_step(workflow_id, 1)
+    _lease, _attempt = start_task_linked_workflow(
+        repository, recovery, task, workflow_id, active_step=True
+    )
     with repository._connection() as connection:
         connection.execute(
-            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
-            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+            "UPDATE worker_executions SET started_at = ?, lease_expires_at = ? WHERE task_id = ?",
+            (
+                "2000-01-01T00:00:00+00:00",
+                "2000-01-01T00:00:01+00:00",
+                str(task.task_id),
+            ),
         )
 
     assert WorkerEngine(repository).run_once() is None
@@ -458,12 +478,17 @@ def test_worker_recovery_pauses_workflow_interrupted_before_first_step(tmp_path)
         [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
         task=task,
     )
-    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
-    recovery.start_run(workflow_id)
+    _lease, _attempt = start_task_linked_workflow(
+        repository, recovery, task, workflow_id
+    )
     with repository._connection() as connection:
         connection.execute(
-            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
-            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+            "UPDATE worker_executions SET started_at = ?, lease_expires_at = ? WHERE task_id = ?",
+            (
+                "2000-01-01T00:00:00+00:00",
+                "2000-01-01T00:00:01+00:00",
+                str(task.task_id),
+            ),
         )
 
     assert WorkerEngine(repository).run_once() is None
@@ -485,15 +510,20 @@ def test_worker_recovery_finishes_job_when_workflow_already_succeeded(tmp_path):
         [{"step_number": 1, "kind": "tool", "name": "text.echo"}],
         task=task,
     )
-    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
-    recovery.start_run(workflow_id)
-    attempt = recovery.start_step(workflow_id, 1)
-    recovery.complete_step(workflow_id, attempt, "d" * 64)
-    recovery.finish_run(workflow_id, "succeeded")
+    lease, attempt = start_task_linked_workflow(
+        repository, recovery, task, workflow_id, active_step=True
+    )
+    assert attempt is not None
+    recovery.complete_step(workflow_id, attempt, "d" * 64, lease=lease)
+    recovery.finish_run(workflow_id, "succeeded", lease=lease)
     with repository._connection() as connection:
         connection.execute(
-            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
-            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+            "UPDATE worker_executions SET started_at = ?, lease_expires_at = ? WHERE task_id = ?",
+            (
+                "2000-01-01T00:00:00+00:00",
+                "2000-01-01T00:00:01+00:00",
+                str(task.task_id),
+            ),
         )
 
     assert WorkerEngine(repository).run_once() is None
@@ -512,13 +542,17 @@ def test_worker_recovery_marks_safe_interrupted_step_retryable(tmp_path):
         [{"step_number": 1, "kind": "safe_tool", "name": "text.echo"}],
         task=task,
     )
-    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
-    recovery.start_run(workflow_id)
-    recovery.start_step(workflow_id, 1)
+    _lease, _attempt = start_task_linked_workflow(
+        repository, recovery, task, workflow_id, active_step=True
+    )
     with repository._connection() as connection:
         connection.execute(
-            "UPDATE worker_executions SET started_at = ? WHERE task_id = ?",
-            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+            "UPDATE worker_executions SET started_at = ?, lease_expires_at = ? WHERE task_id = ?",
+            (
+                "2000-01-01T00:00:00+00:00",
+                "2000-01-01T00:00:01+00:00",
+                str(task.task_id),
+            ),
         )
 
     assert WorkerEngine(repository).run_once() is None
@@ -564,16 +598,22 @@ def test_worker_recovers_crashed_cancellation_when_no_side_effect_is_uncertain(t
         task=task,
         owner_user_id="owner-a",
     )
-    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
-    recovery.start_run(workflow_id)
+    _lease, _attempt = start_task_linked_workflow(
+        repository, recovery, task, workflow_id
+    )
     with repository._connection() as connection:
         connection.execute(
             """
             UPDATE worker_executions
-            SET started_at = ?, error_code = 'cancellation_requested'
+            SET started_at = ?, lease_expires_at = ?,
+                error_code = 'cancellation_requested'
             WHERE task_id = ?
             """,
-            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+            (
+                "2000-01-01T00:00:00+00:00",
+                "2000-01-01T00:00:01+00:00",
+                str(task.task_id),
+            ),
         )
 
     assert WorkerEngine(repository).run_once() is None
@@ -597,17 +637,22 @@ def test_worker_recovers_crashed_cancellation_with_unknown_external_outcome(tmp_
         task=task,
         owner_user_id="owner-a",
     )
-    JobEngine(repository).transition(task.task_id, TaskStatus.RUNNING)
-    recovery.start_run(workflow_id)
-    recovery.start_step(workflow_id, 1)
+    _lease, _attempt = start_task_linked_workflow(
+        repository, recovery, task, workflow_id, active_step=True
+    )
     with repository._connection() as connection:
         connection.execute(
             """
             UPDATE worker_executions
-            SET started_at = ?, error_code = 'cancellation_requested'
+            SET started_at = ?, lease_expires_at = ?,
+                error_code = 'cancellation_requested'
             WHERE task_id = ?
             """,
-            ("2000-01-01T00:00:00+00:00", str(task.task_id)),
+            (
+                "2000-01-01T00:00:00+00:00",
+                "2000-01-01T00:00:01+00:00",
+                str(task.task_id),
+            ),
         )
 
     assert WorkerEngine(repository).run_once() is None
