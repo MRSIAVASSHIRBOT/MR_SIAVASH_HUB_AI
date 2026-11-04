@@ -34,13 +34,13 @@ class AgentLoopRequest(BaseModel):
 
     goal: str = Field(min_length=1, max_length=1_000)
     retrieved_context: str = Field(default="", max_length=MAX_CONTEXT_CHARS)
-    prefer_local: bool = False
-    max_turns: int = Field(default=MAX_TURNS, ge=1, le=MAX_TURNS)
-    max_output_tokens: int = Field(default=512, ge=1, le=1_024)
-    max_runtime_seconds: int = Field(default=30, ge=1, le=MAX_RUNTIME_SECONDS)
-    max_tool_calls: int = Field(default=MAX_TOOL_CALLS, ge=0, le=MAX_TOOL_CALLS)
+    prefer_local: bool = Field(default=False, strict=True)
+    max_turns: int = Field(default=MAX_TURNS, ge=1, le=MAX_TURNS, strict=True)
+    max_output_tokens: int = Field(default=512, ge=1, le=1_024, strict=True)
+    max_runtime_seconds: int = Field(default=30, ge=1, le=MAX_RUNTIME_SECONDS, strict=True)
+    max_tool_calls: int = Field(default=MAX_TOOL_CALLS, ge=0, le=MAX_TOOL_CALLS, strict=True)
     max_total_input_chars: int = Field(
-        default=MAX_TOTAL_INPUT_CHARS, ge=1, le=MAX_TOTAL_INPUT_CHARS
+        default=MAX_TOTAL_INPUT_CHARS, ge=1, le=MAX_TOTAL_INPUT_CHARS, strict=True
     )
     specialist_instructions: str = Field(default="", max_length=1_200)
 
