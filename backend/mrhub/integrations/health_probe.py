@@ -113,9 +113,11 @@ async def probe_loopback_service(
                     "http_status": response.status_code,
                 }
             received = 0
-            # One-byte chunks make the configured limit strict: no oversized
-            # chunk is buffered before the limit check can stop the stream.
-            async for chunk in response.aiter_bytes(chunk_size=1):
+            # Bound each yielded chunk to at most the remaining allowance plus
+            # one byte, avoiding per-byte iteration while detecting overflow.
+            async for chunk in response.aiter_bytes(
+                chunk_size=min(1024, max_response_bytes + 1)
+            ):
                 received += len(chunk)
                 if received > max_response_bytes:
                     return {
