@@ -9,7 +9,6 @@ from mrhub.jobs.leases import WorkerLease
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
-    VideoGenerationSubmissionError,
 )
 from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
 from mrhub.video_intelligence.generation_registry import video_generation_registry
