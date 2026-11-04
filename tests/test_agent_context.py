@@ -44,6 +44,7 @@ def test_agent_context_assembles_owner_memory_and_cited_knowledge_as_untrusted_e
     knowledge = next(item for item in body["passages"] if item["kind"] == "knowledge")
     assert knowledge["reference"].startswith("knowledge://documents/")
     assert knowledge["trust_classification"] == "user_supplied"
+    assert knowledge["content_integrity_verified"] is True
 
 
 def test_agent_context_can_disable_memory_and_knowledge_independently():
