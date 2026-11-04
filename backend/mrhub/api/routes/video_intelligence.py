@@ -217,8 +217,6 @@ def submit_video_generation(
     }
 
 
-
-
 @router.get("/generations/{generation_id}")
 def get_video_generation_status(
     generation_id: UUID,
