@@ -785,3 +785,82 @@ def test_prepare_draft_render_timeline_returns_conflict_after_concurrent_edit(
     assert error.value.status_code == 409
     assert state["update_calls"] == 1
     assert state["draft"]["version"] == 8
+
+
+def test_video_generation_status_is_owner_scoped_and_exposes_only_bounded_metadata(
+    monkeypatch,
+):
+    import mrhub.api.routes.video_intelligence as routes
+
+    generation_id = UUID("9a0a7e7b-49d7-4b92-8d0f-2b2d6f4a1a01")
+    stored = {
+        "generation_id": str(generation_id),
+        "source_analysis_id": "analysis-1",
+        "provider": "local",
+        "model": "renderer-v1",
+        "status": "succeeded",
+        "progress_percent": 100,
+        "output_asset_id": "asset-1",
+        "output_bytes": 4096,
+        "output_duration_seconds": 8.0,
+        "output_width": 720,
+        "output_height": 1280,
+        "error_code": None,
+        "created_at": "2026-11-04T12:00:00+00:00",
+        "updated_at": "2026-11-04T12:01:00+00:00",
+        "provider_job_id": "must-not-be-exposed",
+        "private_payload": "must-not-be-exposed",
+    }
+
+    class Jobs:
+        def __init__(self, _database_path):
+            pass
+
+        def get(self, owner_user_id, requested_generation_id):
+            assert owner_user_id == "owner-1"
+            assert requested_generation_id == generation_id
+            return stored
+
+    monkeypatch.setattr(routes, "VideoGenerationJobRepository", Jobs)
+
+    result = routes.get_video_generation_status(
+        generation_id,
+        AuthenticatedUser(user_id="owner-1", username="owner"),
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["output"] == {
+        "asset_id": "asset-1",
+        "bytes": 4096,
+        "duration_seconds": 8.0,
+        "width": 720,
+        "height": 1280,
+    }
+    assert "provider_job_id" not in result
+    assert "private_payload" not in result
+
+
+def test_video_generation_status_hides_missing_and_foreign_jobs(monkeypatch):
+    import mrhub.api.routes.video_intelligence as routes
+
+    generation_id = UUID("9a0a7e7b-49d7-4b92-8d0f-2b2d6f4a1a01")
+
+    class Jobs:
+        def __init__(self, _database_path):
+            pass
+
+        def get(self, owner_user_id, requested_generation_id):
+            assert owner_user_id == "owner-1"
+            assert requested_generation_id == generation_id
+            return None
+
+    monkeypatch.setattr(routes, "VideoGenerationJobRepository", Jobs)
+
+    with pytest.raises(HTTPException) as error:
+        routes.get_video_generation_status(
+            generation_id,
+            AuthenticatedUser(user_id="owner-1", username="owner"),
+        )
+
+    assert error.value.status_code == 404
+    assert error.value.detail == "Video generation not found"
