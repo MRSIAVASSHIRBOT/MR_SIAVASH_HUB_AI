@@ -420,3 +420,26 @@ All six exact-head checks on PR #239 completed successfully: Backend CI, Python 
 ### Current acceptance boundary
 
 The synthetic recovery test improves automated confidence but does not establish a real target-machine restore, protected encryption-key recovery, or operational recovery of production data. Target-device/browser acceptance, real external-provider/social-account acceptance, packaging/install/upgrade/rollback drills, and whole-product release approval remain open. No production-ready or whole-project-complete claim is made.
+
+
+## Follow-up verification — 2026-11-04 UTC
+
+This is the newest status snapshot at main commit `c454f4d27c62f76ff6bef08362745eef3096eb2e`; it supersedes earlier snapshots in this file.
+
+### Additional merged work
+
+- **PR #241** — NEXUS static-analysis rule `PY106` detects literal `verify=False` in common Requests calls, including straightforward module and imported-function aliases. Merge commit: `0ae2a4fa3702d87d1d2f1dc1f3db7c811eb29f1f`.
+- **PR #242** — extends `PY106` to common HTTPX request helpers and `Client`/`AsyncClient` constructors, with module/class alias tests and a `verify=True` negative control. Merge commit: `d54ed95c83aab1ab7a97278005c8ceee34b89036`.
+- **PR #243** — strengthens the MCP/ToolRegistry/PolicyEngine boundary tests: an external-side-effect denial and missing permission grant both prove that the tool handler is never called. Merge commit: `c454f4d27c62f76ff6bef08362745eef3096eb2e`.
+
+All exact-head checks passed for PR #242 and PR #243, including Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration.
+
+The push-triggered main workflows for `c454f4d27c62f76ff6bef08362745eef3096eb2e` were queued or running when this snapshot was prepared. Verify their final conclusions before claiming post-merge main CI is green.
+
+### Security analysis limitations
+
+PY106 is a targeted AST heuristic for literal `verify=False` on supported Requests and HTTPX call forms. It does not cover dynamic values, all HTTP clients, nested configuration patterns, or every TLS weakness. Findings are advisory; no finding is not proof of security.
+
+### Remaining acceptance work
+
+Continue coordinated integration across provider routing, workflow execution/recovery, content automation, video generation/rendering, MCP lifecycle, package/release validation and discovery provenance. Real target-device acceptance, live external-account verification, production restore/key-recovery drills, and install/upgrade/rollback testing remain open. No whole-product completion or production-readiness claim is made.
