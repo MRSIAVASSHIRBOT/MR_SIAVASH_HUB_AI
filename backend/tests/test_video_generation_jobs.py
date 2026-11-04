@@ -600,10 +600,7 @@ def test_generation_reconciliation_requeues_original_task_without_duplicate_link
     assert execution["error_code"] is None
     assert execution["finished_at"] is None
 
-    replay, replay_created = (
-        repository.enqueue_reconciliation("owner-a", generation_id),
-        False,
-    )
+    replay = repository.enqueue_reconciliation("owner-a", generation_id)
     assert replay["task_id"] == str(task_id)
     assert replay["created"] is False
 
