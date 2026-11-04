@@ -2,9 +2,10 @@ import json
 import subprocess
 from uuid import UUID
 
-import pytest
 from fastapi import Response
 from pydantic import ValidationError
+
+import pytest
 
 from mrhub.api.routes.video_intelligence import (
     PromptCompositionRequest,
