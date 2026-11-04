@@ -351,7 +351,7 @@ def test_prepare_draft_render_timeline_builds_selected_source_and_fences_version
     }
     specification = {
         "schema_version": "1.0",
-        "mode": "faithful",
+        "mode": "faithful_style_reconstruction",
         "style_strategy": "preserve_reference",
         "output_aspect_ratio": "9:16",
         "requested_output_duration_seconds": 10,
