@@ -190,3 +190,24 @@ The four push-triggered workflows on post-merge main `c5cd2ad114aa558099be6a2cf9
 - Whole-product acceptance remains incomplete: real Windows target-device/browser acceptance, external provider/social-account verification, package install/upgrade/rollback, protected recovery drills, and owner-approved release gates remain open.
 
 No production-ready or whole-project-complete claim is made.
+
+
+## Current-main follow-up — 2026-11-04 UTC
+
+Latest main snapshot: `c454f4d27c62f76ff6bef08362745eef3096eb2e`. This section supersedes earlier PR and main-SHA snapshots in this audit.
+
+### Merged integrations
+
+- **PR #241** (`0ae2a4fa3702d87d1d2f1dc1f3db7c811eb29f1f`): introduced NEXUS PY106 for literal Requests `verify=False` calls with import alias handling.
+- **PR #242** (`d54ed95c83aab1ab7a97278005c8ceee34b89036`): extended PY106 to common HTTPX request methods and Client/AsyncClient constructors, with alias and positive-control tests.
+- **PR #243** (`c454f4d27c62f76ff6bef08362745eef3096eb2e`): strengthened MCP integration tests so external side-effect and missing-permission denials explicitly assert that handlers are not executed.
+
+The exact-head checks for PR #242 and PR #243 all passed: Backend CI, Python 3.11 and 3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows.
+
+Main push-triggered workflows for `c454f4d27c62f76ff6bef08362745eef3096eb2e` were queued or running when this audit entry was drafted. Do not infer success from PR checks; verify the main-branch workflow conclusions separately.
+
+### Updated cross-system boundary
+
+NEXUS PY106 is still a narrow AST heuristic: literal `verify=False` on supported Requests/HTTPX APIs only. Dynamic values, other clients and nested configuration paths are outside its current coverage. MCP policy tests now prove denied handlers are not entered for the covered cases; this does not replace a complete connector permission lifecycle review or production external-side-effect acceptance.
+
+The earlier limitations remain: synthetic recovery tests are not production restore drills; video rendering remains short of a full editor and provider-backed generation acceptance; external social-account publishing, target-device/browser acceptance, package installation/upgrade/rollback and discovery provenance remain open. No production-ready or whole-project-complete claim is made.
