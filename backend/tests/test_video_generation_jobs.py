@@ -864,3 +864,66 @@ def test_interrupted_provider_submission_recovers_to_unknown_outcome_without_pur
             (str(generation_id),),
         ).fetchone()
     assert payload is not None
+
+
+@pytest.mark.parametrize("lookup_first", [False, True])
+def test_provider_cancellation_uses_distinct_terminal_error_code(
+    lookup_first: bool,
+):
+    from threading import Event
+    from types import SimpleNamespace
+
+    from mrhub.jobs.leases import WorkerLease
+    from mrhub.video_intelligence.generation_worker import VideoGenerationWorkerHandler
+
+    generation_id = uuid4()
+    calls = []
+
+    class Jobs:
+        def transition_under_lease(self, owner, requested_id, target, **kwargs):
+            calls.append((owner, requested_id, target, kwargs))
+            return {"status": target}
+
+    class Provider:
+        def find_by_idempotency_key(self, key):
+            assert key == str(generation_id)
+            return VideoGenerationSubmission(
+                provider="local",
+                model="renderer-v1",
+                provider_job_id="provider-cancelled",
+                status=GenerationStatus.CANCELLED,
+            )
+
+        def get_status(self, provider_job_id):
+            assert provider_job_id == "provider-cancelled"
+            return VideoGenerationResult(
+                provider="local",
+                model="renderer-v1",
+                provider_job_id=provider_job_id,
+                status=GenerationStatus.CANCELLED,
+            )
+
+    handler = VideoGenerationWorkerHandler.__new__(VideoGenerationWorkerHandler)
+    handler.jobs = Jobs()
+    provider = Provider()
+    lease = WorkerLease(
+        task_id=str(uuid4()),
+        owner="worker-a",
+        fencing_token=1,
+        expires_at="2099-01-01T00:00:00+00:00",
+    )
+    result = handler._reconcile(
+        provider,
+        "local",
+        "renderer-v1",
+        "owner-a",
+        generation_id,
+        None if lookup_first else "provider-cancelled",
+        lease,
+        Event(),
+    )
+
+    assert result["status"] == "cancelled"
+    assert len(calls) == 1
+    assert calls[0][2] == "cancelled"
+    assert calls[0][3]["error_code"] == "provider_generation_cancelled"
