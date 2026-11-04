@@ -82,6 +82,13 @@ class EditSpecification(BaseModel):
     )
     render_status: Literal["not_implemented"] = "not_implemented"
 
+    @model_validator(mode="after")
+    def validate_unique_source_assets(self) -> EditSpecification:
+        asset_ids = [source.asset_id for source in self.sources]
+        if len(asset_ids) != len(set(asset_ids)):
+            raise ValueError("Edit specification source asset IDs must be unique")
+        return self
+
 
 def build_edit_specification(
     request: VideoAnalysisRequest,
