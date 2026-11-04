@@ -43,7 +43,6 @@ from mrhub.video_intelligence.render_jobs import (
 )
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
-from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
