@@ -83,14 +83,12 @@
       $("#video-render-refresh").disabled = false;
       $("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);
       $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
-      $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || renderMayBeActive;
       return;
     }
     $("#video-render-result").replaceChildren();
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
     $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
-    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || renderMayBeActive;
     message(
       "#video-render-message",
       "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است؛ برای مشاهده یا لغو آن، همان Draft را دوباره انتخاب کنید."
@@ -672,7 +670,6 @@
     const renderMayBeActive = Boolean(activeVideoRenderId)
       && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
     $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft;
-    $("#video-storyboard-render-submit").disabled = !hasDraft || renderMayBeActive;
   }
 
   function clearVideoRenderState() {
@@ -694,7 +691,6 @@
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
     $("#video-render-submit").disabled = !canSubmitVideoRender;
-    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft;
     $("#video-storyboard-prepare-render-timeline").disabled = !activeVideoTimelineDraft;
     message("#video-render-message", "");
   }
@@ -733,7 +729,6 @@
     $("#video-render-refresh").disabled = !activeVideoRenderId;
     $("#video-render-cancel").disabled = !active;
     $("#video-render-submit").disabled = !canSubmitVideoRender || active;
-    $("#video-storyboard-render-submit").disabled = !activeVideoTimelineDraft || active;
     syncVideoRenderTarget();
   }
 
@@ -1371,62 +1366,6 @@
     }
   }
 
-  async function submitVideoDraftRender() {
-    const button = $("#video-storyboard-render-submit");
-    button.disabled = true;
-    try {
-      let saved = await persistVideoStoryboardDraft();
-      if (!saved.renderer_timeline_sha256) {
-        saved = await prepareSavedVideoDraftForRender(saved);
-      }
-      const fingerprint = saved.draft_id + ":" + saved.version;
-      if (
-        !pendingVideoDraftRenderKey
-        || pendingVideoDraftRenderFingerprint !== fingerprint
-      ) {
-        if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
-          throw new Error("مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.");
-        }
-        pendingVideoDraftRenderKey = window.crypto.randomUUID();
-        pendingVideoDraftRenderFingerprint = fingerprint;
-        sessionStorage.setItem("mrh_video_draft_render_pending_key", pendingVideoDraftRenderKey);
-        sessionStorage.setItem("mrh_video_draft_render_pending_fingerprint", fingerprint);
-      }
-      const accepted = await api(
-        "/video-intelligence/timeline-drafts/" + encodeURIComponent(saved.draft_id) + "/renders",
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": pendingVideoDraftRenderKey },
-        }
-      );
-      activeVideoRenderId = accepted.render_id;
-      activeVideoRenderAnalysisId = activeVideoAnalysisId;
-      sessionStorage.setItem("mrh_video_render_id", activeVideoRenderId);
-      sessionStorage.setItem("mrh_video_render_analysis_id", activeVideoRenderAnalysisId);
-      pendingVideoDraftRenderKey = null;
-      pendingVideoDraftRenderFingerprint = null;
-      sessionStorage.removeItem("mrh_video_draft_render_pending_key");
-      sessionStorage.removeItem("mrh_video_draft_render_pending_fingerprint");
-      renderVideoRender(accepted);
-      message(
-        "#video-render-message",
-        accepted.created === false
-          ? "درخواست قبلی همین نسخه بازیابی شد؛ Job تکراری ساخته نشد."
-          : "رندر نسخه " + accepted.draft_version + " ثبت شد. Worker باید فعال باشد.",
-        "success"
-      );
-      await refreshVideoRender();
-    } catch (error) {
-      message(
-        "#video-storyboard-message",
-        error.message + "؛ در تلاش مجدد، کلید idempotency همین نسخه حفظ می‌شود.",
-        "error"
-      );
-    } finally {
-      syncStoryboardRenderButtons();
-    }
-  }
-
   async function composeVideoPromptFromStoryboard() {
     const button = $("#video-storyboard-compose");
     button.disabled = true;
@@ -1699,7 +1638,6 @@
   $("#video-storyboard-save").addEventListener("click", saveVideoStoryboardDraft);
   $("#video-storyboard-compose").addEventListener("click", composeVideoPromptFromStoryboard);
   $("#video-storyboard-prepare-render-timeline").addEventListener("click", prepareVideoRenderTimeline);
-  $("#video-storyboard-render-submit").addEventListener("click", submitVideoDraftRender);
 
   $("#media-upload-button").addEventListener("click", uploadSelectedMedia);
   $("#media-refresh-button").addEventListener("click", () =>
