@@ -882,8 +882,8 @@
     if (!activeVideoAnalysisId) return;
     const button = $("#video-compose-prompt");
     button.disabled = true;
-    message("#video-prompt-message", timelineDraftId
-      ? "در حال ساخت Prompt از Storyboard ذخیره‌شده…"
+    message("#video-prompt-message", timelineDraft
+      ? "در حال ساخت Prompt از نسخهٔ دقیق Storyboard ذخیره‌شده…"
       : "در حال ساخت Prompt از مشاهدات معتبر…");
     try {
       const response = await api(
