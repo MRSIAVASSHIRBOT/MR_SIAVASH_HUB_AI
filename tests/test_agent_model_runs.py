@@ -495,3 +495,84 @@ def test_durable_model_run_enforces_requested_runtime_budget(monkeypatch):
     assert execution["status"] == "budget_exhausted"
     assert execution["error_code"] == "runtime_budget_exceeded"
     assert "Too late" not in execution.get("answer", "")
+
+
+def test_durable_model_run_preserves_approval_required_without_side_effect(monkeypatch):
+    from pydantic import BaseModel
+
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.tools.builtins import build_tool_registry
+    from mrhub.tools.registry import ToolDefinition
+
+    client = authenticated_client()
+    provider = ScriptedProvider(output=json.dumps({
+        "type": "tool_call",
+        "name": "external.publish",
+        "payload": {},
+    }))
+    router = _router(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class EmptyOutput(BaseModel):
+        pass
+
+    executed = []
+    registry = build_tool_registry()
+    registry.register(ToolDefinition(
+        name="external.publish",
+        description="Publish an externally visible item only after approval",
+        input_model=EmptyInput,
+        output_model=EmptyOutput,
+        handler=lambda _: executed.append("published") or {},
+        risk_class=RiskClass.HIGH,
+        external_side_effect=True,
+    ))
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_tool_registry",
+        lambda: registry,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-approval-required-001"},
+        json={
+            "goal": "Publish only after explicit approval.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 1,
+            "max_output_tokens": 64,
+        },
+    )
+    assert submitted.status_code == 202
+    assert provider.calls == 0
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider.calls == 1
+    assert executed == []
+
+    completed = client.get(
+        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
+    )
+    assert completed.status_code == 200
+    body = completed.json()
+    assert body["status"] == "succeeded"
+    execution = body["result"]["execution"]
+    assert execution["status"] == "approval_required"
+    assert execution["error_code"] == "approval_required"
+    assert execution["trace"][-1]["type"] == "tool_approval_required"
+    assert execution["tool_calls"] == 0
+    assert execution["tools_executed"] is False
+    assert executed == []
