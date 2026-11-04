@@ -48,6 +48,10 @@ RULE_GUIDANCE: dict[str, tuple[str, str]] = {
         "high",
         "Avoid os.system/os.popen for untrusted input; use a bounded argument-list subprocess call.",
     ),
+    "PY106": (
+        "high",
+        "Keep TLS certificate verification enabled; configure a trusted CA bundle instead of disabling verification.",
+    ),
 }
 EXCLUDED_DIRS = frozenset({
     ".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build",
@@ -230,7 +234,7 @@ def analyze_python_source(source: str, *, path: str = "proposed.py") -> dict[str
 
 def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    tracked_modules = {"pickle", "yaml", "subprocess", "os", "builtins"}
+    tracked_modules = {"pickle", "yaml", "subprocess", "os", "builtins", "requests"}
     module_aliases: dict[str, set[str]] = {name: {name} for name in tracked_modules}
     risky_imports = {
         "pickle": {"loads", "load"},
@@ -238,6 +242,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         "subprocess": {"run", "Popen", "call", "check_call", "check_output"},
         "os": {"system", "popen"},
         "builtins": {"eval", "exec"},
+        "requests": {"request", "get", "post", "put", "patch", "delete", "head", "options"},
     }
     imported_calls: dict[str, set[str]] = {name: set() for name in tracked_modules}
     safe_loader_names = {"SafeLoader"}
@@ -276,7 +281,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             if called_name in {"eval", "exec"} or called_name in imported_calls["builtins"]:
                 add("PY101", node, "high", "Dynamic code evaluation call requires manual security review.")
                 continue
-            for module in ("pickle", "yaml", "subprocess", "os"):
+            for module in ("pickle", "yaml", "subprocess", "os", "requests"):
                 if called_name not in imported_calls[module]:
                     continue
                 if module == "pickle":
@@ -306,6 +311,13 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                         add("PY104", node, "high", "Subprocess call enables shell=True.")
                 elif module == "os":
                     add("PY105", node, "high", "OS shell command API requires manual security review.")
+                elif module == "requests" and any(
+                    keyword.arg == "verify"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is False
+                    for keyword in node.keywords
+                ):
+                    add("PY106", node, "high", "HTTP request explicitly disables TLS certificate verification.")
             continue
 
         if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
@@ -348,5 +360,17 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
 
         if module_name in module_aliases["os"] and function_name in {"system", "popen"}:
             add("PY105", node, "high", "OS shell command API requires manual security review.")
+
+        if (
+            module_name in module_aliases["requests"]
+            and function_name in risky_imports["requests"]
+            and any(
+                keyword.arg == "verify"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is False
+                for keyword in node.keywords
+            )
+        ):
+            add("PY106", node, "high", "HTTP request explicitly disables TLS certificate verification.")
 
     return findings
