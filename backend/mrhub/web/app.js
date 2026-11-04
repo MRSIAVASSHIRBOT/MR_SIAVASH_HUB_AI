@@ -1102,6 +1102,7 @@
       activeVideoTimelineDraft.aspect_ratio === payload.aspect_ratio &&
       JSON.stringify(activeVideoTimelineDraft.beats) === JSON.stringify(beats)
     ) {
+      message("#video-storyboard-message", "تغییری وجود ندارد؛ همان نسخه " + activeVideoTimelineDraft.version + " حفظ شد.");
       return activeVideoTimelineDraft;
     }
     const saved = isUpdate
