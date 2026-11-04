@@ -382,30 +382,25 @@ def test_draft_render_api_freezes_exact_saved_revision_and_queues_snapshot(
             assert requested_analysis_id == analysis_id
             return analysis
 
-    class Snapshots:
-        def create(self, snapshot):
-            assert isinstance(snapshot, VideoRenderTimelineSnapshot)
-            assert snapshot.draft_version == 7
-            return snapshot, True
-
     class RenderJobs:
-        def submit(self, owner_user_id, requested_analysis_id, key, *, snapshot_id):
+        def submit(self, owner_user_id, requested_analysis_id, key, *, snapshot):
             assert owner_user_id == "owner-1"
             assert requested_analysis_id == analysis_id
             assert key == "draft-render-idempotency"
-            assert isinstance(snapshot_id, UUID)
-            self.snapshot_id = snapshot_id
+            assert isinstance(snapshot, VideoRenderTimelineSnapshot)
+            assert snapshot.draft_version == 7
+            self.snapshot_id = snapshot.snapshot_id
             return {
                 "render_id": "render-123",
                 "analysis_id": str(analysis_id),
                 "status": "accepted",
                 "created_at": "2026-11-04T00:00:00+00:00",
+                "snapshot_id": str(snapshot.snapshot_id),
             }, True
 
     render_jobs = RenderJobs()
     monkeypatch.setattr(routes, "_timeline_drafts", Drafts)
     monkeypatch.setattr(routes, "_analysis_jobs", Analyses)
-    monkeypatch.setattr(routes, "_render_snapshots", Snapshots)
     monkeypatch.setattr(routes, "_render_jobs", lambda: render_jobs)
 
     response = Response(status_code=202)
