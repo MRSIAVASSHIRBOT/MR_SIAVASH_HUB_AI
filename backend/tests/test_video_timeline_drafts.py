@@ -155,6 +155,18 @@ def test_timeline_draft_rejects_empty_or_oversized_timeline():
 
 
 
+
+@pytest.mark.parametrize("version", [True, 1.0, "1", 0])
+def test_timeline_draft_rejects_non_integer_or_invalid_versions(version):
+    with pytest.raises(ValidationError):
+        TimelineDraftUpdate(
+            expected_version=version,
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            beats=_beats(),
+        )
+
+
 def test_timeline_draft_list_is_owner_and_analysis_scoped(tmp_path):
     repository = _repository(tmp_path)
     created = _create(repository)
