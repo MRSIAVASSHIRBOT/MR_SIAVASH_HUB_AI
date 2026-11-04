@@ -86,6 +86,42 @@ def test_ollama_rejects_invalid_response_shape():
         provider.generate(ProviderRequest(input_text="hello"))
 
 
+@pytest.mark.parametrize("payload", [None, [], "not-an-object", 42])
+def test_ollama_rejects_non_object_json_payloads(payload):
+    provider = OllamaProvider(
+        "tiny-model",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=payload)
+        ),
+    )
+    with pytest.raises(ProviderUnavailableError, match="invalid response"):
+        provider.generate(ProviderRequest(input_text="hello"))
+
+
+def test_ollama_ignores_malformed_optional_metadata_without_failing_response():
+    provider = OllamaProvider(
+        "tiny-model",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "response": "valid answer",
+                    "prompt_eval_count": True,
+                    "eval_count": -1,
+                    "done_reason": 17,
+                },
+            )
+        ),
+    )
+
+    result = provider.generate(ProviderRequest(input_text="hello"))
+
+    assert result.output_text == "valid answer"
+    assert result.input_tokens is None
+    assert result.output_tokens is None
+    assert result.finish_reason == "stop"
+
+
 def test_ollama_health_probe_timeout_is_bounded():
     provider = OllamaProvider("tiny-model")
     with pytest.raises(ProviderConfigurationError):
