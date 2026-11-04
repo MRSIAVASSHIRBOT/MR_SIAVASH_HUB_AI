@@ -159,7 +159,6 @@ class VideoGenerationWorkerHandler:
         return {
             "generation_id": str(generation_id),
             "status": "running",
-            "provider_job_id": submission.provider_job_id,
         }
 
     def _reconcile(
@@ -285,6 +284,5 @@ class VideoGenerationWorkerHandler:
         return {
             "generation_id": str(generation_id),
             "status": "running",
-            "provider_job_id": provider_job_id,
             "progress_percent": result.progress_percent,
         }
