@@ -31,6 +31,7 @@ All endpoints require an authenticated owner session:
 - `POST /video-intelligence/prompts/compose` — returns a composed prompt; it does not invoke a model or render a video.
 - `GET /video-intelligence/generation/providers` — lists explicitly registered generation adapters without probing or starting work. It currently returns `provider_unavailable`; no generation provider is configured.
 - `POST /video-intelligence/analyses/{analysis_id}/generations` — create an owner-scoped generation request only for an explicitly registered provider/model. The durable task starts in `waiting_approval`; the owner must approve the exact task through `POST /tasks/{task_id}/approval` before the pull worker can claim it.
+- `GET /video-intelligence/generations/{generation_id}` — retrieve owner-scoped generation lifecycle and bounded output metadata. Missing and foreign-owner IDs both return `404`; provider job identifiers and encrypted request payloads are never exposed.
 - `GET /video-intelligence/brands` — list the current owner's brand profiles.
 - `POST /video-intelligence/brands` — create an owner-scoped brand profile.
 - `GET /video-intelligence/brands/{profile_id}` — retrieve an owned profile.
@@ -107,7 +108,7 @@ endpoint remains unavailable until an adapter is separately reviewed and configu
 
 A successful provider result is not proof that a valid video file exists. Before finalization, the output must match an internal media storage key, remain within the 100 MB budget, and pass an independent local FFprobe check. Measured duration and dimensions must agree with provider metadata. The selected provider, model, and provider job ID are checked.
 
-The MP4 is registered as a new private media asset, while the job success state, asset reference, and measured metadata are committed in one SQLite transaction. Repeated finalization for the same successful job and asset is idempotent. This is a finalization primitive only; no provider adapter, download worker, or public generation endpoint is enabled.
+The MP4 is registered as a new private media asset, while the job success state, asset reference, and measured metadata are committed in one SQLite transaction. Repeated finalization for the same successful job and asset is idempotent. This is a finalization primitive only; no provider adapter or end-to-end provider polling/reconciliation worker is enabled. The authenticated status endpoint exposes only owner-scoped lifecycle and bounded output metadata; it does not contact a provider or download output.
 
 
 ## Bounded provider-output sink
