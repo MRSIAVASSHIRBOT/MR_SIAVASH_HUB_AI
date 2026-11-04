@@ -475,3 +475,32 @@ All four push-triggered workflows on main commit `1c531a97749b26ff05c9efde394416
 ### Remaining acceptance boundary
 
 The new tests strengthen provider response provenance and content-publication state integrity; they do not guarantee remote provider uptime, exactly-once delivery on providers without idempotency support, or successful live social-account publishing. Production restore/key-recovery drills, target-device/browser acceptance, package install/upgrade/rollback, full video-editor capabilities and connector permission lifecycle acceptance remain open. No production-ready or whole-project-complete claim is made.
+
+
+## Follow-up verification — 2026-11-04 UTC, main `3134fb50d47f7ab87934971a27e2ba90c85263d8`
+
+This snapshot supersedes earlier live-main statements in this status ledger. Historical snapshots remain as records of their respective commits.
+
+### Latest merged hardening
+
+- **PR #255** — workflow task-linked mutation lease validation.
+- **PR #256** — Provider Router / Registry lifecycle hardening.
+- **PR #258** — Agent Core / Tool Registry / MCP policy lifecycle revalidation.
+- **PR #260** — preserve MCP `approval_required` outcomes.
+- **PR #261** — shared provider-health contract validation.
+- **PR #262** — Ollama malformed payload handling and metadata sanitization.
+- **PR #263** — immutable validated Vision image batches.
+- **PR #264** — persist unexpected video-provider submission outcomes as ambiguous, non-retryable results.
+
+PR #264 merged as `3134fb50d47f7ab87934971a27e2ba90c85263d8`. Its exact PR head passed all six checks. All four post-merge workflows on the current main commit also completed successfully: Backend CI (`41809518846`), Python 3.11/3.12 CI (`41809518853`), Defensive Python Scan (`41809519071`), and real FFmpeg MP4 integration on Linux/Windows (`41809518974`).
+
+### Verified integration gaps and next order
+
+1. **Editable video timeline → render:** versioned owner-scoped timeline drafts are persisted, but the render API/worker still consume the original analysis timeline. The operator UI does not yet expose a draft editor connected to render submission. The next video milestone must bind an immutable validated draft snapshot and version to the render idempotency digest, carry it through the durable task and worker, then expose edit, status and download in the UI.
+2. **Video-generation reconciliation:** no generation provider adapter is registered. PR #266 is an open provider-contract proposal for read-only lookup by idempotency key; it is not merged and does not yet provide an end-to-end reconciliation endpoint or active provider.
+3. **Renderer capabilities:** local rendering currently produces silent hard-cut MP4. Audio tracks, transitions, captions, graphics and motion effects remain unimplemented.
+4. **Cross-system acceptance:** target-device/browser checks, external social-account publishing, protected encryption-key recovery, real database/media restore, and clean install/upgrade/rollback remain manual release gates.
+
+### Current evidence boundary
+
+The latest main inventory at this commit contains 327 recursive tree entries, 94 Python test files across `tests/` and `backend/tests/`, 19 backend package domains and 7 GitHub Actions workflows. These counts and green CI do not establish whole-product completion or production readiness.
