@@ -226,7 +226,10 @@ def test_saved_timeline_draft_is_used_by_prompt_composition():
 
     prompts = compose_prompts_from_analysis(
         _analysis_result(),
-        AnalysisPromptOptions(),
+        AnalysisPromptOptions(
+            timeline_draft_id=draft["draft_id"],
+            timeline_draft_version=3,
+        ),
         timeline_draft=draft,
         expected_analysis_id=analysis_id,
     )
