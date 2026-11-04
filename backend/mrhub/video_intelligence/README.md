@@ -39,7 +39,7 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
-- `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. An optional `timeline_draft_id` applies the selected owner's saved storyboard to its matching asset and returns the exact draft version used; composition never starts video generation.
+- `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. The optional pair `timeline_draft_id` + `timeline_draft_version` applies that exact owner-scoped storyboard revision to its matching asset; a stale version returns `409`. Composition never starts video generation.
 - `POST /video-intelligence/timeline-drafts` — persist an editable storyboard for an asset in the current owner's completed analysis.
 - `GET /video-intelligence/analyses/{analysis_id}/timeline-drafts` — list the current owner's bounded storyboard drafts for one completed analysis.
 - `GET /video-intelligence/timeline-drafts/{draft_id}` — retrieve an owned storyboard draft.
