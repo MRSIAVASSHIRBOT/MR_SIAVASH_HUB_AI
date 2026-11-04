@@ -7,7 +7,11 @@ import pytest
 from mcp import Client
 from pydantic import BaseModel
 
+from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import RiskClass
+from mrhub.providers.router import ModelRouter
+from mrhub.providers.stub import StubProvider
+from mrhub.security.policy import PolicyDecision, PolicyEngine, PolicyResult
 from mrhub.integrations.mcp_server import create_mcp_server
 from mrhub.tools.builtins import build_tool_registry
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
@@ -179,3 +183,61 @@ def test_mcp_bridge_does_not_expose_handler_exception_details():
         "error_code": "tool_invocation_failed",
     }
     assert "sensitive-internal-detail" not in result.content[0].text
+
+
+@pytest.mark.anyio
+async def test_mcp_and_agent_share_falsey_injected_policy_authority():
+    class FalseyDenyPolicy(PolicyEngine):
+        def __bool__(self):
+            return False
+
+        def evaluate(self, request):
+            return PolicyResult(
+                decision=PolicyDecision.DENY,
+                reason="Shared integration policy denies this operation",
+            )
+
+    policy = FalseyDenyPolicy()
+    registry = ToolRegistry(policy=policy)
+    called = []
+
+    def restricted_handler(_payload):
+        called.append(True)
+        return {"ok": True}
+
+    registry.register(
+        ToolDefinition(
+            name="custom.shared_policy",
+            description="Test shared policy authority across Hub and MCP.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=restricted_handler,
+            risk_class=RiskClass.LOW,
+        )
+    )
+
+    assert registry.policy is policy
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    agent = AgentCore(router, registry)
+    plan = agent.plan(
+        AgentPlanRequest(
+            goal="Check shared policy authority",
+            tools=[{"name": "custom.shared_policy", "payload": {}}],
+        )
+    )
+    assert plan["execution_ready"] is False
+    assert plan["steps"][1]["decision"] == PolicyDecision.DENY.value
+
+    server = create_mcp_server(registry)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "hub.invoke_tool",
+            {"name": "custom.shared_policy", "payload": {}},
+        )
+
+    assert json.loads(result.content[0].text) == {
+        "ok": False,
+        "error_code": "policy_denied",
+    }
+    assert called == []
