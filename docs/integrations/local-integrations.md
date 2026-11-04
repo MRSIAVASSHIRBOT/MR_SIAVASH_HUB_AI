@@ -17,7 +17,7 @@ The local integration protocol is versioned independently from the capability-di
 
 ## Provider adapter lifecycle contract
 
-Model adapters are registered through one injected ProviderRegistry; ModelRouter preserves that exact registry instance and maintains the matching capability descriptor catalog. A failed or duplicate registration must not leave the descriptor catalog and adapter registry partially updated.
+Model adapters are registered through one injected ProviderRegistry; ModelRouter preserves that exact registry instance and hydrates its capability descriptor catalog from any adapters already registered there. New registrations update the adapter registry and descriptor catalog as one guarded operation. A failed or duplicate registration must not leave the two views partially updated.
 
 Before dispatch, the router calls the selected adapter's bounded health(timeout_seconds=2.0) contract. The result must be a ProviderHealth value with a real boolean available field and a non-empty string reason_code. A malformed health result is a provider contract violation and generation is not started. A well-formed unavailable result fails closed; the router does not silently substitute another provider after selection.
 
