@@ -56,6 +56,31 @@ class ToolRegistry:
             raise ValueError("Tool is already registered")
         self._tools[tool.name] = tool
 
+    @property
+    def policy(self) -> PolicyEngine:
+        """Return the policy engine used for every registry decision."""
+        return self._policy
+
+    def evaluate_policy(
+        self,
+        name: str,
+        *,
+        granted_permissions: frozenset[str] = frozenset(),
+        user_approved: bool = False,
+    ):
+        """Evaluate the registered tool using this registry's policy authority."""
+        tool = self.get(name)
+        return self._policy.evaluate(
+            ActionRequest(
+                action=f"tool.invoke:{name}",
+                risk_class=tool.risk_class,
+                granted_permissions=granted_permissions,
+                required_permissions=tool.required_permissions,
+                external_side_effect=tool.external_side_effect,
+                user_approved=user_approved,
+            )
+        )
+
     def get(self, name: str) -> ToolDefinition:
         try:
             return self._tools[name]
@@ -93,15 +118,10 @@ class ToolRegistry:
     ) -> dict[str, object]:
         tool = self.get(name)
         validated_input = tool.input_model.model_validate(payload)
-        decision = self._policy.evaluate(
-            ActionRequest(
-                action=f"tool.invoke:{name}",
-                risk_class=tool.risk_class,
-                granted_permissions=granted_permissions,
-                required_permissions=tool.required_permissions,
-                external_side_effect=tool.external_side_effect,
-                user_approved=user_approved,
-            )
+        decision = self.evaluate_policy(
+            name,
+            granted_permissions=granted_permissions,
+            user_approved=user_approved,
         )
         if decision.decision is not PolicyDecision.ALLOW:
             raise ToolPolicyError(decision.decision, decision.reason)
