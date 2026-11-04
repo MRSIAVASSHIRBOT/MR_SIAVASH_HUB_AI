@@ -3,6 +3,11 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from mrhub.video_intelligence.prompt_from_analysis import (
+    AnalysisPromptOptions,
+    PromptCompositionUnavailable,
+    compose_prompts_from_analysis,
+)
 from mrhub.video_intelligence.timeline_drafts import (
     TimelineConflict,
     TimelineDraftUpdate,
@@ -151,4 +156,116 @@ def test_timeline_draft_rejects_empty_or_oversized_timeline():
             duration_seconds=10,
             aspect_ratio="9:16",
             beats=[],
+        )
+
+
+
+def _analysis_result():
+    return {
+        "assets": [
+            {
+                "asset_id": "22222222-2222-4222-8222-222222222222",
+                "analysis_window_seconds": 10.0,
+                "scene_start_timestamps": [0.0, 5.0],
+                "scene_boundaries_truncated": False,
+            }
+        ],
+        "semantic_visual_analysis": {
+            "status": "completed",
+            "assets": [
+                {
+                    "asset_id": "22222222-2222-4222-8222-222222222222",
+                    "status": "completed",
+                    "style_summary": "Measured visual style",
+                    "observations": [
+                        {
+                            "timestamp_seconds": 0.0,
+                            "description": "A neutral opening frame",
+                            "confidence": 0.9,
+                        },
+                        {
+                            "timestamp_seconds": 5.0,
+                            "description": "A neutral detail frame",
+                            "confidence": 0.8,
+                        },
+                    ],
+                }
+            ],
+        },
+    }
+
+
+def test_saved_timeline_draft_is_used_by_prompt_composition():
+    analysis_id = "11111111-1111-4111-8111-111111111111"
+    draft = {
+        "draft_id": "33333333-3333-4333-8333-333333333333",
+        "analysis_id": analysis_id,
+        "asset_id": "22222222-2222-4222-8222-222222222222",
+        "duration_seconds": 8,
+        "aspect_ratio": "16:9",
+        "version": 3,
+        "beats": [
+            {
+                "start_seconds": 0.0,
+                "end_seconds": 3.0,
+                "generation_instruction": "Use the reviewed opening direction",
+                "transition_to_next": "match cut",
+                "source_timestamp_seconds": 0.0,
+                "confidence": 0.95,
+            },
+            {
+                "start_seconds": 3.0,
+                "end_seconds": 8.0,
+                "generation_instruction": "Use the reviewed closing direction",
+                "transition_to_next": "fade",
+                "source_timestamp_seconds": 5.0,
+                "confidence": 0.9,
+            },
+        ],
+    }
+
+    prompts = compose_prompts_from_analysis(
+        _analysis_result(),
+        AnalysisPromptOptions(),
+        timeline_draft=draft,
+        expected_analysis_id=analysis_id,
+    )
+
+    assert len(prompts) == 1
+    prompt = prompts[0]
+    assert prompt["duration_seconds"] == 8
+    assert prompt["timeline_draft_id"] == draft["draft_id"]
+    assert prompt["timeline_draft_version"] == 3
+    assert prompt["timeline"][1]["source_timestamp_seconds"] == 5.0
+    assert "Use the reviewed opening direction" in prompt["prompt"]
+    assert "Use the reviewed closing direction" in prompt["prompt"]
+    assert "16:9 aspect ratio" in prompt["prompt"]
+
+
+def test_prompt_composition_rejects_draft_from_another_analysis():
+    draft = {
+        "draft_id": "33333333-3333-4333-8333-333333333333",
+        "analysis_id": "99999999-9999-4999-8999-999999999999",
+        "asset_id": "22222222-2222-4222-8222-222222222222",
+        "duration_seconds": 8,
+        "aspect_ratio": "16:9",
+        "version": 1,
+        "beats": _beats(),
+    }
+
+    with pytest.raises(PromptCompositionUnavailable) as error:
+        compose_prompts_from_analysis(
+            _analysis_result(),
+            AnalysisPromptOptions(),
+            timeline_draft=draft,
+            expected_analysis_id="11111111-1111-4111-8111-111111111111",
+        )
+
+    assert error.value.code == "timeline_draft_invalid"
+
+
+def test_prompt_options_require_draft_id_and_version_together():
+    with pytest.raises(ValidationError):
+        AnalysisPromptOptions(
+            timeline_draft_id="33333333-3333-4333-8333-333333333333"
         )

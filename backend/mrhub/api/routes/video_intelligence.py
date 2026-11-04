@@ -15,7 +15,7 @@ from fastapi import (
     Response,
     status,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
@@ -86,11 +86,15 @@ class PromptCompositionRequest(BaseModel):
     typography: str | None = Field(default=None, max_length=240)
     sound_design: str | None = Field(default=None, max_length=500)
     final_frame: str | None = Field(default=None, max_length=500)
+    timeline_draft_id: UUID | None = None
+    timeline_draft_version: int | None = Field(default=None, ge=1, strict=True)
 
     @model_validator(mode="after")
     def validate_timeline(self) -> PromptCompositionRequest:
         if any(beat.end_seconds > self.duration_seconds for beat in self.beats):
             raise ValueError("Beat timeline cannot exceed the requested duration")
+        if (self.timeline_draft_id is None) != (self.timeline_draft_version is None):
+            raise ValueError("Timeline draft ID and version must be supplied together")
         return self
 
 
@@ -414,8 +418,45 @@ def compose_prompt_from_analysis(
                 "message": "Video analysis result is unavailable",
             },
         )
+    draft: dict[str, object] | None = None
+    if payload.timeline_draft_id is not None:
+        draft = _timeline_drafts().get(user.user_id, payload.timeline_draft_id)
+        if draft is None:
+            raise HTTPException(status_code=404, detail="Timeline draft not found")
+        if draft.get("analysis_id") != str(analysis_id):
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "timeline_draft_analysis_mismatch"},
+            )
+        if draft.get("version") != payload.timeline_draft_version:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "timeline_draft_version_conflict"},
+            )
+        try:
+            validated_draft = TimelineDraftUpdate(
+                expected_version=payload.timeline_draft_version,
+                duration_seconds=draft.get("duration_seconds"),
+                aspect_ratio=draft.get("aspect_ratio"),
+                beats=draft.get("beats"),
+            )
+        except ValidationError:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "timeline_draft_invalid"},
+            ) from None
+        draft = {
+            **draft,
+            "beats": [beat.model_dump(mode="json") for beat in validated_draft.beats],
+        }
+
     try:
-        prompts = compose_prompts_from_analysis(result, payload)
+        prompts = compose_prompts_from_analysis(
+            result,
+            payload,
+            timeline_draft=draft,
+            expected_analysis_id=str(analysis_id),
+        )
     except PromptCompositionUnavailable as exc:
         raise HTTPException(
             status_code=409,
@@ -428,6 +469,15 @@ def compose_prompt_from_analysis(
         "mode": result.get("mode"),
         "prompts": prompts,
         "count": len(prompts),
+        "timeline_draft": (
+            {
+                "draft_id": draft["draft_id"],
+                "asset_id": draft["asset_id"],
+                "version": draft["version"],
+            }
+            if draft is not None
+            else None
+        ),
     }
 
 
