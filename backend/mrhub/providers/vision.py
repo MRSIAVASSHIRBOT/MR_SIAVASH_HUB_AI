@@ -57,8 +57,12 @@ class VisionRequest:
     def __post_init__(self) -> None:
         if not isinstance(self.prompt, str) or not 1 <= len(self.prompt) <= MAX_VISION_PROMPT_CHARS:
             raise ValueError("Vision prompt is empty or too large")
+        if not isinstance(self.images, tuple):
+            raise ValueError("Vision images must be an immutable tuple")
         if not 1 <= len(self.images) <= MAX_VISION_IMAGES:
             raise ValueError("Vision request must contain between 1 and 12 images")
+        if any(not isinstance(image, VisionImage) for image in self.images):
+            raise ValueError("Vision request contains an invalid image entry")
         if (
             not isinstance(self.max_output_tokens, int)
             or isinstance(self.max_output_tokens, bool)
