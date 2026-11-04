@@ -138,7 +138,7 @@ def test_validators_reject_encoded_or_ambiguous_local_paths():
     ) is None
 
 
-@pytest.mark.parametrize("timeout", [0, -1, 10.01, float("inf"), float("nan"), True])
+@pytest.mark.parametrize("timeout", [0, -1, 10.01, float("inf"), float("nan"), True, 10**1000])
 def test_probe_rejects_invalid_timeout_before_network_access(monkeypatch, timeout):
     def unexpected_client(*_args, **_kwargs):
         raise AssertionError("invalid timeout must be rejected before network access")
