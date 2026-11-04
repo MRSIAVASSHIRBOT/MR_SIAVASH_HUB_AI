@@ -81,13 +81,19 @@ class EmptyOutput(BaseModel):
 
 def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
     registry = ToolRegistry()
+    called = []
+
+    def external_handler(_payload):
+        called.append(True)
+        return {"ok": True}
+
     registry.register(
         ToolDefinition(
             name="custom.external",
             description="Test-only external operation",
             input_model=EmptyInput,
             output_model=EmptyOutput,
-            handler=lambda _payload: {"ok": True},
+            handler=external_handler,
             risk_class=RiskClass.LOW,
             external_side_effect=True,
         )
@@ -105,6 +111,40 @@ def test_mcp_bridge_does_not_bypass_policy_for_external_side_effects():
     assert not result.is_error
     response = json.loads(result.content[0].text)
     assert response == {"ok": False, "error_code": "policy_denied"}
+    assert called == []
+
+
+@pytest.mark.anyio
+async def test_mcp_bridge_does_not_infer_missing_permission_grants():
+    registry = ToolRegistry()
+    called = []
+
+    def restricted_handler(_payload):
+        called.append(True)
+        return {"ok": True}
+
+    registry.register(
+        ToolDefinition(
+            name="custom.restricted",
+            description="Test-only permission-gated operation",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=restricted_handler,
+            required_permissions=frozenset({"custom.execute"}),
+        )
+    )
+    server = create_mcp_server(registry)
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "hub.invoke_tool",
+            {"name": "custom.restricted", "payload": {}},
+        )
+
+    assert json.loads(result.content[0].text) == {
+        "ok": False,
+        "error_code": "policy_denied",
+    }
+    assert called == []
 
 
 def test_mcp_bridge_does_not_expose_handler_exception_details():
