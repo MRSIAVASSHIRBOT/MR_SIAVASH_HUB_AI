@@ -618,6 +618,15 @@ def test_generation_reconciliation_requeues_original_task_without_duplicate_link
     assert refreshed["created"] is True
     assert refreshed["task_id"] == str(task_id)
     assert repository.get("owner-a", generation_id)["status"] == "running"
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'cancelled' WHERE task_id = ?",
+            (str(task_id),),
+        )
+    after_local_cancel = repository.enqueue_reconciliation("owner-a", generation_id)
+    assert after_local_cancel["created"] is True
+    assert after_local_cancel["status"] == "queued"
     assert repository.enqueue_reconciliation("owner-b", generation_id) is None
 
 
