@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from mrhub.security.policy import PolicyDecision
 from mrhub.tools.builtins import build_tool_registry
 from mrhub.tools.registry import (
     ToolExecutionError,
@@ -45,8 +46,13 @@ def create_mcp_server(registry: ToolRegistry | None = None):
         """Invoke one registered Hub tool without implicit permission grants."""
         try:
             result = tool_registry.invoke(name, payload or {})
-        except ToolPolicyError:
-            response = {"ok": False, "error_code": "policy_denied"}
+        except ToolPolicyError as exc:
+            error_code = (
+                "approval_required"
+                if exc.decision is PolicyDecision.REQUIRE_APPROVAL
+                else "policy_denied"
+            )
+            response = {"ok": False, "error_code": error_code}
         except LookupError:
             response = {"ok": False, "error_code": "tool_not_registered"}
         except (ToolExecutionError, ValueError, TypeError):

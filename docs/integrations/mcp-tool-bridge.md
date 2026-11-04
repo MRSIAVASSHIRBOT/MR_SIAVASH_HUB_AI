@@ -47,7 +47,8 @@ The bridge currently exposes only tools already registered in the process. The i
 - **Loopback is not per-user authentication.** Any process or local user able to connect to the host's loopback interface may be able to call the MCP endpoint. Do not enable this service on shared or multi-user machines unless an additional, independently reviewed access-control boundary is deployed. Do not assume that binding to 127.0.0.1 isolates the service from other local processes.
 - Every invocation passes through the existing Hub schema validation and policy engine.
 - AgentCore planning is advisory: ToolRegistry evaluates policy again at invocation time. If a grant or approval is revoked after planning, invocation is denied before the handler runs; AgentCore reports a stable `policy_denied` or `approval_required` result rather than treating the earlier plan as authorization.
-- The bridge supplies no permission grants and cannot mark an operation as user-approved. Tools requiring permissions, high-risk approval, or external-side-effect approval are denied by the existing policy engine.
+- The bridge supplies no permission grants and cannot mark an operation as user-approved. Missing permission grants return `policy_denied`; high-risk or external-side-effect actions without explicit approval return `approval_required`. Both outcomes block execution before the handler runs.
+- Policy failures preserve the decision class across the MCP boundary: missing grants or explicit denial return `policy_denied`, while a valid action blocked pending owner approval returns `approval_required`. Neither result invokes the handler.
 - Error responses contain stable codes only; handler exception details, credentials, and payload contents are not logged or returned.
 - Tool descriptions and schemas are metadata, not authorization. The Hub registry remains the source of truth.
 
