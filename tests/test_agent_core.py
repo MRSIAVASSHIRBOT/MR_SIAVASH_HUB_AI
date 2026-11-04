@@ -5,7 +5,7 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import RiskClass
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
-from mrhub.security.policy import PolicyDecision
+from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.builtins import build_tool_registry
 from mrhub.tools.registry import ToolDefinition
 
@@ -210,3 +210,65 @@ def test_agent_execute_stops_between_tools_after_cancellation():
     assert response["execution_completed"] is False
     assert len(response["results"]) == 1
     assert response["results"][0]["result"]["character_count"] == 5
+
+
+class DenyEchoPolicy:
+    """Policy test double that rejects the echo tool at the shared boundary."""
+
+    def evaluate(self, request):
+        from mrhub.security.policy import PolicyResult
+
+        return PolicyResult(
+            decision=PolicyDecision.DENY,
+            reason="Test policy denies this tool",
+        )
+
+
+def test_agent_plan_uses_the_tool_registry_policy_authority():
+    from mrhub.tools.registry import ToolRegistry
+
+    policy = DenyEchoPolicy()
+    registry = ToolRegistry(policy=policy)
+    from mrhub.tools.builtins import EchoToolInput, EchoToolOutput
+
+    registry.register(
+        ToolDefinition(
+            name="text.echo",
+            description="Return text for a policy consistency test.",
+            input_model=EchoToolInput,
+            output_model=EchoToolOutput,
+            handler=lambda payload: EchoToolOutput(
+                text=payload.text, character_count=len(payload.text)
+            ),
+        )
+    )
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry)
+
+    plan = core.plan(
+        AgentPlanRequest(
+            goal="Verify shared policy authority",
+            tools=[{"name": "text.echo", "payload": {"text": "blocked"}}],
+        )
+    )
+
+    assert plan["execution_ready"] is False
+    assert plan["steps"][1]["decision"] == PolicyDecision.DENY.value
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Verify execution remains blocked",
+            tools=[{"name": "text.echo", "payload": {"text": "blocked"}}],
+        )
+    )
+    assert response["blocked"] is True
+    assert response["tools_executed"] is False
+
+
+def test_agent_core_rejects_a_split_policy_authority():
+    from mrhub.tools.registry import ToolRegistry
+
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    with pytest.raises(ValueError, match="same instance"):
+        AgentCore(router, ToolRegistry(), policy=PolicyEngine())

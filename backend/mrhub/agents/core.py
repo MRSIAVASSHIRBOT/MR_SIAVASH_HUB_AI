@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mrhub.providers.router import ModelRequest, ModelRouter
-from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
+from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolRegistry
 
 
@@ -41,7 +41,11 @@ class AgentCore:
     ) -> None:
         self.model_router = model_router
         self.tool_registry = tool_registry
-        self.policy = policy or PolicyEngine()
+        if policy is not None and policy is not tool_registry.policy:
+            raise ValueError(
+                "AgentCore policy must be the same instance used by ToolRegistry"
+            )
+        self.policy = tool_registry.policy
 
     def execute(
         self,
@@ -190,14 +194,7 @@ class AgentCore:
                 )
                 continue
 
-            decision = self.policy.evaluate(
-                ActionRequest(
-                    action=f"tool.invoke:{tool.name}",
-                    risk_class=tool.risk_class,
-                    required_permissions=tool.required_permissions,
-                    external_side_effect=tool.external_side_effect,
-                )
-            )
+            decision = self.tool_registry.evaluate_policy(tool.name)
             status = {
                 PolicyDecision.ALLOW: "ready",
                 PolicyDecision.REQUIRE_APPROVAL: "approval_required",
