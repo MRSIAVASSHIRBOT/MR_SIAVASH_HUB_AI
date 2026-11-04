@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `3134fb50d47f7ab87934971a27e2ba90c85263d8`  
+**Audited main SHA:** `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -292,3 +292,12 @@ This is a verified workflow-integration gap, but it does **not** mean the storyb
 ### Release and acceptance boundaries
 
 Green CI verifies configured automated checks only. The following remain separate acceptance gates: Windows target-device runtime and UX, real media acceptance, actual database/media/encryption-key restore drill, external Instagram public-origin and professional-account acceptance, and any real video-generation provider acceptance. The renderer remains silent and hard-cut-only; audio, transitions, captions, graphics, motion effects, and generated AI footage are not implemented by the current local renderer.
+
+
+## 8. Follow-up after PR #266 — 2026-11-04, main `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`
+
+PR #266 is merged. It adds a mandatory provider-neutral `find_by_idempotency_key` read-only lookup to the video-generation adapter protocol and makes `VideoGenerationRegistry.register()` reject adapters that do not implement that lookup. The exact PR head `ce98db801f72fe3acb1a042e330c2e9a6cdb6a6b` passed the six required checks (Defensive Python Scan, Backend CI, Python 3.11 and 3.12 CI, and real FFmpeg MP4 integration on Linux and Windows).
+
+This is a provider contract gate, not a reconciliation worker or active integration. No provider adapter is registered. No end-to-end operation yet calls `find_by_idempotency_key`, persists a recovered provider job reference, polls status, or finalizes an output asset from a reconciled remote job. The next generation milestone must implement those steps as a separate owner-scoped, non-replayable reconciliation flow and test lookup hit, miss, timeout, provider identity mismatch, lease loss and terminal output registration.
+
+Post-merge workflows on `cbc12c0adf3994f28c49ca3ac4ff447ec029bade` were queued when this snapshot was prepared; do not report them as green until they complete.
