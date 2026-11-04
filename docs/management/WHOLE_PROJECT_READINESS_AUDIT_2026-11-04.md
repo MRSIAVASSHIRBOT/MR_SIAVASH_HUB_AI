@@ -1,7 +1,7 @@
 # Whole-Project Readiness Audit — 2026-11-04
 
 **Repository:** `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI`  
-**Audited main SHA:** `92bc36e5a61446c258c558b151edcec582bf470b`  
+**Audited main SHA:** `3134fb50d47f7ab87934971a27e2ba90c85263d8`  
 **Previous baseline:** `a5a1002907b3ddac2b218b84312e2fd74f2d0256`  
 **Purpose:** Maintain one evidence-based readiness view across the entire product. This is a repository and CI audit, not target-device acceptance or a production-readiness declaration.
 
@@ -17,9 +17,9 @@ These results confirm the configured automated checks on the current main commit
 
 ## 2. Live repository inventory
 
-At main `92bc36e5a61446c258c558b151edcec582bf470b` (2026-11-04 UTC):
+At main `3134fb50d47f7ab87934971a27e2ba90c85263d8` (2026-11-04 UTC):
 
-- Recursive Git tree: 326 entries; response was not truncated.
+- Recursive Git tree: 327 entries; response was not truncated.
 - Python test files under `tests/` and `backend/tests/`: 94.
 - Backend package domains: 19 (agents, API, capabilities, content, diagnostics, domain, infrastructure, integrations, jobs, knowledge, media, memory, NEXUS, operations, providers, security, tools, video intelligence, web).
 - GitHub Actions workflows: 7, including Backend CI, the Python 3.11/3.12 CI matrix, Defensive Python Scan, Windows launcher validation, and real video-render integration.
@@ -243,3 +243,52 @@ All four main-branch workflows for `1c531a97749b26ff05c9efde3944169e1a39b761` co
 ### Remaining risks and acceptance gaps
 
 The provider contract guard protects response attribution but does not prove provider quality, uptime, or correctness of generated content. The publication fence prevents a late response from falsifying local state but cannot guarantee exactly-once remote publication when a provider lacks idempotency support. Live social-account acceptance, production restore and protected key recovery, target-device/browser acceptance, package install/upgrade/rollback, full video-editor capabilities, and complete connector permission lifecycle testing remain open. No whole-product production-readiness claim is made.
+
+
+## 7. Superseding live snapshot — 2026-11-04, main `3134fb50d47f7ab87934971a27e2ba90c85263d8`
+
+This section supersedes earlier statements in this audit about the latest main SHA and post-merge CI. Historical PR #223 and #227 results remain valid for those commits, but they are not the latest repository baseline.
+
+### Latest integrated hardening
+
+The following follow-up PRs are merged into this main baseline:
+
+- PR #255 — workflow task-linked mutation lease validation.
+- PR #256 — Provider Router / Registry lifecycle hardening.
+- PR #258 — Agent Core / Tool Registry / MCP policy lifecycle revalidation.
+- PR #260 — preserve MCP `approval_required` outcomes.
+- PR #261 — shared provider-health contract validation.
+- PR #262 — Ollama malformed response payload handling and metadata sanitization.
+- PR #263 — immutable, validated Vision image batches.
+- PR #264 — persist ambiguous video-provider submission outcomes, including unexpected adapter exceptions.
+
+PR #264 was merged as `3134fb50d47f7ab87934971a27e2ba90c85263d8`. Its exact PR head `1b667ee8db9280657984240b646f4ae8573edd18` passed all six required checks: Defensive Python Scan, Backend CI, Python 3.11 and 3.12 CI, and real FFmpeg MP4 integration on Linux and Windows. The post-merge push workflows on commit `3134fb50d47f7ab87934971a27e2ba90c85263d8` also completed successfully:
+
+- Backend CI: run `41809518846` — success.
+- CI: run `41809518853` — success on Python 3.11 and 3.12.
+- Defensive Python Scan: run `41809519071` — success.
+- Video Render Integration: run `41809518974` — success on Linux and Windows.
+
+### Current inventory and verified limits
+
+- Recursive Git tree: 327 entries; not truncated.
+- Python test files across `tests/` and `backend/tests/`: 94.
+- Backend package domains: 19.
+- GitHub Actions workflows: 7.
+- These counts describe repository shape, not product completion.
+
+The video-generation worker now treats every exception raised after entering provider `submit()` as an ambiguous remote outcome, stores a stable sanitized error code, retains the encrypted request for reconciliation, and never automatically resubmits. No video-generation provider adapter is currently registered, so the generation API correctly reports that generation is unavailable until a reviewed adapter is configured. The provider-neutral output validation helper is not evidence of a working external generation integration.
+
+### Newly verified cross-layer video gap
+
+Timeline drafts and rendering are not yet connected end to end:
+
+- `VideoTimelineDraftRepository` stores owner-scoped, versioned semantic beat drafts.
+- The render API accepts an `analysis_id`, and `VideoRenderJobRepository.submit()` loads the original analysis timeline rather than a selected draft.
+- The current operator UI exposes analysis and render controls, but not an editable draft-to-render workflow.
+
+Therefore, a saved or updated timeline draft is not currently the source of the rendered MP4. This is a confirmed integration gap, not a claim that the render worker itself is broken. The next video milestone should define a renderable, immutable draft snapshot, bind it to owner + draft version + source assets, and carry that snapshot through API admission, durable job persistence, worker validation, FFmpeg rendering, result registration, and UI status/download. The draft version must be included in idempotency so a changed edit cannot silently replay an earlier render request.
+
+### Release and acceptance boundaries
+
+Green CI verifies configured automated checks only. The following remain separate acceptance gates: Windows target-device runtime and UX, real media acceptance, actual database/media/encryption-key restore drill, external Instagram public-origin and professional-account acceptance, and any real video-generation provider acceptance. The renderer remains silent and hard-cut-only; audio, transitions, captions, graphics, motion effects, and generated AI footage are not implemented by the current local renderer.
