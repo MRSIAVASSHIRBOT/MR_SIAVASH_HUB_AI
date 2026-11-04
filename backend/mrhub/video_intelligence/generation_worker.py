@@ -73,7 +73,7 @@ class VideoGenerationWorkerHandler:
 
         try:
             submission = provider.submit(request)
-        except Exception as exc:
+        except Exception:  # noqa: BLE001 - any adapter failure can follow a remote side effect
             # Once submit was entered, any adapter exception may follow a remote
             # side effect. Treat both declared and unexpected failures as
             # ambiguous; never resubmit automatically. Keep the encrypted
