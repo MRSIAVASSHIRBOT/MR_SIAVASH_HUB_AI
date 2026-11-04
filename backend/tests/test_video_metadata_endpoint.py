@@ -395,7 +395,7 @@ def test_prompt_composition_uses_only_the_owned_draft_for_the_same_analysis(monk
 
     response = video_intelligence.compose_prompt_from_analysis(
         analysis_id,
-        AnalysisPromptOptions(timeline_draft_id=draft_id),
+        AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=3),
         AuthenticatedUser(user_id="owner-a", username="owner"),
     )
 
