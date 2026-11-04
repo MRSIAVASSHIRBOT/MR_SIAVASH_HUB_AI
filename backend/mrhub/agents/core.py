@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
-from mrhub.tools.registry import ToolExecutionError, ToolRegistry
+from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
 
 
 class AgentToolRequest(BaseModel):
@@ -96,6 +96,26 @@ class AgentCore:
                 result = self.tool_registry.invoke(
                     requested_tool.name, requested_tool.payload
                 )
+            except ToolPolicyError as exc:
+                error_code = (
+                    "approval_required"
+                    if exc.decision is PolicyDecision.REQUIRE_APPROVAL
+                    else "policy_denied"
+                )
+                if on_step is not None:
+                    on_step(step_number, "failed", error_code)
+                return {
+                    "decision_mode": "controlled_tool_execution",
+                    "execution_started": True,
+                    "execution_completed": False,
+                    "model_inference_started": False,
+                    "tools_executed": bool(results),
+                    "plan": plan,
+                    "results": results,
+                    "failed_tool": requested_tool.name,
+                    "error_code": error_code,
+                    "blocked": True,
+                }
             except (ToolExecutionError, ValueError, TypeError, KeyError, RuntimeError):
                 if on_step is not None:
                     on_step(step_number, "failed", "tool_execution_failed")
