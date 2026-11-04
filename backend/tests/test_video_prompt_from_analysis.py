@@ -219,6 +219,8 @@ def test_prompt_composition_requires_the_exact_storyboard_version():
     draft_id = UUID("33333333-3333-4333-8333-333333333333")
     with pytest.raises(ValidationError):
         AnalysisPromptOptions(timeline_draft_id=draft_id)
+    with pytest.raises(ValidationError):
+        AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=True)
 
     with pytest.raises(PromptCompositionUnavailable) as error:
         compose_prompts_from_analysis(
