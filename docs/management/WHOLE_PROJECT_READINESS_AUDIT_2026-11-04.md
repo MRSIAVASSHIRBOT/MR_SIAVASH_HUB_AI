@@ -238,7 +238,7 @@ Latest main commit: `1c531a97749b26ff05c9efde3944169e1a39b761`.
 
 All six exact-head checks passed for PRs #247, #248 and #249: Backend CI, Python 3.11 and 3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows. PR #246 checks also passed.
 
-The four main-branch workflows for `1c531a97749b26ff05c9efde3944169e1a39b761` were queued when this entry was prepared. Their final results must be verified separately; passing PR checks do not substitute for post-merge main verification.
+All four main-branch workflows for `1c531a97749b26ff05c9efde3944169e1a39b761` completed successfully: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration. These are post-merge main results, independently verified from the main-commit checks.
 
 ### Remaining risks and acceptance gaps
 
