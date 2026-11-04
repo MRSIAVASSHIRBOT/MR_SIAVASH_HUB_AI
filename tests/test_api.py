@@ -484,3 +484,65 @@ def test_video_render_from_draft_requires_saved_renderer_timeline(monkeypatch):
 
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "renderer_timeline_not_saved"
+
+
+def test_video_render_from_draft_hides_foreign_or_missing_draft(monkeypatch):
+    draft_id = "33333333-3333-4333-8333-333333333333"
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            assert owner_user_id
+            return None
+
+    def unexpected_analysis_jobs():
+        raise AssertionError("A missing or foreign draft must not reveal its analysis")
+
+    def unexpected_render_jobs():
+        raise AssertionError("A missing or foreign draft must not enqueue rendering")
+
+    monkeypatch.setattr(video_routes, "_timeline_drafts", lambda: Drafts())
+    monkeypatch.setattr(video_routes, "_analysis_jobs", unexpected_analysis_jobs)
+    monkeypatch.setattr(video_routes, "_render_jobs", unexpected_render_jobs)
+
+    response = authenticated_client().post(
+        f"/video-intelligence/timeline-drafts/{draft_id}/renders",
+        headers={"Idempotency-Key": "draft-render-key"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Timeline draft not found"
+
+
+def test_video_render_from_draft_rejects_malformed_saved_timeline(monkeypatch):
+    draft_id = "33333333-3333-4333-8333-333333333333"
+
+    class Drafts:
+        def get(self, owner_user_id, requested_draft_id):
+            return {
+                "draft_id": draft_id,
+                "analysis_id": "11111111-1111-4111-8111-111111111111",
+                "version": 2,
+                "renderer_timeline": {},
+                "renderer_timeline_sha256": "a" * 64,
+            }
+
+    class Analyses:
+        def get(self, owner_user_id, requested_analysis_id):
+            return {
+                "status": "completed",
+                "result": {"assets": []},
+            }
+
+    def unexpected_render_jobs():
+        raise AssertionError("Malformed timeline data must never reach render submission")
+
+    monkeypatch.setattr(video_routes, "_timeline_drafts", lambda: Drafts())
+    monkeypatch.setattr(video_routes, "_analysis_jobs", lambda: Analyses())
+    monkeypatch.setattr(video_routes, "_render_jobs", unexpected_render_jobs)
+
+    response = authenticated_client().post(
+        f"/video-intelligence/timeline-drafts/{draft_id}/renders",
+        headers={"Idempotency-Key": "draft-render-key"},
+    )
+
+    assert response.status_code == 422
