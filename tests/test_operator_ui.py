@@ -2,6 +2,7 @@ import re
 import shutil
 import subprocess
 from importlib.resources import files
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
