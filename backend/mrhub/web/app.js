@@ -1101,7 +1101,11 @@
       generation_instruction: "یک صحنهٔ اصیل با ترکیب‌بندی واضح بساز.",
       transition_to_next: "clean cinematic cut",
     });
-    renderVideoStoryboardEditor(beats);
+    const selected = videoPromptResults.find((item) => item.asset_id === $("#video-prompt-source").value);
+    renderVideoStoryboardEditor(
+      beats,
+      selected ? selected.source_timestamp_limit_seconds : 86400
+    );
     message("#video-storyboard-message", "Beat جدید اضافه شد؛ برای اعمال آن Storyboard را ذخیره کنید.");
   }
 
