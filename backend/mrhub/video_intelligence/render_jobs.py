@@ -195,7 +195,7 @@ class VideoRenderJobRepository:
             "status": row["status"],
             "output_asset_id": row["output_asset_id"],
             "created_at": row["created_at"],
-            "snapshot_id": row["snapshot_id"] if "snapshot_id" in row.keys() else None,
+            "snapshot_id": row["snapshot_id"],
         }
 
     def get(self, owner_user_id: str, render_id: UUID) -> dict[str, object] | None:
