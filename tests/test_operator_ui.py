@@ -171,6 +171,9 @@ def test_operator_ui_exposes_saved_storyboard_render_workflow():
     assert "mrh_video_draft_render_pending_fingerprint" in script.text
     assert "Idempotency-Key" in script.text
     assert "renderer_timeline_sha256" in script.text
+    assert '$("#video-storyboard-prepare-render-timeline").addEventListener("click", prepareVideoRenderTimeline)' in script.text
+    assert '$("#video-storyboard-render-submit").addEventListener("click", submitVideoDraftRender)' in script.text
+    assert "function syncStoryboardRenderButtons()" in script.text
 
 
 def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
