@@ -217,6 +217,14 @@ def compose_prompts_from_analysis(
                         "Visual observation timestamp exceeds the measured analysis window",
                     )
             for draft_beat in draft_update.beats:
+                if (
+                    draft_beat.source_timestamp_seconds is not None
+                    and draft_beat.source_timestamp_seconds >= window
+                ):
+                    raise PromptCompositionUnavailable(
+                        "timeline_draft_invalid",
+                        "Storyboard source timestamp exceeds the measured analysis window",
+                    )
                 beats.append(BeatInstruction(
                     start_seconds=draft_beat.start_seconds,
                     end_seconds=draft_beat.end_seconds,

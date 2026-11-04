@@ -148,3 +148,12 @@ def test_operator_ui_static_id_selectors_resolve_and_ids_are_unique():
     selected_ids = set(re.findall(r'\$\(["\']#([A-Za-z][\w-]*)["\']\)', script))
     missing_ids = sorted(selected_ids - declared_ids)
     assert not missing_ids, f"Operator UI selectors reference missing IDs: {missing_ids}"
+
+
+
+def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    assert "videoPromptAnalysisId !== incomingAnalysisId" in script
+    assert "videoPromptAnalysisId = activeVideoAnalysisId" in script
+    assert "renderSelectedVideoPrompt();" in script

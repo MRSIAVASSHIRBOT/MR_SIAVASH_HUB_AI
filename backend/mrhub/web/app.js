@@ -31,6 +31,7 @@
   let pendingVideoAnalysisKey = null;
   let pendingVideoAnalysisFingerprint = null;
   let videoPromptResults = [];
+  let videoPromptAnalysisId = null;
   let videoTimelineDrafts = [];
   let activeVideoTimelineDraft = null;
 
@@ -68,6 +69,7 @@
     videoPromptResults = [];
     videoTimelineDrafts = [];
     activeVideoTimelineDraft = null;
+    videoPromptAnalysisId = null;
     $("#video-storyboard-panel").hidden = true;
     $("#video-storyboard-beats").replaceChildren();
     $("#video-analysis-result").replaceChildren();
@@ -503,6 +505,18 @@
   }
 
   function renderVideoAnalysis(analysis) {
+    const incomingAnalysisId = analysis.analysis_id || activeVideoAnalysisId;
+    if (videoPromptAnalysisId !== incomingAnalysisId) {
+      videoPromptAnalysisId = incomingAnalysisId;
+      videoPromptResults = [];
+      videoTimelineDrafts = [];
+      activeVideoTimelineDraft = null;
+      videoPromptAnalysisId = null;
+      $("#video-storyboard-panel").hidden = true;
+      $("#video-storyboard-beats").replaceChildren();
+      $("#video-prompt-output").value = "";
+      $("#video-prompt-timeline").replaceChildren();
+    }
     const container = $("#video-analysis-result");
     container.replaceChildren();
     const labels = {
@@ -552,10 +566,13 @@
       source.disabled = true;
     }
     $("#video-compose-prompt").disabled = !canCompose;
-    $("#video-copy-prompt").disabled = true;
-    $("#video-prompt-output").value = "";
-    $("#video-prompt-timeline").replaceChildren();
-    videoPromptResults = [];
+    if (videoPromptResults.length) {
+      renderSelectedVideoPrompt();
+    } else {
+      $("#video-copy-prompt").disabled = true;
+      $("#video-prompt-output").value = "";
+      $("#video-prompt-timeline").replaceChildren();
+    }
 
     if (result) {
       const assets = Array.isArray(result.assets) ? result.assets : [];
@@ -901,6 +918,7 @@
         }
       );
       videoPromptResults = Array.isArray(response.prompts) ? response.prompts : [];
+      videoPromptAnalysisId = activeVideoAnalysisId;
       const source = $("#video-prompt-source");
       const previousAssetId = source.value;
       if (videoPromptResults.length) {
