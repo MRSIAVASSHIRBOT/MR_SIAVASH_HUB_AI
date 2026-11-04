@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict
 from mrhub.providers.base import (
     ModelProvider,
     ProviderContractError,
-    ProviderHealth,
+    validate_provider_health,
     ProviderRequest,
     ProviderResponse,
 )
@@ -101,14 +101,7 @@ class ModelRouter:
     def generate(self, request: ModelRequest, payload: ProviderRequest) -> ProviderResponse:
         selection = self.select(request)
         provider = self.registry.get(selection.provider, selection.model)
-        health = provider.health(timeout_seconds=2.0)
-        if (
-            not isinstance(health, ProviderHealth)
-            or type(health.available) is not bool
-            or not isinstance(health.reason_code, str)
-            or not health.reason_code
-        ):
-            raise ProviderContractError("Provider returned an invalid health contract")
+        health = validate_provider_health(provider.health(timeout_seconds=2.0))
         if not health.available:
             raise LookupError("Selected provider is unavailable")
 
