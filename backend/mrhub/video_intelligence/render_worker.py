@@ -57,7 +57,7 @@ class VideoRenderWorkerHandler:
                 raise TypeError("source_analysis_invalid")
             assets = result.get("assets")
             if not isinstance(assets, list):
-                raise ValueError("source_analysis_assets_invalid")
+                raise TypeError("source_analysis_assets_invalid")
 
             if snapshot_id is not None:
                 # Snapshot-backed tasks are fail-closed: never fall back to the
