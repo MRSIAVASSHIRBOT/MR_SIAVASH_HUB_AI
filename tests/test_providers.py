@@ -52,3 +52,53 @@ def test_registry_missing_adapter_fails_closed():
         assert "No provider adapter" in str(exc)
     else:
         raise AssertionError("missing adapters must fail closed")
+
+
+def test_router_rejects_duplicate_descriptor_without_overwriting_existing_entry():
+    router = ModelRouter()
+    original = ModelDescriptor(
+        provider="local",
+        model="small-model",
+        capability=ModelCapability(text=True),
+        local=True,
+        priority=20,
+    )
+    replacement = ModelDescriptor(
+        provider="local",
+        model="small-model",
+        capability=ModelCapability(text=True, vision=True),
+        local=True,
+        priority=1,
+    )
+    router.register(original)
+
+    try:
+        router.register(replacement)
+    except ValueError as exc:
+        assert "already registered" in str(exc)
+    else:
+        raise AssertionError("duplicate descriptor must fail")
+
+    assert router.catalog() == [original]
+    assert router.catalog()[0].capability.vision is False
+    assert router.catalog()[0].priority == 20
+
+
+def test_router_duplicate_descriptor_does_not_partially_register_provider_adapter():
+    router = ModelRouter()
+    provider = StubProvider()
+    router.register(provider.descriptor)
+
+    try:
+        router.register_provider(provider)
+    except ValueError as exc:
+        assert "already registered" in str(exc)
+    else:
+        raise AssertionError("duplicate descriptor must fail before adapter registration")
+
+    try:
+        router.registry.get(provider.descriptor.provider, provider.descriptor.model)
+    except LookupError as exc:
+        assert "No provider adapter" in str(exc)
+    else:
+        raise AssertionError("adapter registry must remain unchanged after rejection")

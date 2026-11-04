@@ -34,11 +34,20 @@ class ModelRouter:
         self.registry = registry or ProviderRegistry()
 
     def register(self, descriptor: ModelDescriptor) -> None:
-        self._providers[(descriptor.provider, descriptor.model)] = descriptor
+        key = (descriptor.provider, descriptor.model)
+        if key in self._providers:
+            raise ValueError("Model descriptor is already registered")
+        self._providers[key] = descriptor
 
     def register_provider(self, provider: ModelProvider) -> None:
+        descriptor = provider.descriptor
+        key = (descriptor.provider, descriptor.model)
+        if key in self._providers:
+            raise ValueError("Model descriptor is already registered")
+        # Check the router catalog before mutating the adapter registry so a
+        # duplicate descriptor cannot leave the two registries out of sync.
         self.registry.register(provider)
-        self.register(provider.descriptor)
+        self._providers[key] = descriptor
 
     def catalog(self) -> list[ModelDescriptor]:
         return sorted(
