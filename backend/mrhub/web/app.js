@@ -919,6 +919,15 @@
     }
   }
 
+  function updateVideoRenderSourceNote(draft) {
+    const note = $("#video-render-source-note");
+    if (!note) return;
+    note.textContent = draft && draft.renderer_timeline && draft.renderer_timeline_sha256
+      ? "منبع رندر: نسخهٔ ذخیره‌شدهٔ Draft " + draft.version
+        + "؛ ثبت رندر با Snapshot تغییرناپذیر انجام می‌شود."
+      : "این Storyboard فقط Beatهای Prompt را نگه می‌دارد؛ رندر فعلی از Timeline اصلی تحلیل استفاده می‌کند و ویرایش Beatها برش‌های MP4 را تغییر نمی‌دهد.";
+  }
+
   function renderSelectedVideoPrompt() {
     const assetId = $("#video-prompt-source").value;
     const selected = videoPromptResults.find((item) => item.asset_id === assetId);
@@ -962,14 +971,7 @@
       savedDraft ? savedDraft.beats : selected.beats,
       selected.source_timestamp_limit_seconds
     );
-    const renderSourceNote = $("#video-render-source-note");
-    if (renderSourceNote) {
-      renderSourceNote.textContent = savedDraft && savedDraft.renderer_timeline
-        && savedDraft.renderer_timeline_sha256
-        ? "منبع رندر: نسخهٔ ذخیره‌شدهٔ Draft " + savedDraft.version
-          + "؛ ثبت رندر با Snapshot تغییرناپذیر انجام می‌شود."
-        : "این Storyboard فقط Beatهای Prompt را نگه می‌دارد؛ رندر فعلی از Timeline اصلی تحلیل استفاده می‌کند و ویرایش Beatها برش‌های MP4 را تغییر نمی‌دهد.";
-    }
+    updateVideoRenderSourceNote(savedDraft);
     $("#video-storyboard-panel").hidden = false;
     $("#video-storyboard-new").disabled = false;
     $("#video-storyboard-save").disabled = false;
@@ -1243,6 +1245,7 @@
           body: { ...payload, analysis_id: activeVideoAnalysisId, asset_id: selected.asset_id },
         });
     activeVideoTimelineDraft = saved;
+    updateVideoRenderSourceNote(saved);
     videoTimelineDrafts = videoTimelineDrafts.filter((draft) => draft.draft_id !== saved.draft_id);
     videoTimelineDrafts.unshift(saved);
     renderVideoStoryboardDraftOptions(selected.asset_id);
@@ -1283,6 +1286,7 @@
     const selected = videoTimelineDrafts.find((draft) => draft.draft_id === draftId);
     if (!selected) return;
     activeVideoTimelineDraft = selected;
+    updateVideoRenderSourceNote(selected);
     $("#video-storyboard-duration").value = String(selected.duration_seconds);
     $("#video-prompt-aspect-ratio").value = selected.aspect_ratio;
     const selectedPrompt = videoPromptResults.find((item) => item.asset_id === selected.asset_id);
