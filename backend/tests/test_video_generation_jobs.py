@@ -783,3 +783,59 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     )
     assert asset is not None
     assert asset["processing_profile"] == "video_ai_generated"
+
+
+def test_interrupted_provider_submission_recovers_to_unknown_outcome_without_purging_payload(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"t" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1",
+        _request("crash-after-provider-acceptance"),
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    # Simulate a process crash after submit() may have reached the provider,
+    # but before the worker persisted the provider job reference.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """UPDATE video_generation_jobs
+               SET status = 'submitting'
+               WHERE generation_id = ? AND owner_user_id = ?""",
+            (str(generation_id), "owner-a"),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at
+            ) VALUES (?, 1, ?)""",
+            (str(task_id), "2000-01-01T00:00:00+00:00"),
+        )
+
+    from mrhub.jobs.worker import WorkerEngine
+
+    worker = WorkerEngine(repository.tasks)
+    assert worker.run_once() is None
+
+    recovered = repository.get("owner-a", generation_id)
+    assert recovered["status"] == "unknown_outcome"
+    assert recovered["error_code"] == "worker_interrupted_during_submission"
+    assert repository.tasks.get(task_id).status is TaskStatus.FAILED
+
+    reconciled = repository.load_for_reconciliation("owner-a", generation_id)
+    assert reconciled["request"]["prompt"].startswith("An original")
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert payload is not None
