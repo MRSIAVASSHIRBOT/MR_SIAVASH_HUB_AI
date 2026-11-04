@@ -304,7 +304,11 @@ def compose_prompts_from_analysis(
             }
             if source_timestamp is not None:
                 timeline_item["source_timestamp_seconds"] = source_timestamp
-            if confidence is not None:
+            if (
+                confidence is not None
+                and draft_update is not None
+                and asset_id == draft_asset_id
+            ):
                 timeline_item["confidence"] = confidence
             beat_cuts = (
                 [
