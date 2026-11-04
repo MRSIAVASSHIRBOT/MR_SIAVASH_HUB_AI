@@ -286,7 +286,11 @@ class VideoGenerationJobRepository:
                     "status": task_status,
                     "created": False,
                 }
-            if task_status not in {TaskStatus.FAILED.value, TaskStatus.SUCCEEDED.value}:
+            if task_status not in {
+                TaskStatus.FAILED.value,
+                TaskStatus.SUCCEEDED.value,
+                TaskStatus.CANCELLED.value,
+            }:
                 raise ValueError("Generation task is not eligible for reconciliation")
             cursor = connection.execute(
                 """UPDATE tasks SET status = ?, updated_at = ?
