@@ -84,6 +84,18 @@ recorded and no further turn is started. Provider adapters retain their own fini
 timeouts. Each individual provider request is also capped at 32,000 input characters; if the serialized prompt (including the tool catalog and observations) exceeds that limit, the run returns a sanitized `provider_input_budget_exceeded` result before provider dispatch. This is a cooperative run budget, not a hard process-level execution limit.
 
 
+## Model-driven tool policy outcomes
+
+The synchronous `POST /agent/run` orchestration loop preserves the policy
+engine's decision at the tool boundary. A high-risk or externally side-effecting
+proposal that lacks explicit approval returns `approval_required` with the
+stable `approval_required` error code. A prohibited-risk or otherwise denied
+proposal returns `tool_denied` with `tool_policy_denied`. Neither outcome
+increments the successful tool-call count or invokes the registered handler.
+Schema/handler failures remain separate sanitized `tool_denied` outcomes.
+This is outcome reporting only: the model cannot self-approve, and this endpoint
+does not yet provide an approval-granting or resume workflow.
+
 ## Specialist registry and bounded delegation
 
 The initial model-driven Agent API exposes a server-defined specialist catalog. A model may
