@@ -78,7 +78,9 @@ class OllamaProvider:
     @staticmethod
     def _token_count(value: object) -> int | None:
         """Accept only non-negative integer token counts from the provider."""
-        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return None
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         if not 0.1 <= timeout_seconds <= 10:
@@ -126,5 +128,9 @@ class OllamaProvider:
             output_text=output,
             input_tokens=self._token_count(payload.get("prompt_eval_count")),
             output_tokens=self._token_count(payload.get("eval_count")),
-            finish_reason=finish_reason if isinstance(finish_reason, str) and finish_reason else "stop",
+            finish_reason=(
+                finish_reason
+                if isinstance(finish_reason, str) and finish_reason
+                else "stop"
+            ),
         )
