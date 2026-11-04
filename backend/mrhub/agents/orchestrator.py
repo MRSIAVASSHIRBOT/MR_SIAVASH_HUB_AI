@@ -16,6 +16,7 @@ from mrhub.providers.base import (
     ProviderRequest,
 )
 from mrhub.providers.router import ModelRequest, ModelRouter
+from mrhub.security.policy import PolicyDecision
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
 
 MAX_TURNS = 5
@@ -312,7 +313,27 @@ class AgentOrchestrator:
                     "tool_denied", transcript, selection, turn, tool_calls,
                     error_code="tool_not_registered",
                 )
-            except (ToolPolicyError, ToolExecutionError, ValidationError, ValueError, TypeError):
+            except ToolPolicyError as exc:
+                if exc.decision is PolicyDecision.REQUIRE_APPROVAL:
+                    transcript.append({
+                        "turn": turn,
+                        "type": "tool_approval_required",
+                        "reason": "explicit_approval_required",
+                    })
+                    return self._result(
+                        "approval_required", transcript, selection, turn, tool_calls,
+                        error_code="approval_required",
+                    )
+                transcript.append({
+                    "turn": turn,
+                    "type": "tool_denied",
+                    "reason": "policy_denied",
+                })
+                return self._result(
+                    "tool_denied", transcript, selection, turn, tool_calls,
+                    error_code="tool_policy_denied",
+                )
+            except (ToolExecutionError, ValidationError, ValueError, TypeError):
                 transcript.append({"turn": turn, "type": "tool_denied", "reason": "policy_or_validation"})
                 return self._result(
                     "tool_denied", transcript, selection, turn, tool_calls,
