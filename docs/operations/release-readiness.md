@@ -45,7 +45,7 @@ Read the [release management policy](release-management.md) for the repository b
 ## Recent video snapshot integration
 - [x] Review and merge [PR #276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276), which fences new snapshot-backed renders to the exact current draft revision for both snapshot-value and snapshot-ID submissions while preserving accepted idempotent retries.
 - [x] Confirm the exact PR head passed Python 3.11/3.12, Backend CI, Defensive Python Scan and Linux/Windows FFmpeg integration.
-- [ ] Confirm all post-merge checks pass on the exact current `main` commit; do not substitute the PR-head results for post-merge validation.
+- [x] Confirm the post-merge CI, Backend CI, Defensive Python Scan and Linux/Windows FFmpeg integration checks passed on exact main commit `6e0a41a52c5a9f28faaa9b5ffb15b971e1bbffd2` (runs `41845994226`, `41845994047`, `41845994201`, `41845993797`). Re-run this gate for any later release candidate.
 - [ ] Complete the Windows real-device and representative-media workflow acceptance, including draft edits after accepted snapshot creation, replay of the accepted idempotency key, rejection of a new render from a stale snapshot, cancellation and output download.
 
 Do not mark a release production-ready while any required gate above remains unverified. A hosted CI pass does not replace target-device acceptance, a coordinated restore drill, or owner approval.
