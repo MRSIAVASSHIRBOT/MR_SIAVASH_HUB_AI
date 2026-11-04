@@ -298,7 +298,11 @@ def test_agent_run_rejects_coerced_boolean_and_budget_inputs(endpoint, field, va
         "provider_mode": "local",
         field: value,
     }
-    headers = {"Idempotency-Key": "strict-agent-input-001"} if endpoint.endswith("model-runs") else None
+    headers = (
+        {"Idempotency-Key": "strict-agent-input-001"}
+        if endpoint.endswith("model-runs")
+        else None
+    )
 
     response = client.post(endpoint, json=payload, headers=headers)
 
