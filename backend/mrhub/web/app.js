@@ -26,7 +26,11 @@
       }
     }
   } catch {
-    pendingVideoRenderRequests = {};
+    pendingVideoRenderRequests = Object.create(null);
+  }
+  const loadedPendingIdentities = Object.keys(pendingVideoRenderRequests);
+  while (loadedPendingIdentities.length > 20) {
+    delete pendingVideoRenderRequests[loadedPendingIdentities.shift()];
   }
   let activeVideoRenderStatus = null;
   let activeVideoRenderAssetId = null;
@@ -40,7 +44,7 @@
     sessionStorage.removeItem("mrh_video_render_pending_identity");
     sessionStorage.removeItem("mrh_video_render_pending_requests");
     pendingVideoRenderIdentity = null;
-    pendingVideoRenderRequests = {};
+    pendingVideoRenderRequests = Object.create(null);
     activeVideoAnalysisId = null;
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
@@ -925,6 +929,10 @@
       output.value = "";
       $("#video-copy-prompt").disabled = true;
       $("#video-storyboard-panel").hidden = true;
+      const renderSourceNote = $("#video-render-source-note");
+      if (renderSourceNote) {
+        renderSourceNote.textContent = "رندر از Timeline اصلی تحلیل انجام می‌شود؛ Storyboard انتخاب نشده است.";
+      }
       return;
     }
     output.value = selected.prompt;
