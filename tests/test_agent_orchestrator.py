@@ -345,3 +345,79 @@ def test_orchestrator_returns_budget_result_when_single_provider_prompt_exceeds_
     assert result["turns"] == 0
     assert result["tool_calls"] == 0
     assert provider.requests == []
+
+
+
+def test_orchestrator_preserves_approval_required_policy_outcome():
+    from pydantic import BaseModel
+
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.tools.registry import ToolDefinition, ToolRegistry
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class EmptyOutput(BaseModel):
+        pass
+
+    calls = []
+    tools = ToolRegistry()
+    tools.register(ToolDefinition(
+        name="external.publish",
+        description="Publish approved content",
+        input_model=EmptyInput,
+        output_model=EmptyOutput,
+        handler=lambda _: calls.append("called") or {},
+        risk_class=RiskClass.HIGH,
+        external_side_effect=True,
+    ))
+    provider = ScriptedProvider([
+        json.dumps({"type": "tool_call", "name": "external.publish", "payload": {}})
+    ])
+    router = ModelRouter()
+    router.register_provider(provider)
+    result = AgentOrchestrator(router, tools).run(AgentLoopRequest(goal="Publish content"))
+
+    assert result["status"] == "approval_required"
+    assert result["error_code"] == "approval_required"
+    assert result["trace"][-1]["type"] == "approval_required"
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert calls == []
+
+
+def test_orchestrator_preserves_explicit_policy_denial_outcome():
+    from pydantic import BaseModel
+
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.tools.registry import ToolDefinition, ToolRegistry
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class EmptyOutput(BaseModel):
+        pass
+
+    calls = []
+    tools = ToolRegistry()
+    tools.register(ToolDefinition(
+        name="restricted.operation",
+        description="Restricted operation",
+        input_model=EmptyInput,
+        output_model=EmptyOutput,
+        handler=lambda _: calls.append("called") or {},
+        risk_class=RiskClass.PROHIBITED,
+    ))
+    provider = ScriptedProvider([
+        json.dumps({"type": "tool_call", "name": "restricted.operation", "payload": {}})
+    ])
+    router = ModelRouter()
+    router.register_provider(provider)
+    result = AgentOrchestrator(router, tools).run(AgentLoopRequest(goal="Run restricted operation"))
+
+    assert result["status"] == "tool_denied"
+    assert result["error_code"] == "policy_denied"
+    assert result["trace"][-1]["type"] == "tool_denied"
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert calls == []
