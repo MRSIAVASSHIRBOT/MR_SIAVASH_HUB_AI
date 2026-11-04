@@ -74,16 +74,17 @@ class VideoGenerationWorkerHandler:
 
         try:
             submission = provider.submit(request)
-        except VideoGenerationSubmissionError:
-            # Once submit was entered, the remote side effect may have happened.
-            # Never resubmit automatically; retain the encrypted request for
-            # a provider-specific reconciliation operation.
+        except Exception as exc:
+            # Once submit was entered, any adapter exception may follow a remote
+            # side effect. Treat both declared and unexpected failures as
+            # ambiguous; never resubmit automatically. Keep the encrypted
+            # request available for provider-specific reconciliation.
             if not lease_lost.is_set():
                 self.jobs.transition_under_lease(
                     owner, generation_id, "unknown_outcome", lease=lease,
                     error_code="provider_submission_outcome_unknown",
                 )
-            raise ValueError("provider_submission_outcome_unknown")
+            raise ValueError("provider_submission_outcome_unknown") from exc
 
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
