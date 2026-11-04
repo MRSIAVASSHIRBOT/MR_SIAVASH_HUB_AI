@@ -1,8 +1,8 @@
 import hashlib
 from uuid import UUID
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.timeline import VideoTimeline
