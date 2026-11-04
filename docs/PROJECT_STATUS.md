@@ -528,9 +528,9 @@ This is the newest video-workstream hand-off and supersedes the earlier storyboa
 
 The merged PR head was `a01f865e907086cdc767a774fb1f2d94b8c57229`; its recorded Python 3.11/3.12, Defensive Python Scan, and Linux/Windows FFmpeg checks passed. A subsequent review found a narrower race: if a snapshot already existed and the draft advanced before a *new* render submission, the existing-snapshot replay path could bypass the current-draft fence. This does not invalidate already accepted immutable renders or their legitimate idempotent retries, but it must be fixed for new submissions.
 
-### PR #274 — post-merge stale-revision fence
+### PR #276 — post-merge stale-revision fence
 
-PR #274 is the follow-up candidate based on current main. It keeps historical snapshot reads/replays available while requiring every new snapshot-backed render submission to match the exact current owner-scoped draft revision inside the same SQLite transaction. It adds a regression test proving that a stale existing snapshot cannot create a second render after the draft advances. The follow-up remains unmerged until exact-head CI and review pass.
+PR #276 is the follow-up candidate based on current main. It keeps historical snapshot reads/replays available while requiring every new snapshot-backed render submission to match the exact current owner-scoped draft revision inside the same SQLite transaction. It adds a regression test proving that a stale existing snapshot cannot create a second render after the draft advances. The follow-up remains unmerged until exact-head CI and review pass.
 
 ### Remaining video acceptance work
 
@@ -546,4 +546,4 @@ Green CI is not target-device acceptance or production readiness. Whole-product 
 
 ## Post-merge stale snapshot submission fence — 2026-11-04 UTC
 
-Current main baseline before follow-up: `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`. PR #273 is merged. A focused follow-up branch `fix/video-render-stale-snapshot-fence` contains the transaction-level current-draft guard and regression test; it is tracked in PR #274 and must not be described as main behavior until merged. The repository's low-level immutable snapshot lookup remains able to replay an already-created historical snapshot; only *new render submission* is required to prove that the draft row still has the exact same owner, analysis, asset, version, canonical timeline and hash under the submission transaction. Existing idempotent replay for an already accepted request remains valid. CI and review are pending on PR #274.
+Current main baseline before follow-up: `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`. PR #273 is merged. A focused follow-up branch `fix/video-render-stale-snapshot-fence` contains the transaction-level current-draft guard and regression test; it is tracked in PR #276 and must not be described as main behavior until merged. The repository's low-level immutable snapshot lookup remains able to replay an already-created historical snapshot; only *new render submission* is required to prove that the draft row still has the exact same owner, analysis, asset, version, canonical timeline and hash under the submission transaction. Existing idempotent replay for an already accepted request remains valid. CI and review are pending on PR #276.
