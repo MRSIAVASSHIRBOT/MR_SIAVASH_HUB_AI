@@ -540,9 +540,7 @@ def get_timeline_draft_for_analysis_asset(
     draft = _timeline_drafts().get_for_analysis_asset(
         user.user_id, analysis_id, asset_id
     )
-    if draft is None:
-        raise HTTPException(status_code=404, detail="Timeline draft not found")
-    return draft
+    return {"draft": draft}
 
 
 @router.get("/timeline-drafts/{draft_id}")

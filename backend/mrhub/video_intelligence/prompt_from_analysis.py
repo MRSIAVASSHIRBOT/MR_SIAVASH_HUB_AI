@@ -315,6 +315,11 @@ def compose_prompts_from_analysis(
             "asset_id": asset_id,
             "prompt": prompt,
             "duration_seconds": duration_seconds,
+            "aspect_ratio": (
+                validated_draft.aspect_ratio
+                if use_saved_draft and validated_draft
+                else options.aspect_ratio
+            ),
             "beat_count": len(beats),
             "beats": [beat.model_dump(mode="json") for beat in beats],
             "timeline": timeline,
