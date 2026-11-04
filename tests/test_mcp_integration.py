@@ -9,10 +9,10 @@ from pydantic import BaseModel
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import RiskClass
+from mrhub.integrations.mcp_server import create_mcp_server
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
 from mrhub.security.policy import PolicyDecision, PolicyEngine, PolicyResult
-from mrhub.integrations.mcp_server import create_mcp_server
 from mrhub.tools.builtins import build_tool_registry
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
