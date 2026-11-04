@@ -75,6 +75,13 @@ class OllamaProvider:
             trust_env=False,
         )
 
+    @staticmethod
+    def _token_count(value: object) -> int | None:
+        """Accept only non-negative integer token counts from the provider."""
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return None
+
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         if not 0.1 <= timeout_seconds <= 10:
             raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
@@ -109,14 +116,21 @@ class OllamaProvider:
         except ValueError as exc:
             raise ProviderUnavailableError("Local model returned an invalid response") from exc
 
+        if not isinstance(payload, dict):
+            raise ProviderUnavailableError("Local model returned an invalid response")
         output = payload.get("response")
         if not isinstance(output, str) or len(output) > 100_000:
             raise ProviderUnavailableError("Local model returned an invalid response")
+        finish_reason = payload.get("done_reason")
         return ProviderResponse(
             provider=self.descriptor.provider,
             model=self.descriptor.model,
             output_text=output,
-            input_tokens=payload.get("prompt_eval_count"),
-            output_tokens=payload.get("eval_count"),
-            finish_reason=str(payload.get("done_reason") or "stop"),
+            input_tokens=self._token_count(payload.get("prompt_eval_count")),
+            output_tokens=self._token_count(payload.get("eval_count")),
+            finish_reason=(
+                finish_reason
+                if isinstance(finish_reason, str) and finish_reason
+                else "stop"
+            ),
         )
