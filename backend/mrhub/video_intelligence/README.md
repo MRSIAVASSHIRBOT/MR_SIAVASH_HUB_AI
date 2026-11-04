@@ -128,3 +128,20 @@ Authenticated owners can cancel an accepted analysis before the worker claims it
 The renderer consumes only a validated `VideoTimeline` and source paths resolved from the authenticated owner's media repository. It does not accept user-supplied FFmpeg arguments, filter fragments, filesystem paths, or remote URLs. The worker acquires the existing task/fencing-token-bound media-use lease for every unique source before FFmpeg starts, retains all leases through FFprobe verification and output registration, and releases them in `finally`. Deletion/transcoding therefore cannot race the render. Stale recovery releases orphaned source-use locks only after the worker lease has expired and the task has exceeded the recovery threshold.
 
 The current renderer is deliberately silent and cut-only. Output is limited to 125 clips, 60 seconds, fixed aspect-ratio presets, 1920-pixel maximum dimension, a 180-second FFmpeg timeout, and the repository's 100 MB output ceiling. A separate FFprobe process must confirm MP4 format, one video stream, expected dimensions, and duration before publication. Failed or cancelled jobs do not publish an asset. This does not constitute Windows or real-media runtime acceptance.
+
+## Immutable storyboard render snapshots
+
+A saved `VideoTimelineDraft` and the cut-only renderer's `VideoTimeline` are different contracts. Storyboard beats contain editorial/generation intent; they are not executable renderer instructions. A draft may be submitted for local rendering only after the application has produced and persisted its renderer-compatible timeline representation.
+
+The authenticated route `POST /video-intelligence/timeline-drafts/{draft_id}/renders` accepts an idempotency key and resolves the draft under the authenticated owner. Submission validates the saved renderer timeline and its integrity digest, draft revision, analysis association, source asset membership and measured source-duration bounds. It then persists an immutable owner-scoped `VideoRenderTimelineSnapshot` and links the render job to that snapshot.
+
+The snapshot is canonicalized and SHA-256 verified. Its identity binds the owner, analysis, draft and exact draft revision. Snapshot persistence, task creation, render record creation and idempotency binding occur in one database transaction: a failed or conflicting submission must not leave a partially accepted snapshot or task.
+
+The render Worker loads the snapshot referenced by the render job, verifies its ownership and integrity, and validates the contained renderer timeline before resolving source media. It must not fall back to a mutable analysis timeline or a newer draft revision if the snapshot is missing, malformed or inconsistent. A failed validation is a fail-closed render failure, not a reason to reconstruct the request from mutable state.
+
+Migrations 28 and 29 add renderer-timeline/hash persistence and bind render jobs to immutable snapshot records. Regression coverage includes owner isolation, exact revision binding, source bounds, immutable snapshot storage, route-level handoff, rejection of missing/foreign or malformed drafts, and atomic rollback behavior.
+
+This integration does not make the local renderer a full video editor. Rendering remains silent and hard-cut-only. Audio mixing, captions, graphics, motion effects, non-cut transitions and AI-generated footage remain separate capabilities. The dashboard currently has storyboard editing and prompt composition, but an operator-facing action to submit a render from the saved renderer-compatible draft remains a follow-up. Snapshot retention/cleanup policy and target-device workflow acceptance are also outstanding. No external video-generation provider is registered by this change.
+
+
+The dashboard uses the snapshot-backed draft-render endpoint only when the selected saved draft contains a renderer-compatible timeline and its persisted SHA-256. Legacy beat-only Storyboards remain prompt-only and continue to use the analysis timeline for MP4 rendering; no unsafe beat-to-clip conversion is performed. The dashboard integration is proposed in PR #285 and is not part of main until merged.
