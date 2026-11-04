@@ -152,3 +152,20 @@ def test_timeline_draft_rejects_empty_or_oversized_timeline():
             aspect_ratio="9:16",
             beats=[],
         )
+
+
+
+def test_timeline_draft_list_is_owner_and_analysis_scoped(tmp_path):
+    repository = _repository(tmp_path)
+    created = _create(repository)
+    analysis_id = UUID(created["analysis_id"])
+
+    owned = repository.list_for_analysis("owner-a", analysis_id)
+    foreign_owner = repository.list_for_analysis("owner-b", analysis_id)
+    foreign_analysis = repository.list_for_analysis(
+        "owner-a", UUID("99999999-9999-4999-8999-999999999999")
+    )
+
+    assert [item["draft_id"] for item in owned] == [created["draft_id"]]
+    assert foreign_owner == []
+    assert foreign_analysis == []
