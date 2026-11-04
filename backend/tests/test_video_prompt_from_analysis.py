@@ -180,7 +180,7 @@ def test_prompt_composition_requires_matching_draft_identity():
     with pytest.raises(PromptCompositionUnavailable) as missing:
         compose_prompts_from_analysis(
             _analysis_result([0.0, 2.0]),
-            AnalysisPromptOptions(timeline_draft_id=draft_id),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
         )
     assert missing.value.code == "timeline_draft_unavailable"
 
@@ -189,7 +189,7 @@ def test_prompt_composition_requires_matching_draft_identity():
     with pytest.raises(PromptCompositionUnavailable) as mismatch:
         compose_prompts_from_analysis(
             _analysis_result([0.0, 2.0]),
-            AnalysisPromptOptions(timeline_draft_id=draft_id),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
             timeline_draft=draft,
         )
     assert mismatch.value.code == "timeline_draft_invalid"
@@ -204,7 +204,7 @@ def test_prompt_composition_rejects_storyboard_for_an_unrelated_asset():
     with pytest.raises(PromptCompositionUnavailable) as error:
         compose_prompts_from_analysis(
             _analysis_result([0.0, 2.0]),
-            AnalysisPromptOptions(timeline_draft_id=draft_id),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
             timeline_draft=draft,
         )
     assert error.value.code == "timeline_draft_invalid"
