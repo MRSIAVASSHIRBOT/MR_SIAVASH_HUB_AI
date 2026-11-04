@@ -80,7 +80,10 @@ def test_snapshot_hash_detects_content_tampering():
             draft_version=snapshot.draft_version,
             timeline_json=snapshot.timeline_json.replace(
                 '"source_start_seconds":1.0',
-                '"source_start_seconds":2.0',
+                '"source_start_seconds":1.5',
+            ).replace(
+                '"source_end_seconds":6.0',
+                '"source_end_seconds":6.5',
             ),
             timeline_sha256=snapshot.timeline_sha256,
         )
