@@ -258,3 +258,34 @@ def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
     assert "encodeURIComponent(renderId)" in cancel
     assert "activeVideoRenderId !== renderId" in cancel
     assert "activeVideoRenderIdentity !== renderIdentity" in cancel
+
+def test_operator_ui_binds_render_retries_to_exact_analysis_or_draft_revision():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    assert "pendingVideoRenderRequests[requestIdentity]" in script
+    assert "mrh_video_render_pending_requests" in script
+    assert '"draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version' in script
+    assert "rendererDraft.renderer_timeline_sha256" in script
+    assert 'sessionStorage.setItem("mrh_video_render_identity", activeVideoRenderIdentity)' in script
+    assert "delete pendingVideoRenderRequests[requestIdentity]" in script
+    assert "while (pendingIdentities.length > 20)" in script
+
+
+def test_operator_ui_blocks_storyboard_mutation_while_render_is_active():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+    controls = script.split("function syncStoryboardRenderButtons", 1)[1].split(
+        "function lockVideoStoryboardControls", 1
+    )[0]
+
+    assert "const renderMayBeActive = Boolean(activeVideoRenderId)" in controls
+    assert "const mutationBlocked = videoStoryboardControlsLocked || renderMayBeActive" in controls
+    assert '$("#video-storyboard-save").disabled = !hasSelectedPrompt || mutationBlocked' in controls
+    assert '$("#video-storyboard-prepare-render-timeline").disabled = !hasDraft || mutationBlocked' in controls
+
+    cancel = script.split("async function cancelVideoRender", 1)[1].split(
+        "async function downloadRenderedVideo", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in cancel
+    assert "const renderIdentity = activeVideoRenderIdentity" in cancel
+    assert "activeVideoRenderId !== renderId" in cancel
+    assert "activeVideoRenderIdentity !== renderIdentity" in cancel
