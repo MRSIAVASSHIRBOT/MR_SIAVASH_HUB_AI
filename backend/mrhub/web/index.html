@@ -330,6 +330,30 @@
             <p id="video-prompt-message" class="message" role="status" aria-live="polite"></p>
             <div id="video-prompt-timeline" class="record-list"></div>
           </div>
+
+          <section id="video-storyboard-panel" class="video-storyboard-panel" hidden aria-labelledby="video-storyboard-heading">
+            <div class="section-heading">
+              <h4 id="video-storyboard-heading">ویرایش Storyboard</h4>
+              <span class="status-pill status-muted">فقط تدوین Prompt</span>
+            </div>
+            <p class="muted">Beatها را ویرایش و نسخه‌دار ذخیره کنید. استفاده از Storyboard فقط Prompt را تغییر می‌دهد؛ هیچ Provider، رندر یا انتشار خودکاری اجرا نمی‌شود.</p>
+            <div class="form-grid">
+              <label>Storyboard ذخیره‌شده
+                <select id="video-storyboard-draft-select" disabled>
+                  <option value="">برای این ویدئو Storyboard ذخیره‌شده‌ای وجود ندارد</option>
+                </select>
+              </label>
+              <label>مدت هدف (ثانیه)
+                <input id="video-storyboard-duration" type="number" min="3" max="60" step="1" value="10">
+              </label>
+              <button id="video-storyboard-new" class="button button-secondary" type="button" disabled>شروع از Prompt فعلی</button>
+              <button id="video-storyboard-add-beat" class="button button-quiet" type="button" disabled>افزودن Beat</button>
+              <button id="video-storyboard-save" class="button button-primary" type="button" disabled>ذخیرهٔ Storyboard</button>
+              <button id="video-storyboard-compose" class="button button-secondary" type="button" disabled>ساخت Prompt از Storyboard</button>
+            </div>
+            <div id="video-storyboard-beats" class="record-list"></div>
+            <p id="video-storyboard-message" class="message" role="status" aria-live="polite"></p>
+          </section>
         </div>
 
         <form id="content-draft-form" class="form-grid">

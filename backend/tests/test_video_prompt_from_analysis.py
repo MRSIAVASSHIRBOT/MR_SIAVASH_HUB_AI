@@ -11,6 +11,10 @@ def _analysis_result(scene_starts):
     technical = {
         "asset_id": "asset-1",
         "analysis_window_seconds": 5.0,
+        "technical_metadata": {
+            "duration_seconds": 20.0,
+            "metadata_status": "available",
+        },
     }
     if scene_starts is not None:
         technical["scene_start_timestamps"] = scene_starts
@@ -101,3 +105,191 @@ def test_prompt_composition_supports_legacy_analysis_without_scene_boundaries():
     assert prompts[0]["scene_cut_count"] == 0
     assert prompts[0]["scene_boundaries_truncated"] is False
     assert all("scene_cut_timestamps" not in item for item in prompts[0]["timeline"])
+
+
+
+def _storyboard_draft(draft_id):
+    return {
+        "draft_id": str(draft_id),
+        "analysis_id": "analysis-1",
+        "asset_id": "asset-1",
+        "duration_seconds": 8,
+        "aspect_ratio": "16:9",
+        "version": 4,
+        "beats": [
+            {
+                "start_seconds": 0.0,
+                "end_seconds": 3.0,
+                "generation_instruction": "Create a custom original opening beat",
+                "transition_to_next": "soft light wipe",
+                "source_timestamp_seconds": 1.0,
+                "confidence": 0.7,
+            },
+            {
+                "start_seconds": 3.0,
+                "end_seconds": 8.0,
+                "generation_instruction": "Resolve with a clear final product frame",
+                "transition_to_next": "hold",
+                "source_timestamp_seconds": 3.5,
+                "confidence": 0.95,
+            },
+        ],
+    }
+
+
+def test_prompt_composition_uses_versioned_storyboard_for_its_asset():
+    from uuid import UUID
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    draft = _storyboard_draft(draft_id)
+    options = AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4)
+
+    prompts = compose_prompts_from_analysis(
+        _analysis_result([0.0, 2.0, 3.0, 4.0]),
+        options,
+        timeline_draft=draft,
+    )
+
+    assert len(prompts) == 1
+    result = prompts[0]
+    assert "custom original opening beat" in result["prompt"]
+    assert "8-second video in 16:9 aspect ratio" in result["prompt"]
+    assert result["duration_seconds"] == 8
+    assert result["aspect_ratio"] == "16:9"
+    assert result["source_timestamp_limit_seconds"] == 20.0
+    assert result["timeline_draft_id"] == str(draft_id)
+    assert result["timeline_draft_version"] == 4
+    assert result["beats"][0]["confidence"] == 0.7
+    assert result["timeline"] == [
+        {
+            "start_seconds": 0.0,
+            "end_seconds": 3.0,
+            "source_timestamp_seconds": 1.0,
+            "confidence": 0.7,
+            "scene_cut_timestamps": [2.0, 3.0],
+        },
+        {
+            "start_seconds": 3.0,
+            "end_seconds": 8.0,
+            "source_timestamp_seconds": 3.5,
+            "confidence": 0.95,
+            "scene_cut_timestamps": [4.0],
+        },
+    ]
+
+
+def test_prompt_composition_requires_matching_draft_identity():
+    from uuid import UUID
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    with pytest.raises(PromptCompositionUnavailable) as missing:
+        compose_prompts_from_analysis(
+            _analysis_result([0.0, 2.0]),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
+        )
+    assert missing.value.code == "timeline_draft_unavailable"
+
+    draft = _storyboard_draft(draft_id)
+    draft["draft_id"] = "44444444-4444-4444-8444-444444444444"
+    with pytest.raises(PromptCompositionUnavailable) as mismatch:
+        compose_prompts_from_analysis(
+            _analysis_result([0.0, 2.0]),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
+            timeline_draft=draft,
+        )
+    assert mismatch.value.code == "timeline_draft_invalid"
+
+
+def test_prompt_composition_rejects_storyboard_for_an_unrelated_asset():
+    from uuid import UUID
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    draft = _storyboard_draft(draft_id)
+    draft["asset_id"] = "asset-not-in-analysis"
+    with pytest.raises(PromptCompositionUnavailable) as error:
+        compose_prompts_from_analysis(
+            _analysis_result([0.0, 2.0]),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
+            timeline_draft=draft,
+        )
+    assert error.value.code == "timeline_draft_invalid"
+
+
+
+def test_prompt_composition_requires_the_exact_storyboard_version():
+    from uuid import UUID
+
+    from pydantic import ValidationError
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    with pytest.raises(ValidationError):
+        AnalysisPromptOptions(timeline_draft_id=draft_id)
+    with pytest.raises(ValidationError):
+        AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=True)
+
+    with pytest.raises(PromptCompositionUnavailable) as error:
+        compose_prompts_from_analysis(
+            _analysis_result([0.0, 2.0]),
+            AnalysisPromptOptions(
+                timeline_draft_id=draft_id,
+                timeline_draft_version=5,
+            ),
+            timeline_draft=_storyboard_draft(draft_id),
+        )
+    assert error.value.code == "timeline_draft_version_conflict"
+
+
+
+def test_prompt_composition_rejects_storyboard_source_timestamp_outside_analysis_window():
+    from uuid import UUID
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    draft = _storyboard_draft(draft_id)
+    draft["beats"][1]["source_timestamp_seconds"] = 5.0
+    analysis_result = _analysis_result([0.0, 2.0, 3.0, 4.0])
+    analysis_result["assets"][0].pop("technical_metadata")
+
+    with pytest.raises(PromptCompositionUnavailable) as error:
+        compose_prompts_from_analysis(
+            analysis_result,
+            AnalysisPromptOptions(
+                timeline_draft_id=draft_id,
+                timeline_draft_version=4,
+            ),
+            timeline_draft=draft,
+        )
+
+    assert error.value.code == "timeline_draft_invalid"
+
+
+
+def test_prompt_composition_allows_storyboard_source_reference_beyond_analysis_window():
+    from uuid import UUID
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    draft = _storyboard_draft(draft_id)
+    draft["beats"][0]["source_timestamp_seconds"] = 6.0
+
+    prompts = compose_prompts_from_analysis(
+        _analysis_result([0.0, 2.0, 3.0, 4.0]),
+        AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
+        timeline_draft=draft,
+    )
+
+    assert prompts[0]["timeline"][0]["source_timestamp_seconds"] == 6.0
+
+
+def test_prompt_composition_rejects_storyboard_source_reference_beyond_asset_duration():
+    from uuid import UUID
+
+    draft_id = UUID("33333333-3333-4333-8333-333333333333")
+    draft = _storyboard_draft(draft_id)
+    draft["beats"][0]["source_timestamp_seconds"] = 20.0
+
+    with pytest.raises(PromptCompositionUnavailable) as error:
+        compose_prompts_from_analysis(
+            _analysis_result([0.0, 2.0, 3.0, 4.0]),
+            AnalysisPromptOptions(timeline_draft_id=draft_id, timeline_draft_version=4),
+            timeline_draft=draft,
+        )
+    assert error.value.code == "timeline_draft_invalid"
