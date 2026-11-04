@@ -303,7 +303,7 @@ class ContentScheduleDispatcher:
 
         published_at = self._now()
         with tasks._connection() as connection:
-            connection.execute(
+            cursor = connection.execute(
                 """
                 UPDATE content_publish_schedules
                 SET status = 'published', provider_post_id = ?, published_at = ?,
@@ -317,6 +317,32 @@ class ContentScheduleDispatcher:
                     schedule_id,
                 ),
             )
+            current_status = None
+            if cursor.rowcount != 1:
+                current = connection.execute(
+                    "SELECT status FROM content_publish_schedules WHERE schedule_id = ?",
+                    (schedule_id,),
+                ).fetchone()
+                current_status = (
+                    str(current["status"]) if current is not None else "unknown_outcome"
+                )
+
+        if cursor.rowcount != 1:
+            # Record the failed compare-and-set after closing the schedule
+            # connection; AuditLogger writes through its own repository connection.
+            AuditLogger(tasks).record(
+                event_type="content.schedule_confirmation_not_committed",
+                outcome="failure",
+                subject_type="content_publish_schedule",
+                subject_id=schedule_id,
+                metadata={"reason_code": "schedule_state_changed_before_confirmation_commit"},
+            )
+            return {
+                "schedule_id": schedule_id,
+                "status": current_status,
+                "reason_code": "schedule_state_changed_before_confirmation_commit",
+            }
+
         AuditLogger(tasks).record(
             event_type="content.schedule_published",
             outcome="success",
