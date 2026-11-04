@@ -87,14 +87,15 @@
       syncStoryboardRenderButtons();
       return;
     }
-    $("#video-render-result").replaceChildren();
-    $("#video-render-refresh").disabled = true;
-    $("#video-render-cancel").disabled = true;
+    // Keep the previous job reachable even when the operator has selected
+    // a newer draft revision; refresh/cancel still target this exact render ID.
+    $("#video-render-refresh").disabled = false;
+    $("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);
     $("#video-render-submit").disabled = !canSubmitVideoRender || renderMayBeActive;
     syncStoryboardRenderButtons();
     message(
       "#video-render-message",
-      "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است؛ برای مشاهده یا لغو آن، همان Draft را دوباره انتخاب کنید."
+      "نمایش فعلی متعلق به Timeline یا نسخهٔ دیگری است؛ دکمه‌های بررسی و لغو فقط همان Job قبلی را کنترل می‌کنند."
     );
   }
 
@@ -752,6 +753,7 @@
       "وضعیت رندر",
       statusText,
       "شناسه: " + (render.render_id || activeVideoRenderId || "—")
+        + " · هدف: " + (activeVideoRenderIdentity || "نامشخص")
         + " · آخرین به‌روزرسانی: " + (render.updated_at || "نامشخص")
     ));
     if (render.error_code) {
@@ -772,10 +774,6 @@
   }
 
   async function refreshVideoRender() {
-    if (activeVideoRenderIdentity && activeVideoRenderIdentity !== currentVideoRenderIdentity()) {
-      syncVideoRenderTarget();
-      return;
-    }
     if (!activeVideoRenderId) {
       message("#video-render-message", "هنوز درخواست رندری ثبت نشده است.", "error");
       return;
@@ -787,7 +785,6 @@
       if (
         activeVideoRenderId !== renderId
         || activeVideoRenderIdentity !== renderIdentity
-        || (renderIdentity && renderIdentity !== currentVideoRenderIdentity())
       ) {
         syncVideoRenderTarget();
         return;
@@ -800,7 +797,10 @@
           : render.status === "cancelled"
             ? "رندر لغو شد."
             : "وضعیت فعلی: " + (videoRenderStatusLabels[render.status] || render.status) + ".";
-      message("#video-render-message", statusText, render.status === "failed" ? "error" : "success");
+      const targetNote = renderIdentity && renderIdentity !== currentVideoRenderIdentity()
+        ? " این Job متعلق به نسخهٔ دیگری است و وضعیت آن مستقل از Draft فعلی است."
+        : "";
+      message("#video-render-message", statusText + targetNote, render.status === "failed" ? "error" : "success");
     } catch (error) {
       if (activeVideoRenderId === renderId && activeVideoRenderIdentity === renderIdentity) {
         message("#video-render-message", error.message, "error");
@@ -810,6 +810,13 @@
 
   async function submitVideoRender() {
     const requestAnalysisId = activeVideoAnalysisId;
+    if (
+      activeVideoRenderId
+      && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus))
+    ) {
+      message("#video-render-message", "یک رندر قبلی هنوز فعال است؛ ابتدا وضعیت آن را تازه‌سازی یا لغو کنید.", "error");
+      return;
+    }
     if (!requestAnalysisId || !canSubmitVideoRender) {
       message("#video-render-message", "ابتدا تحلیل کامل با Timeline معتبر لازم است.", "error");
       return;
@@ -912,13 +919,6 @@
 
   async function cancelVideoRender() {
     if (!activeVideoRenderId) return;
-    if (
-      activeVideoRenderIdentity
-      && activeVideoRenderIdentity !== currentVideoRenderIdentity()
-    ) {
-      syncVideoRenderTarget();
-      return;
-    }
     if (!window.confirm("درخواست لغو رندر ثبت شود؟ رندر در حال اجرا ممکن است پس از پایان پردازش فعلی متوقف شود.")) return;
     const renderId = activeVideoRenderId;
     const renderIdentity = activeVideoRenderIdentity;
@@ -932,7 +932,6 @@
       if (
         activeVideoRenderId !== renderId
         || activeVideoRenderIdentity !== renderIdentity
-        || (renderIdentity && renderIdentity !== currentVideoRenderIdentity())
       ) {
         syncVideoRenderTarget();
         return;
@@ -942,7 +941,9 @@
       if (result.cancellation_requested) {
         message(
           "#video-render-message",
-          "درخواست لغو ثبت شد؛ Worker پس از مشاهدهٔ آن عملیات را نهایی می‌کند.",
+          renderIdentity && renderIdentity !== currentVideoRenderIdentity()
+            ? "درخواست لغو برای رندر نسخهٔ قبلی ثبت شد؛ Worker پس از مشاهدهٔ آن عملیات را نهایی می‌کند."
+            : "درخواست لغو ثبت شد؛ Worker پس از مشاهدهٔ آن عملیات را نهایی می‌کند.",
           "success"
         );
       }
@@ -990,6 +991,13 @@
 
   async function submitVideoAnalysis(event) {
     event.preventDefault();
+    if (
+      activeVideoRenderId
+      && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus))
+    ) {
+      message("#video-analysis-message", "یک رندر قبلی هنوز فعال است؛ ابتدا وضعیت آن را تازه‌سازی یا لغو کنید.", "error");
+      return;
+    }
     const selectedIds = Array.from($("#video-analysis-assets").selectedOptions)
       .map((option) => option.value)
       .filter(Boolean);
