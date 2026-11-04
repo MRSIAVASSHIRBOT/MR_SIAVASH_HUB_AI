@@ -1431,7 +1431,7 @@
   $("#video-render-submit").addEventListener("click", submitVideoRender);
   $("#video-render-refresh").addEventListener("click", refreshVideoRender);
   $("#video-render-cancel").addEventListener("click", cancelVideoRender);
-  $("#video-compose-prompt").addEventListener("click", composeVideoPrompt);
+  $("#video-compose-prompt").addEventListener("click", () => composeVideoPrompt());
   $("#video-prompt-source").addEventListener("change", handleVideoPromptSourceChange);
   $("#video-copy-prompt").addEventListener("click", copyVideoPrompt);
   $("#video-storyboard-draft-select").addEventListener("change", selectVideoStoryboardDraft);
