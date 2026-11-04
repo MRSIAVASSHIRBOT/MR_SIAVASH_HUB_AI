@@ -1,6 +1,6 @@
 # Remaining Work Dependency Map
 
-Reviewed against `main` at `cbc12c0adf3994f28c49ca3ac4ff447ec029bade` on 2026-11-04.
+Reviewed against `main` at `589a038d09271ddbcb2e8c07fbbce983499c882a` on 2026-11-04. PR #273 is a proposed integration branch and is not yet part of main.
 
 This plan defines seven remaining delivery workstreams. They are ordered by dependency and risk, not by visual feature appeal. A workstream is complete only when its acceptance gates are met on the exact proposed commit. Green CI alone is not a production-readiness claim.
 
@@ -39,7 +39,7 @@ This plan defines seven remaining delivery workstreams. They are ordered by depe
 **Remaining work**
 - Complete public HTTPS media-origin configuration, edge controls, Graph API scopes/credentials, and a controlled real-account acceptance test.
 - Add/verify provider-specific reconciliation for ambiguous social-publishing outcomes, schedule deduplication and operator-visible failure states.
-- Connect versioned storyboard drafts to prompt composition; validate owner, analysis, asset and draft version, and return the exact draft revision with the composed prompt. Keep the cut-only FFmpeg renderer on its separate validated `VideoTimeline` contract.
+- Complete end-to-end acceptance for the storyboard/render vertical. PR #271 has already connected owner-scoped saved storyboard revisions to prompt composition and the operator editor; composition remains text-only. PR #272 added the immutable renderer-snapshot value object. PR #273 proposes persistent snapshots, measured source-duration validation, atomic snapshot+task+idempotency submission, and Worker consumption with no mutable-timeline fallback; it remains under exact-head CI/review and is not yet in main. Remaining work: route-level contract tests, dashboard render submission from a saved renderer timeline, target-device workflow acceptance, and explicit snapshot-retention operations. Keep beat-only storyboard instructions separate from the cut-only FFmpeg `VideoTimeline` contract.
 - Keep external generation providers optional, reviewed, disabled by default and approval-gated; no video-generation adapter is currently registered. PR #266 now requires read-only lookup by idempotency key in every adapter contract, but no end-to-end reconciliation service or adapter is implemented.
 
 **Depends on:** existing asset store, schedule dispatcher, approval policy, and secret configuration.
