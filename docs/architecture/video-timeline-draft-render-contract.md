@@ -1,7 +1,7 @@
 # Video Timeline Draft → Render Contract
 
-**Status:** Core snapshot persistence and Worker integration merged via PR #273. A post-merge current-draft race fence is proposed in PR #276 and is not yet merged.  
-**Main baseline:** `8f190eeac4b4627692b60ac27e6dd5c12e4557bc` (2026-11-04 UTC)  
+**Status:** Snapshot persistence and Worker integration merged via PR #273; the current-draft submission fence merged via PR #276. The operator-facing prepare-and-render flow is proposed in PR #287 and is not yet in main.  
+**Main baseline:** `3dbd0d32c95c388e10c75150715870e2a82af8dd` (2026-11-04 UTC)  
 **Scope:** Bind a saved, renderer-compatible timeline revision to a durable MP4 render job without changing analysis-only render semantics.
 
 ## 1. Three distinct timeline representations
@@ -41,9 +41,27 @@ The render repository then uses one `BEGIN IMMEDIATE` transaction to:
 3. create the durable task and render row bound to that snapshot;
 4. create the idempotency record.
 
-A stale draft, snapshot conflict, or idempotency conflict aborts the transaction; no partial snapshot/task/render/idempotency state is committed. A replay with the same immutable input resolves to the original snapshot and render record. The response includes the exact draft ID/version and snapshot ID. An already accepted request may be replayed with its original idempotency key after the editable draft advances; that is a replay of the same accepted operation, not a new render. A new render submission must prove that the snapshot still matches the current owner-scoped draft revision inside the transaction, even if a snapshot row for that old revision already exists. PR #276 adds this additional fence and its stale-snapshot regression test; until merged, this edge-case correction is not part of main.
+A stale draft, snapshot conflict, or idempotency conflict aborts the transaction; no partial snapshot/task/render/idempotency state is committed. A replay with the same immutable input resolves to the original snapshot and render record. The response includes the exact draft ID/version and snapshot ID. An already accepted request may be replayed with its original idempotency key after the editable draft advances; that is a replay of the same accepted operation, not a new render. A new render submission must prove that the snapshot still matches the current owner-scoped draft revision inside the transaction, even if a snapshot row for that old revision already exists. PR #276 adds this additional fence and its stale-snapshot regression test; it is merged in main.
 
 The endpoint renders the currently persisted draft revision observed by the server and fenced in the transaction. It does not currently accept a caller-supplied historical draft version. The legacy `POST /video-intelligence/analyses/{analysis_id}/renders` route remains available and retains analysis-timeline behavior.
+
+
+## 3A. Preparing a renderer timeline from an editable draft
+
+The storyboard editor's `TimelineBeat` model is prompt guidance, not a renderer edit-decision list. The operator must not send beat instructions, free-form transitions or prompt text to FFmpeg.
+
+The proposed authenticated endpoint `POST /video-intelligence/timeline-drafts/{draft_id}/prepare-render-timeline` closes the UI/API integration gap without allowing the browser to submit arbitrary renderer JSON:
+
+1. Resolve the draft by authenticated owner and read its exact version, selected source asset, duration and aspect ratio.
+2. Load the completed owner-scoped analysis and validate its stored `EditSpecification`.
+3. Narrow the specification to the draft's selected source asset. This prevents a per-asset storyboard from unexpectedly rendering unrelated sources from a multi-source analysis.
+4. Apply the draft's bounded duration/aspect ratio and call the deterministic `build_video_timeline` function.
+5. Persist the resulting strict `VideoTimeline` through `VideoTimelineDraftRepository.update`, using the version read in step 1. A concurrent edit returns a version conflict; it must never overwrite the newer draft.
+6. Return the updated draft, including renderer timeline and SHA-256, for explicit operator review/submission.
+
+The generated timeline is based on measured analysis metadata and scene boundaries. If the selected source is shorter than the requested duration, `actual_duration_seconds` and `duration_shortfall_seconds` remain authoritative; the UI must display actual output duration and must not claim the target duration was achieved. Preparation does not execute FFmpeg, enqueue a render or invoke a generation provider.
+
+The proposed dashboard then submits the prepared revision through the existing draft-aware render endpoint with an idempotency key bound to the draft ID/version. The existing status/cancel/download controls remain the lifecycle UI. Until PR #287 is merged and exact-head checks pass, this operator flow is a branch proposal, not a main capability.
 
 ## 4. Worker contract
 
