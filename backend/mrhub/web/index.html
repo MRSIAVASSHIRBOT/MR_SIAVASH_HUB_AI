@@ -330,6 +330,36 @@
             <p id="video-prompt-message" class="message" role="status" aria-live="polite"></p>
             <div id="video-prompt-timeline" class="record-list"></div>
           </div>
+
+          <section class="video-storyboard-panel" aria-labelledby="video-storyboard-heading">
+            <div class="section-heading">
+              <h4 id="video-storyboard-heading">ویرایشگر Storyboard نسخه‌بندی‌شده</h4>
+              <span class="status-pill status-muted">ذخیرهٔ کنترل‌شده</span>
+            </div>
+            <p class="muted">ابتدا Prompt را از تحلیل بسازید، سپس Storyboard همان دارایی را بارگذاری یا ایجاد کنید. تغییرات فقط پس از ذخیره ثبت می‌شوند؛ ساخت Prompt از نسخهٔ ذخیره‌شده هیچ ارائه‌دهنده یا موتور رندری را اجرا نمی‌کند.</p>
+            <div class="form-grid">
+              <label>مدت خروجی (ثانیه)
+                <input id="video-storyboard-duration" type="number" min="3" max="60" step="1" value="10" disabled>
+              </label>
+              <label>نسبت تصویر Storyboard
+                <select id="video-storyboard-aspect" disabled>
+                  <option value="9:16">عمودی 9:16</option>
+                  <option value="16:9">افقی 16:9</option>
+                  <option value="1:1">مربع 1:1</option>
+                  <option value="4:5">پرتره 4:5</option>
+                </select>
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="video-storyboard-load" class="button button-secondary" type="button" disabled>بارگذاری یا ایجاد Storyboard</button>
+              <button id="video-storyboard-add-beat" class="button button-quiet" type="button" disabled>افزودن Beat</button>
+              <button id="video-storyboard-save" class="button button-primary" type="button" disabled>ذخیره نسخه جدید</button>
+              <button id="video-storyboard-compose" class="button button-quiet" type="button" disabled>ساخت Prompt از نسخه ذخیره‌شده</button>
+            </div>
+            <p id="video-storyboard-version" class="muted">هنوز Storyboard بارگذاری نشده است.</p>
+            <p id="video-storyboard-message" class="message" role="status" aria-live="polite"></p>
+            <div id="video-storyboard-beats" class="storyboard-beat-list"></div>
+          </section>
         </div>
 
         <form id="content-draft-form" class="form-grid">

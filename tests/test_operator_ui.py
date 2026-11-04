@@ -148,3 +148,33 @@ def test_operator_ui_static_id_selectors_resolve_and_ids_are_unique():
     selected_ids = set(re.findall(r'\$\(["\']#([A-Za-z][\w-]*)["\']\)', script))
     missing_ids = sorted(selected_ids - declared_ids)
     assert not missing_ids, f"Operator UI selectors reference missing IDs: {missing_ids}"
+
+
+
+def test_operator_ui_exposes_owner_scoped_versioned_storyboard_editor():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    for element_id in (
+        "video-storyboard-load",
+        "video-storyboard-add-beat",
+        "video-storyboard-save",
+        "video-storyboard-compose",
+        "video-storyboard-duration",
+        "video-storyboard-aspect",
+        "video-storyboard-version",
+        "video-storyboard-beats",
+        "video-storyboard-message",
+    ):
+        assert f'id="{element_id}"' in page.text
+
+    assert "/video-intelligence/timeline-drafts?analysis_id=" in script.text
+    assert "/video-intelligence/timeline-drafts/" in script.text
+    assert "expected_version" in script.text
+    assert "timeline_draft_version" in script.text
+    assert "loadOrCreateVideoStoryboard" in script.text
+    assert "saveVideoStoryboardDraft" in script.text
+    assert "composePromptFromSavedStoryboard" in script.text
