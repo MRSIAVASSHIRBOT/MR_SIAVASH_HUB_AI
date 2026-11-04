@@ -10,7 +10,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from mrhub.domain.tasks import RiskClass
-from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine, PolicyResult
 
 InputModel = TypeVar("InputModel", bound=BaseModel)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
@@ -45,7 +45,7 @@ class ToolRegistry:
 
     def __init__(self, policy: PolicyEngine | None = None) -> None:
         self._tools: dict[str, ToolDefinition] = {}
-        self._policy = policy or PolicyEngine()
+        self._policy = policy if policy is not None else PolicyEngine()
 
     def register(self, tool: ToolDefinition) -> None:
         if not self.NAME_PATTERN.fullmatch(tool.name):
@@ -67,7 +67,7 @@ class ToolRegistry:
         *,
         granted_permissions: frozenset[str] = frozenset(),
         user_approved: bool = False,
-    ):
+    ) -> PolicyResult:
         """Evaluate the registered tool using this registry's policy authority."""
         tool = self.get(name)
         return self._policy.evaluate(
