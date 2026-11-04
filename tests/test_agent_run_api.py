@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
@@ -276,3 +278,28 @@ def test_retrieved_prompt_injection_cannot_authorize_model_proposed_tool(monkeyp
         source["reference"] == citation
         for source in body["context_sources"]
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("include_memory", "false"),
+        ("include_knowledge", 0),
+        ("max_turns", True),
+        ("max_output_tokens", "128"),
+        ("max_runtime_seconds", True),
+    ],
+)
+@pytest.mark.parametrize("endpoint", ["/agent/run", "/agent/model-runs"])
+def test_agent_run_rejects_coerced_boolean_and_budget_inputs(endpoint, field, value):
+    client = authenticated_client()
+    payload = {
+        "goal": "Validate the Agent request contract.",
+        "provider_mode": "local",
+        field: value,
+    }
+    headers = {"Idempotency-Key": "strict-agent-input-001"} if endpoint.endswith("model-runs") else None
+
+    response = client.post(endpoint, json=payload, headers=headers)
+
+    assert response.status_code == 422
