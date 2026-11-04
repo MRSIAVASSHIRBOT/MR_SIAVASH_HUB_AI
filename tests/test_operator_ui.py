@@ -183,9 +183,10 @@ def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision()
     )[0]
     assert '$("#video-render-submit")' in lock
     assert "syncVideoRenderTarget();" in script
-    assert "آخرین رندر متعلق به Timeline یا نسخهٔ دیگری است" in script
-    assert 'const renderMayBeActive = Boolean(activeVideoRenderId)' in script
-    assert script.count("|| renderMayBeActive") == 2
+    assert "نمایش فعلی متعلق به Timeline یا نسخهٔ دیگری است" in script
+    assert "const renderMayBeActive = !activeVideoRenderStatus" in script
+    assert '$("#video-render-refresh").disabled = false;' in script
+    assert '$("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);' in script
     render_status = script.split("function renderVideoRender", 1)[1].split(
         "async function refreshVideoRender", 1
     )[0]
@@ -240,7 +241,9 @@ def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
     assert "const renderIdentity = activeVideoRenderIdentity" in refresh
     assert "activeVideoRenderId !== renderId" in refresh
     assert "activeVideoRenderIdentity !== renderIdentity" in refresh
-    assert "renderIdentity !== currentVideoRenderIdentity()" in refresh
+    assert "renderIdentity !== currentVideoRenderIdentity()" not in refresh.split(
+        "const render = await api", 1
+    )[1].split("renderVideoRender(render)", 1)[0]
 
     submit = script.split("async function submitVideoRender", 1)[1].split(
         "async function cancelVideoRender", 1
