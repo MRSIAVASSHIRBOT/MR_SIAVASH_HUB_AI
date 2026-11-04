@@ -661,6 +661,21 @@ def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
     assert replay_created is False
     assert replay.snapshot_id == stored.snapshot_id
 
+    advanced = draft_repository.update(
+        "owner-a",
+        UUID(draft["draft_id"]),
+        TimelineDraftUpdate(
+            expected_version=2,
+            duration_seconds=3,
+            aspect_ratio="16:9",
+            beats=[{"start_seconds": 0, "end_seconds": 3, "generation_instruction": "A newer draft revision"}],
+        ),
+    )
+    assert advanced is not None and advanced["version"] == 3
+    replay_after_advance, replay_after_advance_created = repository.create(snapshot)
+    assert replay_after_advance_created is False
+    assert replay_after_advance.snapshot_id == stored.snapshot_id
+
     with repository.tasks._connection() as connection, pytest.raises(
         sqlite3.IntegrityError, match="immutable"
     ):
