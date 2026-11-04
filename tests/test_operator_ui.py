@@ -151,6 +151,76 @@ def test_operator_ui_static_id_selectors_resolve_and_ids_are_unique():
 
 
 
+def test_operator_ui_exposes_saved_storyboard_timeline_preparation():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert 'id="video-storyboard-prepare-render-timeline"' in page.text
+    assert 'id="video-render-submit"' in page.text
+    assert "/prepare-render-timeline" in script.text
+    assert "prepareSavedVideoDraftForRender" in script.text
+    assert '$("#video-storyboard-prepare-render-timeline").addEventListener("click", prepareVideoRenderTimeline)' in script.text
+    assert "renderer_timeline_sha256" in script.text
+    assert "video-storyboard-render-submit" not in page.text
+    assert "submitVideoDraftRender" not in script.text
+    assert "function syncStoryboardRenderButtons()" in script.text
+
+
+def test_operator_ui_scopes_active_render_status_to_selected_timeline_revision():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    assert 'mrh_video_render_identity' in script
+    assert "function currentVideoRenderIdentity()" in script
+    assert "function syncVideoRenderTarget()" in script
+    assert script.count("function currentVideoRenderIdentity()") == 1
+    assert script.count("function syncVideoRenderTarget()") == 1
+    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" in script
+    lock = script.split("function lockVideoStoryboardControls", 1)[1].split(
+        "function clearVideoRenderState", 1
+    )[0]
+    assert '$("#video-render-submit")' in lock
+    assert "syncVideoRenderTarget();" in script
+    assert "نمایش فعلی متعلق به Timeline یا نسخهٔ دیگری است" in script
+    assert "const renderMayBeActive = !activeVideoRenderStatus" in script
+    assert '$("#video-render-refresh").disabled = false;' in script
+    assert '$("#video-render-cancel").disabled = !["accepted", "running"].includes(activeVideoRenderStatus);' in script
+    render_status = script.split("function renderVideoRender", 1)[1].split(
+        "async function refreshVideoRender", 1
+    )[0]
+    assert "syncVideoRenderTarget();" in render_status
+    refresh = script.split("async function refreshVideoRender", 1)[1].split(
+        "async function submitVideoRender", 1
+    )[0]
+    assert "renderIdentity && renderIdentity !== currentVideoRenderIdentity()" in refresh
+    assert "activeVideoRenderIdentity !== currentVideoRenderIdentity()" not in refresh
+    sync_target = script.split("function syncVideoRenderTarget", 1)[1].split(
+        "function message", 1
+    )[0]
+    assert "replaceChildren" not in sync_target
+    assert "دکمه‌های بررسی و لغو فقط همان Job قبلی را کنترل می‌کنند" in sync_target
+
+
+def test_operator_ui_exposes_saved_renderer_draft_render_selection_and_cleanup():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert 'id="video-render-source-note"' in page.text
+    assert "rendererDraft.renderer_timeline" in script.text
+    assert "rendererDraft.renderer_timeline_sha256" in script.text
+    assert '"/video-intelligence/timeline-drafts/"' in script.text
+    assert '"draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version' in script.text
+    assert "mrh_video_render_pending_requests" in script.text
+    assert 'sessionStorage.removeItem("mrh_video_render_pending_requests")' in script.text
+    assert "pendingVideoRenderIdentity = null" in script.text
+
+
+
 def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
     script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
 
@@ -165,3 +235,67 @@ def test_operator_ui_preserves_prompt_and_storyboard_state_for_same_analysis():
     )[0]
     assert "videoPromptAnalysisId = null" not in render_analysis
     assert "videoPromptAnalysisId = null" in submit_analysis
+
+
+def test_operator_ui_ignores_stale_async_render_responses_after_target_switch():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    refresh = script.split("async function refreshVideoRender", 1)[1].split(
+        "async function submitVideoRender", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in refresh
+    assert "const renderIdentity = activeVideoRenderIdentity" in refresh
+    assert "activeVideoRenderId !== renderId" in refresh
+    assert "activeVideoRenderIdentity !== renderIdentity" in refresh
+    assert "renderIdentity !== currentVideoRenderIdentity()" not in refresh.split(
+        "const render = await api", 1
+    )[1].split("renderVideoRender(render)", 1)[0]
+
+    submit = script.split("async function submitVideoRender", 1)[1].split(
+        "async function cancelVideoRender", 1
+    )[0]
+    assert "const requestAnalysisId = activeVideoAnalysisId" in submit
+    assert "activeVideoRenderAnalysisId = requestAnalysisId" in submit
+    assert "currentVideoRenderIdentity() === requestIdentity" in submit
+    assert "syncVideoRenderTarget();" in submit
+
+    cancel = script.split("async function cancelVideoRender", 1)[1].split(
+        "async function downloadRenderedVideo", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in cancel
+    assert "const renderIdentity = activeVideoRenderIdentity" in cancel
+    assert "encodeURIComponent(renderId)" in cancel
+    assert "activeVideoRenderId !== renderId" in cancel
+    assert "activeVideoRenderIdentity !== renderIdentity" in cancel
+    assert "فقط همان Job قبلی لغو می‌شود" in cancel
+
+def test_operator_ui_binds_render_retries_to_exact_analysis_or_draft_revision():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+
+    assert "pendingVideoRenderRequests[requestIdentity]" in script
+    assert "mrh_video_render_pending_requests" in script
+    assert '"draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version' in script
+    assert "rendererDraft.renderer_timeline_sha256" in script
+    assert 'sessionStorage.setItem("mrh_video_render_identity", activeVideoRenderIdentity)' in script
+    assert "delete pendingVideoRenderRequests[requestIdentity]" in script
+    assert "while (pendingIdentities.length > 20)" in script
+
+
+def test_operator_ui_blocks_storyboard_mutation_while_render_is_active():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+    controls = script.split("function syncStoryboardRenderButtons", 1)[1].split(
+        "function lockVideoStoryboardControls", 1
+    )[0]
+
+    assert "const renderMayBeActive = Boolean(activeVideoRenderId)" in controls
+    assert "const mutationBlocked = videoStoryboardControlsLocked || renderMayBeActive" in controls
+    assert '$("#video-storyboard-save").disabled = !hasSelectedPrompt || mutationBlocked' in controls
+    assert '$("#video-storyboard-prepare-render-timeline").disabled = !hasDraft || mutationBlocked' in controls
+
+    cancel = script.split("async function cancelVideoRender", 1)[1].split(
+        "async function downloadRenderedVideo", 1
+    )[0]
+    assert "const renderId = activeVideoRenderId" in cancel
+    assert "const renderIdentity = activeVideoRenderIdentity" in cancel
+    assert "activeVideoRenderId !== renderId" in cancel
+    assert "activeVideoRenderIdentity !== renderIdentity" in cancel
