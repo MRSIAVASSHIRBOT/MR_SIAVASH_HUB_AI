@@ -102,6 +102,17 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
                 status=GenerationStatus.RUNNING,
             )
 
+        def find_by_idempotency_key(self, idempotency_key):
+            if idempotency_key == "request-123":
+                return VideoGenerationSubmission(
+                    provider="test",
+                    model="fake-v1",
+                    provider_job_id="provider-job-from-idempotency-key",
+                    status=GenerationStatus.ACCEPTED,
+                    progress_percent=0,
+                )
+            return None
+
         def download_output(self, provider_job_id, sink, *, max_bytes):
             content = b"fake-mp4"
             if len(content) > max_bytes:
@@ -115,12 +126,33 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
     registry.register(adapter)
     assert registry.catalog() == [adapter.capability]
     assert registry.get("test", "fake-v1") is adapter
+    recovered = adapter.find_by_idempotency_key("request-123")
+    assert recovered is not None
+    assert recovered.provider_job_id == "provider-job-from-idempotency-key"
+    assert adapter.find_by_idempotency_key("not-found") is None
     sink = BytesIO()
     assert adapter.download_output("job-1", sink, max_bytes=100) == 8
     assert sink.getvalue() == b"fake-mp4"
     with pytest.raises(ValueError):
         registry.register(adapter)
 
+
+
+def test_generation_registry_rejects_adapter_without_reconciliation_lookup():
+    class AdapterWithoutLookup:
+        capability = VideoGenerationCapability(
+            provider="legacy",
+            model="legacy-v1",
+            local=True,
+            supported_aspect_ratios=("16:9",),
+            max_duration_seconds=30,
+            max_resolution="720p",
+        )
+
+    registry = VideoGenerationRegistry()
+    with pytest.raises(TypeError, match="find_by_idempotency_key"):
+        registry.register(AdapterWithoutLookup())
+    assert registry.catalog() == []
 
 
 def test_authenticated_provider_catalog_fails_closed_when_no_adapter_is_configured():

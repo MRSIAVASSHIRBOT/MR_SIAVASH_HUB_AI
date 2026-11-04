@@ -87,9 +87,12 @@ The worker verifies the approved task under its lease, checks the exact register
 provider/model again, and records the transition to `submitting` before invoking the
 provider. Once provider submission begins, an ambiguous result becomes
 `unknown_outcome`; it is never blindly retried. The encrypted payload is retained for
-explicit provider-specific reconciliation. No provider adapter is registered by
-default, so the endpoint remains unavailable until an adapter is separately reviewed
-and configured.
+explicit provider-specific reconciliation. An adapter must implement
+`find_by_idempotency_key` so a lost submit response can be reconciled to an existing
+provider job without creating another job. A lookup miss, timeout, or provider error
+never authorizes a resubmission; the local job remains ambiguous until an authoritative
+provider result is available. No provider adapter is registered by default, so the
+endpoint remains unavailable until an adapter is separately reviewed and configured.
 
 
 ## Generated output asset finalization

@@ -15,6 +15,11 @@ class VideoGenerationRegistry:
 
     def register(self, provider: VideoGenerationProvider) -> None:
         capability = provider.capability
+        lookup = getattr(provider, "find_by_idempotency_key", None)
+        if not callable(lookup):
+            raise TypeError(
+                "Video generation provider must implement find_by_idempotency_key"
+            )
         key = (capability.provider, capability.model)
         if key in self._providers:
             raise ValueError("Video generation provider is already registered")
