@@ -755,6 +755,15 @@ def test_render_snapshot_repository_persists_owner_scoped_immutable_revision(
             "stale-snapshot-new-render-key",
             snapshot=snapshot,
         )
+    with pytest.raises(
+        VideoRenderSnapshotConflict, match="current owner-scoped draft revision"
+    ):
+        render_jobs.submit(
+            "owner-a",
+            analysis_id,
+            "stale-snapshot-id-new-render-key",
+            snapshot_id=stored.snapshot_id,
+        )
     with repository.tasks._connection() as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM video_render_runs"
