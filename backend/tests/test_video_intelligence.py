@@ -377,6 +377,8 @@ def test_prepare_draft_render_timeline_builds_selected_source_and_fences_version
     }
 
     class Drafts:
+        update_calls = 0
+
         def get(self, owner_user_id, requested_draft_id):
             assert owner_user_id == "owner-1"
             assert requested_draft_id == draft_id
@@ -393,11 +395,20 @@ def test_prepare_draft_render_timeline_builds_selected_source_and_fences_version
             assert {
                 clip.source_asset_id for clip in update.renderer_timeline.video_track
             } == {selected_asset}
+            Drafts.update_calls += 1
+            stored_snapshot = VideoRenderTimelineSnapshot.create(
+                owner_user_id=owner_user_id,
+                analysis_id=analysis_id,
+                draft_id=draft_id,
+                draft_version=4,
+                timeline=update.renderer_timeline,
+                analysis_source_asset_ids=[selected_asset],
+            )
             return {
                 **draft,
                 "version": 4,
                 "renderer_timeline": update.renderer_timeline.model_dump(mode="json"),
-                "renderer_timeline_sha256": "verified-by-repository",
+                "renderer_timeline_sha256": stored_snapshot.timeline_sha256,
             }
 
     class Analyses:
@@ -417,6 +428,17 @@ def test_prepare_draft_render_timeline_builds_selected_source_and_fences_version
     assert result["version"] == 4
     assert result["renderer_timeline"]["requested_duration_seconds"] == 6
     assert result["renderer_timeline"]["video_track"][0]["source_asset_id"] == selected_asset
+    assert Drafts.update_calls == 1
+
+    # Re-preparing the unchanged saved revision must be idempotent and must
+    # not manufacture another draft version.
+    draft = result
+    replay = prepare_video_render_timeline(
+        draft_id,
+        AuthenticatedUser(user_id="owner-1", username="owner"),
+    )
+    assert replay["version"] == 4
+    assert Drafts.update_calls == 1
 
 
 def test_prepare_draft_render_timeline_fails_closed_without_edit_specification(
