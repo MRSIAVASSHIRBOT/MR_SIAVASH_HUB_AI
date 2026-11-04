@@ -145,7 +145,16 @@ def test_agent_execute_requires_approval_for_external_tool():
     assert response["blocked"] is True
 
 
-def test_agent_execute_handles_policy_denial_during_invoke_revalidation():
+@pytest.mark.parametrize(
+    ("revoked_decision", "expected_error"),
+    [
+        (PolicyDecision.DENY, "policy_denied"),
+        (PolicyDecision.REQUIRE_APPROVAL, "approval_required"),
+    ],
+)
+def test_agent_execute_handles_policy_denial_during_invoke_revalidation(
+    revoked_decision, expected_error
+):
     from mrhub.security.policy import PolicyResult
     from mrhub.tools.registry import ToolRegistry
 
@@ -161,7 +170,7 @@ def test_agent_execute_handles_policy_denial_during_invoke_revalidation():
                     reason="Allowed during planning",
                 )
             return PolicyResult(
-                decision=PolicyDecision.DENY,
+                decision=revoked_decision,
                 reason="Revoked before invocation",
             )
 
@@ -196,10 +205,10 @@ def test_agent_execute_handles_policy_denial_during_invoke_revalidation():
     assert response["tools_executed"] is False
     assert response["blocked"] is True
     assert response["failed_tool"] == "custom.policy_revalidation"
-    assert response["error_code"] == "policy_denied"
+    assert response["error_code"] == expected_error
     assert events == [
         (2, "running", None),
-        (2, "failed", "policy_denied"),
+        (2, "failed", expected_error),
     ]
 
 
