@@ -119,7 +119,7 @@ class VideoGenerationWorkerHandler:
                 owner, generation_id, "unknown_outcome", lease=lease,
                 error_code="provider_submission_contract_invalid",
             )
-            raise ValueError("provider_submission_contract_invalid")
+            raise TypeError("provider_submission_contract_invalid")
         if (
             submission.provider != provider_name
             or submission.model != model_name
@@ -226,7 +226,7 @@ class VideoGenerationWorkerHandler:
         except Exception:  # noqa: BLE001 - provider status failures are retryable
             raise ValueError("provider_status_lookup_failed") from None
         if not isinstance(result, VideoGenerationResult):
-            raise ValueError("provider_status_contract_invalid")
+            raise TypeError("provider_status_contract_invalid")
         if (
             result.provider != provider_name
             or result.model != model_name
