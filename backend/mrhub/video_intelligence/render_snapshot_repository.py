@@ -67,18 +67,6 @@ class VideoRenderSnapshotRepository:
                WHERE draft_id = ? AND owner_user_id = ?""",
             (str(snapshot.draft_id), snapshot.owner_user_id),
         ).fetchone()
-        if (
-            draft is None
-            or draft["analysis_id"] != str(snapshot.analysis_id)
-            or int(draft["version"]) != snapshot.draft_version
-            or str(draft["asset_id"]) not in referenced_asset_ids
-            or draft["renderer_timeline_json"] != snapshot.timeline_json
-            or draft["renderer_timeline_sha256"] != snapshot.timeline_sha256
-        ):
-            raise VideoRenderSnapshotConflict(
-                "Snapshot does not match the current owner-scoped draft revision"
-            )
-
         existing = connection.execute(
             """SELECT * FROM video_render_timeline_snapshots
                WHERE draft_id = ? AND draft_version = ?""",
@@ -96,6 +84,18 @@ class VideoRenderSnapshotRepository:
                     "Draft revision already has a different immutable snapshot"
                 )
             return stored, False
+
+        if (
+            draft is None
+            or draft["analysis_id"] != str(snapshot.analysis_id)
+            or int(draft["version"]) != snapshot.draft_version
+            or str(draft["asset_id"]) not in referenced_asset_ids
+            or draft["renderer_timeline_json"] != snapshot.timeline_json
+            or draft["renderer_timeline_sha256"] != snapshot.timeline_sha256
+        ):
+            raise VideoRenderSnapshotConflict(
+                "Snapshot does not match the current owner-scoped draft revision"
+            )
 
         connection.execute(
             """INSERT INTO video_render_timeline_snapshots (
