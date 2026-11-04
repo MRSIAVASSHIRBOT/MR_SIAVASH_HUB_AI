@@ -504,3 +504,10 @@ PR #264 merged as `3134fb50d47f7ab87934971a27e2ba90c85263d8`. Its exact PR head 
 ### Current evidence boundary
 
 The latest main inventory at this commit contains 327 recursive tree entries, 94 Python test files across `tests/` and `backend/tests/`, 19 backend package domains and 7 GitHub Actions workflows. These counts and green CI do not establish whole-product completion or production readiness.
+
+
+## Follow-up after PR #266 — 2026-11-04 UTC, main `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`
+
+PR #266 merged as `cbc12c0adf3994f28c49ca3ac4ff447ec029bade`. Its exact PR head passed all six required checks. The video-generation adapter protocol now requires a read-only `find_by_idempotency_key` lookup, and the registry rejects adapters that omit it. This is a contract and registration gate only: there is still no registered provider, no reconciliation worker/API that calls the lookup, and no status-poll/output-finalization path for a recovered job. The next generation milestone must implement and test the owner-scoped non-replayable reconciliation flow before any adapter is enabled.
+
+Post-merge CI for this new main commit was queued at the time of this note and must be rechecked before treating the commit as fully validated.
