@@ -429,7 +429,8 @@ def test_rejected_generation_never_dispatches_and_purges_encrypted_payload(
     assert repository.tasks.get(task_id).status is TaskStatus.REJECTED
 
 
-def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch):
+@pytest.mark.parametrize("error_kind", ["contract", "unexpected"])
+def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch, error_kind):
     from datetime import UTC, datetime
     from types import SimpleNamespace
     from uuid import uuid4
@@ -467,6 +468,11 @@ def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch):
     )
 
     calls = []
+    submission_error = (
+        VideoGenerationSubmissionError("ambiguous")
+        if error_kind == "contract"
+        else RuntimeError("unexpected adapter failure")
+    )
     provider = SimpleNamespace(
         capability=SimpleNamespace(
             provider="local",
@@ -476,7 +482,7 @@ def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch):
             max_resolution="1080p",
         ),
         submit=lambda _request: calls.append("submit")
-        or (_ for _ in ()).throw(VideoGenerationSubmissionError("ambiguous")),
+        or (_ for _ in ()).throw(submission_error),
     )
     monkeypatch.setattr(
         video_generation_registry,
