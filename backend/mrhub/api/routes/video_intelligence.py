@@ -22,6 +22,7 @@ from mrhub.config import get_settings
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.edit_spec import EditSpecification
 from mrhub.video_intelligence.generation import VideoGenerationRequest
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
@@ -51,7 +52,7 @@ from mrhub.video_intelligence.schemas import (
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
-from mrhub.video_intelligence.timeline import VideoTimeline
+from mrhub.video_intelligence.timeline import VideoTimeline, build_video_timeline
 from mrhub.video_intelligence.timeline_drafts import (
     TimelineBeat,
     TimelineConflict,
@@ -558,6 +559,98 @@ def update_timeline_draft(
     if draft is None:
         raise HTTPException(status_code=404, detail="Timeline draft not found")
     return draft
+
+
+
+@router.post("/timeline-drafts/{draft_id}/prepare-render-timeline")
+def prepare_video_render_timeline(
+    draft_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Build and persist a validated cut-only timeline for this owner's saved draft."""
+    draft = _timeline_drafts().get(user.user_id, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Timeline draft not found")
+
+    try:
+        analysis_id = UUID(str(draft["analysis_id"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="Timeline draft analysis is invalid") from exc
+
+    analysis = _analysis_jobs().get(user.user_id, analysis_id)
+    if (
+        analysis is None
+        or analysis["status"] != "completed"
+        or not isinstance(analysis.get("result"), dict)
+    ):
+        raise HTTPException(status_code=409, detail="Video analysis is not completed")
+
+    raw_specification = analysis["result"].get("edit_specification")
+    if not isinstance(raw_specification, dict):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "edit_specification_unavailable",
+                "message": "A validated edit specification is required to prepare the render timeline",
+            },
+        )
+
+    try:
+        specification = EditSpecification.model_validate(raw_specification)
+        selected_sources = [
+            source.model_dump(mode="python")
+            for source in specification.sources
+            if source.asset_id == str(draft["asset_id"])
+        ]
+        if not selected_sources:
+            raise ValueError("The selected draft asset is not present in the analysis edit specification")
+
+        render_specification_data = specification.model_dump(mode="python")
+        render_specification_data.update(
+            {
+                "sources": selected_sources,
+                "requested_output_duration_seconds": int(draft["duration_seconds"]),
+                "output_aspect_ratio": str(draft["aspect_ratio"]),
+            }
+        )
+        render_specification = EditSpecification.model_validate(
+            render_specification_data
+        )
+        renderer_timeline = build_video_timeline(render_specification)
+        existing_timeline = draft.get("renderer_timeline")
+        if isinstance(existing_timeline, dict) and draft.get("renderer_timeline_sha256"):
+            current_snapshot = VideoRenderTimelineSnapshot.create(
+                owner_user_id=user.user_id,
+                analysis_id=analysis_id,
+                draft_id=draft_id,
+                draft_version=int(draft["version"]),
+                timeline=renderer_timeline,
+                analysis_source_asset_ids=[
+                    source["asset_id"] for source in selected_sources
+                ],
+            )
+            if (
+                existing_timeline == renderer_timeline.model_dump(mode="json")
+                and draft["renderer_timeline_sha256"] == current_snapshot.timeline_sha256
+            ):
+                return draft
+
+        update = TimelineDraftUpdate(
+            expected_version=int(draft["version"]),
+            duration_seconds=int(draft["duration_seconds"]),
+            aspect_ratio=str(draft["aspect_ratio"]),
+            beats=draft["beats"],
+            renderer_timeline=renderer_timeline,
+        )
+        updated = _timeline_drafts().update(user.user_id, draft_id, update)
+    except TimelineConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Timeline draft not found")
+    return updated
 
 
 def _render_jobs() -> VideoRenderJobRepository:
