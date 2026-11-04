@@ -887,7 +887,10 @@
     $("#video-prompt-aspect-ratio").value = savedDraft
       ? savedDraft.aspect_ratio
       : (selected.aspect_ratio || $("#video-prompt-aspect-ratio").value);
-    renderVideoStoryboardEditor(savedDraft ? savedDraft.beats : selected.beats);
+    renderVideoStoryboardEditor(
+      savedDraft ? savedDraft.beats : selected.beats,
+      selected.source_timestamp_limit_seconds
+    );
     $("#video-storyboard-panel").hidden = false;
     $("#video-storyboard-new").disabled = false;
     $("#video-storyboard-save").disabled = false;
@@ -999,8 +1002,11 @@
     }
   }
 
-  function renderVideoStoryboardEditor(beats) {
+  function renderVideoStoryboardEditor(beats, sourceTimestampLimitSeconds = 86400) {
     const container = $("#video-storyboard-beats");
+    const sourceTimestampMax = Number.isFinite(Number(sourceTimestampLimitSeconds))
+      ? Math.max(0, Number(sourceTimestampLimitSeconds) - 0.001)
+      : 86400;
     container.replaceChildren();
     if (!Array.isArray(beats) || !beats.length) {
       renderEmpty(container, "برای شروع، Prompt فعلی را به Storyboard تبدیل کنید.");
@@ -1027,7 +1033,7 @@
       };
       addField("شروع (ثانیه)", "start_seconds", beat.start_seconds, "number", { min: 0, max: 60, step: 0.1, required: true });
       addField("پایان (ثانیه)", "end_seconds", beat.end_seconds, "number", { min: 0, max: 60, step: 0.1, required: true });
-      addField("Timestamp منبع (اختیاری)", "source_timestamp_seconds", beat.source_timestamp_seconds, "number", { min: 0, max: 86400, step: 0.001 });
+      addField("Timestamp منبع (اختیاری)", "source_timestamp_seconds", beat.source_timestamp_seconds, "number", { min: 0, max: sourceTimestampMax, step: 0.001 });
       addField("دستور بصری Beat", "generation_instruction", beat.generation_instruction, "textarea", { maxlength: 1200, rows: 3, required: true });
       addField("انتقال به Beat بعدی", "transition_to_next", beat.transition_to_next || "clean cinematic cut", "text", { maxlength: 240 });
       card.dataset.confidence = beat.confidence === null || beat.confidence === undefined ? "" : String(beat.confidence);
@@ -1196,7 +1202,11 @@
     activeVideoTimelineDraft = selected;
     $("#video-storyboard-duration").value = String(selected.duration_seconds);
     $("#video-prompt-aspect-ratio").value = selected.aspect_ratio;
-    renderVideoStoryboardEditor(selected.beats);
+    const selectedPrompt = videoPromptResults.find((item) => item.asset_id === selected.asset_id);
+    renderVideoStoryboardEditor(
+      selected.beats,
+      selectedPrompt ? selectedPrompt.source_timestamp_limit_seconds : 86400
+    );
     message("#video-storyboard-message", "Storyboard نسخه " + selected.version + " بارگذاری شد.");
   }
 
@@ -1209,7 +1219,7 @@
       : "";
     $("#video-storyboard-duration").value = String(selected.duration_seconds);
     $("#video-prompt-aspect-ratio").value = selected.aspect_ratio || "9:16";
-    renderVideoStoryboardEditor(selected.beats);
+    renderVideoStoryboardEditor(selected.beats, selected.source_timestamp_limit_seconds);
     message("#video-storyboard-message", activeVideoTimelineDraft
       ? "Beatها به Prompt فعلی بازنشانی شدند؛ ذخیره، نسخهٔ موجود را با کنترل نسخه به‌روزرسانی می‌کند."
       : "نسخهٔ اولیه از Beatهای Prompt فعلی ساخته شد؛ هنوز ذخیره نشده است.");
