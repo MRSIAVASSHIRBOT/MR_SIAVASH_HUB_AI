@@ -42,6 +42,88 @@ class VideoRenderSnapshotRepository:
             timeline_sha256=row["timeline_sha256"],
         )
 
+    def persist_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        snapshot: VideoRenderTimelineSnapshot,
+        assets: list[object],
+    ) -> tuple[VideoRenderTimelineSnapshot, bool]:
+        """Persist a validated snapshot using the caller's active DB transaction."""
+        allowed_asset_ids = {
+            str(item["asset_id"])
+            for item in assets
+            if isinstance(item, dict) and item.get("asset_id")
+        }
+        timeline = snapshot.validated_timeline()
+        referenced_asset_ids = {clip.source_asset_id for clip in timeline.video_track}
+        if not referenced_asset_ids or not referenced_asset_ids.issubset(allowed_asset_ids):
+            raise ValueError("Snapshot references an asset outside the completed analysis")
+        validate_renderer_timeline_source_bounds(timeline, assets)
+
+        draft = connection.execute(
+            """SELECT analysis_id, asset_id, version,
+                      renderer_timeline_json, renderer_timeline_sha256
+               FROM video_timeline_drafts
+               WHERE draft_id = ? AND owner_user_id = ?""",
+            (str(snapshot.draft_id), snapshot.owner_user_id),
+        ).fetchone()
+        if (
+            draft is None
+            or draft["analysis_id"] != str(snapshot.analysis_id)
+            or int(draft["version"]) != snapshot.draft_version
+            or str(draft["asset_id"]) not in referenced_asset_ids
+            or draft["renderer_timeline_json"] != snapshot.timeline_json
+            or draft["renderer_timeline_sha256"] != snapshot.timeline_sha256
+        ):
+            raise VideoRenderSnapshotConflict(
+                "Snapshot does not match the current owner-scoped draft revision"
+            )
+
+        existing = connection.execute(
+            """SELECT * FROM video_render_timeline_snapshots
+               WHERE draft_id = ? AND draft_version = ?""",
+            (str(snapshot.draft_id), snapshot.draft_version),
+        ).fetchone()
+        if existing is not None:
+            stored = self._from_row(existing)
+            if (
+                stored.owner_user_id != snapshot.owner_user_id
+                or stored.analysis_id != snapshot.analysis_id
+                or stored.timeline_sha256 != snapshot.timeline_sha256
+                or stored.timeline_json != snapshot.timeline_json
+            ):
+                raise VideoRenderSnapshotConflict(
+                    "Draft revision already has a different immutable snapshot"
+                )
+            return stored, False
+
+        connection.execute(
+            """INSERT INTO video_render_timeline_snapshots (
+                snapshot_id, owner_user_id, analysis_id, draft_id,
+                draft_version, snapshot_version, timeline_json,
+                timeline_sha256, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(snapshot.snapshot_id),
+                snapshot.owner_user_id,
+                str(snapshot.analysis_id),
+                str(snapshot.draft_id),
+                snapshot.draft_version,
+                snapshot.snapshot_version,
+                snapshot.timeline_json,
+                snapshot.timeline_sha256,
+                self._now(),
+            ),
+        )
+        row = connection.execute(
+            """SELECT * FROM video_render_timeline_snapshots
+               WHERE snapshot_id = ? AND owner_user_id = ?""",
+            (str(snapshot.snapshot_id), snapshot.owner_user_id),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("Inserted render snapshot could not be read back")
+        return self._from_row(row), True
+
     def create(
         self, snapshot: VideoRenderTimelineSnapshot
     ) -> tuple[VideoRenderTimelineSnapshot, bool]:
@@ -55,87 +137,13 @@ class VideoRenderSnapshotRepository:
             or not isinstance(analysis.get("result"), dict)
         ):
             raise ValueError("Snapshot analysis must be completed and owned by the caller")
-
         assets = analysis["result"].get("assets")
         if not isinstance(assets, list):
             raise TypeError("Snapshot analysis assets are unavailable")
-        allowed_asset_ids = {
-            str(item["asset_id"])
-            for item in assets
-            if isinstance(item, dict) and item.get("asset_id")
-        }
-        timeline = snapshot.validated_timeline()
-        referenced_asset_ids = {clip.source_asset_id for clip in timeline.video_track}
-        if not referenced_asset_ids or not referenced_asset_ids.issubset(allowed_asset_ids):
-            raise ValueError("Snapshot references an asset outside the completed analysis")
-        validate_renderer_timeline_source_bounds(timeline, assets)
 
-        now = self._now()
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            draft = connection.execute(
-                """SELECT analysis_id, asset_id, version,
-                          renderer_timeline_json, renderer_timeline_sha256
-                   FROM video_timeline_drafts
-                   WHERE draft_id = ? AND owner_user_id = ?""",
-                (str(snapshot.draft_id), snapshot.owner_user_id),
-            ).fetchone()
-            existing = connection.execute(
-                """SELECT * FROM video_render_timeline_snapshots
-                   WHERE draft_id = ? AND draft_version = ?""",
-                (str(snapshot.draft_id), snapshot.draft_version),
-            ).fetchone()
-            if existing is not None:
-                stored = self._from_row(existing)
-                if (
-                    stored.owner_user_id != snapshot.owner_user_id
-                    or stored.analysis_id != snapshot.analysis_id
-                    or stored.timeline_sha256 != snapshot.timeline_sha256
-                    or stored.timeline_json != snapshot.timeline_json
-                ):
-                    raise VideoRenderSnapshotConflict(
-                        "Draft revision already has a different immutable snapshot"
-                    )
-                return stored, False
-
-            if (
-                draft is None
-                or draft["analysis_id"] != str(snapshot.analysis_id)
-                or int(draft["version"]) != snapshot.draft_version
-                or str(draft["asset_id"]) not in referenced_asset_ids
-                or draft["renderer_timeline_json"] != snapshot.timeline_json
-                or draft["renderer_timeline_sha256"] != snapshot.timeline_sha256
-            ):
-                raise VideoRenderSnapshotConflict(
-                    "Snapshot does not match the current owner-scoped draft revision"
-                )
-
-            connection.execute(
-                """INSERT INTO video_render_timeline_snapshots (
-                    snapshot_id, owner_user_id, analysis_id, draft_id,
-                    draft_version, snapshot_version, timeline_json,
-                    timeline_sha256, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    str(snapshot.snapshot_id),
-                    snapshot.owner_user_id,
-                    str(snapshot.analysis_id),
-                    str(snapshot.draft_id),
-                    snapshot.draft_version,
-                    snapshot.snapshot_version,
-                    snapshot.timeline_json,
-                    snapshot.timeline_sha256,
-                    now,
-                ),
-            )
-            row = connection.execute(
-                """SELECT * FROM video_render_timeline_snapshots
-                   WHERE snapshot_id = ? AND owner_user_id = ?""",
-                (str(snapshot.snapshot_id), snapshot.owner_user_id),
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("Inserted render snapshot could not be read back")
-            return self._from_row(row), True
+            return self.persist_in_transaction(connection, snapshot, assets)
 
     def get(
         self, owner_user_id: str, snapshot_id: UUID
