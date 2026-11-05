@@ -11,6 +11,7 @@ from mrhub.providers.base import (
 )
 from mrhub.providers.vision import (
     MAX_VISION_IMAGE_BYTES,
+    MAX_VISION_RESPONSE_BYTES,
     OllamaVisionProvider,
     VisionImage,
     VisionRequest,
@@ -130,3 +131,39 @@ def test_ollama_vision_health_timeout_is_bounded():
         provider.health(timeout_seconds=0.01)
     with pytest.raises(ProviderConfigurationError):
         provider.health(timeout_seconds=11)
+
+
+def test_ollama_vision_rejects_response_exceeding_size_limit():
+    large_chunk = b"x" * (MAX_VISION_RESPONSE_BYTES)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/json"},
+            content=b"{" + large_chunk + b"}",
+        )
+
+    provider = OllamaVisionProvider(
+        "llava-local",
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderUnavailableError) as error:
+        provider.generate(_request())
+    assert "exceeded the size limit" in str(error.value)
+
+
+def test_ollama_vision_accepts_response_at_size_limit():
+    prefix = b'{"response":"bounded"}'
+    response_body = prefix + b" " * (MAX_VISION_RESPONSE_BYTES - len(prefix))
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=response_body)
+
+    provider = OllamaVisionProvider(
+        "llava-local",
+        transport=httpx.MockTransport(handler),
+    )
+    result = provider.generate(_request())
+
+    assert len(response_body) == MAX_VISION_RESPONSE_BYTES
+    assert result.output_text == "bounded"
