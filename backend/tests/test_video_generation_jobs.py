@@ -984,3 +984,53 @@ def test_reconciliation_cooldown_returns_http_429_and_retry_after(
         assert response.json()["detail"]["retry_after_seconds"] == 37
     finally:
         client.close()
+
+
+def test_concurrent_reconciliation_requests_create_one_active_attempt(
+    tmp_path, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a",
+        analysis_id,
+        "local",
+        "renderer-v1",
+        _request("reconcile-concurrent"),
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_generation_jobs SET status = 'unknown_outcome' WHERE generation_id = ?",
+            (str(generation_id),),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'failed' WHERE task_id = ?",
+            (str(task_id),),
+        )
+
+    def request_reconciliation():
+        return repository.enqueue_reconciliation("owner-a", generation_id)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: request_reconciliation(), range(2)))
+
+    assert sum(bool(result["created"]) for result in results) == 1
+    assert {result["task_id"] for result in results} == {str(task_id)}
+    assert all(result["status"] == "queued" for result in results)
+    with repository.tasks._connection() as connection:
+        attempt = connection.execute(
+            """SELECT attempt_count, next_allowed_at
+               FROM video_generation_reconciliation_limits
+               WHERE generation_id = ? AND owner_user_id = ?""",
+            (str(generation_id), "owner-a"),
+        ).fetchone()
+    assert attempt["attempt_count"] == 1
+    assert attempt["next_allowed_at"] is not None
