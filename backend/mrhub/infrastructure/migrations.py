@@ -797,6 +797,24 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_render_runs_snapshot ON video_render_runs(snapshot_id, owner_user_id)",
         ),
     ),
+    Migration.build(
+        30,
+        "durable_video_generation_reconciliation_cooldowns",
+        (
+            """CREATE TABLE IF NOT EXISTS video_generation_reconciliation_limits (
+                generation_id TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 1000000),
+                last_attempt_at TEXT,
+                next_allowed_at TEXT,
+                PRIMARY KEY(generation_id, owner_user_id),
+                FOREIGN KEY(generation_id, owner_user_id)
+                    REFERENCES video_generation_jobs(generation_id, owner_user_id)
+                    ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_generation_reconciliation_next_allowed ON video_generation_reconciliation_limits(next_allowed_at)",
+        ),
+    ),
 )
 
 
