@@ -529,3 +529,17 @@ This checkpoint supersedes earlier PR head and CI snapshots in this audit where 
 - Target Windows device acceptance, real-provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
 
 This checkpoint is evidence of a point-in-time review, not a production-readiness or whole-project-completion declaration.
+
+
+## 17. Post-merge refresh — Ollama Vision response-boundary tests — 2026-11-06 UTC
+
+This section supersedes the PR #295 state in section 16.
+
+- **PR #295 is merged** by squash commit `1a886ebc366bb6287cf4a6fef8bf4570e98cd03f`.
+- The merged change is test-only and adds two regression cases for the local Ollama Vision response ceiling: reject a body exceeding `MAX_VISION_RESPONSE_BYTES`, and accept a valid JSON body exactly at the limit.
+- Exact-head CI, Backend CI, Defensive Python Scan, and both Linux and Windows FFmpeg integration jobs completed successfully on PR head `32b904f80c2130ee4655c642a8a62dce9e2c4144`.
+- Current main is now expected to include the squash merge commit above; verify the live branch head before any further integration.
+- PR #294 remains open/draft. Its current head at this refresh is `ebea86589d462cce44c5278973136778c5b847cf`; it is one commit behind the new main baseline and must be compared/revalidated before merge.
+- PR #296 remains documentation-only. Its prior head `6b98f3b8579923812e4a57cea52c0dd317055cd6` is one commit behind the new main baseline. Its latest-head workflows were in progress at the latest observation; previous-head successes do not validate the latest documentation commits.
+
+The merged regression tests improve confidence in the existing bounded-response implementation; they do not change runtime behavior or establish full project readiness.
