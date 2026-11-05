@@ -404,3 +404,33 @@ The dashboard's prepare-and-render path is merged to main through PR #289. Hoste
 - Cover concurrent reconciliation requests, cooldown expiry, lookup miss, provider error and owner isolation; preserve the no-resubmit invariant.
 - The provider registry remains empty by default. Test adapters do not establish real provider compatibility, credentials, billing behavior, SLA or production acceptance.
 - Target-device workflow, provider contract acceptance, bounded output and restore drills remain separate release gates.
+
+
+## 13. Current cross-domain verification — 2026-11-06 UTC
+
+**Current main baseline:** `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`. This section supersedes section 12's statement that PR #293 is open and the durable reconciliation throttle is still a merge gate.
+
+### PR #293 — merged reconciliation implementation
+
+PR #293 is merged in current main. The integrated implementation adds owner-scoped generation status and explicit reconciliation endpoints, durable per-generation attempt/cooldown state, concurrent reconciliation deduplication, and an HTTP 429 / `Retry-After` contract. Recovery of an ambiguous remote submission uses the original idempotency key and must never call provider submission a second time.
+
+The provider registry remains empty by default. This is a provider-neutral recovery implementation, not evidence that a real video-generation provider is configured, available, paid for, or accepted end to end.
+
+### PR #294 — Kimi provider candidate
+
+PR #294 remains open and draft at head `1a294bc5fab5b03a76b1a276dddb8b3412a15b01`. Its base is `6cabc1e81dfc97c704c3ecd1506553a481bedb69`; comparison against current main reports 47 commits ahead and 1 behind. Required next steps are to synchronize with current main, inspect the integrated diff for regressions, and obtain fresh exact-head CI and review evidence.
+
+The proposed adapter is disabled by default and uses explicit provider selection. Its PR description documents secret-backed credentials, a fixed official HTTPS API origin, redirects/proxies disabled, bounded inline-image handling, no arbitrary URL fetch, no implicit fallback, and deterministic HTTP-mock tests. The shared owner limiter is process-local, resets on restart, and is not a hard monetary budget. A shared atomic quota store and provider-side spending caps are required before multi-worker/multi-replica deployment. No live Moonshot inference was performed. The combined-status lookup for the current PR head returned no status entries; current CI is therefore NOT VERIFIED here.
+
+### PR #295 — Ollama Vision response-boundary tests
+
+PR #295 remains open at head `d72ce1fffe05c573e71c54f54e5388a72e3f6c3f`. It modifies only `tests/test_ollama_vision_provider.py`, adding a response-over-limit rejection case and an exact-limit acceptance case. Comparison against current main reports 2 commits ahead and 1 behind. Synchronize it with current main and verify the test against the current response-streaming implementation before merge. The combined-status lookup returned no status entries for this head; current CI is NOT VERIFIED here.
+
+### Updated evidence and release boundaries
+
+- PR metadata, changed-file lists, diffs, branch comparisons, and commit SHAs were inspected through the connected GitHub integration.
+- Empty combined-status results are recorded as **no status entries returned**, not as pass or fail.
+- Mocked provider tests do not establish external-provider uptime, billing behavior, model quality, or production suitability.
+- Target Windows/browser acceptance, real-media workflow, snapshot retention, external-account verification, clean install/upgrade/rollback, and database/media/encryption-key restore remain independent release gates.
+
+This audit is not a production-readiness declaration or a whole-project completion claim.
