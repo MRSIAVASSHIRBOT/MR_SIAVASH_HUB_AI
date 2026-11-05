@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -30,6 +30,14 @@ from mrhub.video_intelligence.generation import (
 
 class VideoGenerationConflict(ValueError):
     """Raised when an idempotency key is reused for a different request."""
+
+
+class VideoGenerationReconciliationCooldown(ValueError):
+    """Raised when an explicit provider reconciliation is still cooling down."""
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        self.retry_after_seconds = max(1, retry_after_seconds)
+        super().__init__("Video generation reconciliation is temporarily rate limited")
 
 
 class VideoGenerationJobRepository:
@@ -302,6 +310,21 @@ class VideoGenerationJobRepository:
                 TaskStatus.CANCELLED.value,
             }:
                 raise ValueError("Generation task is not eligible for reconciliation")
+
+            limit = connection.execute(
+                """SELECT attempt_count, next_allowed_at
+                   FROM video_generation_reconciliation_limits
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            attempt_count = int(limit["attempt_count"]) if limit is not None else 0
+            if limit is not None and limit["next_allowed_at"]:
+                next_allowed_at = datetime.fromisoformat(str(limit["next_allowed_at"]))
+                current_time = datetime.fromisoformat(now)
+                remaining = (next_allowed_at - current_time).total_seconds()
+                if remaining > 0:
+                    raise VideoGenerationReconciliationCooldown(int(remaining + 0.999))
+
             cursor = connection.execute(
                 """UPDATE tasks SET status = ?, updated_at = ?
                    WHERE task_id = ? AND status = ?""",
@@ -317,6 +340,25 @@ class VideoGenerationJobRepository:
                        lease_expires_at = NULL, heartbeat_at = NULL
                    WHERE task_id = ?""",
                 (now, task_id),
+            )
+            next_attempt_count = attempt_count + 1
+            cooldown_seconds = min(30 * (2 ** min(attempt_count, 5)), 900)
+            next_allowed_at = (
+                datetime.fromisoformat(now) + timedelta(seconds=cooldown_seconds)
+            ).isoformat()
+            connection.execute(
+                """INSERT INTO video_generation_reconciliation_limits (
+                       generation_id, owner_user_id, attempt_count,
+                       last_attempt_at, next_allowed_at
+                   ) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(generation_id, owner_user_id) DO UPDATE SET
+                       attempt_count = excluded.attempt_count,
+                       last_attempt_at = excluded.last_attempt_at,
+                       next_allowed_at = excluded.next_allowed_at""",
+                (
+                    str(generation_id), owner_user_id, next_attempt_count,
+                    now, next_allowed_at,
+                ),
             )
         return {
             "generation_id": str(generation_id),
