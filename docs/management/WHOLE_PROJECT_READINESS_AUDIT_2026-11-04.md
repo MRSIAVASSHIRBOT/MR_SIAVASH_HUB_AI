@@ -457,3 +457,14 @@ Current head: `c9c214aeed28cab66fb5f427172fcdf92f0082b8`; current main base: `ea
 ### Evidence interpretation
 
 Workflow states are time-sensitive. Queued/in-progress jobs are not passes; cancelled jobs are neither passes nor proof of a code defect. All merge decisions must use the latest exact head SHA and complete required workflow set.
+
+
+## 15. Latest exact-head CI refresh — 2026-11-06 UTC
+
+At the latest observation:
+
+- PR #294 head `466614e04be3ea1c8d2d080e11a945ebd6bbc947`, base current main `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`, compare 48 ahead / 0 behind. Defensive Python Scan passed; Backend CI and CI were in progress; Video Render Integration was in progress.
+- PR #295 head `32b904f80c2130ee4655c642a8a62dce9e2c4144`, base current main, compare 3 ahead / 0 behind. Defensive Python Scan passed; Backend CI and CI were in progress; Video Render Integration was pending following an earlier cancelled attempt.
+- PR #296 documentation branch head `b0ecad53dda4f1965dc2183ba163c42557557120`, base current main, compare 4 ahead / 0 behind. Backend CI and Defensive Python Scan were in progress; Video Render Integration was queued; CI was pending.
+
+These states are snapshots, not final outcomes. No pending or in-progress workflow is a pass. A cancelled attempt is not a code failure, but it does not satisfy a successful-check requirement.
