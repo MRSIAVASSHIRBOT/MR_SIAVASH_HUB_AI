@@ -288,13 +288,13 @@ class VideoGenerationWorkerHandler:
             )
             return {"generation_id": str(generation_id), "status": "unknown_outcome"}
 
+        # VideoGenerationResult intentionally carries terminal/output metadata only.
+        # Keep the last provider-reported progress already persisted on the job.
         self.jobs.transition_under_lease(
             owner, generation_id, "running", lease=lease,
             provider_job_id=provider_job_id,
-            progress_percent=result.progress_percent,
         )
         return {
             "generation_id": str(generation_id),
             "status": "running",
-            "progress_percent": result.progress_percent,
         }
