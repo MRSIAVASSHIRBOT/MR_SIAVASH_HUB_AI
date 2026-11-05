@@ -629,3 +629,45 @@ A cancelled workflow is neither PASS nor a code failure. Recheck the exact curre
 - PR #295 head `32b904f80c2130ee4655c642a8a62dce9e2c4144` is synchronized with main. Defensive Python Scan passed; Backend CI and CI were in progress; Video Render Integration was pending after a cancelled prior attempt.
 - PR #296 documentation branch advanced to `b0ecad53dda4f1965dc2183ba163c42557557120`, 4 commits ahead and 0 behind main. Its new-head Backend CI and Defensive Python Scan were in progress, Video Render Integration was queued, and CI was pending.
 - These are point-in-time states. No in-progress, pending, or cancelled workflow is counted as PASS.
+
+
+## 16. Exact-head refresh and cross-domain review — 2026-11-06 UTC
+
+This section supersedes the earlier PR-head, CI-state, and Kimi quota statements above where they differ. Always re-fetch GitHub state before merge because workflow states can change.
+
+### Verified main baseline
+
+- Current `main`: `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`.
+- PR #293 is merged in this baseline. Its generation-reconciliation path remains provider-neutral; the provider registry is empty by default.
+
+### PR #294 — Moonshot Kimi K3.1 Pro provider
+
+- Current head: `ebea86589d462cce44c5278973136778c5b847cf`; base is current main; comparison: 56 commits ahead, 0 behind.
+- Open and draft; 10 changed files. Exact-head Backend CI and Defensive Python Scan were in progress, CI was queued, and Video Render Integration was in progress at the latest observation. No full CI pass is claimed.
+- The branch now implements a durable SQLite-backed sliding-window request limiter. `BEGIN IMMEDIATE` serializes reservations across API processes that share the same SQLite database file; this does not coordinate separate database files or provide a monetary spending cap.
+- The provider remains disabled by default. The adapter is single-turn text plus a separate bounded inline-image endpoint; the shared model router does not yet advertise Kimi vision capability. No live Moonshot inference request was made.
+- Architectural review note: the route-level limiter currently reaches through `TaskRepository._connection()`, a private persistence method. Prefer moving the atomic quota operation behind a dedicated infrastructure repository interface before treating the provider integration as a stable cross-domain pattern.
+- The 10-per-60-second request quota is only a frequency control. Provider-side budget/usage controls and a shared central limiter are still required for deployments with separate database files or independently scaled stores.
+
+### PR #295 — Ollama Vision response-size boundary tests
+
+- Current head: `32b904f80c2130ee4655c642a8a62dce9e2c4144`; base is current main; comparison: 3 commits ahead, 0 behind.
+- Open, non-draft; one test file changed. CI, Backend CI, and Defensive Python Scan completed successfully. Linux FFmpeg integration completed successfully; Windows FFmpeg integration was still in progress at the latest observation.
+- The new tests cover rejection above the configured response limit and acceptance at the exact byte limit. Wait for Windows integration to finish before treating the required integration matrix as complete.
+
+### PR #296 — project status documentation
+
+- Current head at this refresh: `3fbdf7b07cb0137e37cb90c9a6860c650db6931a`; base is current main; comparison: 6 commits ahead, 0 behind.
+- Two documentation files changed; no runtime code or migration changed.
+- CI, Backend CI, Defensive Python Scan, and both Linux/Windows FFmpeg integration jobs completed successfully on this head.
+- The documentation-only scope does not establish runtime or production readiness.
+
+### Cross-domain acceptance gates
+
+1. Keep all hosted providers disabled until explicit configuration, current provider-side budget controls, and reviewed data-sharing consent are in place.
+2. Keep Kimi's quota enforcement in the persistence layer rather than coupling API routes to private repository internals.
+3. Preserve owner isolation, bounded payloads/responses, sanitized provider errors, explicit provider selection, and no implicit fallback.
+4. Continue validating model capability metadata against actual endpoint behavior; do not advertise vision support through the shared router until the capability contract and routing tests exist.
+5. Treat mocked provider tests, hosted CI, live provider acceptance, target-Windows acceptance, backup/restore, and deployment security as separate evidence classes.
+
+This update is a point-in-time engineering hand-off, not a production-readiness or whole-project-completion declaration.
