@@ -510,3 +510,22 @@ This section supersedes the earlier PR-head, CI-state, and Kimi quota statements
 5. Treat mocked provider tests, hosted CI, live provider acceptance, target-Windows acceptance, backup/restore, and deployment security as separate evidence classes.
 
 This update is a point-in-time engineering hand-off, not a production-readiness or whole-project-completion declaration.
+
+
+## 16. Latest engineering checkpoint — 2026-11-06 UTC
+
+This checkpoint supersedes earlier PR head and CI snapshots in this audit where they differ.
+
+- **Main:** `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`. PR #293 is merged; durable generation reconciliation, owner scoping, cooldown/attempt accounting, concurrency deduplication, and the no-resubmit recovery invariant are in main. Provider registry remains empty by default.
+- **PR #294:** open/draft; head `ebea86589d462cce44c5278973136778c5b847cf`; current main base; 56 ahead / 0 behind. Kimi quota is now SQLite-backed with `BEGIN IMMEDIATE`, a shared 10 requests / 60 seconds owner window across text and vision, restart persistence, and sharing across processes that use the same database file. Threaded concurrent-instance, expiry, shared-quota, and owner-isolation tests exist. Separate DB files do not share quotas; no monetary cap is provided; a separate-process stress test and provider-side spend controls remain useful follow-ups. Defensive Python Scan passed; Backend CI, CI 3.11/3.12, and Linux/Windows video integration were in progress at exact-head inspection. No live Moonshot inference was performed.
+- **PR #295:** open; head `32b904f80c2130ee4655c642a8a62dce9e2c4144`; current main base; 3 ahead / 0 behind. It adds only Ollama Vision response-size boundary tests. Defensive scan, Backend CI, and CI 3.11/3.12 passed; Linux video integration passed; Windows video integration remained in progress.
+- **PR #296:** documentation-only; head before this checkpoint `3fbdf7b07cb0137e37cb90c9a6860c650db6931a`; current main base; 6 ahead / 0 behind. Defensive scan, Backend CI, Linux/Windows video integration, and CI 3.11/3.12 all passed. This checkpoint updates only the same two docs, so its new head requires fresh CI before merge.
+
+### Acceptance boundaries
+
+- A request-frequency quota is not a financial spending cap. Use provider-side budget limits and explicit operational controls.
+- Shared SQLite quota semantics apply only when API processes share the same database file and its locking/availability assumptions hold.
+- Mocked provider tests do not prove hosted-provider uptime, billing, retention, or production acceptance.
+- Target Windows device acceptance, real-provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
+
+This checkpoint is evidence of a point-in-time review, not a production-readiness or whole-project-completion declaration.
