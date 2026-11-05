@@ -765,7 +765,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
         with repository.tasks._connection() as connection:
             connection.execute(
                 """UPDATE video_generation_reconciliation_limits
-                   SET next_allowed_at = '2000-01-01T00:00:00+00:00'
+                   SET next_allowed_at = NULL
                    WHERE generation_id = ? AND owner_user_id = ?""",
                 (str(generation_id), "owner-a"),
             )
