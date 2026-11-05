@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from mrhub.jobs.leases import WorkerLease
 from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
@@ -19,6 +20,8 @@ def download_and_register_generation_output(
     media: MediaAssetRepository,
     owner_user_id: str,
     generation_id: UUID,
+    *,
+    lease: WorkerLease | None = None,
 ) -> dict[str, object]:
     """Stream one successful result into bounded storage, then independently validate it.
 
@@ -43,9 +46,12 @@ def download_and_register_generation_output(
 
     asset_id, storage_key, output_path = media.new_output_target()
     with media.create_output_sink(storage_key, max_bytes=MAX_OUTPUT_BYTES) as sink:
-        reported_bytes = provider.download_output(
-            result.provider_job_id, sink, max_bytes=MAX_OUTPUT_BYTES
-        )
+        try:
+            reported_bytes = provider.download_output(
+                result.provider_job_id, sink, max_bytes=MAX_OUTPUT_BYTES
+            )
+        except Exception:  # noqa: BLE001 - adapter errors may contain credentials or URLs
+            raise ValueError("provider_output_download_failed") from None
         if (
             type(reported_bytes) is not int
             or reported_bytes <= 0
@@ -64,6 +70,7 @@ def download_and_register_generation_output(
             output_path,
             f"generated-{asset_id}.mp4",
             result,
+            lease=lease,
         )
         if asset is None:
             raise ValueError("Generation job is unavailable for output registration")
