@@ -621,3 +621,11 @@ This update supersedes the earlier PR branch-ahead/behind counts in the immediat
 - **PR #296** is this documentation-only synchronization branch. Its current head is `c9c214aeed28cab66fb5f427172fcdf92f0082b8`, 2 commits ahead and 0 behind current main. Defensive Python Scan passed; CI, Backend CI, and Video Render Integration were still in progress at the latest observation. Automated tests were not run locally because this change only appends project-status documentation.
 
 A cancelled workflow is neither PASS nor a code failure. Recheck the exact current head before making merge decisions.
+
+
+## CI refresh — latest observed PR heads — 2026-11-06 UTC
+
+- PR #294 head `466614e04be3ea1c8d2d080e11a945ebd6bbc947` is synchronized with main. Defensive Python Scan passed; Backend CI and CI were in progress; Video Render Integration was in progress.
+- PR #295 head `32b904f80c2130ee4655c642a8a62dce9e2c4144` is synchronized with main. Defensive Python Scan passed; Backend CI and CI were in progress; Video Render Integration was pending after a cancelled prior attempt.
+- PR #296 documentation branch advanced to `b0ecad53dda4f1965dc2183ba163c42557557120`, 4 commits ahead and 0 behind main. Its new-head Backend CI and Defensive Python Scan were in progress, Video Render Integration was queued, and CI was pending.
+- These are point-in-time states. No in-progress, pending, or cancelled workflow is counted as PASS.
