@@ -387,3 +387,20 @@ PR #290 merged as `592e98221014ca897edfb09285830a6a3b990a76`. This test-only cha
 ### Updated acceptance boundaries
 The dashboard's prepare-and-render path is merged to main through PR #289. Hosted CI passed on the exact PR head; post-merge main validation and target-device/browser acceptance remain separate gates. Snapshot retention/cleanup, target-device Windows workflow, real media acceptance, database/media/encryption-key restore, clean install/upgrade/rollback and external-account verification remain open. The renderer remains silent and hard-cut-only. No production-readiness or whole-project-completion claim is made.
 
+## 12. Video-generation outcome reconciliation — 2026-11-04 UTC
+
+**Main baseline:** `6cabc1e81dfc97c704c3ecd1506553a481bedb69`. PR #293 is an open, unmerged proposal on `feat/video-generation-outcome-reconciliation-clean`. Latest compare against main: 36 commits ahead, 0 behind. This does not imply merge approval.
+
+### Proposed capability
+- Owner-scoped API exposes durable generation status and accepts an explicit reconciliation request.
+- Ambiguous submission recovery calls only `find_by_idempotency_key(generation_id)`; the worker must never call `submit` again for an ambiguous outcome.
+- A discovered provider job is persisted under the current worker lease, polled, and—if successful—streamed through a bounded private sink, independently probed and atomically registered as an owner-scoped media asset.
+- Provider job identifiers are not returned by the status API or worker result. Encrypted request material is retained while ambiguity remains and removed only on terminal outcomes or successful finalization.
+- The existing original approval-bound task is reused; reconciliation is explicit and owner-scoped.
+
+### Merge gates and evidence
+- PR #293 exact-head GitHub Actions are queued at the latest observation; no CI pass is claimed yet.
+- Add a durable per-generation reconciliation attempt counter and cooldown/backoff, atomically enforced in the repository transaction. The API should return HTTP 429 with a stable error and `Retry-After` while cooling down.
+- Cover concurrent reconciliation requests, cooldown expiry, lookup miss, provider error and owner isolation; preserve the no-resubmit invariant.
+- The provider registry remains empty by default. Test adapters do not establish real provider compatibility, credentials, billing behavior, SLA or production acceptance.
+- Target-device workflow, provider contract acceptance, bounded output and restore drills remain separate release gates.

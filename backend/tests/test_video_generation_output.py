@@ -167,3 +167,28 @@ def test_provider_capability_mismatch_is_rejected_before_download(
         )
 
     assert list(media.storage_root.iterdir()) == []
+
+
+def test_provider_download_exception_is_sanitized_and_partial_file_is_removed(
+    tmp_path, monkeypatch
+):
+    jobs, media, generation_id = _setup(tmp_path, monkeypatch)
+    content = b"provider-output-fixture"
+
+    class FailingProvider(_Provider):
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            raise RuntimeError("private token and signed output URL must not leak")
+
+    with pytest.raises(ValueError, match="^provider_output_download_failed$") as error:
+        download_and_register_generation_output(
+            FailingProvider(content),
+            _result(content),
+            jobs,
+            media,
+            "owner-a",
+            generation_id,
+        )
+
+    assert "private token" not in str(error.value)
+    assert jobs.get("owner-a", generation_id)["status"] == "submitting"
+    assert list(media.storage_root.iterdir()) == []

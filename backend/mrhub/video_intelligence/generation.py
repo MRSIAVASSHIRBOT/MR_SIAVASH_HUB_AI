@@ -61,7 +61,11 @@ class VideoGenerationResult(BaseModel):
     duration_seconds: float | None = Field(default=None, gt=0, le=60)
     width: int | None = Field(default=None, ge=1, le=3840)
     height: int | None = Field(default=None, ge=1, le=3840)
-    error_code: str | None = Field(default=None, max_length=80)
+    error_code: str | None = Field(
+        default=None,
+        max_length=80,
+        pattern=r"^[a-z0-9][a-z0-9_.-]{0,79}$",
+    )
 
     @model_validator(mode="after")
     def validate_terminal_result(self) -> VideoGenerationResult:
