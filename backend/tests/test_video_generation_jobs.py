@@ -14,6 +14,7 @@ from mrhub.video_intelligence.generation import (
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
     VideoGenerationJobRepository,
+    VideoGenerationReconciliationCooldown,
 )
 from mrhub.video_intelligence.schemas import VideoTechnicalMetadata
 
@@ -614,6 +615,18 @@ def test_generation_reconciliation_requeues_original_task_without_duplicate_link
             "UPDATE tasks SET status = 'succeeded' WHERE task_id = ?",
             (str(task_id),),
         )
+    with pytest.raises(VideoGenerationReconciliationCooldown) as cooldown:
+        repository.enqueue_reconciliation("owner-a", generation_id)
+    assert cooldown.value.retry_after_seconds > 0
+
+    # Simulate cooldown expiry without sleeping in the test suite.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """UPDATE video_generation_reconciliation_limits
+               SET next_allowed_at = '2000-01-01T00:00:00+00:00'
+               WHERE generation_id = ? AND owner_user_id = ?""",
+            (str(generation_id), "owner-a"),
+        )
     refreshed = repository.enqueue_reconciliation("owner-a", generation_id)
     assert refreshed["created"] is True
     assert refreshed["task_id"] == str(task_id)
@@ -623,6 +636,13 @@ def test_generation_reconciliation_requeues_original_task_without_duplicate_link
         connection.execute(
             "UPDATE tasks SET status = 'cancelled' WHERE task_id = ?",
             (str(task_id),),
+        )
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """UPDATE video_generation_reconciliation_limits
+               SET next_allowed_at = '2000-01-01T00:00:00+00:00'
+               WHERE generation_id = ? AND owner_user_id = ?""",
+            (str(generation_id), "owner-a"),
         )
     after_local_cancel = repository.enqueue_reconciliation("owner-a", generation_id)
     assert after_local_cancel["created"] is True
