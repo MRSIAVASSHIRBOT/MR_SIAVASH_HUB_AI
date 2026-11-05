@@ -848,6 +848,7 @@ def test_generation_status_and_reconciliation_routes_are_owner_scoped(monkeypatc
     replay = reconcile_video_generation(generation_id, replay_response, owner)
     assert replay_response.status_code == 200
     assert replay["created"] is False
+    assert replay["execution"] == "provider_reconciliation_active"
 
     other_owner = AuthenticatedUser(user_id="owner-b", username="owner-b")
     with pytest.raises(HTTPException) as status_error:
