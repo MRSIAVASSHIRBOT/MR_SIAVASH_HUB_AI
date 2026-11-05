@@ -135,7 +135,7 @@ def test_ollama_vision_health_timeout_is_bounded():
 
 def test_ollama_vision_rejects_response_exceeding_size_limit():
     large_chunk = b"x" * (MAX_VISION_RESPONSE_BYTES)
-    
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
@@ -152,14 +152,18 @@ def test_ollama_vision_rejects_response_exceeding_size_limit():
     assert "exceeded the size limit" in str(error.value)
 
 
-def test_ollama_vision_streaming_builds_response_bytearray():
-    def handler(request: httpx.Request) -> httpx.Response:
-        response = httpx.Response(200, json={"response": "{" + "partial" * 20 + "}"} )  # ~200 chars
-        return response
+def test_ollama_vision_accepts_response_at_size_limit():
+    prefix = b'{"response":"bounded"}'
+    response_body = prefix + b" " * (MAX_VISION_RESPONSE_BYTES - len(prefix))
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=response_body)
 
     provider = OllamaVisionProvider(
         "llava-local",
         transport=httpx.MockTransport(handler),
     )
     result = provider.generate(_request())
-    assert result.output_text == "{" + "partial" * 20 + "}"
+
+    assert len(response_body) == MAX_VISION_RESPONSE_BYTES
+    assert result.output_text == "bounded"
