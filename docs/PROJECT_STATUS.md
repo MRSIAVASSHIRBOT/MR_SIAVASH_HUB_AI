@@ -723,3 +723,33 @@ This section supersedes the PR #295 state in section 16.
 - PR #296 remains documentation-only. Its prior head `6b98f3b8579923812e4a57cea52c0dd317055cd6` is one commit behind the new main baseline. Its latest-head workflows were in progress at the latest observation; previous-head successes do not validate the latest documentation commits.
 
 The merged regression tests improve confidence in the existing bounded-response implementation; they do not change runtime behavior or establish full project readiness.
+
+
+## Latest engineering checkpoint — 2026-11-06 UTC
+
+This checkpoint supersedes earlier PR-state and workflow snapshots above where they differ. GitHub refs and CI statuses are point-in-time evidence and must be refreshed before merge.
+
+### Mainline
+- Verified `main`: `1a886ebc366bb6287cf4a6fef8bf4570e98cd03f`.
+- PR #295 merged as `1a886ebc366bb6287cf4a6fef8bf4570e98cd03f`. It adds only two Ollama Vision response-size boundary tests: rejection above the configured ceiling and acceptance at the exact byte limit. Exact-head CI, Backend CI, Defensive Python Scan, and Linux/Windows FFmpeg integration all passed.
+- The video-generation reconciliation implementation from PR #293 remains provider-neutral and owner-scoped. The external generation provider registry remains empty by default.
+
+### PR #294 — Kimi K3.1 Pro
+- Open and draft. Current head: `f68eb1f92218469524bed75681ecd3cf868ade12`; base: main; compare: 60 commits ahead, 0 behind.
+- Adds a disabled-by-default Moonshot adapter, explicit authenticated text and separate bounded inline-image endpoints, strict request validation, fixed official HTTPS origin, disabled redirects/proxy inheritance, sanitized provider errors and no implicit fallback.
+- Migration 31 adds durable Kimi request-event storage. The atomic sliding-window reservation has been moved into `KimiRequestRateLimitRepository` under `backend/mrhub/infrastructure/request_limits.py`; API routes now call the public `consume()` contract rather than using `TaskRepository._connection()`.
+- Text and Vision share 10 requests per owner per 60 seconds. `BEGIN IMMEDIATE` serializes quota reservation among processes sharing the same SQLite file; event timestamps survive process restarts. Separate SQLite files do not share a quota, and this request-frequency limit is not a monetary spending cap.
+- Tests cover cross-instance concurrent reservations, expiry, cross-endpoint quota sharing, input validation and invalid limiter bounds. No live Moonshot inference request has been made.
+- Exact-head checks for `f68eb1f` at this observation: Backend CI in progress; CI and Video Render Integration pending; Defensive Python Scan queued. No full PASS is claimed for this head.
+
+### PR #296 — documentation synchronization
+- Open and draft, documentation-only. Current branch: `docs/current-main-status-2026-11-06`; base is the verified main commit above; comparison is 13 commits ahead, 0 behind.
+- This checkpoint updates only `docs/PROJECT_STATUS.md` and `docs/management/WHOLE_PROJECT_READINESS_AUDIT_2026-11-04.md`. Fresh exact-head CI is required after these documentation changes.
+
+### Cross-domain acceptance boundaries
+- Keep hosted providers disabled until configuration, data-sharing review, provider-side spending controls and operational monitoring are explicitly accepted.
+- A mocked adapter test does not prove live provider availability, quality, retention, billing or SLA.
+- Continue preserving video-generation owner isolation, durable reconciliation cooldown, bounded output processing and the no-resubmit invariant.
+- Target Windows-device acceptance, representative real-media workflow, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
+
+This checkpoint is not a production-readiness or whole-project-completion declaration.
