@@ -27,6 +27,7 @@ from mrhub.video_intelligence.generation import VideoGenerationRequest
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationConflict,
     VideoGenerationJobRepository,
+    VideoGenerationReconciliationCooldown,
 )
 from mrhub.video_intelligence.jobs import (
     VideoAnalysisCapacityExceeded,
@@ -253,6 +254,16 @@ def reconcile_video_generation(
     jobs = VideoGenerationJobRepository(get_settings().database_path)
     try:
         queued = jobs.enqueue_reconciliation(user.user_id, generation_id)
+    except VideoGenerationReconciliationCooldown as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "reconciliation_cooldown",
+                "message": "Generation reconciliation is temporarily rate limited",
+                "retry_after_seconds": exc.retry_after_seconds,
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if queued is None:
