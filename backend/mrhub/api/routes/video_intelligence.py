@@ -279,7 +279,11 @@ def reconcile_video_generation(
         "task_status": str(queued["status"]),
         "generation_status": str(generation["status"]),
         "created": bool(queued["created"]),
-        "execution": (\n            "provider_reconciliation_queued"\n            if queued["created"]\n            else "provider_reconciliation_active"\n        ),
+        "execution": (
+            "provider_reconciliation_queued"
+            if queued["created"]
+            else "provider_reconciliation_active"
+        ),
         "provider_submission_replayed": False,
     }
 
