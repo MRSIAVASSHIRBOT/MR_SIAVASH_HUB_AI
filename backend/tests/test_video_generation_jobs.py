@@ -958,3 +958,29 @@ def test_provider_cancellation_uses_distinct_terminal_error_code(
     assert len(calls) == 1
     assert calls[0][2] == "cancelled"
     assert calls[0][3]["error_code"] == "provider_generation_cancelled"
+
+
+def test_reconciliation_cooldown_returns_http_429_and_retry_after(
+    monkeypatch,
+) -> None:
+    from client_helpers import authenticated_client
+
+    def reject_during_cooldown(self, owner_user_id, generation_id):
+        raise VideoGenerationReconciliationCooldown(37)
+
+    monkeypatch.setattr(
+        VideoGenerationJobRepository,
+        "enqueue_reconciliation",
+        reject_during_cooldown,
+    )
+    client = authenticated_client()
+    try:
+        response = client.post(
+            f"/video-intelligence/generations/{uuid4()}/reconcile"
+        )
+        assert response.status_code == 429
+        assert response.headers["Retry-After"] == "37"
+        assert response.json()["detail"]["code"] == "reconciliation_cooldown"
+        assert response.json()["detail"]["retry_after_seconds"] == 37
+    finally:
+        client.close()
