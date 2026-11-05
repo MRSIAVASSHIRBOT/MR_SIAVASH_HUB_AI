@@ -610,3 +610,14 @@ Exact-head CI is currently queued, not passed. A further operational merge gate 
 5. Treat hosted CI, mocked provider tests, live provider acceptance, and target-device acceptance as separate evidence classes.
 
 No production-readiness or whole-project-completion claim is made by this snapshot.
+
+
+## Follow-up verification — PR branch synchronization and CI — 2026-11-06 UTC
+
+This update supersedes the earlier PR branch-ahead/behind counts in the immediately preceding snapshot.
+
+- **PR #294** is still open and draft. Its current head is `466614e04be3ea1c8d2d080e11a945ebd6bbc947`, and its base is the current main commit `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`. The branch comparison is now 48 commits ahead and 0 behind. Exact-head workflows were observed queued/in progress: Backend CI, Defensive Python Scan, CI, and Video Render Integration. No final PASS is claimed yet.
+- **PR #295** is still open and not draft. Its current head is `32b904f80c2130ee4655c642a8a62dce9e2c4144`, with the same current-main base; comparison is 3 commits ahead and 0 behind. CI, Backend CI, and Defensive Python Scan were in progress. The latest Video Render Integration run was cancelled on both Linux and Windows jobs; an earlier attempt had a Windows PASS but a cancelled Linux job. The required current-head integration evidence is therefore still incomplete.
+- **PR #296** is this documentation-only synchronization branch. Its current head is `c9c214aeed28cab66fb5f427172fcdf92f0082b8`, 2 commits ahead and 0 behind current main. Defensive Python Scan passed; CI, Backend CI, and Video Render Integration were still in progress at the latest observation. Automated tests were not run locally because this change only appends project-status documentation.
+
+A cancelled workflow is neither PASS nor a code failure. Recheck the exact current head before making merge decisions.
