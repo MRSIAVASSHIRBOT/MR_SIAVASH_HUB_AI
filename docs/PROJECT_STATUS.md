@@ -581,3 +581,32 @@ Current main baseline at this review: `6cabc1e81dfc97c704c3ecd1506553a481bedb69`
 The proposal adds owner-scoped generation status and explicit reconciliation endpoints. For ambiguous submissions, the worker looks up the original generation idempotency key and never calls `submit` again. When a provider job is discovered, the worker persists its opaque reference under the active lease, polls status and streams a successful result through bounded private storage before independent media probing and atomic asset registration. Provider job IDs remain excluded from the public status and task-result contracts. The original encrypted request is retained while the remote outcome remains ambiguous and purged only on terminal failure/cancellation or successful output finalization.
 
 Exact-head CI is currently queued, not passed. A further operational merge gate is durable per-generation reconciliation throttling: repeated explicit lookup/status attempts need an atomic attempt budget and cooldown/backoff, with HTTP 429 and a stable `Retry-After` contract. Tests must cover concurrent requests, cooldown expiry, lookup miss, provider error and owner isolation. The provider registry remains empty by default; this PR does not activate a real provider. No production-readiness or external-provider acceptance is claimed.
+
+
+## Current cross-domain hand-off — 2026-11-06 UTC
+
+**Verified main baseline:** `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`. This section supersedes earlier statements in this ledger that describe PR #293 as open or its reconciliation controls as proposals.
+
+### Mainline integration
+
+- **PR #293 is merged** in commit `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`.
+- The merged implementation adds owner-scoped generation status and explicit reconciliation, a durable per-generation cooldown/attempt control, concurrent reconciliation deduplication, and an HTTP `Retry-After` response contract.
+- Ambiguous provider submissions are reconciled through the original idempotency key; the recovery path must not resubmit the generation request.
+- The provider registry remains empty by default. The reconciliation flow is not evidence of a configured external generation provider or live provider acceptance.
+
+### Open PR review snapshot
+
+- **PR #294 — Kimi K3.1 Pro provider:** open and draft, head `1a294bc5fab5b03a76b1a276dddb8b3412a15b01`. Its base is `6cabc1e81dfc97c704c3ecd1506553a481bedb69`; comparison with current main reports 47 commits ahead and 1 behind. It must be synchronized with current main and revalidated on its exact updated head before approval. The PR description reports earlier workflow success but explicitly says the latest review changes await fresh exact-head CI; the combined-status lookup returned no status entries for the current head, so no current PASS is claimed.
+- Kimi is opt-in and disabled by default. The PR describes a fixed official HTTPS endpoint, secret-backed API key, no redirects/proxy inheritance, bounded text and inline-image inputs, no arbitrary remote image fetch, no implicit provider fallback, and an owner-scoped 10-requests-per-60-seconds limiter.
+- **Kimi deployment limitation:** the limiter is process-local and resets on restart. It is not a distributed quota or hard spending limit. Before multi-worker/multi-replica deployment, replace it with a shared atomic limiter and configure provider-side spending controls. Keep the provider disabled until those deployment controls and exact-head checks are accepted.
+- **PR #295 — Ollama Vision response-size regression tests:** open, head `d72ce1fffe05c573e71c54f54e5388a72e3f6c3f`. It changes only `tests/test_ollama_vision_provider.py`, adding over-limit rejection and exact-limit acceptance cases. Comparison with current main reports 2 commits ahead and 1 behind. Its combined-status lookup returned no status entries for the current head; do not infer a CI result. Synchronize and rerun the relevant test and required workflows before merge.
+
+### Cross-domain acceptance gates
+
+1. Keep provider registration opt-in and fail closed; do not enable a remote provider merely because its adapter tests pass.
+2. Verify shared quota enforcement, spending controls, secret rotation, and multi-worker behavior before any multi-replica Kimi deployment.
+3. Preserve the video reconciliation no-resubmit invariant, owner isolation, durable cooldown, bounded output handling, and sanitized provider errors.
+4. Continue independent validation of target Windows runtime, real-media render lifecycle, snapshot retention, clean install/upgrade/rollback, and database/media/encryption-key restore.
+5. Treat hosted CI, mocked provider tests, live provider acceptance, and target-device acceptance as separate evidence classes.
+
+No production-readiness or whole-project-completion claim is made by this snapshot.
