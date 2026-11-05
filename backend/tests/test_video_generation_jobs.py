@@ -760,6 +760,16 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     )
     worker = WorkerEngine(repository.tasks)
 
+    def expire_reconciliation_cooldown() -> None:
+        # Advance only the persisted cooldown; avoid real sleeps in this integration test.
+        with repository.tasks._connection() as connection:
+            connection.execute(
+                """UPDATE video_generation_reconciliation_limits
+                   SET next_allowed_at = '2000-01-01T00:00:00+00:00'
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), "owner-a"),
+            )
+
     # First execution may have reached the remote service, so it becomes ambiguous.
     worker.run_once()
     assert repository.get("owner-a", generation_id)["status"] == "unknown_outcome"
@@ -794,6 +804,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert calls["submit"] == 1
 
     # A later lookup finds the original provider job and polls it.
+    expire_reconciliation_cooldown()
     repository.enqueue_reconciliation("owner-a", generation_id)
     worker.run_once()
     running = repository.get("owner-a", generation_id)
@@ -809,6 +820,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     assert calls["submit"] == 1
 
     # A later explicit refresh polls the known provider job and safely imports output.
+    expire_reconciliation_cooldown()
     repository.enqueue_reconciliation("owner-a", generation_id)
     worker.run_once()
     completed = repository.get("owner-a", generation_id)
