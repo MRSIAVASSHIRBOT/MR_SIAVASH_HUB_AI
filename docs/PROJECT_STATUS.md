@@ -671,3 +671,41 @@ This section supersedes the earlier PR-head, CI-state, and Kimi quota statements
 5. Treat mocked provider tests, hosted CI, live provider acceptance, target-Windows acceptance, backup/restore, and deployment security as separate evidence classes.
 
 This update is a point-in-time engineering hand-off, not a production-readiness or whole-project-completion declaration.
+
+
+## Latest engineering checkpoint — 2026-11-06 UTC
+
+This checkpoint supersedes older point-in-time PR head and workflow snapshots above. It records the exact refs inspected during this review; workflow states may change after this commit.
+
+### Current main
+
+- Main remains at `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c` during this checkpoint.
+- PR #293 is merged. Its owner-scoped reconciliation controls, durable attempt/cooldown state, concurrency deduplication, and no-resubmit recovery invariant are part of main.
+
+### PR #294 — Kimi K3.1 Pro
+
+- Current head: `ebea86589d462cce44c5278973136778c5b847cf`; base: current main; comparison: 56 commits ahead, 0 behind. PR remains open and draft.
+- The request limiter has materially changed since the earlier process-local review: it now records per-owner timestamps in SQLite and reserves requests inside `BEGIN IMMEDIATE`. Text and Vision share the same 10-per-60-second owner window; timestamps survive process restarts and are shared by API processes that use the same SQLite database file. Tests exercise concurrent threads across two limiter instances, shared endpoint quota, expiry, and owner isolation.
+- Remaining boundaries: deployments with separate database files do not share quota; the limiter is not a monetary spending cap. Provider-side budget controls remain necessary. The concurrency test uses threads/instances rather than a separate-process test. No live Moonshot inference was performed.
+- Exact-head workflow observations: Defensive Python Scan job passed; Backend CI was in progress; CI Python 3.11 and 3.12 jobs were in progress; Linux and Windows Video Render Integration jobs were in progress. No full CI PASS is claimed.
+
+### PR #295 — Ollama Vision response-size regression tests
+
+- Current head: `32b904f80c2130ee4655c642a8a62dce9e2c4144`; base: current main; comparison: 3 commits ahead, 0 behind. PR remains open.
+- Only `tests/test_ollama_vision_provider.py` changes: over-limit rejection and exact-limit acceptance tests.
+- Exact-head Defensive Python Scan, CI (Python 3.11 and 3.12), and Backend CI passed. Linux Video Render Integration passed; Windows Video Render Integration remained in progress at inspection. Wait for the Windows job before merge.
+
+### PR #296 — project status documentation
+
+- Current branch head before this checkpoint update: `3fbdf7b07cb0137e37cb90c9a6860c650db6931a`; base: current main; comparison: 6 commits ahead, 0 behind.
+- Scope remains limited to the two project-status documents. Exact-head Defensive Python Scan, Backend CI, both Video Render Integration jobs, and CI Python 3.11/3.12 all passed.
+- This checkpoint itself updates only the same two documentation files; its new head must receive its own required workflow validation before merge.
+
+### Cross-domain release gates
+
+1. Keep all remote inference providers disabled by default and explicitly selected; mocked tests do not prove provider availability, model quality, retention, or billing behavior.
+2. Keep provider-side spend ceilings and deployment topology review separate from request-frequency throttling.
+3. Preserve video-generation owner isolation, durable reconciliation cooldown, bounded output handling, and the no-resubmit invariant.
+4. Treat Windows target-device acceptance, real provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore as separate release evidence.
+
+No production-readiness or whole-project-completion claim is made by this checkpoint.
