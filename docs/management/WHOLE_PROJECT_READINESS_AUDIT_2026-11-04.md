@@ -543,3 +543,21 @@ This section supersedes the PR #295 state in section 16.
 - PR #296 remains documentation-only. Its prior head `6b98f3b8579923812e4a57cea52c0dd317055cd6` is one commit behind the new main baseline. Its latest-head workflows were in progress at the latest observation; previous-head successes do not validate the latest documentation commits.
 
 The merged regression tests improve confidence in the existing bounded-response implementation; they do not change runtime behavior or establish full project readiness.
+
+
+## Latest verified engineering checkpoint — 2026-11-06 UTC
+
+Supersedes earlier PR and workflow snapshots above where they differ.
+
+- **Main:** `1a886ebc366bb6287cf4a6fef8bf4570e98cd03f`. PR #295 is merged; its exact-head CI, Backend CI, defensive scan and Linux/Windows FFmpeg integration passed. The merge adds tests only for the Ollama Vision response-size boundary.
+- **PR #294:** open/draft; head `f68eb1f92218469524bed75681ecd3cf868ade12`; 60 ahead / 0 behind main. Adds a disabled-by-default Kimi provider and a separate bounded vision endpoint. Migration 31 persists owner request events. Quota enforcement now lives in the infrastructure-layer `KimiRequestRateLimitRepository`, uses `BEGIN IMMEDIATE`, and shares a per-owner 10/60-second window across text and vision calls for processes sharing the same database file. Separate database files do not share quota; request throttling is not a spending cap. The latest exact-head Backend CI was in progress, CI and Video Render Integration were pending, and Defensive Python Scan was queued at observation. Do not count these as passes.
+- **PR #296:** open/draft, docs-only. It refreshes the project status and readiness audit. This checkpoint itself requires its own exact-head validation. No runtime or database behavior changes in this PR.
+
+### Release and integration gates
+1. Keep remote provider adapters disabled by default; review data transfer, provider-side spending caps and credentials handling before live activation.
+2. Keep API routes on public repository contracts; do not couple them to private persistence connection helpers.
+3. Preserve owner isolation, strict payload bounds, response-size limits, sanitized errors and explicit provider routing.
+4. Keep video-provider reconciliation separate from local FFmpeg rendering and preserve its no-resubmit invariant.
+5. Treat target-device Windows acceptance, live-provider acceptance, clean installation/upgrade/rollback and backup/restore drills as separate evidence classes.
+
+No production-readiness or whole-project-completion claim is made.
