@@ -871,7 +871,6 @@ def test_provider_cancellation_uses_distinct_terminal_error_code(
     lookup_first: bool,
 ):
     from threading import Event
-    from types import SimpleNamespace
 
     from mrhub.jobs.leases import WorkerLease
     from mrhub.video_intelligence.generation_worker import VideoGenerationWorkerHandler
