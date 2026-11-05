@@ -434,3 +434,26 @@ PR #295 remains open at head `d72ce1fffe05c573e71c54f54e5388a72e3f6c3f`. It modi
 - Target Windows/browser acceptance, real-media workflow, snapshot retention, external-account verification, clean install/upgrade/rollback, and database/media/encryption-key restore remain independent release gates.
 
 This audit is not a production-readiness declaration or a whole-project completion claim.
+
+
+## 14. Follow-up verification — synchronized PR branches and live CI state — 2026-11-06 UTC
+
+This section supersedes the branch-divergence counts in section 13 where they differ.
+
+### PR #294 — Kimi provider candidate
+
+The branch has since been synchronized with current main. Current base: `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`; current head: `466614e04be3ea1c8d2d080e11a945ebd6bbc947`; compare: 48 commits ahead, 0 behind. The PR remains draft. Exact-head Backend CI and Defensive Python Scan were in progress; CI and Video Render Integration were queued at the latest observation. No final PASS is claimed for this updated head.
+
+The process-local limiter concern remains unresolved by this branch synchronization. It must remain a documented deployment limitation; it is not a distributed quota or a financial cap.
+
+### PR #295 — Ollama Vision response-size tests
+
+The branch has since been synchronized with current main. Current base: `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`; current head: `32b904f80c2130ee4655c642a8a62dce9e2c4144`; compare: 3 commits ahead, 0 behind. CI, Backend CI, and Defensive Python Scan were in progress at the latest observation. The latest Video Render Integration workflow was cancelled for both Linux and Windows jobs. An earlier workflow attempt completed Windows integration successfully but cancelled the Linux job. The current head therefore does not yet have a complete successful integration result.
+
+### PR #296 — documentation synchronization
+
+Current head: `c9c214aeed28cab66fb5f427172fcdf92f0082b8`; current main base: `eae64881e5b1c994fbd97853ef1ef5d06b2ab36c`; compare: 2 commits ahead, 0 behind. Defensive Python Scan passed. CI, Backend CI, and Video Render Integration were still in progress at the latest observation. No automated test suite was run locally because the changes are documentation-only.
+
+### Evidence interpretation
+
+Workflow states are time-sensitive. Queued/in-progress jobs are not passes; cancelled jobs are neither passes nor proof of a code defect. All merge decisions must use the latest exact head SHA and complete required workflow set.
