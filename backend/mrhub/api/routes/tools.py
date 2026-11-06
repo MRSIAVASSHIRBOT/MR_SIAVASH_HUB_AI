@@ -1,5 +1,6 @@
 """Authenticated tool catalog, owner permission grants, and invocation API."""
 
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -20,6 +21,9 @@ from mrhub.tools.builtins import build_tool_registry
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError
 
 router = APIRouter(prefix="/tools", tags=["tools"])
+
+CurrentUser = Annotated[AuthenticatedUser, Depends(require_user)]
+PermissionRepository = Annotated[TaskRepository, Depends(get_task_repository)]
 
 
 class ToolInvokeRequest(BaseModel):
@@ -50,8 +54,8 @@ def list_tools() -> list[dict[str, object]]:
 @router.get("/grants")
 def list_tool_grants(
     response: Response,
-    user: AuthenticatedUser = Depends(require_user),
-    repository: TaskRepository = Depends(get_task_repository),
+    user: CurrentUser,
+    repository: PermissionRepository,
 ) -> list[dict[str, str]]:
     response.headers["Cache-Control"] = "no-store"
     return _permission_service(repository).list_active(user.user_id)
