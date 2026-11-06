@@ -502,3 +502,34 @@ The similarly named `mr-siavash-ai-gateway` Worker remains unaccepted as a deplo
 ### Safety boundary
 
 Do not rotate payment credentials, change CORS, modify logging settings, alter branch protection, deploy a staging Worker, or change production routes without the required owner confirmation and a reviewed rollback/acceptance plan. Issues #298, #304, and #305 remain open and are tracked separately from the code-only Hub PRs.
+
+
+## 27. Kimi merge and GSHOP security remediation — 2026-11-06 UTC
+
+This section supersedes the open-PR states in sections 24–26 where they differ.
+
+### MR_SIAVASH_HUB_AI mainline
+
+- Current `main`: `8ca7888f1b12fabe1083c2c0f45dd5739e082985`.
+- PR #294 (optional Kimi K3.1 Pro provider) merged as `8ca7888f1b12fabe1083c2c0f45dd5739e082985`.
+- Exact PR head `115dfa8232ad7ac495b6a9bd5cb333b215743aeb` passed CI (Python 3.11/3.12), Backend CI, Defensive Python Scan, and Linux/Windows Video Render Integration before merge.
+- The provider remains disabled by default. The merge does not establish live Moonshot availability, billing, retention, external data-sharing acceptance, or provider-side budget controls.
+- PR #303's tool invocation failure-audit events remain merged in main at `e914652f2846758d6d6bf1fb18bef4a033c9be59`.
+
+### GSHOP mainline
+
+- GSHOP PR #3 merged as `116e6336134c9acea8bd121803ce65a364f65b99`.
+- Exact-head Quality checks run #31 passed JavaScript syntax validation and the complete automated Node test suite.
+- The merged code rejects wildcard CORS grants, keeps same-origin as the fallback when no exact origin remains, bounds Digipay API response bodies, validates token response shape, and prevents raw Digipay provider error bodies/messages from being returned or persisted.
+- No Cloudflare Worker settings, secret bindings, routes, D1 resources, or production deployment were changed.
+
+### Remaining operational/security blockers
+
+1. **DigiPay credentials:** live `gahop` still has `DIGIPAY_CLIENT_ID`, `DIGIPAY_CLIENT_SECRET`, `DIGIPAY_USERNAME`, and `DIGIPAY_PASSWORD` as `plain_text` bindings. Rotate/reissue them with the payment provider, then store new values as `secret_text` through an owner-approved Cloudflare operation.
+2. **CORS:** confirm the exact frontend/admin origins before changing the live `ALLOWED_ORIGINS` binding. The GSHOP code now rejects wildcard grants; production configuration rollout remains separate.
+3. **Worker logs:** live query-string redaction is disabled while persistent invocation logs are enabled. Review and approve the logging policy before changing production observability.
+4. **Hub Cloudflare gateway:** `mr-siavash-ai-gateway` still does not match the source-controlled gateway contract and has no observed route. Keep it unaccepted until a dedicated staging Worker is configured and verified.
+5. **GitHub governance:** repository rulesets listing is empty; detailed branch-protection read returned 403. An authorized owner/admin must verify and configure main protection. No rules were changed.
+6. **PR #297:** remains blocked on `action_required` workflow authorization; do not bypass that gate.
+
+The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
