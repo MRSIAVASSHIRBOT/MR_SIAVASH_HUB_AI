@@ -61,7 +61,15 @@ class Settings(BaseSettings):
     assistant_gateway_health_path: str = Field(default="/health", min_length=1, max_length=200)
     assistant_gateway_timeout_seconds: float = Field(default=2.0, ge=0.2, le=10.0)
     assistant_gateway_max_response_bytes: int = Field(default=8192, ge=256, le=16384)
-    # Optional local coding service; shares the same fail-closed health contract.
+        # Optional isolated Cloudflare Workers gateway; the provider token never enters the Hub.
+    cloudflare_gateway_enabled: bool = False
+    cloudflare_gateway_base_url: str | None = None
+    cloudflare_gateway_token: SecretStr | None = None
+    cloudflare_gateway_timeout_seconds: float = Field(default=8.0, ge=0.2, le=8.0)
+    cloudflare_gateway_max_response_bytes: int = Field(
+        default=1_048_576, ge=256, le=1_048_576
+    )
+# Optional local coding service; shares the same fail-closed health contract.
     code_engine_enabled: bool = False
     code_engine_base_url: str | None = None
     code_engine_health_path: str = Field(default="/health", min_length=1, max_length=200)
