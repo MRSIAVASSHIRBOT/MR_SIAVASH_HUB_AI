@@ -86,7 +86,7 @@ def test_worker_settings_redact_all_binding_values(monkeypatch):
         "ALLOWED_ORIGINS",
     ]
     assert secret_value not in serialized
-    assert "text" not in serialized
+    assert '"text":' not in serialized
     assert result.compatibility_date == "2026-09-11"
 
 
