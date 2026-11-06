@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import sqlite3
 
 import pytest
 
@@ -102,7 +103,7 @@ def test_database_constraint_rejects_permissions_outside_the_explicit_allowlist(
     repository = _repository(tmp_path)
     now = datetime.now(UTC).isoformat()
     with repository._connection() as connection:
-        with pytest.raises(Exception):
+        with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
                 """
                 INSERT INTO tool_permission_grants (
