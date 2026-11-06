@@ -25,3 +25,16 @@ model or an external integration.
 - Tool handlers are never exposed in the catalog or API response.
 - No shell, arbitrary Python, network access, or dynamic tool loading is
   provided by the initial registry.
+
+
+## Owner-scoped permission grants
+
+The authenticated owner can manage a small, explicit allow-list of tool permissions:
+
+- GET /tools/grants lists only the current owner's active grants.
+- PUT /tools/grants/cloudflare.read creates or renews a read-only Cloudflare metadata grant.
+- DELETE /tools/grants/cloudflare.read revokes that grant.
+
+Grants expire automatically. The default lifetime is one hour; callers may request 60 seconds through 24 hours. Unsupported permissions are rejected. Grant and revoke mutations write their audit events in the same SQLite transaction as the permission change.
+
+Tool invocation loads active permissions from the authenticated session owner in the server-side database. The request body cannot supply permissions or approval flags. Every invocation outcome records only allow-listed metadata and a generated correlation ID; input payloads, provider responses, and credentials are not recorded.
