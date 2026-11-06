@@ -100,18 +100,18 @@ def test_failed_revoke_audit_rolls_back_permission_deletion(tmp_path):
 def test_database_constraint_rejects_permissions_outside_the_explicit_allowlist(tmp_path):
     repository = _repository(tmp_path)
     now = datetime.now(UTC).isoformat()
-    with repository._connection() as connection, pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(sqlite3.IntegrityError), repository._connection() as connection:
         connection.execute(
-                """
-                INSERT INTO tool_permission_grants (
-                    grant_id, owner_user_id, permission, granted_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    "12345678-1234-5678-1234-567812345678",
-                    "owner-a",
-                    "cloudflare.write",
-                    now,
-                    "2999-01-01T00:00:00+00:00",
-                ),
-            )
+            """
+            INSERT INTO tool_permission_grants (
+                grant_id, owner_user_id, permission, granted_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "12345678-1234-5678-1234-567812345678",
+                "owner-a",
+                "cloudflare.write",
+                now,
+                "2999-01-01T00:00:00+00:00",
+            ),
+        )
