@@ -39,6 +39,8 @@ def test_gateway_settings_are_disabled_by_default(monkeypatch):
         "MRH_CLOUDFLARE_GATEWAY_ENABLED",
         "MRH_CLOUDFLARE_GATEWAY_BASE_URL",
         "MRH_CLOUDFLARE_GATEWAY_TOKEN",
+        "MRH_CLOUDFLARE_GATEWAY_TIMEOUT_SECONDS",
+        "MRH_CLOUDFLARE_GATEWAY_MAX_RESPONSE_BYTES",
     ):
         monkeypatch.delenv(key, raising=False)
     settings = Settings(_env_file=None)
@@ -67,6 +69,8 @@ def test_gateway_constructor_rejects_unsafe_urls_and_credentials():
         "https://gateway.example.workers.dev/path",
         "https://user:pass@gateway.example.workers.dev",
         "https://gateway.example.workers.dev?token=leak",
+        "https://gateway.example.workers.dev ",
+        "https://bad_host.example.workers.dev",
     ):
         with pytest.raises(ValueError):
             CloudflareGatewayClient(gateway_url=url, gateway_token=TOKEN)
