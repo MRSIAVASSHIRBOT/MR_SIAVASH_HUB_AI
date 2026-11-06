@@ -51,7 +51,7 @@ This source is not deployed by this change. Stage 1 must first be deployed to an
 
 Before deployment, provision the two Worker secrets and the two non-secret variables in a staging environment, then perform authenticated read-only acceptance tests. Production deployment, custom-domain routing, D1 row access, resource writes, secret rotation, and destructive operations require separate approval and a reviewed change plan.
 
-Cloudflare Access Service Auth can be added as an additional edge access layer before production. The gateway's own service token remains required regardless of edge policy.
+Cloudflare Access Service Auth must protect the gateway before production. Use a dedicated service token and a Service Auth policy for the gateway hostname. The gateway's own bearer credential remains required as defense in depth.
 
 ## Local tests
 
