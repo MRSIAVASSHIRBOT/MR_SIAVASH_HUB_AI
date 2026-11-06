@@ -7,6 +7,7 @@ It is optional: callers instantiate it only when a read-only API token is config
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -88,11 +89,28 @@ class CloudflareReadOnlyClient:
         timeout_seconds: float = REQUEST_TIMEOUT_SECONDS,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
     ) -> None:
-        if not isinstance(api_token, str) or not api_token.strip():
+        if not isinstance(api_token, str):
             raise ValueError("Cloudflare API token is required")
-        if not 0 < timeout_seconds <= REQUEST_TIMEOUT_SECONDS:
+        normalized_token = api_token.strip()
+        if (
+            not normalized_token
+            or len(normalized_token) > 512
+            or not normalized_token.isascii()
+            or any(ord(character) < 33 or ord(character) > 126 for character in normalized_token)
+        ):
+            raise ValueError("Invalid Cloudflare API token")
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or not 0 < timeout_seconds <= REQUEST_TIMEOUT_SECONDS
+        ):
             raise ValueError("Invalid Cloudflare timeout")
-        if not 1 <= max_response_bytes <= MAX_RESPONSE_BYTES:
+        if (
+            isinstance(max_response_bytes, bool)
+            or not isinstance(max_response_bytes, int)
+            or not 1 <= max_response_bytes <= MAX_RESPONSE_BYTES
+        ):
             raise ValueError("Invalid Cloudflare response limit")
 
         accounts = frozenset(allowed_account_ids)
@@ -102,7 +120,7 @@ class CloudflareReadOnlyClient:
         if any(not ACCOUNT_ID_PATTERN.fullmatch(v) for v in zones):
             raise ValueError("Invalid zone allowlist entry")
 
-        self._token = api_token.strip()
+        self._token = normalized_token
         self._accounts = accounts
         self._zones = zones
         self._timeout = timeout_seconds
