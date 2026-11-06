@@ -100,11 +100,18 @@ def _validate_gateway_url(value: str) -> str:
         pass
     else:
         raise ValueError("Cloudflare gateway URL must use a public DNS hostname")
-    normalized_host = host.lower().rstrip(".")
+    try:
+        normalized_host = host.encode("idna").decode("ascii").lower().rstrip(".")
+    except UnicodeError:
+        raise ValueError("Invalid Cloudflare gateway hostname") from None
+    hostname_pattern = (
+        r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+"
+        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    )
     if (
-        normalized_host == "localhost"
+        not re.fullmatch(hostname_pattern, normalized_host)
+        or normalized_host == "localhost"
         or normalized_host.endswith((".localhost", ".local", ".internal"))
-        or "." not in normalized_host
     ):
         raise ValueError("Cloudflare gateway URL must use a public DNS hostname")
     return f"https://{parsed.netloc}".rstrip("/")
