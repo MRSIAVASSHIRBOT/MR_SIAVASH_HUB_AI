@@ -90,7 +90,7 @@ def revoke_tool_permission(
     try:
         revoked = _permission_service(repository).revoke(user.user_id, permission)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Permission grant request is invalid") from exc
+        raise HTTPException(status_code=422, detail="Permission grant request is invalid", headers={"Cache-Control": "no-store"}) from exc
     if not revoked:
         raise HTTPException(status_code=404, detail="Permission grant was not found", headers={"Cache-Control": "no-store"})
     response.headers["Cache-Control"] = "no-store"
@@ -118,8 +118,36 @@ def invoke_tool(
             granted_permissions=permissions,
         )
     except LookupError as exc:
+        audit.record(
+            event_type="tool.invocation",
+            outcome="failure",
+            subject_id=tool_name[:80],
+            subject_type="tool",
+            actor_type="user",
+            actor_id=user.user_id,
+            metadata={
+                "tool_name": tool_name,
+                "status": "not_registered",
+                "reason_code": "tool_not_registered",
+                "correlation_id": correlation_id,
+            },
+        )
         raise HTTPException(status_code=404, detail="Tool is not registered", headers={"Cache-Control": "no-store"}) from exc
     except ValidationError as exc:
+        audit.record(
+            event_type="tool.invocation",
+            outcome="failure",
+            subject_id=tool_name[:80],
+            subject_type="tool",
+            actor_type="user",
+            actor_id=user.user_id,
+            metadata={
+                "tool_name": tool_name,
+                "status": "invalid_input",
+                "reason_code": "tool_input_invalid",
+                "correlation_id": correlation_id,
+            },
+        )
         raise HTTPException(status_code=422, detail="Tool input validation failed", headers={"Cache-Control": "no-store"}) from exc
     except ToolPolicyError as exc:
         reason_code = (
