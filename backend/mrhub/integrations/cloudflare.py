@@ -9,6 +9,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+import time
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
@@ -165,6 +166,7 @@ class CloudflareGatewayClient:
         # Callers pass only module-owned, fixed route templates.
         if not path.startswith("/v1/") or "?" in path or "#" in path:
             raise CloudflareGatewayError("invalid_gateway_operation")
+        deadline = time.monotonic() + self._timeout
         try:
             with httpx.Client(
                 timeout=self._timeout,
@@ -200,6 +202,8 @@ class CloudflareGatewayClient:
                 for chunk in response.iter_bytes(
                     chunk_size=min(8_192, self._max_response_bytes + 1)
                 ):
+                    if time.monotonic() > deadline:
+                        raise CloudflareGatewayError("gateway_timeout")
                     body.extend(chunk)
                     if len(body) > self._max_response_bytes:
                         raise CloudflareGatewayError("gateway_response_too_large")
