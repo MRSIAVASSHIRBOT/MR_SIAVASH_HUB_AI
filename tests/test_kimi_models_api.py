@@ -126,7 +126,10 @@ def test_kimi_vision_endpoint_uses_explicit_provider_and_inline_image(
     image = b"\x89PNG\r\n\x1a\n" + b"test-image"
     image_data_url = "data:image/png;base64," + base64.b64encode(image).decode()
 
+    provider_requests = []
+
     def handler(request: httpx.Request) -> httpx.Response:
+        provider_requests.append((request.method, request.url.path))
         return httpx.Response(
             200,
             json={
@@ -171,6 +174,8 @@ def test_kimi_vision_endpoint_uses_explicit_provider_and_inline_image(
     assert response.status_code == 200
     assert response.json()["provider"] == "moonshot"
     assert response.json()["output_text"] == "Vision result"
+    # The generation path makes one bounded POST, not a redundant preflight GET.
+    assert provider_requests == [("POST", "/v1/chat/completions")]
 
     # Text and Vision share one durable owner quota.
     limited = client.post(
