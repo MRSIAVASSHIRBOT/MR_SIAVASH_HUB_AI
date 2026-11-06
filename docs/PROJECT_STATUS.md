@@ -650,3 +650,32 @@ This section supersedes the PR #294 and PR #296 state in section 24 where they d
 - PR #306 was closed without merge because the Kimi branch restored the Cloudflare settings and environment example independently.
 
 No Cloudflare resources, production routes, bindings, secrets, or D1 data were modified. Workflow conclusions remain SHA-specific. This is not a production-readiness or whole-project-completion declaration.
+
+
+## 26. Shared-account security and repository-governance follow-up — 2026-11-06 UTC
+
+This section records read-only findings from the shared Cloudflare account and GitHub repository controls. No secrets or credential values were read.
+
+### Existing GSHOP Worker security finding — tracked in issue #298
+
+- A read-only settings inspection of production Worker `gahop` confirmed `DIGIPAY_CLIENT_ID`, `DIGIPAY_CLIENT_SECRET`, `DIGIPAY_PASSWORD`, and `DIGIPAY_USERNAME` are configured as `plain_text` bindings.
+- `ADMIN_PASSWORD` and `TELEGRAM_BOT_TOKEN` are configured as `secret_text`.
+- `ALLOWED_ORIGINS` is a plain-text binding; its value was not read.
+- Worker observability and persistent invocation logs are enabled; query-string redaction is disabled and traces are disabled.
+- The finding and owner-dependent remediation were recorded in issue #298. Credential rotation requires new values from the payment provider, and the exact frontend/admin origin allowlist requires owner confirmation.
+- No credential values were retrieved, and no Worker settings, payment flows, routes, or production resources were modified.
+
+### GitHub main protection — tracked in issue #304
+
+- A read-only repository rulesets listing returned an empty array.
+- The detailed branch-protection endpoint returned HTTP 403 (`Resource not accessible by integration`), so the current detailed protection configuration could not be independently read through this connection.
+- Earlier repository metadata reported `protected: false`; no branch-protection or ruleset settings were changed in this session.
+- An authorized repository owner/admin must verify and configure PR-required changes, exact-head required checks, force-push/deletion restrictions, and review-thread resolution with an owner-compatible approval policy.
+
+### Hub gateway live acceptance — tracked in issue #305
+
+The similarly named `mr-siavash-ai-gateway` Worker remains unaccepted as a deployment of the source-controlled gateway. It has no observed route, its settings do not match the source contract, and the deployed script did not match the expected fixed API-origin/read-only-route markers. The existing `gahop` route remains unchanged.
+
+### Safety boundary
+
+Do not rotate payment credentials, change CORS, modify logging settings, alter branch protection, deploy a staging Worker, or change production routes without the required owner confirmation and a reviewed rollback/acceptance plan. Issues #298, #304, and #305 remain open and are tracked separately from the code-only Hub PRs.
