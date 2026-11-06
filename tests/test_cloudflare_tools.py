@@ -1,8 +1,5 @@
-from fastapi.testclient import TestClient
-
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
-from mrhub.domain.tasks import RiskClass
 from mrhub.integrations.cloudflare import (
     D1DatabaseSummary,
     WorkerRoute,
@@ -12,7 +9,6 @@ from mrhub.integrations.cloudflare import (
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.main import create_app
 from mrhub.tools import builtins
-from mrhub.tools.registry import ToolRegistry
 
 
 class FakeCloudflareGateway:
