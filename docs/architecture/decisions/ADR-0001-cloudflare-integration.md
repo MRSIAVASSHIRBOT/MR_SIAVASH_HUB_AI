@@ -1,89 +1,70 @@
-# ADR-0001: Policy-Governed Cloudflare Integration
+# ADR-0001: Hub-Side Cloudflare Gateway Client
 
-- **Status:** Proposed
+- **Status:** Proposed; implementation is constrained by ADR-0002.
 - **Date:** 2026-11-06
 - **Owners:** Project owner and maintainers
-- **Related work:** GitHub issue #299
+- **Related work:** GitHub issue #299; PR #300; ADR-0002
 
 ## Context
 
-MR_SIAVASH_HUB_AI is a local-first modular monolith. Its canonical Tool Registry, policy engine, audit service, and bounded worker runtime are the authority for tool execution. Cloudflare currently operates separately from the Hub; repository inspection did not identify an existing Cloudflare adapter.
+MR_SIAVASH_HUB_AI is a local-first modular monolith. Its canonical Tool Registry, policy engine, audit service, and bounded worker runtime remain the authority for tool execution. Cloudflare access is provided by the isolated Workers gateway described in ADR-0002.
 
-The project needs a controlled integration path for inventory, diagnostics, and eventually approved deployment operations without creating a second authorization system or exposing Cloudflare credentials to model context.
+The Hub must not hold a Cloudflare provider API token, call \`api.cloudflare.com\` directly, or expose an arbitrary network proxy to agents.
 
 ## Decision proposal
 
-Implement Cloudflare integration as an optional outbound adapter behind the existing integration ports and Tool Registry.
-
-The first implementation is **read-only**. It may inventory explicitly allowlisted account resources and return sanitized metadata. It must not expose a generic arbitrary-API-request tool.
+Implement a typed, optional, synchronous Hub-side client for the isolated Cloudflare Workers gateway. The client is compatible with the existing synchronous ToolRegistry handler contract and exposes only fixed read-only operations.
 
 ### Trust boundaries
 
-1. The Cloudflare API token remains in the local deployment secret manager or process environment. It is never stored in SQLite, source control, frontend assets, prompts, tool results, or logs.
-2. The adapter accepts typed operation inputs, not arbitrary URL, HTTP method, headers, or request bodies supplied by an agent.
-3. Account identifiers and resource identifiers are validated against configured allowlists.
-4. Binding inventory returns binding names and types only. Secret values and plaintext binding values are never returned.
-5. Every invocation is scoped to the authenticated owner/workspace, passes policy evaluation, uses bounded timeouts and pagination, and emits a redacted audit event.
-6. Errors use stable codes and sanitized messages. Raw response bodies and authorization headers are not logged.
+1. The Cloudflare provider token exists only as a secret binding in the dedicated Cloudflare gateway Worker.
+2. The Hub stores only the separate gateway bearer credential as \`MRH_CLOUDFLARE_GATEWAY_TOKEN\`.
+3. The gateway URL is deployment configuration and must be HTTPS, a public DNS hostname, and contain no path, query, fragment, or userinfo.
+4. The client uses fixed GET routes, bounded timeouts and response bytes, rejects redirects, and disables environment proxy inheritance.
+5. The client validates response envelopes and typed output schemas; errors never include response bodies or credentials.
+6. Worker settings expose binding names and types only. Binding values are never accepted in Hub output models.
+7. The integration is disabled by default and remains unavailable when required configuration is absent.
+8. No tool is registered or agent-callable in this milestone. Tool registration must use the existing ToolRegistry and PolicyEngine; owner-scoped server-side grants and redacted audit events are required before enabling invocation.
 
 ### Initial read-only capability set
 
-- List configured Workers and retrieve sanitized deployment metadata.
-- List Worker routes and domains.
-- List D1 database metadata and schema names where explicitly permitted.
-- Inspect Worker binding names/types without returning values.
-- Report compatibility date, observability flags, and deployed version identifiers.
+- List Worker metadata.
+- List Worker route metadata.
+- List D1 database metadata.
+- Read projected Worker settings metadata.
 
-D1 row reads are excluded from the initial capability set. They require a separately reviewed data-access contract and explicit scope.
-
-### Write capability gate
-
-Worker deployments, route changes, D1 mutations, secret updates, resource deletion, and billing-affecting operations are out of scope for the first release.
-
-A later write-capable stage must provide:
-- An immutable, human-readable change plan and diff.
-- Explicit owner approval bound to the exact plan fingerprint.
-- Revalidation of policy and approval immediately before execution.
-- A non-production target and rollback artifact.
-- Post-deployment verification tied to the exact deployed version.
+D1 row access, Worker source retrieval, arbitrary API calls, deployments, route changes, secret management, resource deletion, and billing-affecting operations are excluded.
 
 ## Alternatives considered
 
-### Direct Cloudflare API calls from agent-generated code
+### Direct Cloudflare API calls from the Hub
 
-Rejected. This bypasses typed tool contracts, creates an arbitrary network capability, and makes authorization, redaction, and auditing difficult to enforce.
+Rejected. This would place the provider token in the Hub process and duplicate the credential boundary that ADR-0002 intentionally isolates.
 
-### A separate Cloudflare orchestration service
+### Agent-generated arbitrary HTTP requests
 
-Deferred. It would duplicate policy, jobs, audit, and lifecycle infrastructure before measured scale or isolation requirements justify a service boundary.
+Rejected. Only typed, fixed endpoint methods are allowed.
 
-### Wrangler subprocess execution from the Hub
+### Parallel authorization or audit implementation
 
-Deferred. It introduces process-execution and local-environment risks. A typed API adapter is the preferred initial path. Wrangler may remain a maintainer-operated development workflow outside agent invocation.
+Rejected. The existing ToolRegistry, PolicyEngine, owner grant lifecycle, and AuditLogger remain the single policy and audit authority. This PR does not create a second system.
 
 ## Implementation constraints
 
-- Preserve local-only operation when Cloudflare credentials are absent.
-- Use the repository's existing configuration and dependency conventions.
-- Keep Cloudflare SDK/API details inside the adapter.
-- Do not add arbitrary shell execution or arbitrary HTTP access to the Tool Registry.
-- Use least-privilege Cloudflare tokens; read-only tokens for the initial phase.
-- Add tests for authorization, account/resource scoping, redaction, timeouts, pagination, malformed responses, and provider failures.
-- Never use production secrets in tests or fixtures.
+- Preserve local-only operation when gateway configuration is absent.
+- Use the existing \`Settings\` and \`SecretStr\` conventions.
+- Never place credentials in SQLite, source control, frontend assets, prompts, tool results, or logs.
+- No implicit retries or fallback to direct Cloudflare API access.
+- No production Cloudflare resources are changed by this source-only integration.
 
-## Rollout plan
+## Rollout gates
 
-1. Review and accept this ADR.
-2. Implement typed read-only contracts and adapter.
-3. Register read-only tools with explicit grants and audit metadata.
-4. Add mocked contract tests and CI checks.
-5. Perform a live read-only acceptance test against an explicitly selected account.
-6. Evaluate write operations in a separate ADR and approval-gated milestone.
+1. Accept ADR-0002's gateway trust boundary.
+2. Complete gateway client contract tests and exact-head CI.
+3. Add the owner-scoped grant and redacted audit invocation path through existing contracts.
+4. Perform authenticated read-only acceptance against an isolated staging Worker.
+5. Obtain separate approval for any production deployment or future write capability.
 
 ## Consequences
 
-The Hub gains a safe path to discover and observe Cloudflare resources while retaining a single policy authority. The first milestone intentionally does not deploy code, mutate D1, change routes, or manage secrets.
-
-## Review triggers
-
-Revisit this decision if Cloudflare operations require a separate deployment boundary, multiple organizations/accounts need isolation, or measured API volume justifies a dedicated service.
+The Hub has a narrow typed client while Cloudflare provider credentials remain isolated in the gateway. The integration can remain disabled without affecting local operation. This milestone does not register agent-callable tools or modify Cloudflare resources.
