@@ -594,3 +594,47 @@ The previous recovery issue snapshot reported 13 open PRs. The live search at th
 ### Evidence boundary
 
 CI success applies only to the exact SHA and workflow that completed. Pending, in-progress, cancelled, and `action_required` results are not passes. Hosted checks do not replace target-device acceptance, live provider verification, clean install/upgrade/rollback, or database/media/encryption-key restore drills. No production-readiness or whole-project-completion claim is made.
+
+
+## 19. Live repository and Cloudflare integration checkpoint — 2026-11-06 UTC
+
+Verified main baseline: 1a886ebc366bb6287cf4a6fef8bf4570e98cd03f. This section supersedes earlier PR inventories and Cloudflare implementation descriptions above.
+
+### Current open queue
+
+| PR | Head | Ahead / behind | State and evidence |
+|---|---|---:|---|
+| #294 | f68eb1f92218469524bed75681ecd3cf868ade12 | 60 / 0 | Draft; all four required workflow groups passed |
+| #296 | 71c094796fa5a3c4b84e760229948b473ee9ac62 | 17 / 0 | Draft; all four groups passed on the previous exact head; this update needs fresh CI |
+| #297 | 01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf | 1 / 0 | Open; all four workflow groups action_required |
+| #300 | 5270e0d8aab3828b1e1ba1936bec33e4f57bc8ea | 31 / 0 | Draft; defensive scan passed, Backend CI and Video Render Integration in progress, CI pending |
+| #301 | 684fcd052e0b9394b94d6693bae37632b71fb89f | 15 / 0 | Open; Backend CI, CI, defensive scan, and Linux/Windows Video Render Integration passed |
+
+Five PRs are open at this checkpoint. Do not reuse the earlier four-PR inventory.
+
+### PR #301 — isolated gateway
+
+The five-file PR adds a standalone Cloudflare Worker gateway, its Node contract/security tests, CI invocation, README, and ADR-0002. It exposes fixed read-only routes for Worker inventory, route inventory, D1 metadata, and safe Worker settings. It rejects arbitrary methods, query strings, redirects, malformed/non-JSON provider envelopes, unbounded response bodies, and invalid pagination metadata. Binding values are projected away. The readiness check validates the configured account, zone, and provider-token presence.
+
+All four required workflow groups passed on the exact head above. The code is not deployed. Formal independent GitHub approval is not recorded because the PR author cannot approve their own PR; the inline readiness review thread was resolved after the code and tests were updated.
+
+### PR #300 — Hub gateway client
+
+The branch has been refactored from a direct Cloudflare API adapter into a typed synchronous client for the gateway in PR #301. It adds opt-in settings, stores only the gateway credential as SecretStr, and enforces HTTPS/public-DNS configuration, fixed routes, redirect/proxy rejection, response deadlines and byte bounds, strict JSON envelopes, typed outputs, and binding-value exclusion.
+
+The current exact-head workflows are not all complete: Defensive Python Scan passed; Backend CI and Video Render Integration were in progress; CI was pending. No PASS is claimed for the unfinished workflows.
+
+The client is intentionally not registered in the tool catalog yet. Main's ToolRegistry.invoke() is synchronous and policy-authoritative, but the current API invocation path supplies no server-side grants. AuditLogger is separate and is not called by ToolRegistry. Registering the integration without an owner-scoped grant lifecycle and redacted audit path would either fail closed or encourage a parallel policy system. Implement that lifecycle through the existing authorities before exposing any Cloudflare tool to agents.
+
+### Cross-PR architecture and production boundary
+
+- The canonical credential boundary is the isolated Worker holding the Cloudflare provider token; the Hub holds only the separate gateway service token.
+- Keep PR #300 and #301 unmerged until their respective exact-head CI/review gates are satisfied and their ADRs remain aligned.
+- No production Cloudflare Worker, route, secret, or D1 data was changed. The existing gahop, gshop11.ir/api/*, and gshop-db remain outside this implementation.
+- No deploy, write, delete, route-change, D1-row, secret-management, or billing capability is present in the first gateway stage.
+
+### Evidence and release gates
+
+Workflow results are SHA-specific. Pending, queued, in-progress, cancelled, and action_required states are not passes. Hosted CI does not establish live provider availability, deployment safety, Access policy correctness, target-device Windows acceptance, clean installation/upgrade/rollback, or backup/restore readiness.
+
+This checkpoint is not a production-readiness or whole-project-completion declaration.
