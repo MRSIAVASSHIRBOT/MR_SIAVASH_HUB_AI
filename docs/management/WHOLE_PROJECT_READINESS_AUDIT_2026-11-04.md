@@ -638,3 +638,14 @@ The client is intentionally not registered in the tool catalog yet. Main's ToolR
 Workflow results are SHA-specific. Pending, queued, in-progress, cancelled, and action_required states are not passes. Hosted CI does not establish live provider availability, deployment safety, Access policy correctness, target-device Windows acceptance, clean installation/upgrade/rollback, or backup/restore readiness.
 
 This checkpoint is not a production-readiness or whole-project-completion declaration.
+
+
+## 20. Cross-component update — 2026-11-06
+
+The main branch now includes the isolated Cloudflare gateway source (PR #301) and owner-scoped expiring permission grants (PR #302). The Hub-side integration in PR #300 has progressed beyond the earlier adapter-only stage: it registers four fixed read-only Cloudflare tools only when enabled, and each tool requires the authenticated owner's server-side `cloudflare.read` grant. The exact current PR #300 head passed Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows Video Render Integration.
+
+The Kimi provider PR #294 now uses migration 32 because migration 31 is occupied by the merged permission-grant schema. Its exact current head passed all four required workflow groups. PR #303 separately closes an audit-observability gap for unknown-tool and invalid-input attempts; its checks were still running at this checkpoint.
+
+A read-only inspection of the connected Cloudflare account found a deployed Worker with a similar gateway name, but the observed variables/secrets do not match the source contract in `cloudflare/gateway/src/index.js`. The deployed code/configuration has therefore not been accepted as the source-controlled gateway. The existing `gshop11.ir/api/*` route remains on `gahop`; no Cloudflare resources were modified. Keep the Hub integration disabled until a dedicated isolated staging Worker is verified with the required variables, secrets, authenticated health check, and read-only acceptance tests.
+
+The current exact heads, workflow states, and deployment boundary are recorded in section 20 of `docs/PROJECT_STATUS.md`. This is a point-in-time checkpoint, not a claim of production readiness.
