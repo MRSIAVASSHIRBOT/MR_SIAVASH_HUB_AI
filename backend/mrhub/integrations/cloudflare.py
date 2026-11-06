@@ -128,12 +128,12 @@ class CloudflareReadOnlyClient:
         self._max_response_bytes = max_response_bytes
 
     def _account_path(self, account_id: str, suffix: str) -> str:
-        if account_id not in self._accounts:
+        if not isinstance(account_id, str) or account_id not in self._accounts:
             raise CloudflareAdapterError("account_not_allowlisted")
         return f"/accounts/{account_id}/{suffix}"
 
     def _zone_path(self, zone_id: str, suffix: str) -> str:
-        if zone_id not in self._zones:
+        if not isinstance(zone_id, str) or zone_id not in self._zones:
             raise CloudflareAdapterError("zone_not_allowlisted")
         return f"/zones/{zone_id}/{suffix}"
 
@@ -261,7 +261,10 @@ class CloudflareReadOnlyClient:
     async def get_worker_settings(
         self, account_id: str, script_name: str
     ) -> WorkerSettingsSummary:
-        if not RESOURCE_NAME_PATTERN.fullmatch(script_name):
+        if (
+            not isinstance(script_name, str)
+            or not RESOURCE_NAME_PATTERN.fullmatch(script_name)
+        ):
             raise CloudflareAdapterError("invalid_worker_name")
         path = self._account_path(
             account_id, f"workers/scripts/{script_name}/settings"
