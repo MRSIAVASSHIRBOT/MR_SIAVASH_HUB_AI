@@ -1,6 +1,6 @@
 import httpx
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
 from mrhub.config import Settings
 from mrhub.integrations import cloudflare
@@ -182,7 +182,7 @@ def test_worker_settings_reject_unexpected_binding_values(monkeypatch):
         })
 
     client = _client(monkeypatch, handler)
-    with pytest.raises(ValidationError):
+    with pytest.raises(CloudflareGatewayError, match="gateway_invalid_result"):
         client.get_worker_settings("storefront")
 
 
@@ -273,5 +273,5 @@ def test_gateway_item_count_and_schema_are_bounded(monkeypatch):
         return _envelope([{"id": "worker", "unexpected": "field"}])
 
     client = _client(monkeypatch, invalid_schema)
-    with pytest.raises(ValidationError):
+    with pytest.raises(CloudflareGatewayError, match="gateway_invalid_result"):
         client.list_workers()
