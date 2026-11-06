@@ -815,6 +815,27 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_generation_reconciliation_next_allowed ON video_generation_reconciliation_limits(next_allowed_at)",
         ),
     ),
+
+    Migration.build(
+        31,
+        "owner_scoped_expiring_tool_permission_grants",
+        (
+            """CREATE TABLE IF NOT EXISTS tool_permission_grants (
+                grant_id TEXT PRIMARY KEY CHECK (length(grant_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                permission TEXT NOT NULL CHECK (
+                    length(permission) BETWEEN 1 AND 100
+                    AND permission GLOB '[a-z]*'
+                    AND permission NOT GLOB '*[^a-z0-9_.:-]*'
+                ),
+                granted_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                CHECK (expires_at > granted_at),
+                UNIQUE(owner_user_id, permission)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_tool_permission_grants_owner_expiry ON tool_permission_grants(owner_user_id, expires_at)",
+        ),
+    ),
 )
 
 
