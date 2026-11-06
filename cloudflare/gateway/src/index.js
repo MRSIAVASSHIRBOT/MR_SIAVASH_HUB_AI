@@ -172,9 +172,9 @@ async function listWorkers(env) {
     if (typeof item.id !== "string" || !RESOURCE_NAME_PATTERN.test(item.id)) return [];
     return [{
       id: item.id,
-      etag: typeof item.etag === "string" ? item.etag : null,
-      created_on: typeof item.created_on === "string" ? item.created_on : null,
-      modified_on: typeof item.modified_on === "string" ? item.modified_on : null,
+      etag: typeof item.etag === "string" && item.etag.length <= 128 ? item.etag : null,
+      created_on: typeof item.created_on === "string" && item.created_on.length <= 64 ? item.created_on : null,
+      modified_on: typeof item.modified_on === "string" && item.modified_on.length <= 64 ? item.modified_on : null,
     }];
   });
 }
@@ -183,13 +183,15 @@ async function listWorkerRoutes(env) {
   const zoneId = requireZoneId(env);
   const payload = await cloudflareGet("/zones/" + zoneId + "/workers/routes", env);
   return requireListResult(payload).flatMap((item) => {
-    if (typeof item.id !== "string" || item.id.length > 128 ||
-        typeof item.pattern !== "string" || item.pattern.length > 253) return [];
+    if (typeof item.id !== "string" || item.id.length < 1 || item.id.length > 128 ||
+        typeof item.pattern !== "string" || item.pattern.length < 1 || item.pattern.length > 253) return [];
     return [{
       id: item.id,
       pattern: item.pattern,
-      script: typeof item.script === "string" ? item.script : null,
-      zone_id: typeof item.zone_id === "string" ? item.zone_id : null,
+      script: typeof item.script === "string" && RESOURCE_NAME_PATTERN.test(item.script)
+        ? item.script : null,
+      zone_id: typeof item.zone_id === "string" && ACCOUNT_ID_PATTERN.test(item.zone_id)
+        ? item.zone_id : null,
     }];
   });
 }
@@ -207,11 +209,21 @@ async function listD1Databases(env) {
     items.push(...current);
     if (items.length > MAX_LIST_ITEMS) throw new GatewayFault("provider_item_limit", 502);
 
-    const totalPages = payload.result_info && payload.result_info.total_pages;
-    if (Number.isInteger(totalPages)) {
-      if (totalPages < 1 || totalPages > MAX_PAGES) {
-        throw new GatewayFault("provider_pagination_limit", 502);
+    const pageInfo = payload.result_info;
+    if (pageInfo !== undefined && pageInfo !== null &&
+        (typeof pageInfo !== "object" || Array.isArray(pageInfo))) {
+      throw new GatewayFault("provider_invalid_pagination", 502);
+    }
+    if (pageInfo && Object.hasOwn(pageInfo, "total_pages")) {
+      const totalPages = pageInfo.total_pages;
+      if (!Number.isSafeInteger(totalPages) || totalPages < 0) {
+        throw new GatewayFault("provider_invalid_pagination", 502);
       }
+      if (totalPages === 0) {
+        if (items.length > 0) throw new GatewayFault("provider_invalid_pagination", 502);
+        return [];
+      }
+      if (totalPages > MAX_PAGES) throw new GatewayFault("provider_pagination_limit", 502);
       if (page >= totalPages) break;
     } else if (current.length < PAGE_SIZE) {
       break;
@@ -244,20 +256,23 @@ async function getWorkerSettings(env, scriptName) {
     throw new GatewayFault("provider_invalid_result", 502);
   }
 
-  const rawBindings = Array.isArray(payload.result.bindings) ? payload.result.bindings : [];
+  const rawBindings = payload.result.bindings === undefined ? [] : payload.result.bindings;
+  if (!Array.isArray(rawBindings)) throw new GatewayFault("provider_invalid_result", 502);
   if (rawBindings.length > 100) throw new GatewayFault("provider_item_limit", 502);
-  const bindings = rawBindings.flatMap((binding) => {
+  const bindings = rawBindings.map((binding) => {
     if (!binding || typeof binding !== "object" ||
         typeof binding.name !== "string" || binding.name.length < 1 || binding.name.length > 128 ||
-        typeof binding.type !== "string" || binding.type.length < 1 || binding.type.length > 64) return [];
-    return [{ name: binding.name, type: binding.type }];
+        typeof binding.type !== "string" || binding.type.length < 1 || binding.type.length > 64) {
+      throw new GatewayFault("provider_invalid_item", 502);
+    }
+    return { name: binding.name, type: binding.type };
   });
 
   return {
-    compatibility_date: typeof payload.result.compatibility_date === "string"
-      ? payload.result.compatibility_date.slice(0, 32) : null,
-    usage_model: typeof payload.result.usage_model === "string"
-      ? payload.result.usage_model.slice(0, 32) : null,
+    compatibility_date: typeof payload.result.compatibility_date === "string" &&
+      payload.result.compatibility_date.length <= 32 ? payload.result.compatibility_date : null,
+    usage_model: typeof payload.result.usage_model === "string" &&
+      payload.result.usage_model.length <= 32 ? payload.result.usage_model : null,
     bindings,
   };
 }
