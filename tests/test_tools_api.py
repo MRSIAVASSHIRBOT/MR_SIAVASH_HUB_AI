@@ -102,6 +102,7 @@ def test_owner_grant_controls_protected_tool_invocation_and_is_audited(monkeypat
 
     active = client.get("/tools/grants")
     assert active.status_code == 200
+    assert active.headers["cache-control"] == "no-store"
     assert [item["permission"] for item in active.json()] == ["cloudflare.read"]
 
     allowed = client.post("/tools/cloudflare.inventory/invoke", json=payload)
@@ -128,6 +129,49 @@ def test_owner_grant_controls_protected_tool_invocation_and_is_audited(monkeypat
 
     events_after_revoke = repository.list_audit()
     assert any(event["event_type"] == "tool.permission_revoked" for event in events_after_revoke)
+
+
+def test_failed_tool_execution_is_sanitized_and_audited(monkeypatch):
+    client = authenticated_client()
+
+    class ProtectedInput(BaseModel):
+        text: str
+
+    class ProtectedOutput(BaseModel):
+        accepted: bool
+
+    def fail_handler(_payload):
+        raise RuntimeError("private provider failure details")
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.inventory",
+            description="Read Cloudflare inventory metadata without modifying resources.",
+            input_model=ProtectedInput,
+            output_model=ProtectedOutput,
+            handler=fail_handler,
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    monkeypatch.setattr(tools_api, "build_tool_registry", lambda: registry)
+    assert client.put("/tools/grants/cloudflare.read", json={}).status_code == 200
+
+    response = client.post(
+        "/tools/cloudflare.inventory/invoke",
+        json={"payload": {"text": "sensitive-input"}},
+    )
+    assert response.status_code == 502
+    assert "private provider failure details" not in response.text
+
+    repository = TaskRepository(get_settings().database_path)
+    events = repository.list_audit()
+    failure = next(
+        event for event in events
+        if event["event_type"] == "tool.invocation" and event["outcome"] == "failure"
+    )
+    assert failure["metadata"]["reason_code"] == "tool_handler_failed"
+    assert "sensitive-input" not in str(events)
 
 
 def test_tool_grants_reject_unsupported_permissions_and_unbounded_expiry():
