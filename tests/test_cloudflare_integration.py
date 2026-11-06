@@ -70,6 +70,10 @@ def test_gateway_constructor_rejects_unsafe_urls_and_credentials():
         "https://gateway.example.workers.dev?token=leak",
         "https://gateway.example.workers.dev ",
         "https://bad_host.example.workers.dev",
+        "https://gateway.example.com",
+        "https://gateway.workers.dev.attacker.example",
+        "https://workers.dev",
+        "https://gateway.example.workers.dev:8443",
     ):
         with pytest.raises(ValueError):
             CloudflareGatewayClient(gateway_url=url, gateway_token=TOKEN)
@@ -78,6 +82,13 @@ def test_gateway_constructor_rejects_unsafe_urls_and_credentials():
             gateway_url="https://gateway.example.workers.dev",
             gateway_token="plain-text-token",
         )
+
+def test_gateway_url_normalizes_workers_dev_hostname_and_default_port():
+    client = CloudflareGatewayClient(
+        gateway_url="https://Gateway.Example.workers.dev:443/",
+        gateway_token=TOKEN,
+    )
+    assert client._base_url == "https://gateway.example.workers.dev"
 
 
 @pytest.mark.parametrize(
