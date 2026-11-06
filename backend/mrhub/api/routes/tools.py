@@ -49,9 +49,11 @@ def list_tools() -> list[dict[str, object]]:
 
 @router.get("/grants")
 def list_tool_grants(
+    response: Response,
     user: AuthenticatedUser = Depends(require_user),
     repository: TaskRepository = Depends(get_task_repository),
 ) -> list[dict[str, str]]:
+    response.headers["Cache-Control"] = "no-store"
     return _permission_service(repository).list_active(user.user_id)
 
 
@@ -59,9 +61,11 @@ def list_tool_grants(
 def grant_tool_permission(
     permission: str,
     request: ToolPermissionGrantRequest,
+    response: Response,
     user: AuthenticatedUser = Depends(require_user),
     repository: TaskRepository = Depends(get_task_repository),
 ) -> dict[str, str]:
+    response.headers["Cache-Control"] = "no-store"
     try:
         return _permission_service(repository).grant(
             user.user_id,
@@ -75,6 +79,7 @@ def grant_tool_permission(
 @router.delete("/grants/{permission}", status_code=204)
 def revoke_tool_permission(
     permission: str,
+    response: Response,
     user: AuthenticatedUser = Depends(require_user),
     repository: TaskRepository = Depends(get_task_repository),
 ) -> Response:
@@ -84,16 +89,19 @@ def revoke_tool_permission(
         raise HTTPException(status_code=422, detail="Permission grant request is invalid") from exc
     if not revoked:
         raise HTTPException(status_code=404, detail="Permission grant was not found")
-    return Response(status_code=204)
+    response.headers["Cache-Control"] = "no-store"
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/{tool_name}/invoke")
 def invoke_tool(
     tool_name: str,
     request: ToolInvokeRequest,
+    response: Response,
     user: AuthenticatedUser = Depends(require_user),
     repository: TaskRepository = Depends(get_task_repository),
 ) -> dict[str, object]:
+    response.headers["Cache-Control"] = "no-store"
     registry = build_tool_registry()
     audit = AuditLogger(repository)
     permissions = _permission_service(repository).active_permissions(user.user_id)
