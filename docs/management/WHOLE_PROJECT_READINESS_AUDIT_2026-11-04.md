@@ -649,3 +649,32 @@ The Kimi provider PR #294 now uses migration 32 because migration 31 is occupied
 A read-only inspection of the connected Cloudflare account found a deployed Worker with a similar gateway name, but the observed variables/secrets do not match the source contract in `cloudflare/gateway/src/index.js`. The deployed code/configuration has therefore not been accepted as the source-controlled gateway. The existing `gshop11.ir/api/*` route remains on `gahop`; no Cloudflare resources were modified. Keep the Hub integration disabled until a dedicated isolated staging Worker is verified with the required variables, secrets, authenticated health check, and read-only acceptance tests.
 
 The current exact heads, workflow states, and deployment boundary are recorded in section 20 of `docs/PROJECT_STATUS.md`. This is a point-in-time checkpoint, not a claim of production readiness.
+
+
+## 21. Reconciled main, PR, and Cloudflare state — 2026-11-06 14:12 local
+
+This checkpoint supersedes earlier PR inventory and readiness claims in this audit where they differ.
+
+### Default branch and open work
+
+- `main` is `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb`. The merge commit brings the Cloudflare gateway client and its permission-gated read-only tools into the default branch.
+- PR #300 is merged. PR #301 and #302 are also merged; their source changes are now part of the integrated main history.
+- PR #294 is still draft, 65 ahead / 1 behind main. All four required workflow groups passed on its current head, but the branch overlaps with current-main edits to README, `.env.example`, and `backend/mrhub/config.py`. A content-preserving sync is required before merge; applying the old versions would remove the newly merged Cloudflare settings.
+- PR #296's prior head passed all four workflow groups but was 3 commits behind main. The present docs update incorporates current main.
+- PR #297 is 1 ahead / 3 behind; all four workflows are `action_required`. Do not interpret this as a test pass or bypass the repository's authorization controls.
+- PR #303 includes main in its current 3-ahead / 0-behind branch. All four exact-head workflows are in progress; final CI evidence is pending.
+
+### Cloudflare acceptance evidence
+
+A read-only inspection confirms the connected account contains `mr-siavash-ai-gateway`, `gahop`, `mr-siavash-ai-prod`, and `gshop-db`. The gateway Worker's observed bindings are only `ALLOWED_ORIGINS` and `DB`; the separate gateway authentication secret and required source-contract configuration are absent from the inspected binding inventory. Its existence therefore does not establish a working gateway deployment.
+
+The observed `gshop11.ir/api/*` route still targets `gahop`. Worker observability and invocation logs are enabled. No secret values were read. No Cloudflare resources or production settings were modified.
+
+### Required next steps
+
+1. Finish exact-head CI for PR #303 and review the audit-only diff before merge consideration.
+2. Reconcile PR #294 with current main, preserving the Cloudflare settings and Kimi provider configuration together; rerun exact-head CI after the sync.
+3. Keep PR #297 blocked until authorized workflow approval occurs.
+4. Configure and verify an isolated staging gateway before enabling Hub-side Cloudflare tools. Do not alter the GSHOP route or production Worker.
+
+CI is SHA-specific. No production-readiness or whole-project-completion claim is made.

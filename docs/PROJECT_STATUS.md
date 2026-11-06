@@ -852,3 +852,36 @@ This section supersedes the earlier point-in-time PR states above where they dif
 5. Preserve the existing `gahop` route and production resources. Any staging secret provisioning or deployment must follow the configured approval gate.
 
 CI results are SHA-specific. This checkpoint is not a production-readiness or whole-project-completion declaration.
+
+
+## 21. Current repository and Cloudflare checkpoint — 2026-11-06 14:12 local
+
+This checkpoint supersedes sections 19–20 wherever their branch heads, merge states, or live Cloudflare observations differ.
+
+### GitHub state
+
+- Default branch `main`: `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb` (verified from the live branch ref).
+- PR #300 is merged; merge commit is the current main head. It adds the typed Hub-side client and four permission-gated, read-only Cloudflare tools.
+- PR #301 is merged as `9dd5d5ef6e3c54de52e0606dfb8bf57ee33c94db`; PR #302 is merged as `8dde0451446622a6df8b9da59050bb32e24289a7`.
+- PR #294 remains open/draft at `7c4eb17eeba763ebd1a7a6b317e671a05e1381f1`; it is 65 commits ahead and 1 behind main. Its four workflow groups passed on that exact head. It is not rebased onto the Cloudflare integration merge; its README, environment example, and settings changes overlap with files changed by PR #300 and require a deliberate content-preserving integration before merge.
+- PR #296 is this documentation update. Its prior head `6671231986cf15fe12f6aa59f0edc329108e46a4` had all four workflow groups pass, but was 3 commits behind main. This update incorporates current main and refreshes the checkpoint.
+- PR #297 remains open at `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`; it is 1 commit ahead and 3 behind main. All four workflow groups report `action_required`; this is not a pass or test failure and must not be bypassed.
+- PR #303 remains open/draft. Its branch now includes main through merge commit `e28a3fb20438e36de9e8ebf8b9a6d72d1047c35d`, with the audit-only changes preserved as a 3-commit, 0-behind diff. All four workflows are in progress on this exact head; no result is claimed yet.
+
+### Cloudflare live-state inspection
+
+- The connected Cloudflare account exposes Workers `gahop` and `mr-siavash-ai-gateway`, and D1 databases `gshop-db` and `mr-siavash-ai-prod`.
+- The gateway Worker's observed bindings are `ALLOWED_ORIGINS` (plain text) and `DB` (D1). The required gateway authentication secret and the other source-contract configuration were not present in the observed binding inventory. The Worker is therefore not accepted as an operationally verified Hub gateway.
+- The only inspected custom Worker route is `gshop11.ir/api/*` targeting `gahop`; no route was observed for the new gateway. The production GSHOP route remains unchanged.
+- Observability and invocation logging are enabled on the inspected Workers. No secret values were read or disclosed.
+- All Cloudflare calls in this checkpoint were read-only. No Worker code, bindings, secrets, routes, D1 schemas/data, or production settings were changed.
+
+### Acceptance and release gates
+
+1. Keep the Hub Cloudflare integration disabled until a separately configured staging Worker satisfies the source contract and authenticated end-to-end read-only tests pass.
+2. Review PR #303 after all four exact-head workflows complete; verify audit event redaction and test isolation before changing draft/merge state.
+3. Reconcile PR #294's overlapping README, `.env.example`, and settings changes against current main; do not merge the old branch as-is because it would remove Cloudflare configuration added by PR #300.
+4. Resolve PR #297's `action_required` state only through the authorized GitHub workflow approval path.
+5. Preserve `gahop`, `gshop11.ir/api/*`, `gshop-db`, and all production credentials unless a separate, explicitly approved rollout is prepared.
+
+Workflow evidence is commit-specific. This checkpoint is not a production-readiness or whole-project-completion declaration.
