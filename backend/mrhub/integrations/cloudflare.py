@@ -11,7 +11,7 @@ import json
 import re
 import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
 import httpx
@@ -24,6 +24,7 @@ MAX_LIST_ITEMS = 1_000
 REQUEST_TIMEOUT_SECONDS = 8.0
 RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9_][a-z0-9_-]{0,62}$")
 JSON_CONTENT_TYPE = re.compile(r"^application/(?:json|[a-z0-9.+-]+\+json)(?:\s*;|$)", re.IGNORECASE)
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class CloudflareGatewayError(RuntimeError):
@@ -227,7 +228,7 @@ class CloudflareGatewayClient:
         return envelope["data"]
 
     @staticmethod
-    def _validate_model(model: type[BaseModel], value: Any) -> BaseModel:
+    def _validate_model(model: type[ModelT], value: Any) -> ModelT:
         try:
             return model.model_validate(value)
         except ValidationError:
