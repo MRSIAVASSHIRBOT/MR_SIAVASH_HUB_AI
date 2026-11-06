@@ -272,3 +272,23 @@ def test_rejects_malformed_resource_identifiers_before_network(
             asyncio.run(client.list_worker_routes(value))
         else:
             asyncio.run(client.get_worker_settings(ACCOUNT_ID, value))
+
+
+@pytest.mark.parametrize("pagination", [{"total_pages": True}, {"total_pages": 21}, {"total_pages": 0}])
+def test_d1_listing_rejects_invalid_or_unbounded_pagination_metadata(
+    monkeypatch, pagination
+):
+    def handler(request):
+        assert request.url.path == f"/client/v4/accounts/{ACCOUNT_ID}/d1/database"
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [{"uuid": "db-1", "name": "workspace"}],
+                "result_info": pagination,
+            },
+        )
+
+    client = _client(monkeypatch, handler)
+    with pytest.raises(CloudflareAdapterError):
+        asyncio.run(client.list_d1_databases(ACCOUNT_ID))
