@@ -75,10 +75,15 @@ class D1DatabaseSummary(BaseModel):
 
 
 def _validate_gateway_url(value: str) -> str:
-    if not isinstance(value, str) or not value or len(value) > 2_048:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > 2_048
+    ):
         raise ValueError("Invalid Cloudflare gateway URL")
     try:
-        parsed = urlsplit(value.strip())
+        parsed = urlsplit(value)
         host = parsed.hostname
         port = parsed.port
     except ValueError:
@@ -105,7 +110,7 @@ def _validate_gateway_url(value: str) -> str:
     except UnicodeError:
         raise ValueError("Invalid Cloudflare gateway hostname") from None
     hostname_pattern = (
-        r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+"
+        r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
         r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
     )
     if (
