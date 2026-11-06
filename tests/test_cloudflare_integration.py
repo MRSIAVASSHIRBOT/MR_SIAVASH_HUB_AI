@@ -119,7 +119,7 @@ def test_gateway_constructor_rejects_unbounded_limits(overrides):
 def test_workers_uses_fixed_gateway_route_and_projects_typed_metadata(monkeypatch):
     def handler(request):
         assert request.method == "GET"
-        assert request.url == "https://gateway.example.workers.dev/v1/workers"
+        assert str(request.url) == "https://gateway.example.workers.dev/v1/workers"
         assert request.headers["Authorization"] == f"Bearer {TOKEN.get_secret_value()}"
         assert request.headers["Accept"] == "application/json"
         return _envelope([
