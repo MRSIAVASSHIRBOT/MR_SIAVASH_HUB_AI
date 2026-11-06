@@ -832,6 +832,19 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_tool_permission_grants_owner_expiry ON tool_permission_grants(owner_user_id, expires_at)",
         ),
     ),
+    Migration.build(
+        32,
+        "durable_kimi_owner_request_rate_limits",
+        (
+            """CREATE TABLE IF NOT EXISTS kimi_request_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_user_id TEXT NOT NULL CHECK (length(owner_user_id) BETWEEN 1 AND 200),
+                requested_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_kimi_request_events_owner_time ON kimi_request_events(owner_user_id, requested_at)",
+            "CREATE INDEX IF NOT EXISTS idx_kimi_request_events_time ON kimi_request_events(requested_at)",
+        ),
+    ),
 )
 
 

@@ -1,33 +1,65 @@
 """Authenticated model catalog and explicitly enabled local inference endpoint."""
 
 from time import perf_counter
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.diagnostics.model_profiles import get_model_profile, list_model_profiles
 from mrhub.diagnostics.model_recommender import recommend_model_profiles
 from mrhub.diagnostics.resource_advisor import assess_model_resources
+from mrhub.infrastructure.request_limits import KimiRequestRateLimitRepository
 from mrhub.providers.base import (
+    ProviderConfigurationError,
     ProviderContractError,
     ProviderError,
     ProviderRequest,
     validate_provider_health,
 )
+from mrhub.providers.kimi import KimiProvider
 from mrhub.providers.ollama import OllamaProvider
 from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.providers.stub import StubProvider
+from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/models", tags=["models"], dependencies=[Depends(require_user)])
 
 
+_KIMI_REQUEST_LIMITER: KimiRequestRateLimitRepository | None = None
+
+
+def _get_kimi_request_limiter() -> KimiRequestRateLimitRepository:
+    global _KIMI_REQUEST_LIMITER
+    database_path = get_settings().database_path
+    if (
+        _KIMI_REQUEST_LIMITER is None
+        or _KIMI_REQUEST_LIMITER.database_path != database_path
+    ):
+        _KIMI_REQUEST_LIMITER = KimiRequestRateLimitRepository(database_path)
+    return _KIMI_REQUEST_LIMITER
+
+
+def _enforce_kimi_request_limit(owner_id: str) -> None:
+    retry_after = _get_kimi_request_limiter().consume(owner_id)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "kimi_rate_limited",
+                "message": "Kimi requests are temporarily rate limited",
+                "retry_after_seconds": retry_after,
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
 def build_model_router(
     *,
-    provider_mode: Literal["all", "local", "remote"] = "all",
+    provider_mode: Literal["all", "local", "remote", "kimi"] = "all",
     include_stub: bool = True,
     max_timeout_seconds: float | None = None,
 ) -> ModelRouter:
@@ -68,6 +100,24 @@ def build_model_router(
                 ),
             )
         )
+    if (
+        provider_mode in {"all", "kimi"}
+        and settings.kimi_inference_enabled
+        and settings.kimi_api_key is not None
+        and settings.kimi_model
+    ):
+        model_router.register_provider(
+            KimiProvider(
+                model=settings.kimi_model,
+                api_key=settings.kimi_api_key.get_secret_value(),
+                reasoning_effort=settings.kimi_reasoning_effort,
+                timeout_seconds=(
+                    min(settings.kimi_timeout_seconds, max_timeout_seconds)
+                    if max_timeout_seconds is not None
+                    else settings.kimi_timeout_seconds
+                ),
+            )
+        )
     return model_router
 
 
@@ -84,8 +134,19 @@ class ProviderHealthCheckRequest(BaseModel):
 
 
 class GenerateModelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     input_text: str = Field(min_length=1, max_length=32_000)
-    max_output_tokens: int = Field(default=512, ge=1, le=2048)
+    max_output_tokens: int = Field(default=512, ge=1, le=2048, strict=True)
+
+
+class GenerateKimiVisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(min_length=1, max_length=8_000)
+    # Base64 expands 4 MiB to at most about 5.6 million characters.
+    image_data_url: str = Field(min_length=32, max_length=5_600_000)
+    max_output_tokens: int = Field(default=512, ge=1, le=2048, strict=True)
 
 
 class AssessModelRequest(BaseModel):
@@ -281,24 +342,81 @@ def compare_models(payload: CompareModelsRequest):
     }
 
 
+@router.post("/generate-kimi")
+def generate_kimi_model(
+    payload: GenerateModelRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+):
+    """Send one authenticated request to the explicitly enabled Moonshot provider."""
+    settings = get_settings()
+    if not settings.kimi_inference_enabled or settings.kimi_api_key is None or not settings.kimi_model:
+        raise HTTPException(
+            status_code=503,
+            detail="Kimi inference is disabled or incompletely configured; no Kimi request was made",
+        )
+    _enforce_kimi_request_limit(user.user_id)
+    try:
+        model_router = build_model_router(provider_mode="kimi", include_stub=False)
+        return model_router.generate(
+            ModelRequest(requires_text=True),
+            ProviderRequest(
+                input_text=payload.input_text,
+                max_output_tokens=payload.max_output_tokens,
+            ),
+        )
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=503, detail="Configured Kimi model is unavailable") from exc
+
+
+@router.post("/generate-kimi-vision")
+def generate_kimi_vision(
+    payload: GenerateKimiVisionRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+):
+    """Analyze one bounded inline image using the explicitly enabled Kimi provider."""
+    settings = get_settings()
+    if not settings.kimi_inference_enabled or settings.kimi_api_key is None or not settings.kimi_model:
+        raise HTTPException(
+            status_code=503,
+            detail="Kimi inference is disabled or incompletely configured; no Kimi request was made",
+        )
+    _enforce_kimi_request_limit(user.user_id)
+    try:
+        model_router = build_model_router(provider_mode="kimi", include_stub=False)
+        provider = model_router.registry.get("moonshot", settings.kimi_model)
+        if not isinstance(provider, KimiProvider):
+            raise TypeError("Configured Kimi provider has an invalid adapter type")
+        return provider.generate_vision(
+            prompt=payload.prompt,
+            image_data_url=payload.image_data_url,
+            max_output_tokens=payload.max_output_tokens,
+        )
+    except ProviderConfigurationError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=503, detail="Configured Kimi model is unavailable") from exc
+
+
 @router.post("/generate-remote")
 def generate_remote_model(payload: GenerateModelRequest):
-    """Send one request to the explicitly configured remote provider; never fall back."""
+    """Send one request to explicitly configured remote providers; never fall back."""
     settings = get_settings()
-    if (
-        not settings.remote_inference_enabled
-        or settings.remote_inference_api_key is None
-        or not settings.remote_inference_model
-    ):
+    openrouter_enabled = (
+        settings.remote_inference_enabled
+        and settings.remote_inference_api_key is not None
+        and bool(settings.remote_inference_model)
+    )
+    if not openrouter_enabled:
         raise HTTPException(
             status_code=503,
             detail="Remote inference is disabled or incompletely configured; no cloud request was made",
         )
     try:
-        model_router = build_model_router(
-            provider_mode="remote",
-            include_stub=False,
-        )
+        model_router = build_model_router(provider_mode="remote", include_stub=False)
         return model_router.generate(
             ModelRequest(requires_text=True),
             ProviderRequest(
