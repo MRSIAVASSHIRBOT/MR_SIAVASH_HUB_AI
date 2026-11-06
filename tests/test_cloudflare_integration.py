@@ -212,6 +212,32 @@ def test_d1_database_listing_uses_documented_pagination(monkeypatch):
     assert [database.name for database in databases] == ["workspace"]
 
 
+@pytest.mark.parametrize(
+    ("total_pages", "error_code"),
+    [
+        (True, "provider_invalid_pagination"),
+        (-1, "provider_invalid_pagination"),
+        (21, "provider_pagination_limit"),
+    ],
+)
+def test_d1_listing_rejects_invalid_or_unbounded_pagination_metadata(
+    monkeypatch, total_pages, error_code
+):
+    def handler(_request):
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [],
+                "result_info": {"total_pages": total_pages},
+            },
+        )
+
+    client = _client(monkeypatch, handler)
+    with pytest.raises(CloudflareAdapterError, match=error_code):
+        asyncio.run(client.list_d1_databases(ACCOUNT_ID))
+
+
 def test_unpaginated_list_endpoint_rejects_excessive_item_count(monkeypatch):
     def handler(_request):
         return httpx.Response(
