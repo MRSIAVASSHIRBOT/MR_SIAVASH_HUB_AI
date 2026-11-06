@@ -183,10 +183,11 @@ async function listWorkerRoutes(env) {
   const zoneId = requireZoneId(env);
   const payload = await cloudflareGet("/zones/" + zoneId + "/workers/routes", env);
   return requireListResult(payload).flatMap((item) => {
-    if (typeof item.id !== "string" || typeof item.pattern !== "string") return [];
+    if (typeof item.id !== "string" || item.id.length > 128 ||
+        typeof item.pattern !== "string" || item.pattern.length > 253) return [];
     return [{
       id: item.id,
-      pattern: item.pattern.slice(0, 253),
+      pattern: item.pattern,
       script: typeof item.script === "string" ? item.script : null,
       zone_id: typeof item.zone_id === "string" ? item.zone_id : null,
     }];
@@ -219,11 +220,13 @@ async function listD1Databases(env) {
   }
 
   return items.flatMap((item) => {
-    if (typeof item.uuid !== "string" || typeof item.name !== "string") return [];
+    if (typeof item.uuid !== "string" || item.uuid.length > 128 ||
+        typeof item.name !== "string" || item.name.length > 128) return [];
     return [{
-      uuid: item.uuid.slice(0, 128),
-      name: item.name.slice(0, 128),
-      created_at: typeof item.created_at === "string" ? item.created_at.slice(0, 64) : null,
+      uuid: item.uuid,
+      name: item.name,
+      created_at: typeof item.created_at === "string" && item.created_at.length <= 64
+        ? item.created_at : null,
     }];
   });
 }
@@ -245,8 +248,9 @@ async function getWorkerSettings(env, scriptName) {
   if (rawBindings.length > 100) throw new GatewayFault("provider_item_limit", 502);
   const bindings = rawBindings.flatMap((binding) => {
     if (!binding || typeof binding !== "object" ||
-        typeof binding.name !== "string" || typeof binding.type !== "string") return [];
-    return [{ name: binding.name.slice(0, 128), type: binding.type.slice(0, 64) }];
+        typeof binding.name !== "string" || binding.name.length < 1 || binding.name.length > 128 ||
+        typeof binding.type !== "string" || binding.type.length < 1 || binding.type.length > 64) return [];
+    return [{ name: binding.name, type: binding.type }];
   });
 
   return {
