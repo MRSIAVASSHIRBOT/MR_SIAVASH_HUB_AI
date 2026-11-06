@@ -22,7 +22,7 @@ MAX_RESPONSE_BYTES = 1_048_576
 MAX_LIST_ITEMS = 1_000
 REQUEST_TIMEOUT_SECONDS = 8.0
 RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9_][a-z0-9_-]{0,62}$")
-JSON_CONTENT_TYPE = re.compile(r"^application/(?:json|[a-z0-9.+-]+\+json)(?:\s*;|$)", re.I)
+JSON_CONTENT_TYPE = re.compile(r"^application/(?:json|[a-z0-9.+-]+\+json)(?:\s*;|$)", re.IGNORECASE)
 
 
 class CloudflareGatewayError(RuntimeError):
