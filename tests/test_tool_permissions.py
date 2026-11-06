@@ -46,7 +46,8 @@ def test_grant_renewal_replaces_expiry_without_duplicate_rows(tmp_path):
 
     active = service.list_active("owner-a")
     assert len(active) == 1
-    assert active[0]["grant_id"] != first.get("grant_id")
+    assert active[0]["grant_id"] == second["grant_id"]
+    assert active[0]["grant_id"] != first["grant_id"]
     assert active[0]["expires_at"] == second["expires_at"]
 
 
@@ -82,3 +83,15 @@ def test_permission_change_and_audit_event_roll_back_together(tmp_path):
 
     assert repository.get_active_tool_permissions("owner-a", now) == frozenset()
     assert repository.list_audit() == []
+
+
+
+def test_failed_revoke_audit_rolls_back_permission_deletion(tmp_path):
+    repository = _repository(tmp_path)
+    service = ToolPermissionService(repository, AuditLogger(repository))
+    service.grant("owner-a", "cloudflare.read", 3600)
+
+    with pytest.raises(KeyError):
+        repository.revoke_tool_permission_grant("owner-a", "cloudflare.read", {})
+
+    assert service.active_permissions("owner-a") == frozenset({"cloudflare.read"})
