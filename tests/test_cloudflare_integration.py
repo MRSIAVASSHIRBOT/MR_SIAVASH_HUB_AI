@@ -11,13 +11,12 @@ from mrhub.integrations.cloudflare import (
 )
 
 TOKEN = SecretStr("gateway-test-token-that-is-long-enough-123456")
+_ORIGINAL_HTTPX_CLIENT = httpx.Client
 
 
 def _client(monkeypatch, handler, **kwargs):
-    original_client = httpx.Client
-
     def factory(**client_kwargs):
-        return original_client(
+        return _ORIGINAL_HTTPX_CLIENT(
             transport=httpx.MockTransport(handler),
             **client_kwargs,
         )
