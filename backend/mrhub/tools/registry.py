@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine, PolicyResult
@@ -130,5 +130,8 @@ class ToolRegistry:
             raw_result = tool.handler(validated_input)
         except Exception as exc:
             raise ToolExecutionError("Tool handler failed") from exc
-        validated_output = tool.output_model.model_validate(raw_result)
+        try:
+            validated_output = tool.output_model.model_validate(raw_result)
+        except ValidationError as exc:
+            raise ToolExecutionError("Tool output validation failed") from exc
         return validated_output.model_dump(mode="json")
