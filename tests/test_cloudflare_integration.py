@@ -152,11 +152,11 @@ def test_rejects_provider_redirects(monkeypatch):
         asyncio.run(client.list_workers(ACCOUNT_ID))
 
 
-def test_lists_workers_using_fixed_cloudflare_endpoint(monkeypatch):
+def test_lists_workers_using_fixed_cloudflare_endpoint_without_unsupported_pagination(monkeypatch):
     def handler(request):
         assert request.url.host == "api.cloudflare.com"
         assert request.url.path == f"/client/v4/accounts/{ACCOUNT_ID}/workers/scripts"
-        assert request.url.params["page"] == "1"
+        assert request.url.query == b""
         return httpx.Response(
             200,
             json={
@@ -165,10 +165,60 @@ def test_lists_workers_using_fixed_cloudflare_endpoint(monkeypatch):
                     {"id": "storefront", "etag": "etag-1"},
                     {"id": "../invalid"},
                 ],
-                "result_info": {"total_pages": 1},
             },
         )
 
     client = _client(monkeypatch, handler)
     workers = asyncio.run(client.list_workers(ACCOUNT_ID))
     assert [worker.id for worker in workers] == ["storefront"]
+
+
+def test_lists_worker_routes_without_unsupported_pagination(monkeypatch):
+    def handler(request):
+        assert request.url.path == f"/client/v4/zones/{ZONE_ID}/workers/routes"
+        assert request.url.query == b""
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [
+                    {"id": "route-1", "pattern": "gshop11.ir/api/*", "script": "gahop", "zone_id": ZONE_ID}
+                ],
+            },
+        )
+
+    client = _client(monkeypatch, handler)
+    routes = asyncio.run(client.list_worker_routes(ZONE_ID))
+    assert len(routes) == 1
+    assert routes[0].script == "gahop"
+
+
+def test_d1_database_listing_uses_documented_pagination(monkeypatch):
+    def handler(request):
+        assert request.url.path == f"/client/v4/accounts/{ACCOUNT_ID}/d1/database"
+        assert request.url.params["page"] == "1"
+        assert request.url.params["per_page"] == "50"
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [{"uuid": "db-1", "name": "workspace"}],
+                "result_info": {"total_pages": 1},
+            },
+        )
+
+    client = _client(monkeypatch, handler)
+    databases = asyncio.run(client.list_d1_databases(ACCOUNT_ID))
+    assert [database.name for database in databases] == ["workspace"]
+
+
+def test_unpaginated_list_endpoint_rejects_excessive_item_count(monkeypatch):
+    def handler(_request):
+        return httpx.Response(
+            200,
+            json={"success": True, "result": [{"id": "worker"}] * 1001},
+        )
+
+    client = _client(monkeypatch, handler)
+    with pytest.raises(CloudflareAdapterError, match="provider_item_limit"):
+        asyncio.run(client.list_workers(ACCOUNT_ID))
