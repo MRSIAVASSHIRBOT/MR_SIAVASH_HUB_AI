@@ -581,3 +581,132 @@ Current main baseline at this review: `6cabc1e81dfc97c704c3ecd1506553a481bedb69`
 The proposal adds owner-scoped generation status and explicit reconciliation endpoints. For ambiguous submissions, the worker looks up the original generation idempotency key and never calls `submit` again. When a provider job is discovered, the worker persists its opaque reference under the active lease, polls status and streams a successful result through bounded private storage before independent media probing and atomic asset registration. Provider job IDs remain excluded from the public status and task-result contracts. The original encrypted request is retained while the remote outcome remains ambiguous and purged only on terminal failure/cancellation or successful output finalization.
 
 Exact-head CI is currently queued, not passed. A further operational merge gate is durable per-generation reconciliation throttling: repeated explicit lookup/status attempts need an atomic attempt budget and cooldown/backoff, with HTTP 429 and a stable `Retry-After` contract. Tests must cover concurrent requests, cooldown expiry, lookup miss, provider error and owner isolation. The provider registry remains empty by default; this PR does not activate a real provider. No production-readiness or external-provider acceptance is claimed.
+
+
+## 24. Latest mainline, PR, and Cloudflare verification — 2026-11-06 UTC
+
+This section supersedes the earlier main SHA, PR #303 state, exact-head CI, and live Worker observations above wherever they differ. Re-fetch exact refs before any merge or release decision.
+
+### Verified mainline
+
+- Current `main`: `e914652f2846758d6d6bf1fb18bef4a033c9be59`.
+- PR #303 merged as `e914652f2846758d6d6bf1fb18bef4a033c9be59`. It adds allow-listed audit events for unregistered tool names and invalid registered-tool inputs, without persisting request payloads or validation details.
+- Exact PR #303 head `e28a3fb20438e36de9e8ebf8b9a6d72d1047c35d` passed CI, Backend CI, Defensive Python Scan, and both Linux and Windows FFmpeg integration jobs. The first Windows attempt failed during Chocolatey package installation with HTTP 504; the targeted rerun completed successfully. The merged commit's post-merge workflow result was not returned by the PR-only commit-run lookup and is not claimed here.
+- Main also includes the isolated Cloudflare Workers gateway source (PR #301), owner-scoped expiring `cloudflare.read` grants and audit foundation (PR #302), and the Hub-side typed read-only client and permission-gated tool registration (PR #300).
+
+### PR #294 — optional Moonshot Kimi K3.1 Pro
+
+- Open and draft. Current head: `2cf2ef554cdb5fc883b7c42298008508f1b8a1d9`; original base: `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb`; comparison with current main: 4 commits ahead, 1 behind.
+- The intermediate head `0803e5b6f38ae92a3df3c94cd5e5885bf3ec4113` failed 79 tests on each of Python 3.11 and 3.12 because five existing Cloudflare gateway settings had been removed from `Settings`. The current branch restores the Cloudflare settings and environment example; the correction is visible in the latest branch tree.
+- Exact-head Defensive Python Scan passed. Backend CI and Video Render Integration were in progress and CI was in progress at the latest observation. No full exact-head pass is claimed.
+- Before merge, synchronize with the new main commit `e914652f2846758d6d6bf1fb18bef4a033c9be59`, preserve the Cloudflare settings, and rerun all required workflows on the resulting exact SHA.
+- Kimi remains disabled by default. Mocked tests do not establish live Moonshot availability, data retention, billing behavior, model quality, or provider-side spending controls. The SQLite sliding-window limit coordinates only processes sharing the same database file and is not a monetary budget.
+
+### PR #296 — documentation synchronization
+
+- Open and draft; latest observed head `22c25524100fc9f2a39fdcc6b4551be0bd4aba76`; comparison with current main: 24 commits ahead, 1 behind.
+- Exact-head Defensive Python Scan passed; Backend CI and Video Render Integration were in progress; aggregate CI was pending at the latest observation.
+- This documentation branch contains repeated historical checkpoint additions. Do not merge until it is synchronized with current main, the two-file diff is reviewed for stale/conflicting status, and all required workflows pass on the final exact head.
+
+### PR #297 — scheduled development proposal
+
+- Open; head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`; 1 commit ahead and 4 behind current main.
+- All four workflow groups report `action_required`. This is not a test pass and not a code-test failure. Do not bypass the repository's required workflow authorization. Rebase/synchronize and obtain authorized workflow approval before considering the small payload-envelope formatting/test change.
+
+### PR #306 — superseded configuration fix
+
+- Closed without merge after the Kimi branch itself restored the Cloudflare settings and environment example.
+- No Cloudflare account resources or production settings were changed by the temporary branch.
+
+### Cloudflare live-state acceptance — read-only inspection
+
+- The connected account lists Workers `gahop` and `mr-siavash-ai-gateway`.
+- `gahop` still owns the observed `gshop11.ir/api/*` route. The `mr-siavash-ai-gateway` Worker has no route in the inspected Worker inventory.
+- The gateway Worker's deployed settings expose only `ALLOWED_ORIGINS` (plain-text) and `DB` (D1) bindings. The source-controlled gateway requires a separate gateway-auth secret and Cloudflare provider/account/zone configuration; those required binding names were not present in the observed binding list.
+- The live script-content inspection did not match the source contract markers for the fixed Cloudflare API origin and read-only tool routes. The similarly named deployed Worker is therefore **not accepted as a verified deployment** of `cloudflare/gateway/src/index.js`.
+- No secret values were read. No Worker code, bindings, secrets, routes, D1 resources, or production settings were modified.
+
+### Required next actions
+
+1. Synchronize PR #294 with current main and validate the exact resulting head; preserve the Cloudflare settings and keep Kimi disabled by default.
+2. Keep the Hub Cloudflare integration disabled until a dedicated isolated staging Worker matches the source contract, has the required secret/variable bindings, and passes authenticated read-only acceptance tests.
+3. Keep `gahop`, `gshop11.ir/api/*`, and production resources untouched during staging verification.
+4. Resolve PR #297's `action_required` state through the authorized GitHub workflow approval path.
+5. Reconcile PR #296's accumulated documentation history with current main before merge.
+
+Workflow evidence is commit-specific. Pending, queued, in-progress, action_required, cancelled, and failed runs are not passes. This checkpoint is not a production-readiness or whole-project-completion declaration.
+
+
+## 25. Post-synchronization CI and documentation queue refresh — 2026-11-06 UTC
+
+This section supersedes the PR #294 and PR #296 state in section 24 where they differ.
+
+- Main remains `e914652f2846758d6d6bf1fb18bef4a033c9be59`.
+- PR #303 is merged in main. Its exact PR head passed all four required workflow groups, including both Linux and Windows FFmpeg integration.
+- PR #294 current head is `115dfa8232ad7ac495b6a9bd5cb333b215743aeb`, 7 commits ahead / 0 behind main. The exact-head Defensive Python Scan passed; Backend CI was in progress; CI and Video Render Integration were pending at the latest observation. This head removes the redundant Kimi Vision health-probe round trip and adds a regression assertion for a single POST. No full pass is claimed.
+- PR #296 was closed as superseded by the cleaner documentation-only PR #307. Its accumulated history is preserved in the replacement branch; the new branch was created from current main.
+- PR #307's prior head `4b49aede8e8d7bae3d2ec00d17015a2eb5ebe5a7` passed all four workflow groups. The present documentation refresh creates a new head and requires its own exact-head checks.
+- PR #297 remains 1 commit ahead / 4 behind main with all four workflow groups reporting `action_required`; no authorization bypass is permitted.
+- PR #306 was closed without merge because the Kimi branch restored the Cloudflare settings and environment example independently.
+
+No Cloudflare resources, production routes, bindings, secrets, or D1 data were modified. Workflow conclusions remain SHA-specific. This is not a production-readiness or whole-project-completion declaration.
+
+
+## 26. Shared-account security and repository-governance follow-up — 2026-11-06 UTC
+
+This section records read-only findings from the shared Cloudflare account and GitHub repository controls. No secrets or credential values were read.
+
+### Existing GSHOP Worker security finding — tracked in issue #298
+
+- A read-only settings inspection of production Worker `gahop` confirmed `DIGIPAY_CLIENT_ID`, `DIGIPAY_CLIENT_SECRET`, `DIGIPAY_PASSWORD`, and `DIGIPAY_USERNAME` are configured as `plain_text` bindings.
+- `ADMIN_PASSWORD` and `TELEGRAM_BOT_TOKEN` are configured as `secret_text`.
+- `ALLOWED_ORIGINS` is a plain-text binding; its value was not read.
+- Worker observability and persistent invocation logs are enabled; query-string redaction is disabled and traces are disabled.
+- The finding and owner-dependent remediation were recorded in issue #298. Credential rotation requires new values from the payment provider, and the exact frontend/admin origin allowlist requires owner confirmation.
+- No credential values were retrieved, and no Worker settings, payment flows, routes, or production resources were modified.
+
+### GitHub main protection — tracked in issue #304
+
+- A read-only repository rulesets listing returned an empty array.
+- The detailed branch-protection endpoint returned HTTP 403 (`Resource not accessible by integration`), so the current detailed protection configuration could not be independently read through this connection.
+- Earlier repository metadata reported `protected: false`; no branch-protection or ruleset settings were changed in this session.
+- An authorized repository owner/admin must verify and configure PR-required changes, exact-head required checks, force-push/deletion restrictions, and review-thread resolution with an owner-compatible approval policy.
+
+### Hub gateway live acceptance — tracked in issue #305
+
+The similarly named `mr-siavash-ai-gateway` Worker remains unaccepted as a deployment of the source-controlled gateway. It has no observed route, its settings do not match the source contract, and the deployed script did not match the expected fixed API-origin/read-only-route markers. The existing `gahop` route remains unchanged.
+
+### Safety boundary
+
+Do not rotate payment credentials, change CORS, modify logging settings, alter branch protection, deploy a staging Worker, or change production routes without the required owner confirmation and a reviewed rollback/acceptance plan. Issues #298, #304, and #305 remain open and are tracked separately from the code-only Hub PRs.
+
+
+## 27. Kimi merge and GSHOP security remediation — 2026-11-06 UTC
+
+This section supersedes the open-PR states in sections 24–26 where they differ.
+
+### MR_SIAVASH_HUB_AI mainline
+
+- Current `main`: `8ca7888f1b12fabe1083c2c0f45dd5739e082985`.
+- PR #294 (optional Kimi K3.1 Pro provider) merged as `8ca7888f1b12fabe1083c2c0f45dd5739e082985`.
+- Exact PR head `115dfa8232ad7ac495b6a9bd5cb333b215743aeb` passed CI (Python 3.11/3.12), Backend CI, Defensive Python Scan, and Linux/Windows Video Render Integration before merge.
+- The provider remains disabled by default. The merge does not establish live Moonshot availability, billing, retention, external data-sharing acceptance, or provider-side budget controls.
+- PR #303's tool invocation failure-audit events remain merged in main at `e914652f2846758d6d6bf1fb18bef4a033c9be59`.
+
+### GSHOP mainline
+
+- GSHOP PR #3 merged as `116e6336134c9acea8bd121803ce65a364f65b99`.
+- Exact-head Quality checks run #31 passed JavaScript syntax validation and the complete automated Node test suite.
+- The merged code rejects wildcard CORS grants, keeps same-origin as the fallback when no exact origin remains, bounds Digipay API response bodies, validates token response shape, and prevents raw Digipay provider error bodies/messages from being returned or persisted.
+- No Cloudflare Worker settings, secret bindings, routes, D1 resources, or production deployment were changed.
+
+### Remaining operational/security blockers
+
+1. **DigiPay credentials:** live `gahop` still has `DIGIPAY_CLIENT_ID`, `DIGIPAY_CLIENT_SECRET`, `DIGIPAY_USERNAME`, and `DIGIPAY_PASSWORD` as `plain_text` bindings. Rotate/reissue them with the payment provider, then store new values as `secret_text` through an owner-approved Cloudflare operation.
+2. **CORS:** confirm the exact frontend/admin origins before changing the live `ALLOWED_ORIGINS` binding. The GSHOP code now rejects wildcard grants; production configuration rollout remains separate.
+3. **Worker logs:** live query-string redaction is disabled while persistent invocation logs are enabled. Review and approve the logging policy before changing production observability.
+4. **Hub Cloudflare gateway:** `mr-siavash-ai-gateway` still does not match the source-controlled gateway contract and has no observed route. Keep it unaccepted until a dedicated staging Worker is configured and verified.
+5. **GitHub governance:** repository rulesets listing is empty; detailed branch-protection read returned 403. An authorized owner/admin must verify and configure main protection. No rules were changed.
+6. **PR #297:** remains blocked on `action_required` workflow authorization; do not bypass that gate.
+
+The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
