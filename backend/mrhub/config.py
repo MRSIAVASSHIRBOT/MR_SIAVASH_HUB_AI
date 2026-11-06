@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     remote_inference_model: str | None = None
     remote_inference_base_url: str = "https://openrouter.ai/api/v1"
     remote_inference_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
+    # Moonshot Kimi K3.1 Pro is a separate, explicit remote provider.
+    kimi_inference_enabled: bool = False
+    kimi_api_key: SecretStr | None = None
+    kimi_model: str = "kimi-k3.1-pro"
+    kimi_reasoning_effort: Literal["low", "high", "max"] = "high"
+    kimi_timeout_seconds: float = Field(default=60.0, ge=1.0, le=120.0)
     require_worker_for_readiness: bool = False
     worker_heartbeat_timeout_seconds: int = Field(default=15, ge=3, le=300)
     telegram_bot_token: SecretStr | None = None
