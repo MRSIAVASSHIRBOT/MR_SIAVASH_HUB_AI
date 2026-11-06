@@ -64,7 +64,7 @@ def test_constructor_rejects_ambiguous_or_unbounded_limits(overrides):
         )
 
 
-@pytest.mark.parametrize("token", ["token\\r\\nInjected: value", "x" * 513, "tökén"])
+@pytest.mark.parametrize("token", ["token\r\nInjected: value", "x" * 513, "tökén"])
 def test_constructor_rejects_malformed_or_oversized_tokens(token):
     with pytest.raises(ValueError):
         CloudflareReadOnlyClient(
