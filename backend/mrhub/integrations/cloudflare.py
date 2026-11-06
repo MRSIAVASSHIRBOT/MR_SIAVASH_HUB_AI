@@ -1,32 +1,32 @@
-"""Typed, read-only Cloudflare API adapter with strict scope and redaction.
+"""Typed Hub-side client for the isolated Cloudflare Workers gateway.
 
-This module deliberately exposes no arbitrary URL, method, header, or body input.
-It is optional: callers instantiate it only when a read-only API token is configured.
+The Hub never holds a Cloudflare provider token. This module accepts only the
+separate gateway service credential and exposes fixed, read-only operations.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
-import math
 import re
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4"
+from mrhub.config import Settings
+
 MAX_RESPONSE_BYTES = 1_048_576
-MAX_PAGES = 20
-PAGE_SIZE = 50
-MAX_UNPAGINATED_ITEMS = MAX_PAGES * PAGE_SIZE
+MAX_LIST_ITEMS = 1_000
 REQUEST_TIMEOUT_SECONDS = 8.0
-ACCOUNT_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9_][a-z0-9_-]{0,62}$")
+JSON_CONTENT_TYPE = re.compile(r"^application/(?:json|[a-z0-9.+-]+\+json)(?:\s*;|$)", re.I)
 
 
-class CloudflareAdapterError(RuntimeError):
-    """Sanitized provider error; never includes response bodies or credentials."""
+class CloudflareGatewayError(RuntimeError):
+    """Sanitized gateway error; never includes response bodies or credentials."""
 
     def __init__(self, code: str) -> None:
         super().__init__(code)
@@ -34,16 +34,16 @@ class CloudflareAdapterError(RuntimeError):
 
 
 class WorkerSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
-    id: str = Field(min_length=1, max_length=128)
+    id: str = Field(min_length=1, max_length=63)
     etag: str | None = Field(default=None, max_length=128)
     created_on: str | None = Field(default=None, max_length=64)
     modified_on: str | None = Field(default=None, max_length=64)
 
 
 class WorkerRoute(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     id: str = Field(min_length=1, max_length=128)
     pattern: str = Field(min_length=1, max_length=253)
@@ -52,14 +52,14 @@ class WorkerRoute(BaseModel):
 
 
 class BindingMetadata(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     name: str = Field(min_length=1, max_length=128)
     type: str = Field(min_length=1, max_length=64)
 
 
 class WorkerSettingsSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     compatibility_date: str | None = Field(default=None, max_length=32)
     usage_model: str | None = Field(default=None, max_length=32)
@@ -67,254 +67,198 @@ class WorkerSettingsSummary(BaseModel):
 
 
 class D1DatabaseSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     uuid: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=128)
     created_at: str | None = Field(default=None, max_length=64)
 
 
-class CloudflareReadOnlyClient:
-    """Allowlisted Cloudflare metadata reader.
+def _validate_gateway_url(value: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 2_048:
+        raise ValueError("Invalid Cloudflare gateway URL")
+    try:
+        parsed = urlsplit(value.strip())
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        raise ValueError("Invalid Cloudflare gateway URL") from None
+    if (
+        parsed.scheme != "https"
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+        or (port is not None and not 1 <= port <= 65_535)
+    ):
+        raise ValueError("Invalid Cloudflare gateway URL")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Cloudflare gateway URL must use a public DNS hostname")
+    normalized_host = host.lower().rstrip(".")
+    if (
+        normalized_host == "localhost"
+        or normalized_host.endswith((".localhost", ".local", ".internal"))
+        or "." not in normalized_host
+    ):
+        raise ValueError("Cloudflare gateway URL must use a public DNS hostname")
+    return f"https://{parsed.netloc}".rstrip("/")
 
-    Account and zone identifiers are supplied by trusted application config.
-    All provider requests use a fixed origin and fixed endpoint templates.
-    """
+
+class CloudflareGatewayClient:
+    """Synchronous, typed client suitable for the existing ToolRegistry contract."""
 
     def __init__(
         self,
         *,
-        api_token: str,
-        allowed_account_ids: frozenset[str] | set[str],
-        allowed_zone_ids: frozenset[str] | set[str] = frozenset(),
+        gateway_url: str,
+        gateway_token: SecretStr,
         timeout_seconds: float = REQUEST_TIMEOUT_SECONDS,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
     ) -> None:
-        if not isinstance(api_token, str):
-            raise TypeError("Cloudflare API token must be a string")
-        normalized_token = api_token.strip()
+        if not isinstance(gateway_token, SecretStr):
+            raise TypeError("Cloudflare gateway token must be SecretStr")
+        token = gateway_token.get_secret_value()
         if (
-            not normalized_token
-            or len(normalized_token) > 512
-            or not normalized_token.isascii()
-            or any(ord(character) < 33 or ord(character) > 126 for character in normalized_token)
+            len(token) < 32
+            or len(token) > 512
+            or not token.isascii()
+            or any(ord(character) < 33 or ord(character) > 126 for character in token)
         ):
-            raise ValueError("Invalid Cloudflare API token")
+            raise ValueError("Invalid Cloudflare gateway token")
         if (
             isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, (int, float))
-            or not math.isfinite(timeout_seconds)
             or not 0 < timeout_seconds <= REQUEST_TIMEOUT_SECONDS
         ):
-            raise ValueError("Invalid Cloudflare timeout")
+            raise ValueError("Invalid Cloudflare gateway timeout")
         if (
             isinstance(max_response_bytes, bool)
             or not isinstance(max_response_bytes, int)
             or not 1 <= max_response_bytes <= MAX_RESPONSE_BYTES
         ):
-            raise ValueError("Invalid Cloudflare response limit")
+            raise ValueError("Invalid Cloudflare gateway response limit")
 
-        accounts = frozenset(allowed_account_ids)
-        zones = frozenset(allowed_zone_ids)
-        if not accounts or any(not ACCOUNT_ID_PATTERN.fullmatch(v) for v in accounts):
-            raise ValueError("At least one valid account allowlist entry is required")
-        if any(not ACCOUNT_ID_PATTERN.fullmatch(v) for v in zones):
-            raise ValueError("Invalid zone allowlist entry")
-
-        self._token = normalized_token
-        self._accounts = accounts
-        self._zones = zones
-        self._timeout = timeout_seconds
+        self._base_url = _validate_gateway_url(gateway_url)
+        self._token = token
+        self._timeout = float(timeout_seconds)
         self._max_response_bytes = max_response_bytes
 
-    def _account_path(self, account_id: str, suffix: str) -> str:
-        if not isinstance(account_id, str) or account_id not in self._accounts:
-            raise CloudflareAdapterError("account_not_allowlisted")
-        return f"/accounts/{account_id}/{suffix}"
-
-    def _zone_path(self, zone_id: str, suffix: str) -> str:
-        if not isinstance(zone_id, str) or zone_id not in self._zones:
-            raise CloudflareAdapterError("zone_not_allowlisted")
-        return f"/zones/{zone_id}/{suffix}"
-
-    async def _get_json(
-        self, path: str, params: Mapping[str, str | int] | None = None
-    ) -> dict[str, Any]:
-        url = f"{CLOUDFLARE_API_BASE}{path}"
+    def _get_data(self, path: str) -> Any:
+        # Callers pass only module-owned, fixed route templates.
+        if not path.startswith("/v1/") or "?" in path or "#" in path:
+            raise CloudflareGatewayError("invalid_gateway_operation")
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, follow_redirects=False, trust_env=False
+            with httpx.Client(
+                timeout=self._timeout,
+                follow_redirects=False,
+                trust_env=False,
             ) as client, client.stream(
                 "GET",
-                url,
-                params=params,
+                self._base_url + path,
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "Accept": "application/json",
                 },
             ) as response:
                 if response.is_redirect:
-                    raise CloudflareAdapterError("provider_redirect_rejected")
+                    raise CloudflareGatewayError("gateway_redirect_rejected")
                 if not 200 <= response.status_code < 300:
-                    raise CloudflareAdapterError("provider_http_error")
+                    raise CloudflareGatewayError("gateway_http_error")
+                content_type = response.headers.get("content-type", "")
+                if not JSON_CONTENT_TYPE.match(content_type):
+                    raise CloudflareGatewayError("gateway_invalid_content_type")
+                declared_length = response.headers.get("content-length")
+                if declared_length is not None:
+                    try:
+                        parsed_length = int(declared_length)
+                    except ValueError:
+                        raise CloudflareGatewayError("gateway_invalid_response") from None
+                    if parsed_length < 0:
+                        raise CloudflareGatewayError("gateway_invalid_response")
+                    if parsed_length > self._max_response_bytes:
+                        raise CloudflareGatewayError("gateway_response_too_large")
+
                 body = bytearray()
-                async for chunk in response.aiter_bytes(
-                    chunk_size=min(8192, self._max_response_bytes + 1)
+                for chunk in response.iter_bytes(
+                    chunk_size=min(8_192, self._max_response_bytes + 1)
                 ):
                     body.extend(chunk)
                     if len(body) > self._max_response_bytes:
-                        raise CloudflareAdapterError("provider_response_too_large")
-            try:
-                payload = json.loads(body)
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                raise CloudflareAdapterError("provider_invalid_json") from None
-            if not isinstance(payload, dict) or payload.get("success") is not True:
-                raise CloudflareAdapterError("provider_api_error")
-            result = payload.get("result")
-            if not isinstance(result, (dict, list)):
-                raise CloudflareAdapterError("provider_invalid_result")
-            return payload
-        except CloudflareAdapterError:
+                        raise CloudflareGatewayError("gateway_response_too_large")
+        except CloudflareGatewayError:
             raise
         except httpx.TimeoutException:
-            raise CloudflareAdapterError("provider_timeout") from None
+            raise CloudflareGatewayError("gateway_timeout") from None
         except (httpx.HTTPError, OSError, ValueError):
-            raise CloudflareAdapterError("provider_unavailable") from None
+            raise CloudflareGatewayError("gateway_unavailable") from None
 
-    async def _list_pages(self, path: str) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        for page in range(1, MAX_PAGES + 1):
-            payload = await self._get_json(
-                path, {"page": page, "per_page": PAGE_SIZE}
-            )
-            result = payload["result"]
-            if not isinstance(result, list):
-                raise CloudflareAdapterError("provider_invalid_result")
-            if any(not isinstance(item, dict) for item in result):
-                raise CloudflareAdapterError("provider_invalid_item")
-            items.extend(result)
-            info = payload.get("result_info")
-            total_pages = info.get("total_pages") if isinstance(info, dict) else None
-            if total_pages is not None:
-                if isinstance(total_pages, bool) or not isinstance(total_pages, int) or total_pages < 0:
-                    raise CloudflareAdapterError("provider_invalid_pagination")
-                if total_pages > MAX_PAGES:
-                    raise CloudflareAdapterError("provider_pagination_limit")
-                if total_pages == 0:
-                    if items:
-                        raise CloudflareAdapterError("provider_invalid_pagination")
-                    return items
-                if page >= total_pages:
-                    return items
-            elif len(result) < PAGE_SIZE:
-                return items
-        raise CloudflareAdapterError("provider_pagination_limit")
+        try:
+            envelope = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise CloudflareGatewayError("gateway_invalid_json") from None
+        if (
+            not isinstance(envelope, dict)
+            or envelope.get("ok") is not True
+            or "data" not in envelope
+        ):
+            raise CloudflareGatewayError("gateway_invalid_envelope")
+        return envelope["data"]
 
-    async def _list_unpaginated(self, path: str) -> list[dict[str, Any]]:
-        """Read list endpoints that do not support page/per_page query parameters."""
-        payload = await self._get_json(path)
-        result = payload["result"]
-        if not isinstance(result, list):
-            raise CloudflareAdapterError("provider_invalid_result")
-        if len(result) > MAX_UNPAGINATED_ITEMS:
-            raise CloudflareAdapterError("provider_item_limit")
-        if any(not isinstance(item, dict) for item in result):
-            raise CloudflareAdapterError("provider_invalid_item")
-        return result
+    @staticmethod
+    def _list_data(value: Any) -> list[Mapping[str, Any]]:
+        if not isinstance(value, list):
+            raise CloudflareGatewayError("gateway_invalid_result")
+        if len(value) > MAX_LIST_ITEMS:
+            raise CloudflareGatewayError("gateway_item_limit")
+        if any(not isinstance(item, dict) for item in value):
+            raise CloudflareGatewayError("gateway_invalid_item")
+        return value
 
-    async def list_workers(self, account_id: str) -> list[WorkerSummary]:
-        path = self._account_path(account_id, "workers/scripts")
-        records = await self._list_unpaginated(path)
+    def list_workers(self) -> list[WorkerSummary]:
+        records = self._list_data(self._get_data("/v1/workers"))
         output: list[WorkerSummary] = []
         for item in records:
             worker_id = item.get("id")
             if not isinstance(worker_id, str) or not RESOURCE_NAME_PATTERN.fullmatch(worker_id):
                 continue
-            output.append(
-                WorkerSummary(
-                    id=worker_id,
-                    etag=item.get("etag") if isinstance(item.get("etag"), str) else None,
-                    created_on=item.get("created_on") if isinstance(item.get("created_on"), str) else None,
-                    modified_on=item.get("modified_on") if isinstance(item.get("modified_on"), str) else None,
-                )
-            )
+            output.append(WorkerSummary.model_validate(item))
         return output
 
-    async def list_worker_routes(self, zone_id: str) -> list[WorkerRoute]:
-        path = self._zone_path(zone_id, "workers/routes")
-        records = await self._list_unpaginated(path)
-        output: list[WorkerRoute] = []
-        for item in records:
-            route_id, pattern = item.get("id"), item.get("pattern")
-            if not isinstance(route_id, str) or not isinstance(pattern, str):
-                continue
-            output.append(
-                WorkerRoute(
-                    id=route_id,
-                    pattern=pattern,
-                    script=item.get("script") if isinstance(item.get("script"), str) else None,
-                    zone_id=item.get("zone_id") if isinstance(item.get("zone_id"), str) else None,
-                )
-            )
-        return output
+    def list_worker_routes(self) -> list[WorkerRoute]:
+        records = self._list_data(self._get_data("/v1/worker-routes"))
+        return [WorkerRoute.model_validate(item) for item in records]
 
-    async def get_worker_settings(
-        self, account_id: str, script_name: str
-    ) -> WorkerSettingsSummary:
+    def list_d1_databases(self) -> list[D1DatabaseSummary]:
+        records = self._list_data(self._get_data("/v1/d1-databases"))
+        return [D1DatabaseSummary.model_validate(item) for item in records]
+
+    def get_worker_settings(self, script_name: str) -> WorkerSettingsSummary:
         if (
             not isinstance(script_name, str)
             or not RESOURCE_NAME_PATTERN.fullmatch(script_name)
         ):
-            raise CloudflareAdapterError("invalid_worker_name")
-        path = self._account_path(
-            account_id, f"workers/scripts/{script_name}/settings"
-        )
-        payload = await self._get_json(path)
-        result = payload["result"]
-        if not isinstance(result, dict):
-            raise CloudflareAdapterError("provider_invalid_result")
+            raise CloudflareGatewayError("invalid_worker_name")
+        data = self._get_data(f"/v1/workers/{script_name}/settings")
+        if not isinstance(data, dict):
+            raise CloudflareGatewayError("gateway_invalid_result")
+        return WorkerSettingsSummary.model_validate(data)
 
-        # Intentionally project only non-secret metadata. Never serialize binding
-        # values, including plain_text values, even if the provider returns them.
-        safe_bindings: list[BindingMetadata] = []
-        raw_bindings = result.get("bindings", [])
-        if isinstance(raw_bindings, list):
-            for binding in raw_bindings[:100]:
-                if not isinstance(binding, dict):
-                    continue
-                name, kind = binding.get("name"), binding.get("type")
-                if isinstance(name, str) and isinstance(kind, str):
-                    safe_bindings.append(BindingMetadata(name=name, type=kind))
 
-        return WorkerSettingsSummary(
-            compatibility_date=(
-                result.get("compatibility_date")
-                if isinstance(result.get("compatibility_date"), str)
-                else None
-            ),
-            usage_model=(
-                result.get("usage_model")
-                if isinstance(result.get("usage_model"), str)
-                else None
-            ),
-            bindings=safe_bindings,
-        )
-
-    async def list_d1_databases(self, account_id: str) -> list[D1DatabaseSummary]:
-        path = self._account_path(account_id, "d1/database")
-        records = await self._list_pages(path)
-        output: list[D1DatabaseSummary] = []
-        for item in records:
-            uuid, name = item.get("uuid"), item.get("name")
-            if not isinstance(uuid, str) or not isinstance(name, str):
-                continue
-            output.append(
-                D1DatabaseSummary(
-                    uuid=uuid,
-                    name=name,
-                    created_at=item.get("created_at")
-                    if isinstance(item.get("created_at"), str)
-                    else None,
-                )
-            )
-        return output
+def build_cloudflare_gateway_client(settings: Settings) -> CloudflareGatewayClient | None:
+    """Return None when disabled; fail closed for incomplete enabled configuration."""
+    if not settings.cloudflare_gateway_enabled:
+        return None
+    if not settings.cloudflare_gateway_base_url or settings.cloudflare_gateway_token is None:
+        raise CloudflareGatewayError("gateway_not_configured")
+    return CloudflareGatewayClient(
+        gateway_url=settings.cloudflare_gateway_base_url,
+        gateway_token=settings.cloudflare_gateway_token,
+        timeout_seconds=settings.cloudflare_gateway_timeout_seconds,
+        max_response_bytes=settings.cloudflare_gateway_max_response_bytes,
+    )
