@@ -152,6 +152,40 @@ test("D1 inventory uses bounded documented pagination", async () => {
   assert.deepEqual(requestedPages, ["1", "2"]);
 });
 
+test("D1 inventory rejects malformed and unbounded pagination metadata", async (t) => {
+  const cases = [
+    { total_pages: true, code: "provider_invalid_pagination" },
+    { total_pages: -1, code: "provider_invalid_pagination" },
+    { total_pages: "2", code: "provider_invalid_pagination" },
+    { total_pages: 21, code: "provider_pagination_limit" },
+  ];
+  for (const item of cases) {
+    await t.test(JSON.stringify(item.total_pages), async () => {
+      await withFetch(async () => Response.json({
+        success: true,
+        result: [],
+        result_info: { total_pages: item.total_pages },
+      }), async () => {
+        const response = await worker.fetch(request("/v1/d1-databases"), ENV);
+        assert.equal(response.status, 502);
+        assert.equal((await json(response)).error.code, item.code);
+      });
+    });
+  }
+});
+
+test("D1 inventory accepts a valid empty result with zero pages", async () => {
+  await withFetch(async () => Response.json({
+    success: true,
+    result: [],
+    result_info: { total_pages: 0 },
+  }), async () => {
+    const response = await worker.fetch(request("/v1/d1-databases"), ENV);
+    assert.equal(response.status, 200);
+    assert.deepEqual((await json(response)).data, []);
+  });
+});
+
 test("Worker settings never return secret or plain-text binding values", async () => {
   const secret = "must-not-leave-the-provider";
   await withFetch(async upstream => {
