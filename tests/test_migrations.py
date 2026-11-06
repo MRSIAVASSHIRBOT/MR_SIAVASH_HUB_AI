@@ -37,12 +37,22 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "content_publish_schedules", "media_file_cleanup", "media_asset_analysis_leases",
         "video_render_runs", "video_render_timeline_snapshots", "video_generation_reconciliation_limits",
         "tool_permission_grants",
+        "kimi_request_events",
     } <= {
         row["name"]
         for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         )
     }
+    kimi_request_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(kimi_request_events)")
+    }
+    assert {"event_id", "owner_user_id", "requested_at"} <= kimi_request_columns
+    assert connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_kimi_request_events_owner_time'"
+    ).fetchone() is not None
     source_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
     }
