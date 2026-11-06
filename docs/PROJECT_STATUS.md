@@ -898,3 +898,15 @@ This section supersedes the PR #294 and PR #303 workflow details in section 21 w
 - Main remains `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb`. No new main-branch workflow run was returned by the commit-run lookup in this checkpoint.
 
 No source changes were made to PR #294 or #303 during this documentation checkpoint. No Cloudflare resources, secrets, routes, or D1 data were changed. Workflow conclusions are SHA-specific and pending jobs remain unverified.
+
+
+## 23. Latest exact-head follow-up — 2026-11-06
+
+This section supersedes the PR #294 workflow head and PR #303 workflow conclusion details in section 22 where newer evidence is available.
+
+- PR #294 now points to `2cf2ef554cdb5fc883b7c42298008508f1b8a1d9`, 4 commits ahead / 0 behind main. Cloudflare settings and environment examples are present in the current branch. The exact-head Backend CI and Defensive Python Scan are in progress; CI is pending and Video Render Integration is queued. No pass is claimed for this head.
+- PR #303 remains at `e28a3fb20438e36de9e8ebf8b9a6d72d1047c35d`. Backend CI and Defensive Python Scan passed. CI and Video Render Integration were still in progress at the last poll; the Windows FFmpeg installer previously received HTTP 504 from the Chocolatey feed before the Windows render test could start. Linux render integration passed. A targeted rerun attempt was rejected while GitHub reported the run as already running.
+- PR #296's docs branch was updated after section 22; the exact new-head workflow state must be read from GitHub rather than inferred from earlier-head runs.
+- Main remains `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb`; PR #300 is merged. PR #297 remains `action_required`.
+
+No source or Cloudflare resource changes are made by this checkpoint. All workflow conclusions remain commit-specific.
