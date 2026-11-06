@@ -9,8 +9,7 @@ side-effect declaration.
 
 `POST /tools/{tool_name}/invoke` accepts a JSON object under `payload`.
 Unknown tools return 404 and invalid input returns a sanitized 422 response.
-The API does not accept client-supplied permission grants or approval flags:
-policy context is supplied by trusted server code only.
+Tool invocation requests do not accept client-supplied permission grants or approval flags. Only the dedicated owner-authenticated grant endpoints can persist allow-listed grants; invocation derives active permissions from the authenticated owner's server-side records.
 
 The initial built-in `text.echo` tool is deterministic and has no external
 side effects. It exists to exercise the registry contract; it is not an AI
