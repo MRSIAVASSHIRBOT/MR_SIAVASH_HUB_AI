@@ -125,27 +125,26 @@ class CloudflareReadOnlyClient:
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout, follow_redirects=False, trust_env=False
-            ) as client:
-                async with client.stream(
-                    "GET",
-                    url,
-                    params=params,
-                    headers={
-                        "Authorization": f"Bearer {self._token}",
-                        "Accept": "application/json",
-                    },
-                ) as response:
-                    if response.is_redirect:
-                        raise CloudflareAdapterError("provider_redirect_rejected")
-                    if not 200 <= response.status_code < 300:
-                        raise CloudflareAdapterError("provider_http_error")
-                    body = bytearray()
-                    async for chunk in response.aiter_bytes(
-                        chunk_size=min(8192, self._max_response_bytes + 1)
-                    ):
-                        body.extend(chunk)
-                        if len(body) > self._max_response_bytes:
-                            raise CloudflareAdapterError("provider_response_too_large")
+            ) as client, client.stream(
+                "GET",
+                url,
+                params=params,
+                headers={
+                    "Authorization": f"Bearer {self._token}",
+                    "Accept": "application/json",
+                },
+            ) as response:
+                if response.is_redirect:
+                    raise CloudflareAdapterError("provider_redirect_rejected")
+                if not 200 <= response.status_code < 300:
+                    raise CloudflareAdapterError("provider_http_error")
+                body = bytearray()
+                async for chunk in response.aiter_bytes(
+                    chunk_size=min(8192, self._max_response_bytes + 1)
+                ):
+                    body.extend(chunk)
+                    if len(body) > self._max_response_bytes:
+                        raise CloudflareAdapterError("provider_response_too_large")
             try:
                 payload = json.loads(body)
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
