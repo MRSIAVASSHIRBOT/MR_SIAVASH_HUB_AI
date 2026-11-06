@@ -166,7 +166,7 @@ class CloudflareReadOnlyClient:
                         raise CloudflareAdapterError("provider_response_too_large")
             try:
                 payload = json.loads(body)
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError):
                 raise CloudflareAdapterError("provider_invalid_json") from None
             if not isinstance(payload, dict) or payload.get("success") is not True:
                 raise CloudflareAdapterError("provider_api_error")
@@ -176,9 +176,9 @@ class CloudflareReadOnlyClient:
             return payload
         except CloudflareAdapterError:
             raise
-        except httpx.TimeoutException as exc:
+        except httpx.TimeoutException:
             raise CloudflareAdapterError("provider_timeout") from None
-        except (httpx.HTTPError, OSError, ValueError) as exc:
+        except (httpx.HTTPError, OSError, ValueError):
             raise CloudflareAdapterError("provider_unavailable") from None
 
     async def _list_pages(self, path: str) -> list[dict[str, Any]]:
