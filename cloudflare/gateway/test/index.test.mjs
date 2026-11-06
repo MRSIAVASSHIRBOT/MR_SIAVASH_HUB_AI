@@ -290,3 +290,35 @@ test("exported handler delegates to the tested request boundary", async () => {
   const response = await handleRequest(request("/health"), ENV);
   assert.equal(response.status, 200);
 });
+
+
+test("streamed provider responses without content-length remain byte-bounded", async () => {
+  await withFetch(async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(1_048_577).fill(65));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }, async () => {
+    const response = await worker.fetch(request("/v1/workers"), ENV);
+    assert.equal(response.status, 502);
+    assert.equal((await json(response)).error.code, "provider_response_too_large");
+  });
+});
+
+test("D1 pagination rejects zero pages when the provider also returns items", async () => {
+  await withFetch(async () => Response.json({
+    success: true,
+    result: [{ uuid: "db-1", name: "unexpected" }],
+    result_info: { total_pages: 0 },
+  }), async () => {
+    const response = await worker.fetch(request("/v1/d1-databases"), ENV);
+    assert.equal(response.status, 502);
+    assert.equal((await json(response)).error.code, "provider_invalid_pagination");
+  });
+});
