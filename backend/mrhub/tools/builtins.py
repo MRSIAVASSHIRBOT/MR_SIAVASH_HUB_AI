@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
 from mrhub.integrations.cloudflare import (
+    CloudflareGatewayClient,
     D1DatabaseSummary,
     WorkerRoute,
     WorkerSettingsSummary,
@@ -70,7 +71,7 @@ def _echo(payload: BaseModel) -> EchoToolOutput:
 
 def _register_cloudflare_tools(
     registry: ToolRegistry,
-    client: object,
+    client: CloudflareGatewayClient,
 ) -> None:
     """Register only fixed read-only operations behind the owner grant gate."""
 
