@@ -49,6 +49,19 @@ test("health is authenticated and reports only the read-only service state", asy
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
+test("health readiness rejects missing or invalid provider configuration", async () => {
+  const cases = [
+    [{ ...ENV, CF_API_TOKEN: "" }, "gateway_provider_token_not_configured"],
+    [{ ...ENV, CF_ACCOUNT_ID: "invalid" }, "gateway_account_not_configured"],
+    [{ ...ENV, CF_ZONE_ID: "invalid" }, "gateway_zone_not_configured"],
+  ];
+  for (const [environment, code] of cases) {
+    const response = await worker.fetch(request("/health"), environment);
+    assert.equal(response.status, 503);
+    assert.equal((await json(response)).error.code, code);
+  }
+});
+
 test("missing or invalid gateway credentials fail before any provider request", async () => {
   await withFetch(() => {
     assert.fail("provider fetch must not be called");
