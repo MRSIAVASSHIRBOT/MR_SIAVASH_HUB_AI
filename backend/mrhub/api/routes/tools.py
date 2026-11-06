@@ -77,7 +77,7 @@ def grant_tool_permission(
             request.expires_in_seconds,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Permission grant request is invalid") from exc
+        raise HTTPException(status_code=422, detail="Permission grant request is invalid", headers={"Cache-Control": "no-store"}) from exc
 
 
 @router.delete("/grants/{permission}", status_code=204)
@@ -92,7 +92,7 @@ def revoke_tool_permission(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Permission grant request is invalid") from exc
     if not revoked:
-        raise HTTPException(status_code=404, detail="Permission grant was not found")
+        raise HTTPException(status_code=404, detail="Permission grant was not found", headers={"Cache-Control": "no-store"})
     response.headers["Cache-Control"] = "no-store"
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
@@ -118,9 +118,9 @@ def invoke_tool(
             granted_permissions=permissions,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Tool is not registered") from exc
+        raise HTTPException(status_code=404, detail="Tool is not registered", headers={"Cache-Control": "no-store"}) from exc
     except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Tool input validation failed") from exc
+        raise HTTPException(status_code=422, detail="Tool input validation failed", headers={"Cache-Control": "no-store"}) from exc
     except ToolPolicyError as exc:
         reason_code = (
             "approval_required"
@@ -149,6 +149,7 @@ def invoke_tool(
                 "reason": str(exc),
                 "correlation_id": correlation_id,
             },
+            headers={"Cache-Control": "no-store"},
         ) from exc
     except ToolExecutionError as exc:
         audit.record(
@@ -168,6 +169,7 @@ def invoke_tool(
         raise HTTPException(
             status_code=502,
             detail={"reason": "Tool execution failed", "correlation_id": correlation_id},
+            headers={"Cache-Control": "no-store"},
         ) from exc
 
     audit.record(
