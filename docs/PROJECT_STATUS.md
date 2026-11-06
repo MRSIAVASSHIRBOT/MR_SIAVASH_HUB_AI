@@ -635,3 +635,18 @@ This section supersedes the earlier main SHA, PR #303 state, exact-head CI, and 
 5. Reconcile PR #296's accumulated documentation history with current main before merge.
 
 Workflow evidence is commit-specific. Pending, queued, in-progress, action_required, cancelled, and failed runs are not passes. This checkpoint is not a production-readiness or whole-project-completion declaration.
+
+
+## 25. Post-synchronization CI and documentation queue refresh — 2026-11-06 UTC
+
+This section supersedes the PR #294 and PR #296 state in section 24 where they differ.
+
+- Main remains `e914652f2846758d6d6bf1fb18bef4a033c9be59`.
+- PR #303 is merged in main. Its exact PR head passed all four required workflow groups, including both Linux and Windows FFmpeg integration.
+- PR #294 current head is `115dfa8232ad7ac495b6a9bd5cb333b215743aeb`, 7 commits ahead / 0 behind main. The exact-head Defensive Python Scan passed; Backend CI was in progress; CI and Video Render Integration were pending at the latest observation. This head removes the redundant Kimi Vision health-probe round trip and adds a regression assertion for a single POST. No full pass is claimed.
+- PR #296 was closed as superseded by the cleaner documentation-only PR #307. Its accumulated history is preserved in the replacement branch; the new branch was created from current main.
+- PR #307's prior head `4b49aede8e8d7bae3d2ec00d17015a2eb5ebe5a7` passed all four workflow groups. The present documentation refresh creates a new head and requires its own exact-head checks.
+- PR #297 remains 1 commit ahead / 4 behind main with all four workflow groups reporting `action_required`; no authorization bypass is permitted.
+- PR #306 was closed without merge because the Kimi branch restored the Cloudflare settings and environment example independently.
+
+No Cloudflare resources, production routes, bindings, secrets, or D1 data were modified. Workflow conclusions remain SHA-specific. This is not a production-readiness or whole-project-completion declaration.
