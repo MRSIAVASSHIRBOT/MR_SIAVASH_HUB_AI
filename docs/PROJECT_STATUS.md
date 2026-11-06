@@ -885,3 +885,16 @@ This checkpoint supersedes sections 19–20 wherever their branch heads, merge s
 5. Preserve `gahop`, `gshop11.ir/api/*`, `gshop-db`, and all production credentials unless a separate, explicitly approved rollout is prepared.
 
 Workflow evidence is commit-specific. This checkpoint is not a production-readiness or whole-project-completion declaration.
+
+
+## 22. Follow-up CI and branch reconciliation — 2026-11-06
+
+This section supersedes the PR #294 and PR #303 workflow details in section 21 where newer evidence is available.
+
+- PR #294 has been rebased and then corrected on current main. Current head: `b107beefee5ae71a7a8a23e57e7d6c78396b2311`, 3 commits ahead / 0 behind. The intermediate head `0803e5b6f38ae92a3df3c94cd5e5885bf3ec4113` failed 79 tests because the Cloudflare settings were missing from `Settings`; the current branch restores those settings and the Cloudflare environment example. All four workflows on the corrected head are in progress; no pass is claimed yet.
+- PR #303 current head remains `e28a3fb20438e36de9e8ebf8b9a6d72d1047c35d`, 3 commits ahead / 0 behind. Backend CI and Defensive Python Scan passed. CI remains in progress. Video Render Integration remains in progress; its Windows job's FFmpeg installation step encountered a Chocolatey feed HTTP 504 and did not reach the render test. The Linux render integration job passed. This is an external dependency-installation failure, not a reported render assertion failure. The attempt to rerun the Windows job was rejected because GitHub reported the workflow run as already running; no retry success is claimed.
+- PR #296 current head remains `091fb773ae63083ac73ecee6333a742711d44115`, 22 commits ahead / 0 behind. Defensive Python Scan and Video Render Integration passed; Backend CI and CI are in progress.
+- PR #297 remains 1 ahead / 3 behind main with all four workflows `action_required`.
+- Main remains `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb`. No new main-branch workflow run was returned by the commit-run lookup in this checkpoint.
+
+No source changes were made to PR #294 or #303 during this documentation checkpoint. No Cloudflare resources, secrets, routes, or D1 data were changed. Workflow conclusions are SHA-specific and pending jobs remain unverified.
