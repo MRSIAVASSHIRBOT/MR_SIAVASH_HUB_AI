@@ -12,11 +12,20 @@ from mrhub.security.auth import AuthenticatedUser, AuthService
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_auth_service() -> AuthService:
+def get_task_repository() -> TaskRepository:
+    """Return an initialized repository for the configured local database."""
     settings = get_settings()
     repository = TaskRepository(settings.database_path)
     repository.initialize()
-    return AuthService(repository, session_ttl_hours=settings.session_ttl_hours)
+    return repository
+
+
+def get_auth_service() -> AuthService:
+    settings = get_settings()
+    return AuthService(
+        get_task_repository(),
+        session_ttl_hours=settings.session_ttl_hours,
+    )
 
 
 def require_user(
