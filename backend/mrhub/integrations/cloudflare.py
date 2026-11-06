@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from mrhub.config import Settings
 
@@ -227,6 +227,13 @@ class CloudflareGatewayClient:
         return envelope["data"]
 
     @staticmethod
+    def _validate_model(model: type[BaseModel], value: Any) -> BaseModel:
+        try:
+            return model.model_validate(value)
+        except ValidationError:
+            raise CloudflareGatewayError("gateway_invalid_result") from None
+
+    @staticmethod
     def _list_data(value: Any) -> list[Mapping[str, Any]]:
         if not isinstance(value, list):
             raise CloudflareGatewayError("gateway_invalid_result")
@@ -243,16 +250,16 @@ class CloudflareGatewayClient:
             worker_id = item.get("id")
             if not isinstance(worker_id, str) or not RESOURCE_NAME_PATTERN.fullmatch(worker_id):
                 continue
-            output.append(WorkerSummary.model_validate(item))
+            output.append(self._validate_model(WorkerSummary, item))
         return output
 
     def list_worker_routes(self) -> list[WorkerRoute]:
         records = self._list_data(self._get_data("/v1/worker-routes"))
-        return [WorkerRoute.model_validate(item) for item in records]
+        return [self._validate_model(WorkerRoute, item) for item in records]
 
     def list_d1_databases(self) -> list[D1DatabaseSummary]:
         records = self._list_data(self._get_data("/v1/d1-databases"))
-        return [D1DatabaseSummary.model_validate(item) for item in records]
+        return [self._validate_model(D1DatabaseSummary, item) for item in records]
 
     def get_worker_settings(self, script_name: str) -> WorkerSettingsSummary:
         if (
@@ -263,7 +270,7 @@ class CloudflareGatewayClient:
         data = self._get_data(f"/v1/workers/{script_name}/settings")
         if not isinstance(data, dict):
             raise CloudflareGatewayError("gateway_invalid_result")
-        return WorkerSettingsSummary.model_validate(data)
+        return self._validate_model(WorkerSettingsSummary, data)
 
 
 def build_cloudflare_gateway_client(settings: Settings) -> CloudflareGatewayClient | None:
