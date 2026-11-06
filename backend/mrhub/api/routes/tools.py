@@ -66,8 +66,8 @@ def grant_tool_permission(
     permission: str,
     request: ToolPermissionGrantRequest,
     response: Response,
-    user: AuthenticatedUser = Depends(require_user),
-    repository: TaskRepository = Depends(get_task_repository),
+    user: CurrentUser,
+    repository: PermissionRepository,
 ) -> dict[str, str]:
     response.headers["Cache-Control"] = "no-store"
     try:
@@ -84,8 +84,8 @@ def grant_tool_permission(
 def revoke_tool_permission(
     permission: str,
     response: Response,
-    user: AuthenticatedUser = Depends(require_user),
-    repository: TaskRepository = Depends(get_task_repository),
+    user: CurrentUser,
+    repository: PermissionRepository,
 ) -> Response:
     try:
         revoked = _permission_service(repository).revoke(user.user_id, permission)
@@ -102,8 +102,8 @@ def invoke_tool(
     tool_name: str,
     request: ToolInvokeRequest,
     response: Response,
-    user: AuthenticatedUser = Depends(require_user),
-    repository: TaskRepository = Depends(get_task_repository),
+    user: CurrentUser,
+    repository: PermissionRepository,
 ) -> dict[str, object]:
     response.headers["Cache-Control"] = "no-store"
     registry = build_tool_registry()
