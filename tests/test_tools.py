@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import PolicyDecision
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ToolDefinition, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import ToolDefinition, ToolExecutionError, ToolPolicyError, ToolRegistry
 
 
 class InputValue(BaseModel):
@@ -99,3 +99,19 @@ def test_registry_validates_input_before_handler_invocation():
     with pytest.raises(ValueError):
         registry.invoke("custom.validated", {"unexpected": "field"})
     assert called == []
+
+
+
+def test_registry_sanitizes_invalid_handler_output():
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="custom.invalid_output",
+            description="A tool with an invalid test output",
+            input_model=InputValue,
+            output_model=OutputValue,
+            handler=lambda _payload: {"unexpected": "private output"},
+        )
+    )
+    with pytest.raises(ToolExecutionError, match="Tool output validation failed"):
+        registry.invoke("custom.invalid_output", {"value": "x"})

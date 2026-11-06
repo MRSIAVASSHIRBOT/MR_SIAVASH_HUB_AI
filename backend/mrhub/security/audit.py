@@ -41,10 +41,41 @@ class AuditLogger:
         "turns",
         "tool_calls",
         "context_passage_count",
+        "tool_name",
+        "permission",
+        "correlation_id",
     })
 
     def __init__(self, repository: TaskRepository) -> None:
         self.repository = repository
+
+    def build_event(
+        self,
+        event_type: str,
+        outcome: str,
+        subject_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        actor_type: str = "system",
+        actor_id: str | None = None,
+        subject_type: str = "task",
+    ) -> AuditEvent:
+        """Build an event after applying the strict metadata allow-list."""
+        safe_metadata: dict[str, str | int | bool | None] = {}
+        for key, value in (metadata or {}).items():
+            if key not in self.ALLOWED_METADATA_KEYS:
+                continue
+            if value is None or isinstance(value, (str, int, bool)):
+                safe_metadata[key] = value[:160] if isinstance(value, str) else value
+
+        return AuditEvent(
+            event_type=event_type,
+            outcome=outcome,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            metadata=safe_metadata,
+        )
 
     def record(
         self,
@@ -56,21 +87,15 @@ class AuditLogger:
         actor_id: str | None = None,
         subject_type: str = "task",
     ) -> AuditEvent:
-        safe_metadata: dict[str, str | int | bool | None] = {}
-        for key, value in (metadata or {}).items():
-            if key not in self.ALLOWED_METADATA_KEYS:
-                continue
-            if value is None or isinstance(value, (str, int, bool)):
-                safe_metadata[key] = value[:160] if isinstance(value, str) else value
-
-        event = AuditEvent(
+        """Build and persist an allow-listed audit event."""
+        event = self.build_event(
             event_type=event_type,
             outcome=outcome,
-            subject_type=subject_type,
             subject_id=subject_id,
+            metadata=metadata,
             actor_type=actor_type,
             actor_id=actor_id,
-            metadata=safe_metadata,
+            subject_type=subject_type,
         )
         self.repository.record_audit(event.model_dump(mode="json"))
         return event

@@ -140,28 +140,103 @@ class TaskRepository:
                 raise RuntimeError("Task state or lease changed concurrently; reload before retrying")
         return updated
 
+    @staticmethod
+    def _insert_audit_event(
+        connection: sqlite3.Connection, event: dict[str, object]
+    ) -> None:
+        """Insert a pre-sanitized audit event within the caller's transaction."""
+        connection.execute(
+            """
+            INSERT INTO audit_events (
+                event_id, event_type, outcome, subject_type,
+                subject_id, actor_type, actor_id, created_at, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event["event_id"],
+                event["event_type"],
+                event["outcome"],
+                event["subject_type"],
+                event["subject_id"],
+                event["actor_type"],
+                event.get("actor_id"),
+                event["created_at"],
+                json.dumps(event["metadata"], ensure_ascii=False, sort_keys=True),
+            ),
+        )
+
     def record_audit(self, event: dict[str, object]) -> None:
         """Persist a sanitized audit event."""
         with self._connection() as connection:
+            self._insert_audit_event(connection, event)
+
+    def upsert_tool_permission_grant(
+        self, grant: dict[str, str], audit_event: dict[str, object]
+    ) -> None:
+        """Grant or renew one owner permission and its audit event atomically."""
+        with self._connection() as connection:
             connection.execute(
                 """
-                INSERT INTO audit_events (
-                    event_id, event_type, outcome, subject_type,
-                    subject_id, actor_type, actor_id, created_at, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tool_permission_grants (
+                    grant_id, owner_user_id, permission, granted_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(owner_user_id, permission) DO UPDATE SET
+                    grant_id = excluded.grant_id,
+                    granted_at = excluded.granted_at,
+                    expires_at = excluded.expires_at
                 """,
                 (
-                    event["event_id"],
-                    event["event_type"],
-                    event["outcome"],
-                    event["subject_type"],
-                    event["subject_id"],
-                    event["actor_type"],
-                    event.get("actor_id"),
-                    event["created_at"],
-                    json.dumps(event["metadata"], ensure_ascii=False, sort_keys=True),
+                    grant["grant_id"],
+                    grant["owner_user_id"],
+                    grant["permission"],
+                    grant["granted_at"],
+                    grant["expires_at"],
                 ),
             )
+            self._insert_audit_event(connection, audit_event)
+
+    def revoke_tool_permission_grant(
+        self,
+        owner_user_id: str,
+        permission: str,
+        audit_event: dict[str, object],
+    ) -> bool:
+        """Revoke one owner permission and record the decision atomically."""
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM tool_permission_grants
+                WHERE owner_user_id = ? AND permission = ?
+                """,
+                (owner_user_id, permission),
+            )
+            if cursor.rowcount != 1:
+                return False
+            self._insert_audit_event(connection, audit_event)
+            return True
+
+    def list_tool_permission_grants(
+        self, owner_user_id: str, now: str
+    ) -> list[dict[str, str]]:
+        """Return only active grants belonging to the specified owner."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT grant_id, permission, granted_at, expires_at
+                FROM tool_permission_grants
+                WHERE owner_user_id = ? AND expires_at > ?
+                ORDER BY permission
+                """,
+                (owner_user_id, now),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_active_tool_permissions(self, owner_user_id: str, now: str) -> frozenset[str]:
+        """Return active permission names for one authenticated owner only."""
+        return frozenset(
+            grant["permission"]
+            for grant in self.list_tool_permission_grants(owner_user_id, now)
+        )
 
     def list_audit(self, limit: int = 100) -> list[dict[str, object]]:
         """Return recent audit events for internal diagnostics."""
