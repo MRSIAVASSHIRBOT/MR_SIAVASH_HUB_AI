@@ -248,3 +248,27 @@ def test_unpaginated_list_endpoint_rejects_excessive_item_count(monkeypatch):
     client = _client(monkeypatch, handler)
     with pytest.raises(CloudflareAdapterError, match="provider_item_limit"):
         asyncio.run(client.list_workers(ACCOUNT_ID))
+
+
+@pytest.mark.parametrize(
+    ("method", "value", "error_code"),
+    [
+        ("list_workers", [], "account_not_allowlisted"),
+        ("list_worker_routes", {}, "zone_not_allowlisted"),
+        ("get_worker_settings", "bad/name", "invalid_worker_name"),
+    ],
+)
+def test_rejects_malformed_resource_identifiers_before_network(
+    monkeypatch, method, value, error_code
+):
+    def handler(_request):
+        pytest.fail("network must not be called for malformed resource identifiers")
+
+    client = _client(monkeypatch, handler)
+    with pytest.raises(CloudflareAdapterError, match=error_code):
+        if method == "list_workers":
+            asyncio.run(client.list_workers(value))
+        elif method == "list_worker_routes":
+            asyncio.run(client.list_worker_routes(value))
+        else:
+            asyncio.run(client.get_worker_settings(ACCOUNT_ID, value))
