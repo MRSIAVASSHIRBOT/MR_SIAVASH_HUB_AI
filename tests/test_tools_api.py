@@ -10,6 +10,12 @@ from mrhub.main import create_app
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
+def _audit_events():
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    return repository.list_audit()
+
+
 def test_tool_catalog_is_authenticated_and_exposes_contracts():
     client = authenticated_client()
     response = client.get("/tools")
@@ -30,21 +36,38 @@ def test_tool_invoke_executes_only_registered_safe_tool():
     assert len(response.json()["correlation_id"]) == 36
 
 
-def test_tool_invoke_rejects_unregistered_tool():
+def test_tool_invoke_rejects_unregistered_tool_and_audits_without_payload():
     client = authenticated_client()
     response = client.post(
         "/tools/shell.execute/invoke",
-        json={"payload": {"command": "echo not executed"}},
+        json={"payload": {"command": "private-command-must-not-be-audited"}},
     )
     assert response.status_code == 404
+    events = [
+        event for event in _audit_events()
+        if event["event_type"] == "tool.invocation"
+    ]
+    assert events[-1]["outcome"] == "failure"
+    assert events[-1]["metadata"]["reason_code"] == "tool_not_registered"
+    assert "private-command-must-not-be-audited" not in str(events)
 
 
-def test_tool_invoke_validates_payload_without_echoing_input():
+def test_tool_invoke_validates_payload_without_echoing_input_and_audits_failure():
     client = authenticated_client()
-    response = client.post("/tools/text.echo/invoke", json={"payload": {"text": ""}})
+    response = client.post(
+        "/tools/text.echo/invoke",
+        json={"payload": {"text": "private-invalid-input"}},
+    )
     assert response.status_code == 422
     assert response.json()["detail"] == "Tool input validation failed"
-    assert "text" not in response.text
+    assert "private-invalid-input" not in response.text
+    events = [
+        event for event in _audit_events()
+        if event["event_type"] == "tool.invocation"
+    ]
+    assert events[-1]["outcome"] == "failure"
+    assert events[-1]["metadata"]["reason_code"] == "tool_input_invalid"
+    assert "private-invalid-input" not in str(events)
 
 
 def test_tool_catalog_requires_authentication(tmp_path, monkeypatch):
