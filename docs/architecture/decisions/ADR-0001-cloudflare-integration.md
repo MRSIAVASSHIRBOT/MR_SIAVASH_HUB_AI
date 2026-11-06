@@ -1,6 +1,6 @@
 # ADR-0001: Hub-Side Cloudflare Gateway Client
 
-- **Status:** Proposed; implementation is constrained by ADR-0002.
+- **Status:** Implemented in source behind explicit configuration and owner grant; isolated staging acceptance and deployment remain pending.
 - **Date:** 2026-11-06
 - **Owners:** Project owner and maintainers
 - **Related work:** GitHub issue #299; PR #300; ADR-0002
@@ -11,9 +11,9 @@ MR_SIAVASH_HUB_AI is a local-first modular monolith. Its canonical Tool Registry
 
 The Hub must not hold a Cloudflare provider API token, call \`api.cloudflare.com\` directly, or expose an arbitrary network proxy to agents.
 
-## Decision proposal
+## Decision
 
-Implement a typed, optional, synchronous Hub-side client for the isolated Cloudflare Workers gateway. The client is compatible with the existing synchronous ToolRegistry handler contract and exposes only fixed read-only operations.
+The Hub uses a typed, optional, synchronous client for the isolated Cloudflare Workers gateway. The client is compatible with the existing synchronous ToolRegistry handler contract and exposes only fixed read-only operations. Four agent-callable tools are registered only when gateway configuration is valid; each requires the owner's active server-side `cloudflare.read` grant.
 
 ### Trust boundaries
 
@@ -24,7 +24,7 @@ Implement a typed, optional, synchronous Hub-side client for the isolated Cloudf
 5. The client validates response envelopes and typed output schemas; errors never include response bodies or credentials.
 6. Worker settings expose binding names and types only. Binding values are never accepted in Hub output models.
 7. The integration is disabled by default and remains unavailable when required configuration is absent.
-8. No tool is registered or agent-callable in this milestone. Tool registration must use the existing ToolRegistry and PolicyEngine; owner-scoped server-side grants and redacted audit events are required before enabling invocation.
+8. Tool registration uses the existing ToolRegistry and PolicyEngine. Each Cloudflare tool requires the owner-scoped `cloudflare.read` grant; invocation outcomes are audited using allow-listed metadata and correlation IDs.
 
 ### Initial read-only capability set
 
@@ -61,10 +61,10 @@ Rejected. The existing ToolRegistry, PolicyEngine, owner grant lifecycle, and Au
 
 1. Accept ADR-0002's gateway trust boundary.
 2. Complete gateway client contract tests and exact-head CI.
-3. Add the owner-scoped grant and redacted audit invocation path through existing contracts.
+3. Complete exact-head tests for the owner-grant-gated ToolRegistry integration.
 4. Perform authenticated read-only acceptance against an isolated staging Worker.
 5. Obtain separate approval for any production deployment or future write capability.
 
 ## Consequences
 
-The Hub has a narrow typed client while Cloudflare provider credentials remain isolated in the gateway. The integration can remain disabled without affecting local operation. This milestone does not register agent-callable tools or modify Cloudflare resources.
+The Hub has a narrow typed client and four permission-gated read-only tools while Cloudflare provider credentials remain isolated in the gateway. The integration remains disabled by default. Source changes do not deploy or modify Cloudflare resources.
