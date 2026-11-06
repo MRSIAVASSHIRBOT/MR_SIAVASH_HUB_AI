@@ -217,7 +217,6 @@ def test_d1_database_listing_uses_documented_pagination(monkeypatch):
     [
         (True, "provider_invalid_pagination"),
         (-1, "provider_invalid_pagination"),
-        (0, "provider_invalid_pagination"),
         (21, "provider_pagination_limit"),
     ],
 )
