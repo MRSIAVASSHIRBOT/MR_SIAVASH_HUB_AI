@@ -819,3 +819,36 @@ The repository currently has five open PRs. The earlier four-PR count in section
 CI evidence applies only to the exact SHA and workflow. Pending, queued, in-progress, cancelled, and action_required runs are not passes. Target-device acceptance, live provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
 
 This snapshot is not a production-readiness or whole-project-completion declaration.
+
+
+## 20. Verified main and integration status — 2026-11-06
+
+This section supersedes the earlier point-in-time PR states above where they differ. The default branch was re-inspected before this update.
+
+### Main and pull-request baseline
+
+- Main: `8dde0451446622a6df8b9da59050bb32e24289a7`.
+- PR #301 (isolated read-only Workers gateway source) is merged; merge commit `9dd5d5ef6e3c54de52e0606dfb8bf57ee33c94db`.
+- PR #302 (owner-scoped expiring `cloudflare.read` grants and audit foundation) is merged; merge commit `8dde0451446622a6df8b9da59050bb32e24289a7`.
+- PR #300 (Hub-side Cloudflare client and permission-gated read-only tool registration) remains draft. Exact head `cc7fb2ce7f8a67ec1c2417dd38218c9b1d81334e`; 47 commits ahead, 0 behind. Backend CI, CI on Python 3.11/3.12, Defensive Python Scan, and Linux/Windows Video Render Integration all passed on this exact head.
+- PR #294 (optional hosted Kimi K3.1 Pro provider) remains draft. Exact head `7c4eb17eeba763ebd1a7a6b317e671a05e1381f1`; 65 commits ahead, 0 behind. All four required workflow groups passed on this exact head. Its durable request quota is migration 32; migration 31 is already used by the merged tool-grant schema.
+- PR #303 adds audit events for unknown-tool and invalid-input invocation attempts. Exact head `31791d1c78dd26abe6be221ef488bac2ed158394`; 2 commits ahead, 0 behind. CI was in progress at this checkpoint.
+- PR #296 (this documentation branch) remains draft and is 19 commits ahead / 2 behind main; its prior exact-head checks passed, but the snapshot has now been refreshed here.
+- PR #297 remains open. Its four workflows are `action_required`; this is neither a test pass nor a test failure and requires the repository's authorized workflow approval path.
+
+### Cloudflare live-state acceptance
+
+- The Cloudflare connector is authenticated and read-only account inspection succeeded.
+- A Worker named `mr-siavash-ai-gateway` is present, but its observed settings do not match the gateway source contract: the expected account/zone variables and gateway/provider secret bindings were not present in the returned settings/secret inventory.
+- The Worker had no custom-domain association in the inspected account. The existing `gshop11.ir/api/*` route still targets `gahop`.
+- Do not treat the similarly named deployed Worker as a verified deployment of `cloudflare/gateway/src/index.js` until its deployed code and configuration are reconciled. No Worker, route, binding, secret, D1 resource, or production setting was changed during this inspection.
+
+### Release gates
+
+1. Complete and review PR #300 on its exact passing head; keep the integration disabled until a dedicated isolated staging gateway is verified end to end.
+2. Keep PR #294 draft until provider data-transfer, retention, spending controls, and operational acceptance are reviewed; request-rate limits are not monetary budgets.
+3. Review PR #303 and require its exact-head workflows to pass before merging.
+4. Resolve PR #297's `action_required` authorization through the repository owner; do not bypass it.
+5. Preserve the existing `gahop` route and production resources. Any staging secret provisioning or deployment must follow the configured approval gate.
+
+CI results are SHA-specific. This checkpoint is not a production-readiness or whole-project-completion declaration.
