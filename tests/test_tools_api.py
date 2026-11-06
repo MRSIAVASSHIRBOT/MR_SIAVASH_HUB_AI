@@ -56,7 +56,7 @@ def test_tool_invoke_validates_payload_without_echoing_input_and_audits_failure(
     client = authenticated_client()
     response = client.post(
         "/tools/text.echo/invoke",
-        json={"payload": {"text": "private-invalid-input"}},
+        json={"payload": {"text": "", "secret": "private-invalid-input"}},
     )
     assert response.status_code == 422
     assert response.json()["detail"] == "Tool input validation failed"
