@@ -1,6 +1,6 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-04 (UTC)
+Last reviewed: 2026-11-06 (UTC)
 
 This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI before every merge or implementation decision.
 
@@ -753,3 +753,28 @@ This checkpoint supersedes earlier PR-state and workflow snapshots above where t
 - Target Windows-device acceptance, representative real-media workflow, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
 
 This checkpoint is not a production-readiness or whole-project-completion declaration.
+
+
+## 18. Live repository snapshot — 2026-11-06 UTC
+
+This point-in-time snapshot supersedes earlier PR-state and workflow observations above. Re-fetch exact refs and checks before any merge or release decision.
+
+### Main
+- Verified main baseline: `1a886ebc366bb6287cf4a6fef8bf4570e98cd03f`.
+- PR #293's provider-neutral video-generation reconciliation, durable per-generation cooldown/attempt state, concurrent request deduplication, and no-resubmit invariant are included in main.
+- PR #295's Ollama Vision response-size boundary tests are merged. Main's latest commit checks report successful Backend/CI and defensive scan jobs; the FFmpeg integration matrix includes a cancelled duplicate run, so use the successful Linux/Windows run records rather than treating cancellation as failure or success.
+
+### Open pull requests at inspection
+- **PR #294 — Kimi K3.1 Pro:** open/draft, head `f68eb1f92218469524bed75681ecd3cf868ade12`, base main, 60 commits ahead / 0 behind. Backend CI, CI (Python 3.11/3.12), Defensive Python Scan, and Linux/Windows FFmpeg integration have successful exact-head runs. The provider remains disabled by default; this does not establish live Moonshot acceptance or a monetary spend ceiling.
+- **PR #296 — this status synchronization:** open/draft, documentation-only, head `d7472c96c2cf5d149ad84c1498e7d540bbbae358`, 15 commits ahead / 0 behind. All four required workflow groups have successful exact-head runs. This follow-up snapshot changes only these documentation files and requires fresh checks on its new head.
+- **PR #297 — scheduled development proposal:** open, not draft, head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 commit ahead / 0 behind. Its diff is limited to payload-envelope formatting and a regression test for URL-safe base64 key loading. All four workflow runs currently report `action_required`; no PASS is claimed.
+- **PR #300 — policy-governed Cloudflare foundation:** open/draft, head `0793414ed8067f3ee9b58b815f644c56c2be9dab`, base main, 18 commits ahead / 0 behind. It adds a typed read-only adapter, an ADR, and mocked tests. At this observation Backend CI and Defensive Python Scan were in progress; aggregate CI and Linux/Windows FFmpeg integration were pending. Keep it unmerged until every required exact-head check completes and the full diff is reviewed.
+
+### Integration and release boundaries
+- Open PR count at this observation is four; the previous recovery snapshot's count of 13 is historical.
+- PR #294 is a hosted-provider candidate, not an enabled provider. Keep explicit provider selection, secret-backed configuration, bounded requests, and provider-side spend controls.
+- PR #300 is a read-only Cloudflare foundation only. It does not register agent-callable tools or grant write/deploy capability. No production Cloudflare settings, Worker code, secrets, routes, or D1 data have been changed.
+- PR #297's `action_required` state is not a test failure and is not a pass; resolve the required GitHub workflow authorization before relying on it.
+- Target Windows-device acceptance, real provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
+
+This snapshot is not a production-readiness or whole-project-completion declaration.
