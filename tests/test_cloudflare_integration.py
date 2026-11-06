@@ -32,6 +32,11 @@ def _client(monkeypatch, handler, **kwargs):
     )
 
 
+def test_constructor_rejects_non_string_token_type():
+    with pytest.raises(TypeError, match="must be a string"):
+        CloudflareReadOnlyClient(api_token=None, allowed_account_ids={ACCOUNT_ID})
+
+
 def test_constructor_requires_explicit_valid_allowlists():
     with pytest.raises(ValueError):
         CloudflareReadOnlyClient(api_token="token", allowed_account_ids=set())
