@@ -4,6 +4,7 @@ This module deliberately has no plaintext fallback. Callers must supply a
 32-byte key from deployment secret management and bind ciphertext to its owner
 and workflow identifiers using associated data.
 """
+
 # ruff: noqa: I001
 from __future__ import annotations
 
@@ -60,8 +61,12 @@ def _associated_data(*, workflow_id: str, task_id: str, owner_user_id: str) -> b
     if any(not isinstance(value, str) or not value.strip() or len(value) > 200 for value in fields):
         raise PayloadEnvelopeError("Workflow payload binding identifiers are invalid")
     return json.dumps(
-        {"v": ENVELOPE_VERSION, "workflow_id": workflow_id, "task_id": task_id,
-         "owner_user_id": owner_user_id},
+        {
+            "v": ENVELOPE_VERSION,
+            "workflow_id": workflow_id,
+            "task_id": task_id,
+            "owner_user_id": owner_user_id,
+        },
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -80,7 +85,10 @@ def encrypt_payload(
         raise PayloadEnvelopeError("Workflow payload encryption key must be 32 bytes")
     try:
         plaintext = json.dumps(
-            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
@@ -91,9 +99,7 @@ def encrypt_payload(
     ciphertext = AESGCM(key).encrypt(
         nonce,
         plaintext,
-        _associated_data(
-            workflow_id=workflow_id, task_id=task_id, owner_user_id=owner_user_id
-        ),
+        _associated_data(workflow_id=workflow_id, task_id=task_id, owner_user_id=owner_user_id),
     )
     return EncryptedPayload(
         version=ENVELOPE_VERSION,
@@ -123,9 +129,7 @@ def decrypt_payload(
         plaintext = AESGCM(key).decrypt(
             nonce,
             ciphertext,
-            _associated_data(
-                workflow_id=workflow_id, task_id=task_id, owner_user_id=owner_user_id
-            ),
+            _associated_data(workflow_id=workflow_id, task_id=task_id, owner_user_id=owner_user_id),
         )
         value = json.loads(plaintext.decode("utf-8"))
     except PayloadEnvelopeError:
