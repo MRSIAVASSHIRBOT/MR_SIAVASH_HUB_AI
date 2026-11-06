@@ -127,7 +127,7 @@ async function cloudflareGet(path, env, query = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
+    const response = await globalThis.fetch(url, {
       method: "GET",
       redirect: "manual",
       signal: controller.signal,
