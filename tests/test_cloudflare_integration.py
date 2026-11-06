@@ -41,6 +41,33 @@ def test_constructor_requires_explicit_valid_allowlists():
         CloudflareReadOnlyClient(api_token=" ", allowed_account_ids={ACCOUNT_ID})
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"timeout_seconds": True},
+        {"timeout_seconds": float("nan")},
+        {"max_response_bytes": True},
+        {"max_response_bytes": 1_048_577},
+    ],
+)
+def test_constructor_rejects_ambiguous_or_unbounded_limits(overrides):
+    with pytest.raises(ValueError):
+        CloudflareReadOnlyClient(
+            api_token="token",
+            allowed_account_ids={ACCOUNT_ID},
+            **overrides,
+        )
+
+
+@pytest.mark.parametrize("token", ["token\\r\\nInjected: value", "x" * 513, "tökén"])
+def test_constructor_rejects_malformed_or_oversized_tokens(token):
+    with pytest.raises(ValueError):
+        CloudflareReadOnlyClient(
+            api_token=token,
+            allowed_account_ids={ACCOUNT_ID},
+        )
+
+
 def test_account_and_zone_scope_are_enforced_before_network():
     client = CloudflareReadOnlyClient(
         api_token="token",
