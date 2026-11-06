@@ -19,6 +19,7 @@ CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4"
 MAX_RESPONSE_BYTES = 1_048_576
 MAX_PAGES = 20
 PAGE_SIZE = 50
+MAX_UNPAGINATED_ITEMS = MAX_PAGES * PAGE_SIZE
 REQUEST_TIMEOUT_SECONDS = 8.0
 ACCOUNT_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 RESOURCE_NAME_PATTERN = re.compile(r"^[a-z0-9_][a-z0-9_-]{0,62}$")
@@ -200,9 +201,21 @@ class CloudflareReadOnlyClient:
                 return items
         raise CloudflareAdapterError("provider_pagination_limit")
 
+    async def _list_unpaginated(self, path: str) -> list[dict[str, Any]]:
+        """Read list endpoints that do not support page/per_page query parameters."""
+        payload = await self._get_json(path)
+        result = payload["result"]
+        if not isinstance(result, list):
+            raise CloudflareAdapterError("provider_invalid_result")
+        if len(result) > MAX_UNPAGINATED_ITEMS:
+            raise CloudflareAdapterError("provider_item_limit")
+        if any(not isinstance(item, dict) for item in result):
+            raise CloudflareAdapterError("provider_invalid_item")
+        return result
+
     async def list_workers(self, account_id: str) -> list[WorkerSummary]:
         path = self._account_path(account_id, "workers/scripts")
-        records = await self._list_pages(path)
+        records = await self._list_unpaginated(path)
         output: list[WorkerSummary] = []
         for item in records:
             worker_id = item.get("id")
@@ -220,7 +233,7 @@ class CloudflareReadOnlyClient:
 
     async def list_worker_routes(self, zone_id: str) -> list[WorkerRoute]:
         path = self._zone_path(zone_id, "workers/routes")
-        records = await self._list_pages(path)
+        records = await self._list_unpaginated(path)
         output: list[WorkerRoute] = []
         for item in records:
             route_id, pattern = item.get("id"), item.get("pattern")
