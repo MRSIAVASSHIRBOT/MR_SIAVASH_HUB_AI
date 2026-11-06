@@ -43,7 +43,7 @@ Do not reuse the token used by the ChatGPT Cloudflare connector. The connector c
 - Redirects, non-JSON responses, malformed envelopes, and provider failures fail closed.
 - Sanitized error codes; no upstream response body or credential is returned.
 - Structured request logs contain only request ID, operation name, status, and duration.
-- Responses use \`Cache-Control: no-store\`.
+- Responses use \`Cache-Control: no-store\`, a deny-by-default Content Security Policy, anti-framing headers, restrictive Permissions Policy, and no CORS grant.
 
 ## Deployment boundary
 
