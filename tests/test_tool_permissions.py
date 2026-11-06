@@ -1,5 +1,5 @@
-from datetime import UTC, datetime
 import sqlite3
+from datetime import UTC, datetime
 
 import pytest
 
@@ -86,7 +86,6 @@ def test_permission_change_and_audit_event_roll_back_together(tmp_path):
     assert repository.list_audit() == []
 
 
-
 def test_failed_revoke_audit_rolls_back_permission_deletion(tmp_path):
     repository = _repository(tmp_path)
     service = ToolPermissionService(repository, AuditLogger(repository))
@@ -96,7 +95,6 @@ def test_failed_revoke_audit_rolls_back_permission_deletion(tmp_path):
         repository.revoke_tool_permission_grant("owner-a", "cloudflare.read", {})
 
     assert service.active_permissions("owner-a") == frozenset({"cloudflare.read"})
-
 
 
 def test_database_constraint_rejects_permissions_outside_the_explicit_allowlist(tmp_path):
