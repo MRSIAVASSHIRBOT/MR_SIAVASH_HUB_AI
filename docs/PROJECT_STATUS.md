@@ -778,3 +778,44 @@ This point-in-time snapshot supersedes earlier PR-state and workflow observation
 - Target Windows-device acceptance, real provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
 
 This snapshot is not a production-readiness or whole-project-completion declaration.
+
+
+## 19. Live repository snapshot — 2026-11-06 UTC
+
+This snapshot supersedes the PR inventory and Cloudflare observations in section 18. It is a point-in-time engineering record; re-fetch refs and checks before any merge or release decision.
+
+### Main baseline
+- Main remains at 1a886ebc366bb6287cf4a6fef8bf4570e98cd03f.
+- PR #293's provider-neutral generation reconciliation and PR #295's Ollama Vision response-size boundary tests are included in main.
+- No production Cloudflare resources were changed in this work session.
+
+### Open pull-request inventory
+
+| PR | State | Head | Ahead / behind main | Exact-head CI evidence |
+|---|---|---|---:|---|
+| #294 Kimi K3.1 Pro | Draft | f68eb1f92218469524bed75681ecd3cf868ade12 | 60 / 0 | Backend CI, CI matrix, Defensive Python Scan, Linux/Windows Video Render Integration passed |
+| #296 Status documentation | Draft | 71c094796fa5a3c4b84e760229948b473ee9ac62 | 17 / 0 | All four groups passed on this head; this new documentation snapshot requires fresh checks |
+| #297 Scheduled development | Open, non-draft | 01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf | 1 / 0 | All four workflows report action_required; neither PASS nor a test failure |
+| #300 Cloudflare Hub client | Draft | 5270e0d8aab3828b1e1ba1936bec33e4f57bc8ea | 31 / 0 | Defensive Python Scan passed; Backend CI and Video Render Integration in progress; CI pending |
+| #301 Cloudflare Workers gateway | Open, non-draft | 684fcd052e0b9394b94d6693bae37632b71fb89f | 15 / 0 | Backend CI, CI, Defensive Python Scan, and Linux/Windows Video Render Integration passed |
+
+The repository currently has five open PRs. The earlier four-PR count in section 18 is historical.
+
+### Cloudflare integration boundary
+
+- PR #301 adds the isolated read-only Cloudflare Worker gateway and contract tests. It uses fixed GET routes, server-side account/zone configuration, a separate Hub-to-gateway credential, bounded provider responses, D1 pagination limits, and binding metadata projection. The readiness endpoint rejects missing/invalid server-side configuration. Its exact-head CI passed, but no deployment, secret provisioning, Access policy, custom-domain routing, or production change is included.
+- PR #300 has been refactored to a typed synchronous Hub client for PR #301. The Hub no longer handles the Cloudflare provider token or calls the Cloudflare API directly. Gateway settings are disabled by default and use a separate SecretStr service credential. The client rejects unsafe gateway URLs, redirects, proxy inheritance, oversized/invalid responses, and unexpected response fields.
+- PR #300 deliberately does not register agent-callable Cloudflare tools yet. The existing tools invocation path supplies an empty permission-grant set, and ToolRegistry does not itself call AuditLogger. Before registration, add owner-scoped server-side grants and redacted audit events through the existing policy/audit authorities; never accept permission grants from request payloads or model output.
+- Both PRs remain unmerged. PR #301's author cannot submit a GitHub approval on their own PR; its inline readiness review thread is resolved, and formal independent approval remains separate from successful CI.
+
+### Remaining queue and release gates
+
+1. Keep #294 draft until provider data-transfer, retention, provider-side spending controls, and operational acceptance are reviewed. Request-frequency limits are not monetary caps.
+2. Keep #297 on hold until the required GitHub workflow authorization is resolved and exact-head checks actually execute.
+3. Keep #300 draft until every exact-head workflow passes and the owner-grant/audit invocation design is implemented and tested.
+4. Keep #301 source-only until independent review and merge controls are satisfied; deploy only to isolated staging after explicit approval.
+5. Keep the existing gahop Worker, gshop11.ir/api/*, secrets, and gshop-db untouched unless a separately approved rollout plan is executed.
+
+CI evidence applies only to the exact SHA and workflow. Pending, queued, in-progress, cancelled, and action_required runs are not passes. Target-device acceptance, live provider acceptance, clean install/upgrade/rollback, and database/media/encryption-key restore remain separate release gates.
+
+This snapshot is not a production-readiness or whole-project-completion declaration.
