@@ -167,7 +167,7 @@ class CloudflareReadOnlyClient:
             try:
                 payload = json.loads(body)
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise CloudflareAdapterError("provider_invalid_json") from exc
+                raise CloudflareAdapterError("provider_invalid_json") from None
             if not isinstance(payload, dict) or payload.get("success") is not True:
                 raise CloudflareAdapterError("provider_api_error")
             result = payload.get("result")
@@ -177,9 +177,9 @@ class CloudflareReadOnlyClient:
         except CloudflareAdapterError:
             raise
         except httpx.TimeoutException as exc:
-            raise CloudflareAdapterError("provider_timeout") from exc
+            raise CloudflareAdapterError("provider_timeout") from None
         except (httpx.HTTPError, OSError, ValueError) as exc:
-            raise CloudflareAdapterError("provider_unavailable") from exc
+            raise CloudflareAdapterError("provider_unavailable") from None
 
     async def _list_pages(self, path: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -195,9 +195,18 @@ class CloudflareReadOnlyClient:
             items.extend(result)
             info = payload.get("result_info")
             total_pages = info.get("total_pages") if isinstance(info, dict) else None
-            if isinstance(total_pages, int) and page >= total_pages:
-                return items
-            if total_pages is None and len(result) < PAGE_SIZE:
+            if total_pages is not None:
+                if isinstance(total_pages, bool) or not isinstance(total_pages, int) or total_pages < 0:
+                    raise CloudflareAdapterError("provider_invalid_pagination")
+                if total_pages > MAX_PAGES:
+                    raise CloudflareAdapterError("provider_pagination_limit")
+                if total_pages == 0:
+                    if items:
+                        raise CloudflareAdapterError("provider_invalid_pagination")
+                    return items
+                if page >= total_pages:
+                    return items
+            elif len(result) < PAGE_SIZE:
                 return items
         raise CloudflareAdapterError("provider_pagination_limit")
 
