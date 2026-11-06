@@ -73,6 +73,7 @@ class ToolPermissionService:
             event.model_dump(mode="json"),
         )
         return {
+            "grant_id": grant["grant_id"],
             "permission": permission,
             "granted_at": grant["granted_at"],
             "expires_at": grant["expires_at"],
