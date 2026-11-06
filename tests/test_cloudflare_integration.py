@@ -1,21 +1,20 @@
-import asyncio
-import json
-
 import httpx
 import pytest
+from pydantic import SecretStr, ValidationError
 
+from mrhub.config import Settings
 from mrhub.integrations import cloudflare
 from mrhub.integrations.cloudflare import (
-    CloudflareAdapterError,
-    CloudflareReadOnlyClient,
+    CloudflareGatewayClient,
+    CloudflareGatewayError,
+    build_cloudflare_gateway_client,
 )
 
-ACCOUNT_ID = "a" * 32
-ZONE_ID = "b" * 32
+TOKEN = SecretStr("gateway-test-token-that-is-long-enough-123456")
 
 
 def _client(monkeypatch, handler, **kwargs):
-    original_client = httpx.AsyncClient
+    original_client = httpx.Client
 
     def factory(**client_kwargs):
         return original_client(
@@ -23,252 +22,253 @@ def _client(monkeypatch, handler, **kwargs):
             **client_kwargs,
         )
 
-    monkeypatch.setattr(cloudflare.httpx, "AsyncClient", factory)
-    return CloudflareReadOnlyClient(
-        api_token="test-token",
-        allowed_account_ids={ACCOUNT_ID},
-        allowed_zone_ids={ZONE_ID},
+    monkeypatch.setattr(cloudflare.httpx, "Client", factory)
+    return CloudflareGatewayClient(
+        gateway_url="https://gateway.example.workers.dev",
+        gateway_token=TOKEN,
         **kwargs,
     )
 
 
-def test_constructor_rejects_non_string_token_type():
-    with pytest.raises(TypeError, match="must be a string"):
-        CloudflareReadOnlyClient(api_token=None, allowed_account_ids={ACCOUNT_ID})
+def _envelope(data):
+    return httpx.Response(200, json={"ok": True, "data": data, "request_id": "test-request"})
 
 
-def test_constructor_requires_explicit_valid_allowlists():
+def test_gateway_settings_are_disabled_by_default(monkeypatch):
+    for key in (
+        "MRH_CLOUDFLARE_GATEWAY_ENABLED",
+        "MRH_CLOUDFLARE_GATEWAY_BASE_URL",
+        "MRH_CLOUDFLARE_GATEWAY_TOKEN",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.cloudflare_gateway_enabled is False
+    assert settings.cloudflare_gateway_base_url is None
+    assert settings.cloudflare_gateway_token is None
+    assert build_cloudflare_gateway_client(settings) is None
+
+
+def test_enabled_gateway_requires_complete_server_side_configuration():
+    settings = Settings(
+        _env_file=None,
+        cloudflare_gateway_enabled=True,
+        cloudflare_gateway_base_url=None,
+        cloudflare_gateway_token=None,
+    )
+    with pytest.raises(CloudflareGatewayError, match="gateway_not_configured"):
+        build_cloudflare_gateway_client(settings)
+
+
+def test_gateway_constructor_rejects_unsafe_urls_and_credentials():
+    for url in (
+        "http://gateway.example.workers.dev",
+        "https://127.0.0.1",
+        "https://localhost",
+        "https://gateway.example.workers.dev/path",
+        "https://user:pass@gateway.example.workers.dev",
+        "https://gateway.example.workers.dev?token=leak",
+    ):
+        with pytest.raises(ValueError):
+            CloudflareGatewayClient(gateway_url=url, gateway_token=TOKEN)
+    with pytest.raises(TypeError, match="SecretStr"):
+        CloudflareGatewayClient(
+            gateway_url="https://gateway.example.workers.dev",
+            gateway_token="plain-text-token",
+        )
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        SecretStr("short"),
+        SecretStr("x" * 513),
+        SecretStr("token with spaces and unsafe controls"),
+        SecretStr("tökén" * 8),
+    ],
+)
+def test_gateway_constructor_rejects_weak_or_malformed_tokens(token):
     with pytest.raises(ValueError):
-        CloudflareReadOnlyClient(api_token="token", allowed_account_ids=set())
-    with pytest.raises(ValueError):
-        CloudflareReadOnlyClient(api_token="token", allowed_account_ids={"not-an-id"})
-    with pytest.raises(ValueError):
-        CloudflareReadOnlyClient(api_token=" ", allowed_account_ids={ACCOUNT_ID})
+        CloudflareGatewayClient(
+            gateway_url="https://gateway.example.workers.dev",
+            gateway_token=token,
+        )
 
 
 @pytest.mark.parametrize(
     "overrides",
     [
         {"timeout_seconds": True},
-        {"timeout_seconds": float("nan")},
+        {"timeout_seconds": 8.1},
         {"max_response_bytes": True},
         {"max_response_bytes": 1_048_577},
     ],
 )
-def test_constructor_rejects_ambiguous_or_unbounded_limits(overrides):
+def test_gateway_constructor_rejects_unbounded_limits(overrides):
     with pytest.raises(ValueError):
-        CloudflareReadOnlyClient(
-            api_token="token",
-            allowed_account_ids={ACCOUNT_ID},
+        CloudflareGatewayClient(
+            gateway_url="https://gateway.example.workers.dev",
+            gateway_token=TOKEN,
             **overrides,
         )
 
 
-@pytest.mark.parametrize("token", ["token\r\nInjected: value", "x" * 513, "tökén"])
-def test_constructor_rejects_malformed_or_oversized_tokens(token):
-    with pytest.raises(ValueError):
-        CloudflareReadOnlyClient(
-            api_token=token,
-            allowed_account_ids={ACCOUNT_ID},
-        )
-
-
-def test_account_and_zone_scope_are_enforced_before_network():
-    client = CloudflareReadOnlyClient(
-        api_token="token",
-        allowed_account_ids={ACCOUNT_ID},
-        allowed_zone_ids={ZONE_ID},
-    )
-    with pytest.raises(CloudflareAdapterError, match="account_not_allowlisted"):
-        asyncio.run(client.list_workers("c" * 32))
-    with pytest.raises(CloudflareAdapterError, match="zone_not_allowlisted"):
-        asyncio.run(client.list_worker_routes("d" * 32))
-
-
-def test_worker_settings_redact_all_binding_values(monkeypatch):
-    secret_value = "must-never-appear-in-output"
-
+def test_workers_uses_fixed_gateway_route_and_projects_typed_metadata(monkeypatch):
     def handler(request):
         assert request.method == "GET"
-        assert request.url.path.endswith("/workers/scripts/storefront/settings")
-        assert request.headers["Authorization"] == "Bearer test-token"
-        return httpx.Response(
-            200,
-            json={
-                "success": True,
-                "result": {
-                    "compatibility_date": "2026-09-11",
-                    "usage_model": "standard",
-                    "bindings": [
-                        {"name": "DB", "type": "d1", "id": "database-id"},
-                        {"name": "PAYMENT_SECRET", "type": "secret_text", "text": secret_value},
-                        {"name": "ALLOWED_ORIGINS", "type": "plain_text", "text": secret_value},
-                    ],
-                },
-            },
-        )
+        assert request.url == "https://gateway.example.workers.dev/v1/workers"
+        assert request.headers["Authorization"] == f"Bearer {TOKEN.get_secret_value()}"
+        assert request.headers["Accept"] == "application/json"
+        return _envelope([
+            {"id": "storefront", "etag": "etag-1"},
+            {"id": "../invalid", "etag": "unsafe"},
+        ])
 
     client = _client(monkeypatch, handler)
-    result = asyncio.run(client.get_worker_settings(ACCOUNT_ID, "storefront"))
-    serialized = result.model_dump_json()
-
-    assert [item.name for item in result.bindings] == [
-        "DB",
-        "PAYMENT_SECRET",
-        "ALLOWED_ORIGINS",
-    ]
-    assert secret_value not in serialized
-    assert '"text":' not in serialized
-    assert result.compatibility_date == "2026-09-11"
-
-
-def test_rejects_invalid_worker_names_without_network(monkeypatch):
-    def handler(_request):
-        pytest.fail("network must not be called for an invalid worker name")
-
-    client = _client(monkeypatch, handler)
-    with pytest.raises(CloudflareAdapterError, match="invalid_worker_name"):
-        asyncio.run(client.get_worker_settings(ACCOUNT_ID, "../storefront"))
-
-
-def test_rejects_oversized_provider_response(monkeypatch):
-    def handler(_request):
-        return httpx.Response(
-            200,
-            content=json.dumps({"success": True, "result": []}).encode() + b" " * 128,
-        )
-
-    client = _client(monkeypatch, handler, max_response_bytes=64)
-    with pytest.raises(CloudflareAdapterError, match="provider_response_too_large"):
-        asyncio.run(client.list_workers(ACCOUNT_ID))
-
-
-def test_rejects_provider_redirects(monkeypatch):
-    def handler(_request):
-        return httpx.Response(302, headers={"Location": "https://example.invalid"})
-
-    client = _client(monkeypatch, handler)
-    with pytest.raises(CloudflareAdapterError, match="provider_redirect_rejected"):
-        asyncio.run(client.list_workers(ACCOUNT_ID))
-
-
-def test_lists_workers_using_fixed_cloudflare_endpoint_without_unsupported_pagination(monkeypatch):
-    def handler(request):
-        assert request.url.host == "api.cloudflare.com"
-        assert request.url.path == f"/client/v4/accounts/{ACCOUNT_ID}/workers/scripts"
-        assert request.url.query == b""
-        return httpx.Response(
-            200,
-            json={
-                "success": True,
-                "result": [
-                    {"id": "storefront", "etag": "etag-1"},
-                    {"id": "../invalid"},
-                ],
-            },
-        )
-
-    client = _client(monkeypatch, handler)
-    workers = asyncio.run(client.list_workers(ACCOUNT_ID))
+    workers = client.list_workers()
     assert [worker.id for worker in workers] == ["storefront"]
+    assert workers[0].etag == "etag-1"
 
 
-def test_lists_worker_routes_without_unsupported_pagination(monkeypatch):
+def test_routes_and_d1_use_fixed_gateway_endpoints(monkeypatch):
+    paths = []
+
     def handler(request):
-        assert request.url.path == f"/client/v4/zones/{ZONE_ID}/workers/routes"
-        assert request.url.query == b""
-        return httpx.Response(
-            200,
-            json={
-                "success": True,
-                "result": [
-                    {"id": "route-1", "pattern": "gshop11.ir/api/*", "script": "gahop", "zone_id": ZONE_ID}
-                ],
-            },
-        )
+        paths.append(request.url.path)
+        if request.url.path == "/v1/worker-routes":
+            return _envelope([{
+                "id": "route-1",
+                "pattern": "gshop11.ir/api/*",
+                "script": "gahop",
+                "zone_id": "b" * 32,
+            }])
+        if request.url.path == "/v1/d1-databases":
+            return _envelope([{"uuid": "db-1", "name": "gshop-db"}])
+        raise AssertionError("unexpected gateway route")
 
     client = _client(monkeypatch, handler)
-    routes = asyncio.run(client.list_worker_routes(ZONE_ID))
-    assert len(routes) == 1
+    routes = client.list_worker_routes()
+    databases = client.list_d1_databases()
     assert routes[0].script == "gahop"
+    assert databases[0].name == "gshop-db"
+    assert paths == ["/v1/worker-routes", "/v1/d1-databases"]
 
 
-def test_d1_database_listing_uses_documented_pagination(monkeypatch):
+def test_worker_settings_accept_only_projected_binding_metadata(monkeypatch):
     def handler(request):
-        assert request.url.path == f"/client/v4/accounts/{ACCOUNT_ID}/d1/database"
-        assert request.url.params["page"] == "1"
-        assert request.url.params["per_page"] == "50"
+        assert request.url.path == "/v1/workers/storefront/settings"
+        return _envelope({
+            "compatibility_date": "2026-11-06",
+            "usage_model": "standard",
+            "bindings": [
+                {"name": "DB", "type": "d1"},
+                {"name": "PAYMENT_SECRET", "type": "secret_text"},
+            ],
+        })
+
+    client = _client(monkeypatch, handler)
+    result = client.get_worker_settings("storefront")
+    assert [binding.name for binding in result.bindings] == ["DB", "PAYMENT_SECRET"]
+    assert "PAYMENT_SECRET" in result.model_dump_json()
+    assert '"text"' not in result.model_dump_json()
+
+
+def test_worker_settings_reject_unexpected_binding_values(monkeypatch):
+    def handler(_request):
+        return _envelope({
+            "bindings": [{"name": "TOKEN", "type": "secret_text", "text": "secret-value"}],
+        })
+
+    client = _client(monkeypatch, handler)
+    with pytest.raises(ValidationError):
+        client.get_worker_settings("storefront")
+
+
+def test_invalid_worker_name_is_rejected_before_network(monkeypatch):
+    def handler(_request):
+        pytest.fail("network must not be called")
+
+    client = _client(monkeypatch, handler)
+    with pytest.raises(CloudflareGatewayError, match="invalid_worker_name"):
+        client.get_worker_settings("../storefront")
+
+
+def test_gateway_redirects_and_non_success_responses_fail_closed(monkeypatch):
+    def redirect(_request):
+        return httpx.Response(302, headers={"Location": "https://attacker.invalid"})
+
+    client = _client(monkeypatch, redirect)
+    with pytest.raises(CloudflareGatewayError, match="gateway_redirect_rejected"):
+        client.list_workers()
+
+    def failure(_request):
+        return httpx.Response(503, text="private gateway details")
+
+    client = _client(monkeypatch, failure)
+    with pytest.raises(CloudflareGatewayError, match="gateway_http_error"):
+        client.list_workers()
+
+
+def test_gateway_rejects_non_json_and_malformed_envelopes(monkeypatch):
+    def non_json(_request):
+        return httpx.Response(200, text="not json", headers={"content-type": "text/plain"})
+
+    client = _client(monkeypatch, non_json)
+    with pytest.raises(CloudflareGatewayError, match="gateway_invalid_content_type"):
+        client.list_workers()
+
+    def malformed(_request):
+        return httpx.Response(200, json={"success": True, "result": []})
+
+    client = _client(monkeypatch, malformed)
+    with pytest.raises(CloudflareGatewayError, match="gateway_invalid_envelope"):
+        client.list_workers()
+
+
+def test_gateway_response_size_is_bounded_by_header_and_stream(monkeypatch):
+    def header_oversized(_request):
         return httpx.Response(
             200,
-            json={
-                "success": True,
-                "result": [{"uuid": "db-1", "name": "workspace"}],
-                "result_info": {"total_pages": 1},
-            },
+            json={"ok": True, "data": []},
+            headers={"content-length": "2000000"},
         )
 
-    client = _client(monkeypatch, handler)
-    databases = asyncio.run(client.list_d1_databases(ACCOUNT_ID))
-    assert [database.name for database in databases] == ["workspace"]
+    client = _client(monkeypatch, header_oversized, max_response_bytes=128)
+    with pytest.raises(CloudflareGatewayError, match="gateway_response_too_large"):
+        client.list_workers()
 
-
-@pytest.mark.parametrize(
-    ("total_pages", "error_code"),
-    [
-        (True, "provider_invalid_pagination"),
-        (-1, "provider_invalid_pagination"),
-        (21, "provider_pagination_limit"),
-    ],
-)
-def test_d1_listing_rejects_invalid_or_unbounded_pagination_metadata(
-    monkeypatch, total_pages, error_code
-):
-    def handler(_request):
+    def stream_oversized(_request):
         return httpx.Response(
             200,
-            json={
-                "success": True,
-                "result": [],
-                "result_info": {"total_pages": total_pages},
-            },
+            stream=httpx.ByteStream(b"x" * 129),
+            headers={"content-type": "application/json"},
         )
 
-    client = _client(monkeypatch, handler)
-    with pytest.raises(CloudflareAdapterError, match=error_code):
-        asyncio.run(client.list_d1_databases(ACCOUNT_ID))
+    client = _client(monkeypatch, stream_oversized, max_response_bytes=128)
+    with pytest.raises(CloudflareGatewayError, match="gateway_response_too_large"):
+        client.list_workers()
 
 
-def test_unpaginated_list_endpoint_rejects_excessive_item_count(monkeypatch):
-    def handler(_request):
-        return httpx.Response(
-            200,
-            json={"success": True, "result": [{"id": "worker"}] * 1001},
-        )
+def test_gateway_timeout_is_sanitized(monkeypatch):
+    def timeout(_request):
+        raise httpx.ReadTimeout("sensitive upstream detail")
 
-    client = _client(monkeypatch, handler)
-    with pytest.raises(CloudflareAdapterError, match="provider_item_limit"):
-        asyncio.run(client.list_workers(ACCOUNT_ID))
+    client = _client(monkeypatch, timeout)
+    with pytest.raises(CloudflareGatewayError, match="gateway_timeout") as error:
+        client.list_workers()
+    assert "sensitive" not in str(error.value)
 
 
-@pytest.mark.parametrize(
-    ("method", "value", "error_code"),
-    [
-        ("list_workers", [], "account_not_allowlisted"),
-        ("list_worker_routes", {}, "zone_not_allowlisted"),
-        ("get_worker_settings", "bad/name", "invalid_worker_name"),
-    ],
-)
-def test_rejects_malformed_resource_identifiers_before_network(
-    monkeypatch, method, value, error_code
-):
-    def handler(_request):
-        pytest.fail("network must not be called for malformed resource identifiers")
+def test_gateway_item_count_and_schema_are_bounded(monkeypatch):
+    def excessive(_request):
+        return _envelope([{"id": "worker"}] * 1_001)
 
-    client = _client(monkeypatch, handler)
-    with pytest.raises(CloudflareAdapterError, match=error_code):
-        if method == "list_workers":
-            asyncio.run(client.list_workers(value))
-        elif method == "list_worker_routes":
-            asyncio.run(client.list_worker_routes(value))
-        else:
-            asyncio.run(client.get_worker_settings(ACCOUNT_ID, value))
+    client = _client(monkeypatch, excessive)
+    with pytest.raises(CloudflareGatewayError, match="gateway_item_limit"):
+        client.list_workers()
+
+    def invalid_schema(_request):
+        return _envelope([{"id": "worker", "unexpected": "field"}])
+
+    client = _client(monkeypatch, invalid_schema)
+    with pytest.raises(ValidationError):
+        client.list_workers()
