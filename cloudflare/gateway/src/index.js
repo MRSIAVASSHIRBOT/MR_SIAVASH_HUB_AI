@@ -22,8 +22,12 @@ function jsonResponse(payload, status = 200, requestId = "") {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      "cross-origin-resource-policy": "same-origin",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
       "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
     },
   });
 }
