@@ -823,11 +823,7 @@ MIGRATIONS = (
             """CREATE TABLE IF NOT EXISTS tool_permission_grants (
                 grant_id TEXT PRIMARY KEY CHECK (length(grant_id) = 36),
                 owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
-                permission TEXT NOT NULL CHECK (
-                    length(permission) BETWEEN 1 AND 100
-                    AND permission GLOB '[a-z]*'
-                    AND permission NOT GLOB '*[^a-z0-9_.:-]*'
-                ),
+                permission TEXT NOT NULL CHECK (permission = 'cloudflare.read'),
                 granted_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 CHECK (expires_at > granted_at),
