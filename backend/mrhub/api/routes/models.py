@@ -388,9 +388,6 @@ def generate_kimi_vision(
         provider = model_router.registry.get("moonshot", settings.kimi_model)
         if not isinstance(provider, KimiProvider):
             raise TypeError("Configured Kimi provider has an invalid adapter type")
-        health = validate_provider_health(provider.health(timeout_seconds=2.0))
-        if not health.available:
-            raise LookupError("Configured Kimi provider is unavailable")
         return provider.generate_vision(
             prompt=payload.prompt,
             image_data_url=payload.image_data_url,
