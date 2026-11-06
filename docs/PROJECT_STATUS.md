@@ -581,3 +581,57 @@ Current main baseline at this review: `6cabc1e81dfc97c704c3ecd1506553a481bedb69`
 The proposal adds owner-scoped generation status and explicit reconciliation endpoints. For ambiguous submissions, the worker looks up the original generation idempotency key and never calls `submit` again. When a provider job is discovered, the worker persists its opaque reference under the active lease, polls status and streams a successful result through bounded private storage before independent media probing and atomic asset registration. Provider job IDs remain excluded from the public status and task-result contracts. The original encrypted request is retained while the remote outcome remains ambiguous and purged only on terminal failure/cancellation or successful output finalization.
 
 Exact-head CI is currently queued, not passed. A further operational merge gate is durable per-generation reconciliation throttling: repeated explicit lookup/status attempts need an atomic attempt budget and cooldown/backoff, with HTTP 429 and a stable `Retry-After` contract. Tests must cover concurrent requests, cooldown expiry, lookup miss, provider error and owner isolation. The provider registry remains empty by default; this PR does not activate a real provider. No production-readiness or external-provider acceptance is claimed.
+
+
+## 24. Latest mainline, PR, and Cloudflare verification — 2026-11-06 UTC
+
+This section supersedes the earlier main SHA, PR #303 state, exact-head CI, and live Worker observations above wherever they differ. Re-fetch exact refs before any merge or release decision.
+
+### Verified mainline
+
+- Current `main`: `e914652f2846758d6d6bf1fb18bef4a033c9be59`.
+- PR #303 merged as `e914652f2846758d6d6bf1fb18bef4a033c9be59`. It adds allow-listed audit events for unregistered tool names and invalid registered-tool inputs, without persisting request payloads or validation details.
+- Exact PR #303 head `e28a3fb20438e36de9e8ebf8b9a6d72d1047c35d` passed CI, Backend CI, Defensive Python Scan, and both Linux and Windows FFmpeg integration jobs. The first Windows attempt failed during Chocolatey package installation with HTTP 504; the targeted rerun completed successfully. The merged commit's post-merge workflow result was not returned by the PR-only commit-run lookup and is not claimed here.
+- Main also includes the isolated Cloudflare Workers gateway source (PR #301), owner-scoped expiring `cloudflare.read` grants and audit foundation (PR #302), and the Hub-side typed read-only client and permission-gated tool registration (PR #300).
+
+### PR #294 — optional Moonshot Kimi K3.1 Pro
+
+- Open and draft. Current head: `2cf2ef554cdb5fc883b7c42298008508f1b8a1d9`; original base: `68f546747c1eeaaa9d15d05a2a98c38aa746e6cb`; comparison with current main: 4 commits ahead, 1 behind.
+- The intermediate head `0803e5b6f38ae92a3df3c94cd5e5885bf3ec4113` failed 79 tests on each of Python 3.11 and 3.12 because five existing Cloudflare gateway settings had been removed from `Settings`. The current branch restores the Cloudflare settings and environment example; the correction is visible in the latest branch tree.
+- Exact-head Defensive Python Scan passed. Backend CI and Video Render Integration were in progress and CI was in progress at the latest observation. No full exact-head pass is claimed.
+- Before merge, synchronize with the new main commit `e914652f2846758d6d6bf1fb18bef4a033c9be59`, preserve the Cloudflare settings, and rerun all required workflows on the resulting exact SHA.
+- Kimi remains disabled by default. Mocked tests do not establish live Moonshot availability, data retention, billing behavior, model quality, or provider-side spending controls. The SQLite sliding-window limit coordinates only processes sharing the same database file and is not a monetary budget.
+
+### PR #296 — documentation synchronization
+
+- Open and draft; latest observed head `22c25524100fc9f2a39fdcc6b4551be0bd4aba76`; comparison with current main: 24 commits ahead, 1 behind.
+- Exact-head Defensive Python Scan passed; Backend CI and Video Render Integration were in progress; aggregate CI was pending at the latest observation.
+- This documentation branch contains repeated historical checkpoint additions. Do not merge until it is synchronized with current main, the two-file diff is reviewed for stale/conflicting status, and all required workflows pass on the final exact head.
+
+### PR #297 — scheduled development proposal
+
+- Open; head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`; 1 commit ahead and 4 behind current main.
+- All four workflow groups report `action_required`. This is not a test pass and not a code-test failure. Do not bypass the repository's required workflow authorization. Rebase/synchronize and obtain authorized workflow approval before considering the small payload-envelope formatting/test change.
+
+### PR #306 — superseded configuration fix
+
+- Closed without merge after the Kimi branch itself restored the Cloudflare settings and environment example.
+- No Cloudflare account resources or production settings were changed by the temporary branch.
+
+### Cloudflare live-state acceptance — read-only inspection
+
+- The connected account lists Workers `gahop` and `mr-siavash-ai-gateway`.
+- `gahop` still owns the observed `gshop11.ir/api/*` route. The `mr-siavash-ai-gateway` Worker has no route in the inspected Worker inventory.
+- The gateway Worker's deployed settings expose only `ALLOWED_ORIGINS` (plain-text) and `DB` (D1) bindings. The source-controlled gateway requires a separate gateway-auth secret and Cloudflare provider/account/zone configuration; those required binding names were not present in the observed binding list.
+- The live script-content inspection did not match the source contract markers for the fixed Cloudflare API origin and read-only tool routes. The similarly named deployed Worker is therefore **not accepted as a verified deployment** of `cloudflare/gateway/src/index.js`.
+- No secret values were read. No Worker code, bindings, secrets, routes, D1 resources, or production settings were modified.
+
+### Required next actions
+
+1. Synchronize PR #294 with current main and validate the exact resulting head; preserve the Cloudflare settings and keep Kimi disabled by default.
+2. Keep the Hub Cloudflare integration disabled until a dedicated isolated staging Worker matches the source contract, has the required secret/variable bindings, and passes authenticated read-only acceptance tests.
+3. Keep `gahop`, `gshop11.ir/api/*`, and production resources untouched during staging verification.
+4. Resolve PR #297's `action_required` state through the authorized GitHub workflow approval path.
+5. Reconcile PR #296's accumulated documentation history with current main before merge.
+
+Workflow evidence is commit-specific. Pending, queued, in-progress, action_required, cancelled, and failed runs are not passes. This checkpoint is not a production-readiness or whole-project-completion declaration.
