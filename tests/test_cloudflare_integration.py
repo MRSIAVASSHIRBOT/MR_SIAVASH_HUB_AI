@@ -4,7 +4,7 @@ import json
 import httpx
 import pytest
 
-import mrhub.integrations.cloudflare as cloudflare
+from mrhub.integrations import cloudflare
 from mrhub.integrations.cloudflare import (
     CloudflareAdapterError,
     CloudflareReadOnlyClient,
