@@ -310,6 +310,11 @@ export async function handleRequest(request, env) {
 
     let data;
     if (route.name === "health") {
+      requireAccountId(env);
+      requireZoneId(env);
+      if (typeof env.CF_API_TOKEN !== "string" || !env.CF_API_TOKEN.trim()) {
+        throw new GatewayFault("gateway_provider_token_not_configured", 503);
+      }
       data = { status: "ready", mode: "read_only" };
     } else if (route.name === "list_workers") {
       data = await listWorkers(env);
