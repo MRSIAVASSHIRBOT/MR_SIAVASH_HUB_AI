@@ -90,7 +90,7 @@ class CloudflareReadOnlyClient:
         max_response_bytes: int = MAX_RESPONSE_BYTES,
     ) -> None:
         if not isinstance(api_token, str):
-            raise ValueError("Cloudflare API token is required")
+            raise TypeError("Cloudflare API token must be a string")
         normalized_token = api_token.strip()
         if (
             not normalized_token
