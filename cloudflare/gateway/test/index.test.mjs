@@ -11,7 +11,10 @@ const ENV = {
 
 async function withFetch(handler, callback) {
   const original = globalThis.fetch;
-  globalThis.fetch = async (input, init) => handler(new Request(input, init));
+  globalThis.fetch = async (input, init) => {
+    const request = new Request(input, init);
+    return handler({ method: request.method, url: new URL(request.url), headers: request.headers });
+  };
   try {
     return await callback();
   } finally {
