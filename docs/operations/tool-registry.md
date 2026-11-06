@@ -37,3 +37,17 @@ The authenticated owner can manage a small, explicit allow-list of tool permissi
 Grants expire automatically. The default lifetime is one hour; callers may request 60 seconds through 24 hours. Unsupported permissions are rejected. Grant and revoke mutations write their audit events in the same SQLite transaction as the permission change.
 
 Tool invocation loads active permissions from the authenticated session owner in the server-side database. The request body cannot supply permissions or approval flags. Every invocation outcome records only allow-listed metadata and a generated correlation ID; input payloads, provider responses, and credentials are not recorded.
+
+
+## Optional Cloudflare read-only tools
+
+When the isolated gateway is fully configured, the authenticated tool catalog registers four fixed operations:
+
+- `cloudflare.workers.list`
+- `cloudflare.worker_routes.list`
+- `cloudflare.d1_databases.list` (metadata only; no row access)
+- `cloudflare.worker.settings.read` (binding names/types only; no values)
+
+Every operation requires the owner's active `cloudflare.read` grant. The grant is never inferred from model output or the invocation payload. It defaults to one hour and can be bounded from 60 seconds to 24 hours. Revocation or expiry causes subsequent invocations to be denied. Gateway credentials remain in server-side settings and never enter tool schemas, results, audit metadata, or frontend assets.
+
+The integration remains disabled by default. Enabling it requires a dedicated HTTPS `*.workers.dev` gateway URL and a separate gateway token; the Cloudflare provider token must remain exclusively in the gateway Worker. Only fixed GET operations are exposed. No deployments, route mutations, secrets, D1 rows, source downloads, deletions, or billing operations are registered.
