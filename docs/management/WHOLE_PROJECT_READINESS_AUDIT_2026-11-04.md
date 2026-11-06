@@ -561,3 +561,36 @@ Supersedes earlier PR and workflow snapshots above where they differ.
 5. Treat target-device Windows acceptance, live-provider acceptance, clean installation/upgrade/rollback and backup/restore drills as separate evidence classes.
 
 No production-readiness or whole-project-completion claim is made.
+
+
+## 18. Live repository and integration review — 2026-11-06 UTC
+
+**Main baseline:** `1a886ebc366bb6287cf4a6fef8bf4570e98cd03f`. The repository's open pull-request queue has changed since the earlier recovery snapshots; the following is a live point-in-time observation, not a merge verdict.
+
+### Open PR inventory
+
+| PR | State | Current head | Comparison to main | Exact-head evidence at inspection |
+|---|---|---|---|---|
+| #294 Kimi provider | Draft | `f68eb1f92218469524bed75681ecd3cf868ade12` | 60 ahead / 0 behind | Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration passed |
+| #296 Status docs | Draft | `d7472c96c2cf5d149ad84c1498e7d540bbbae358` | 15 ahead / 0 behind | Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration passed |
+| #297 Scheduled development | Open, non-draft | `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf` | 1 ahead / 0 behind | All four workflow groups returned `action_required`; this is neither PASS nor a code failure |
+| #300 Cloudflare foundation | Draft | `0793414ed8067f3ee9b58b815f644c56c2be9dab` | 18 ahead / 0 behind | Backend CI and Defensive Python Scan in progress; aggregate CI and Linux/Windows FFmpeg integration pending |
+
+### Cloudflare PR #300 review
+
+The branch contains three added files: a fixed-endpoint typed read-only Cloudflare adapter, ADR-0001, and mocked tests. The adapter enforces account/zone allowlists, bounded response size and pagination, rejects redirects, suppresses provider exception causes from sanitized errors, and projects Worker binding metadata without returning binding values. The tests now cover malformed identifiers, CR/LF token input, pagination metadata and excessive item counts.
+
+The current branch remains a foundation only. It is not registered in the canonical Tool Registry/Policy Engine, has no owner-grant lifecycle or audit integration, and exposes no write/deploy operations. This gap must be closed through inspected existing contracts rather than by creating a parallel authorization system. No production Cloudflare configuration or data has been modified.
+
+### Queue disposition
+
+1. Keep #294 draft until its external data-transfer, provider-side spending controls, and deployment acceptance gates are reviewed separately from hosted CI.
+2. Keep #297 on hold until the required GitHub workflow authorization is resolved and exact-head checks actually execute.
+3. Keep #300 draft until all exact-head checks pass, the full diff is reviewed, and the adapter's integration boundary is designed against current main.
+4. #296's prior exact-head checks passed, but this audit update creates a new head and requires a fresh full check set before any merge decision.
+
+The previous recovery issue snapshot reported 13 open PRs. The live search at this review returned four open PRs; update the canonical recovery tracker with this newer inventory rather than carrying forward the historical count.
+
+### Evidence boundary
+
+CI success applies only to the exact SHA and workflow that completed. Pending, in-progress, cancelled, and `action_required` results are not passes. Hosted checks do not replace target-device acceptance, live provider verification, clean install/upgrade/rollback, or database/media/encryption-key restore drills. No production-readiness or whole-project-completion claim is made.
