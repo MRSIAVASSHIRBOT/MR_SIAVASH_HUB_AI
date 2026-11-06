@@ -121,7 +121,14 @@ def _validate_gateway_url(value: str) -> str:
         or normalized_host.endswith((".localhost", ".local", ".internal"))
     ):
         raise ValueError("Cloudflare gateway URL must use a public DNS hostname")
-    return f"https://{parsed.netloc}".rstrip("/")
+    # Stage 1 is deliberately pinned to an isolated Workers hostname. This
+    # prevents an otherwise-valid public URL from turning the client into an
+    # environment-configured proxy to unrelated public services.
+    if not normalized_host.endswith(".workers.dev") or normalized_host == "workers.dev":
+        raise ValueError("Cloudflare gateway URL must use an isolated workers.dev hostname")
+    if port not in (None, 443):
+        raise ValueError("Cloudflare gateway URL must use the HTTPS default port")
+    return f"https://{normalized_host}"
 
 
 class CloudflareGatewayClient:
