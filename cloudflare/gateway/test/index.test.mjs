@@ -24,11 +24,12 @@ function request(path, options = {}) {
   if (options.token !== null) {
     headers.set("authorization", "Bearer " + (options.token || ENV.GATEWAY_AUTH_TOKEN));
   }
-  return new Request("https://gateway.example" + path, {
+  const init = {
     method: options.method || "GET",
     headers,
-    body: options.body,
-  });
+  };
+  if (options.body !== undefined) init.body = options.body;
+  return new Request("https://gateway.example" + path, init);
 }
 
 async function json(response) {
@@ -61,7 +62,13 @@ test("gateway rejects non-GET methods, query strings, and request bodies", async
   assert.equal(post.status, 405);
   const query = await worker.fetch(request("/v1/workers?account_id=attacker"), ENV);
   assert.equal(query.status, 400);
-  const body = await worker.fetch(request("/v1/workers", { body: "{}" }), ENV);
+  const bodyRequest = {
+    method: "GET",
+    url: "https://gateway.example/v1/workers",
+    headers: new Headers({ authorization: "Bearer " + ENV.GATEWAY_AUTH_TOKEN }),
+    body: new ReadableStream(),
+  };
+  const body = await worker.fetch(bodyRequest, ENV);
   assert.equal(body.status, 400);
 });
 
@@ -91,7 +98,7 @@ test("Worker inventory uses a fixed endpoint and projects safe metadata only", a
     });
   }, async () => {
     const response = await worker.fetch(request("/v1/workers"), ENV);
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 200, await response.clone().text());
     const body = await json(response);
     assert.deepEqual(body.data, [{
       id: "gateway-staging",
