@@ -61,9 +61,10 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
             prefix=".mrhub-backup-", suffix=".sqlite3", dir=destination_path.parent, delete=False
         ) as temporary:
             temporary_path = Path(temporary.name)
-        with closing(sqlite3.connect(source_path)) as source_connection, closing(
-            sqlite3.connect(temporary_path)
-        ) as backup_connection:
+        with (
+            closing(sqlite3.connect(source_path)) as source_connection,
+            closing(sqlite3.connect(temporary_path)) as backup_connection,
+        ):
             source_connection.backup(backup_connection)
             backup_connection.commit()
         _quick_check(temporary_path)
@@ -80,8 +81,12 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
             "excluded": ["application_secrets", "provider_tokens", "external_media"],
         }
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", prefix=".mrhub-manifest-", suffix=".json",
-            dir=destination_path.parent, delete=False
+            mode="w",
+            encoding="utf-8",
+            prefix=".mrhub-manifest-",
+            suffix=".json",
+            dir=destination_path.parent,
+            delete=False,
         ) as temporary:
             temporary_manifest = Path(temporary.name)
             json.dump(manifest, temporary, ensure_ascii=False, sort_keys=True, indent=2)
@@ -100,14 +105,19 @@ def backup_database(source: str | Path, destination: str | Path) -> dict[str, An
         except OSError:
             # Remove only the file we created, and only if it is still the same inode.
             current = destination_path.stat()
-            if (current.st_dev, current.st_ino) == (published_backup.st_dev, published_backup.st_ino):
+            if (current.st_dev, current.st_ino) == (
+                published_backup.st_dev,
+                published_backup.st_ino,
+            ):
                 destination_path.unlink(missing_ok=True)
             raise
         temporary_manifest.unlink()
         temporary_manifest = None
         return manifest
     except (OSError, sqlite3.Error) as exc:
-        raise BackupError("Backup creation failed; destination was not intentionally overwritten") from exc
+        raise BackupError(
+            "Backup creation failed; destination was not intentionally overwritten"
+        ) from exc
     finally:
         for path in (temporary_path, temporary_manifest):
             if path is not None:
@@ -136,12 +146,8 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
         raise BackupError("Media verification source must be a regular database file")
     media_root = database_path.parent / "content_assets"
     try:
-        with closing(
-            sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
-        ) as connection:
-            count_row = connection.execute(
-                "SELECT COUNT(*) FROM content_assets"
-            ).fetchone()
+        with closing(sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)) as connection:
+            count_row = connection.execute("SELECT COUNT(*) FROM content_assets").fetchone()
             registered_asset_count = int(count_row[0]) if count_row else 0
             rows = (
                 connection.execute(
@@ -241,6 +247,8 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
                     result["unregistered_entries"] += 1
         except OSError:
             result["invalid_entries"] += 1
+            if not result["verification_truncated"] and not root_is_safe:
+                result["verification_truncated"] = True
 
     result["ok"] = not result["verification_truncated"] and all(
         result[key] == 0
@@ -286,9 +294,10 @@ def restore_database(backup: str | Path, destination: str | Path) -> dict[str, A
             prefix=".mrhub-restore-", suffix=".sqlite3", dir=destination_path.parent, delete=False
         ) as temporary:
             temporary_path = Path(temporary.name)
-        with closing(sqlite3.connect(backup_path)) as backup_connection, closing(
-            sqlite3.connect(temporary_path)
-        ) as destination_connection:
+        with (
+            closing(sqlite3.connect(backup_path)) as backup_connection,
+            closing(sqlite3.connect(temporary_path)) as destination_connection,
+        ):
             backup_connection.backup(destination_connection)
             destination_connection.commit()
         _quick_check(temporary_path)
