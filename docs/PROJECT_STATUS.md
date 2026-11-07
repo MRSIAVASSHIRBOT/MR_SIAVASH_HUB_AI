@@ -739,3 +739,15 @@ This section supersedes earlier live-main and open-PR snapshots wherever they di
 - Target Windows/browser acceptance, production restore/key/media drills, clean install/upgrade/rollback, external provider/social-account acceptance and release approval remain open. Green hosted CI is not production readiness.
 
 No whole-project-complete or production-ready claim is made.
+
+
+## 29. Exact PR-head refresh — 2026-11-07 UTC
+
+This later observation supersedes the PR #308, #309 and #310 heads and workflow states in section 28. Main remains `0d7356076c160d265d265f47405dc75e901b2b52` at the time of this refresh.
+
+- **PR #308:** head `76554168d6b2c3958632c842937a160549295e29`, 12 ahead / 0 behind. Backend CI, Defensive Python Scan, and Linux/Windows Video Render Integration passed on this head; Python 3.11 passed and Python 3.12 remained in progress. Do not treat the aggregate CI group as complete until both matrix jobs finish.
+- **PR #309:** head `7b1da5b8e60f64f444340af2e647a47509891a56`, Draft, 2 ahead / 0 behind. Backend CI, CI, Defensive Python Scan, and Linux/Windows Video Render Integration all passed. The ADR remains Proposed and is still a documentation proposal, not an accepted decision.
+- **PR #310:** head `8d2e9226fc50adc76bc99ff42a583329d5e68d13`, Draft, 12 ahead / 0 behind. The latest branch adds per-dimension status provenance, observation timestamps and reason codes, and displays them in the dashboard. Exact-head Backend CI, CI, Defensive Python Scan and Video Render Integration were still running/queued; no pass is claimed for this head.
+- **PR #312:** this status refresh remains a documentation-only Draft PR. Its exact-head CI is tracked separately and must pass before merge.
+
+These are timestamped snapshots, not promises that concurrently updated PR branches will remain unchanged. Re-read the latest PR head and its associated runs before any merge decision.
