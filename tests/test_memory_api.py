@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -219,8 +220,6 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
         json={"category": "security", "content": "safe repository update fixture"},
     )
     assert created.status_code == 201
-    from uuid import UUID
-
     with pytest.raises(ValueError, match="Memory fields must be text"):
         repository.update(
             "owner-test",
