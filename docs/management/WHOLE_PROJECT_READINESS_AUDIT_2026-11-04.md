@@ -580,3 +580,17 @@ The following snapshot supersedes the PR-head and workflow observations in earli
 - PR #311 is merged as `0d7356076c160d265d265f47405dc75e901b2b52`; interrupted media-directory scans are now explicitly marked truncated and invalid.
 
 Cloudflare live gateway acceptance, the existing GSHOP Worker/payment configuration, GitHub branch protection, target Windows/browser acceptance, restore/rollback drills, and external-provider acceptance remain outstanding. No Cloudflare resource, secret, payment configuration, branch-protection setting, or production deployment was changed. No production-ready or whole-project-complete claim is made.
+
+
+## 27. Post-memory-merge acceptance refresh — 2026-11-07 UTC
+
+PR #308 merged to main as `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. Its exact PR head passed all four required workflow groups. The merged change centralizes six-pattern credential screening at both API and repository boundaries; it is explicitly heuristic and does not guarantee detection of all secrets.
+
+Main post-merge Defensive Python Scan and Linux/Windows FFmpeg integration passed; Backend CI and Python 3.11/3.12 CI were still in progress at the latest observation.
+
+- PR #309: synchronized Draft control-center ADR, head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, 3 ahead / 0 behind; Defensive Scan passed, remaining groups were running.
+- PR #310: synchronized Draft project registry, head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, 13 ahead / 0 behind; per-dimension source/timestamp/reason metadata is implemented in the branch, but exact-head checks were still running/queued and no live cross-project monitoring is claimed.
+- PR #312: documentation-only status refresh; exact-head CI remains a separate gate.
+- PR #297: 7 behind main; all four workflow groups remain `action_required`.
+
+The latest Cloudflare deployment acceptance remains the 2026-11-06 read-only finding; it was not rechecked here. No production Cloudflare changes, target-device acceptance, or release approval are claimed.
