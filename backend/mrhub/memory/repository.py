@@ -27,8 +27,13 @@ class MemoryRepository:
         self.tasks.initialize()
 
     @staticmethod
-    def _reject_obvious_secrets(value: str | None) -> str | None:
-        if value is not None and any(pattern.search(value) for pattern in MemoryRepository._SECRET_PATTERNS):
+    def validate_memory_text(value: object | None) -> str | None:
+        """Reject obvious credential patterns as defense-in-depth, not as a complete secret scanner."""
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Memory fields must be text")
+        if any(pattern.search(value) for pattern in MemoryRepository._SECRET_PATTERNS):
             raise ValueError("Memory must not contain credentials or authentication secrets")
         return value
 
@@ -61,8 +66,8 @@ class MemoryRepository:
         }
 
     def create(self, owner_user_id: str, values: dict[str, object]) -> dict[str, object]:
-        self._reject_obvious_secrets(values.get("content"))
-        self._reject_obvious_secrets(values.get("provenance"))
+        self.validate_memory_text(values.get("content"))
+        self.validate_memory_text(values.get("provenance"))
         memory_id = str(uuid4())
         now = self._now()
         expires_at = self._serialize_expiry(values.get("expires_at"))  # type: ignore[arg-type]
@@ -122,8 +127,8 @@ class MemoryRepository:
     def update(
         self, owner_user_id: str, memory_id: UUID, changes: dict[str, object]
     ) -> dict[str, object] | None:
-        self._reject_obvious_secrets(changes.get("content"))
-        self._reject_obvious_secrets(changes.get("provenance"))
+        self.validate_memory_text(changes.get("content"))
+        self.validate_memory_text(changes.get("provenance"))
         allowed = {
             "category",
             "content",
