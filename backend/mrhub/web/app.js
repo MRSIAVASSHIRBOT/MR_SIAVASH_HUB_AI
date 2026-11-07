@@ -454,7 +454,8 @@
 
   async function loadOverview() {
     message("#workspace-message", "در حال به‌روزرسانی…");
-    await loadProjectRegistry();
+    // The optional project registry must not block core operator status panels.
+    void loadProjectRegistry();
     const [health, ready, providers, tasks, jobs, workflows] = await Promise.allSettled([
       api("/health", { auth: false }),
       api("/ready", { auth: false }),
