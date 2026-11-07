@@ -765,3 +765,24 @@ This section supersedes earlier PR-head and workflow snapshots in this document.
 - **PR #311:** merged as `0d7356076c160d265d265f47405dc75e901b2b52`. The merged media verifier correctly treats interrupted directory enumeration as truncated/invalid.
 
 The approval for PR #308 is exact-head-bound and does not imply merge authorization. No production deployment, Cloudflare resource mutation, secret change, branch-protection change, or payment configuration change was performed. Green hosted CI is not a substitute for target-device, restore/rollback, external-provider, and production acceptance. No whole-project-complete or production-ready claim is made.
+
+
+## 30. Post-memory-merge synchronization — 2026-11-07 UTC
+
+This snapshot follows PR #308's merge and supersedes its open-PR state in sections 28–29.
+
+### Mainline
+
+- Current main at this observation: `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+- PR #308 merged as `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. The canonical heuristic credential validator now runs at both API and repository persistence boundaries; non-text values are rejected at the repository boundary. This remains defense-in-depth pattern screening, not a complete secret scanner.
+- All four exact-head workflow groups passed on PR #308 head `76554168d6b2c3958632c842937a160549295e29`: Backend CI, CI (Python 3.11/3.12), Defensive Python Scan, and Linux/Windows Video Render Integration.
+- Post-merge main checks on `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`: Defensive Python Scan and both Linux/Windows FFmpeg jobs passed; Backend CI and Python 3.11/3.12 CI were still in progress at the latest poll.
+
+### Remaining active PRs
+
+- **PR #309:** head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, Draft, 3 ahead / 0 behind. This is the Proposed control-center ADR; its branch is synchronized with current main. Exact-head workflows were still running except the Defensive Python Scan, which passed.
+- **PR #310:** head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, Draft, 13 ahead / 0 behind. It is synchronized with current main and now carries per-dimension status source, timestamp and reason-code metadata displayed in the UI. The registry remains static: no live GitHub, Cloudflare or runtime probe is claimed. Exact-head workflows were still running/queued.
+- **PR #312:** this documentation-only status refresh is also synchronized with current main; its latest exact-head workflows remain a separate merge gate.
+- **PR #297:** remains 7 commits behind main with all four workflow groups in `action_required`; no authorization bypass is permitted.
+
+No production deployment, Cloudflare mutation, credential rotation or target-device acceptance was performed. The product remains short of production readiness and whole-project completion.
