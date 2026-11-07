@@ -35,7 +35,7 @@ class MemoryRepository:
         if value is None:
             return None
         if not isinstance(value, str):
-            raise ValueError("Memory fields must be text")
+            raise TypeError("Memory fields must be text")
         if any(pattern.search(value) for pattern in MemoryRepository._SECRET_PATTERNS):
             raise ValueError("Memory must not contain credentials or authentication secrets")
         return value
