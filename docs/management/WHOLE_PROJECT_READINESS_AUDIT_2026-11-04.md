@@ -535,7 +535,7 @@ This section supersedes the open-PR states in sections 24–26 where they differ
 The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
 
 
-## 25. Current cross-domain acceptance snapshot — 2026-11-07 UTC
+## 28. Current cross-domain acceptance snapshot — 2026-11-07 UTC
 
 **Verified main:** `0d7356076c160d265d265f47405dc75e901b2b52`. PR #311 is merged; its exact PR head and all four post-merge main workflow groups passed. The merged fix prevents incomplete media-directory enumeration from being reported as a complete media verification.
 
@@ -556,7 +556,7 @@ The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment conf
 The evidence above is commit-specific. In-progress, queued, action-required or prior-head workflows are not passes for a newer commit. This audit does not declare production readiness or whole-project completion.
 
 
-## 26. Exact PR-head CI refresh — 2026-11-07 UTC
+## 29. Exact PR-head CI refresh — 2026-11-07 UTC
 
 At this observation, main was `0d7356076c160d265d265f47405dc75e901b2b52`.
 
@@ -568,7 +568,7 @@ At this observation, main was `0d7356076c160d265d265f47405dc75e901b2b52`.
 Do not reuse earlier-head CI results for a changed branch head. A passing PR suite does not establish runtime acceptance or production readiness.
 
 
-## 27. Latest exact-head acceptance refresh — 2026-11-07 UTC
+## 30. Latest exact-head acceptance refresh — 2026-11-07 UTC
 
 The following snapshot supersedes the PR-head and workflow observations in earlier sections. Main was re-read at `0d7356076c160d265d265f47405dc75e901b2b52`.
 
@@ -582,7 +582,7 @@ The following snapshot supersedes the PR-head and workflow observations in earli
 Cloudflare live gateway acceptance, the existing GSHOP Worker/payment configuration, GitHub branch protection, target Windows/browser acceptance, restore/rollback drills, and external-provider acceptance remain outstanding. No Cloudflare resource, secret, payment configuration, branch-protection setting, or production deployment was changed. No production-ready or whole-project-complete claim is made.
 
 
-## 28. Post-memory-merge acceptance refresh — 2026-11-07 UTC
+## 31. Post-memory-merge acceptance refresh — 2026-11-07 UTC
 
 PR #308 merged to main as `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. Its exact PR head passed all four required workflow groups. The merged change centralizes six-pattern credential screening at both API and repository boundaries; it is explicitly heuristic and does not guarantee detection of all secrets.
 
