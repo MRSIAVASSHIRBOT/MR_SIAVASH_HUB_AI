@@ -12,10 +12,33 @@ from mrhub.infrastructure.database import TaskRepository
 class MemoryRepository:
     """Store explicit memory records and search only the authenticated owner's data."""
 
+    _SECRET_PATTERNS = (
+        re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
+        re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
+        re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+        re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
+        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+        re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}"),
+    )
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
         self.tasks = TaskRepository(database_path)
         self.tasks.initialize()
+
+    @staticmethod
+    def validate_memory_text(value: object | None) -> str | None:
+        """Reject obvious credential patterns as defense-in-depth.
+
+        This heuristic cannot guarantee that every credential format is detected.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise TypeError("Memory fields must be text")
+        if any(pattern.search(value) for pattern in MemoryRepository._SECRET_PATTERNS):
+            raise ValueError("Memory must not contain credentials or authentication secrets")
+        return value
 
     @staticmethod
     def _now() -> str:
@@ -46,6 +69,8 @@ class MemoryRepository:
         }
 
     def create(self, owner_user_id: str, values: dict[str, object]) -> dict[str, object]:
+        self.validate_memory_text(values.get("content"))
+        self.validate_memory_text(values.get("provenance"))
         memory_id = str(uuid4())
         now = self._now()
         expires_at = self._serialize_expiry(values.get("expires_at"))  # type: ignore[arg-type]
@@ -105,6 +130,8 @@ class MemoryRepository:
     def update(
         self, owner_user_id: str, memory_id: UUID, changes: dict[str, object]
     ) -> dict[str, object] | None:
+        self.validate_memory_text(changes.get("content"))
+        self.validate_memory_text(changes.get("provenance"))
         allowed = {
             "category",
             "content",

@@ -1,7 +1,6 @@
 """Explicit owner-scoped memory CRUD, export, and lexical search."""
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -17,21 +16,12 @@ from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/memory", tags=["memory"], dependencies=[Depends(require_user)])
 
-_SECRET_PATTERNS = (
-    re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
-    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
-    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{20,}"),
-)
 
-
-def _reject_obvious_secrets(value: str | None) -> str | None:
-    if value is not None and any(pattern.search(value) for pattern in _SECRET_PATTERNS):
-        raise ValueError("Memory must not contain credentials or authentication secrets")
-    return value
-
+def _validate_memory_text(value: str | None) -> str | None:
+    try:
+        return MemoryRepository.validate_memory_text(value)
+    except TypeError as exc:
+        raise ValueError(str(exc)) from exc
 
 class MemoryCreate(BaseModel):
     category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
@@ -44,12 +34,12 @@ class MemoryCreate(BaseModel):
     @field_validator("content")
     @classmethod
     def content_must_not_look_like_a_secret(cls, value: str) -> str:
-        return _reject_obvious_secrets(value) or value
+        return _validate_memory_text(value) or value
 
     @field_validator("provenance")
     @classmethod
     def provenance_must_not_look_like_a_secret(cls, value: str) -> str:
-        return _reject_obvious_secrets(value) or value
+        return _validate_memory_text(value) or value
 
     @field_validator("expires_at")
     @classmethod
@@ -73,12 +63,12 @@ class MemoryUpdate(BaseModel):
     @field_validator("content")
     @classmethod
     def content_must_not_look_like_a_secret(cls, value: str | None):
-        return _reject_obvious_secrets(value)
+        return _validate_memory_text(value)
 
     @field_validator("provenance")
     @classmethod
     def provenance_must_not_look_like_a_secret(cls, value: str | None):
-        return _reject_obvious_secrets(value)
+        return _validate_memory_text(value)
 
     @field_validator("expires_at")
     @classmethod
