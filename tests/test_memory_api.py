@@ -212,7 +212,7 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
     repository = MemoryRepository(get_settings().database_path)
     invalid_create = {"category": "security", "content": "safe note"}
     invalid_create[field] = {"unexpected": "object"}
-    with pytest.raises(ValueError, match="Memory fields must be text"):
+    with pytest.raises(TypeError, match="Memory fields must be text"):
         repository.create("owner-test", invalid_create)
 
     created = client.post(
@@ -220,7 +220,7 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
         json={"category": "security", "content": "safe repository update fixture"},
     )
     assert created.status_code == 201
-    with pytest.raises(ValueError, match="Memory fields must be text"):
+    with pytest.raises(TypeError, match="Memory fields must be text"):
         repository.update(
             "owner-test",
             UUID(created.json()["memory_id"]),
