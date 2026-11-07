@@ -19,7 +19,7 @@ router = APIRouter(prefix="/memory", tags=["memory"], dependencies=[Depends(requ
 
 def _validate_memory_text(value: str | None) -> str | None:
     try:
-        return _validate_memory_text(value)
+        return MemoryRepository.validate_memory_text(value)
     except TypeError as exc:
         raise ValueError(str(exc)) from exc
 
