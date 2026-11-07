@@ -28,7 +28,10 @@ class MemoryRepository:
 
     @staticmethod
     def validate_memory_text(value: object | None) -> str | None:
-        """Reject obvious credential patterns as defense-in-depth, not as a complete secret scanner."""
+        """Reject obvious credential patterns as defense-in-depth.
+
+        This heuristic cannot guarantee that every credential format is detected.
+        """
         if value is None:
             return None
         if not isinstance(value, str):
