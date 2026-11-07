@@ -16,6 +16,13 @@ from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/memory", tags=["memory"], dependencies=[Depends(require_user)])
 
+
+def _validate_memory_text(value: str | None) -> str | None:
+    try:
+        return _validate_memory_text(value)
+    except TypeError as exc:
+        raise ValueError(str(exc)) from exc
+
 class MemoryCreate(BaseModel):
     category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
     content: str = Field(min_length=1, max_length=2000)
@@ -27,12 +34,12 @@ class MemoryCreate(BaseModel):
     @field_validator("content")
     @classmethod
     def content_must_not_look_like_a_secret(cls, value: str) -> str:
-        return MemoryRepository.validate_memory_text(value) or value
+        return _validate_memory_text(value) or value
 
     @field_validator("provenance")
     @classmethod
     def provenance_must_not_look_like_a_secret(cls, value: str) -> str:
-        return MemoryRepository.validate_memory_text(value) or value
+        return _validate_memory_text(value) or value
 
     @field_validator("expires_at")
     @classmethod
@@ -56,12 +63,12 @@ class MemoryUpdate(BaseModel):
     @field_validator("content")
     @classmethod
     def content_must_not_look_like_a_secret(cls, value: str | None):
-        return MemoryRepository.validate_memory_text(value)
+        return _validate_memory_text(value)
 
     @field_validator("provenance")
     @classmethod
     def provenance_must_not_look_like_a_secret(cls, value: str | None):
-        return MemoryRepository.validate_memory_text(value)
+        return _validate_memory_text(value)
 
     @field_validator("expires_at")
     @classmethod
