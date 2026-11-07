@@ -412,13 +412,31 @@
         card.append(heading);
         card.append(element("p", project.description || ""));
         const statuses = element("dl", undefined, "project-status-list");
-        for (const [label, value] of [
-          ["مخزن", project.repository_status],
-          ["سرویس", project.runtime_status],
-          ["زیرساخت", project.infrastructure_status],
+        for (const [label, dimension, value] of [
+          ["مخزن", "repository", project.repository_status],
+          ["سرویس", "runtime", project.runtime_status],
+          ["زیرساخت", "infrastructure", project.infrastructure_status],
         ]) {
           const row = element("div", undefined, "project-status-row");
           row.append(element("dt", label), element("dd", value || "unknown"));
+          const observation = project.status_observations
+            && project.status_observations[dimension];
+          if (observation && typeof observation === "object") {
+            const timestamp = typeof observation.observed_at === "string"
+              ? new Date(observation.observed_at)
+              : null;
+            const observedLabel = timestamp && !Number.isNaN(timestamp.getTime())
+              ? timestamp.toLocaleString("fa-IR")
+              : observation.observed_at || "زمان نامشخص";
+            row.append(element(
+              "small",
+              "منبع: " + (observation.source || "نامشخص")
+                + " · زمان مشاهده: " + observedLabel
+                + " · کد: " + (observation.reason_code || "نامشخص")
+            ));
+          } else {
+            row.append(element("small", "منبع و زمان مشاهده ثبت نشده است."));
+          }
           statuses.append(row);
         }
         card.append(statuses);
