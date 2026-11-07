@@ -533,3 +533,24 @@ This section supersedes the open-PR states in sections 24–26 where they differ
 6. **PR #297:** remains blocked on `action_required` workflow authorization; do not bypass that gate.
 
 The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
+
+
+## 25. Current cross-domain acceptance snapshot — 2026-11-07 UTC
+
+**Verified main:** `0d7356076c160d265d265f47405dc75e901b2b52`. PR #311 is merged; its exact PR head and all four post-merge main workflow groups passed. The merged fix prevents incomplete media-directory enumeration from being reported as a complete media verification.
+
+### Current PR gates
+
+- PR #308 memory credential screening: synchronized with main, current head `76554168d6b2c3958632c842937a160549295e29`, 12 ahead / 0 behind. Prior-head tests passed; exact synchronized-head workflows were still running.
+- PR #309 control-center ADR: current head `7b1da5b8e60f64f444340af2e647a47509891a56`, Draft, 2 ahead / 0 behind. Three workflow groups passed; aggregate CI was still running. ADR remains Proposed.
+- PR #310 project portfolio: current head `3299c5605764499c0fd1b02b3f1dc38932c5c162`, Draft, 8 ahead / 0 behind. Defensive scan passed; Backend CI, Python CI and video integration were still running. The current implementation is a static explicit registry, not live cross-project monitoring.
+- PR #297 remains 7 commits behind current main and all four workflows are `action_required`; workflow approval must not be bypassed.
+
+### Operational boundaries
+
+- Cloudflare gateway source, Hub-side read-only client, owner-scoped grants/audit, and optional Kimi provider are merged. No live deployment acceptance or real Kimi inference/billing/retention acceptance is established by those merges.
+- The last Cloudflare live inspection (2026-11-06) did not accept the existing `mr-siavash-ai-gateway` Worker as a deployment of the repository gateway source. It had no observed route and did not expose the required source-contract bindings. This was not rechecked on 2026-11-07; production resources remain unchanged.
+- The `gahop` Worker and its payment bindings/routes remain untouched. Credential rotation, CORS/logging changes, staging deployment, production routes and repository protection are approval-gated.
+- Target-device browser acceptance, production database/media/key restore drills, clean install/upgrade/rollback, external-provider/social-account acceptance and release approval remain open.
+
+The evidence above is commit-specific. In-progress, queued, action-required or prior-head workflows are not passes for a newer commit. This audit does not declare production readiness or whole-project completion.
