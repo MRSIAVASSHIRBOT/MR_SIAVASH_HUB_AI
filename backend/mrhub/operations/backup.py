@@ -246,9 +246,9 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
                 if entry.name not in registered_keys:
                     result["unregistered_entries"] += 1
         except OSError:
+            # Directory enumeration was incomplete; do not report a complete scan.
             result["invalid_entries"] += 1
-            if not result["verification_truncated"] and not root_is_safe:
-                result["verification_truncated"] = True
+            result["verification_truncated"] = True
 
     result["ok"] = not result["verification_truncated"] and all(
         result[key] == 0
