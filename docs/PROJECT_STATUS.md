@@ -767,7 +767,7 @@ This section supersedes earlier PR-head and workflow snapshots in this document.
 The approval for PR #308 is exact-head-bound and does not imply merge authorization. No production deployment, Cloudflare resource mutation, secret change, branch-protection change, or payment configuration change was performed. Green hosted CI is not a substitute for target-device, restore/rollback, external-provider, and production acceptance. No whole-project-complete or production-ready claim is made.
 
 
-## 30. Post-memory-merge synchronization — 2026-11-07 UTC
+## 31. Post-memory-merge synchronization — 2026-11-07 UTC
 
 This snapshot follows PR #308's merge and supersedes its open-PR state in sections 28–29.
 
@@ -786,3 +786,8 @@ This snapshot follows PR #308's merge and supersedes its open-PR state in sectio
 - **PR #297:** remains 7 commits behind main with all four workflow groups in `action_required`; no authorization bypass is permitted.
 
 No production deployment, Cloudflare mutation, credential rotation or target-device acceptance was performed. The product remains short of production readiness and whole-project completion.
+
+
+### Cloudflare read-only check (same date)
+
+A fresh account read confirmed that `mr-siavash-ai-gateway` has one API deployment/version receiving 100% traffic but no attached route. Its observability is enabled, query-string redaction is enabled, persistent invocation logs and traces are enabled, and traces are sampled at 10%. The separate `gahop` Worker still owns `gshop11.ir/api/*`; query-string redaction is disabled and invocation logs persist. No secret values were read and no Cloudflare resources or settings were changed. The gateway remains unaccepted for production pending source-contract, route, and privacy-policy verification.
