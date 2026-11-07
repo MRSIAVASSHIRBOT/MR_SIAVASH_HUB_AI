@@ -197,3 +197,44 @@ summary { color: var(--green); cursor: pointer; }
 .video-render-panel h4 { margin: 0; }
 .video-render-panel .button:disabled { opacity: .5; cursor: not-allowed; }
 #video-render-result { display: grid; gap: .5rem; }
+
+
+.project-portfolio { margin: 1.1rem 0 1.25rem; }
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: .8rem;
+}
+.project-card {
+  display: grid;
+  gap: .7rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: .85rem;
+  background: #091712;
+}
+.project-card-heading, .project-status-row, .project-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.project-card-heading strong { overflow-wrap: anywhere; }
+.project-state {
+  color: var(--amber);
+  border: 1px solid #806331;
+  border-radius: 999px;
+  padding: .2rem .55rem;
+  font-size: .72rem;
+}
+.project-card p { margin: 0; color: var(--muted); line-height: 1.6; }
+.project-status-list { display: grid; gap: .4rem; margin: 0; }
+.project-status-row { border-top: 1px solid var(--line); padding-top: .4rem; font-size: .82rem; }
+.project-status-row dt { color: var(--muted); }
+.project-status-row dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.project-status-row small { display: block; margin-top: .2rem; color: var(--muted); font-size: .72rem; line-height: 1.45; overflow-wrap: anywhere; }
+.project-links { justify-content: flex-start; }
+.project-links a { color: var(--green); text-decoration: underline; text-underline-offset: .2rem; }
+.project-card > small { color: var(--muted); line-height: 1.5; }

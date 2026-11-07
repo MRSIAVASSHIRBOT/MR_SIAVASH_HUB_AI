@@ -397,8 +397,83 @@
     }
   }
 
+  async function loadProjectRegistry() {
+    const container = $("#project-registry-list");
+    const observed = $("#project-registry-observed");
+    try {
+      const payload = await api("/projects/registry");
+      const projects = Array.isArray(payload.projects) ? payload.projects : [];
+      container.replaceChildren();
+      for (const project of projects) {
+        const card = element("article", undefined, "project-card");
+        const heading = element("div", undefined, "project-card-heading");
+        heading.append(element("strong", project.name || project.project_id));
+        heading.append(element("span", project.repository_status || "unknown", "project-state"));
+        card.append(heading);
+        card.append(element("p", project.description || ""));
+        const statuses = element("dl", undefined, "project-status-list");
+        for (const [label, dimension, value] of [
+          ["مخزن", "repository", project.repository_status],
+          ["سرویس", "runtime", project.runtime_status],
+          ["زیرساخت", "infrastructure", project.infrastructure_status],
+        ]) {
+          const row = element("div", undefined, "project-status-row");
+          row.append(element("dt", label), element("dd", value || "unknown"));
+          const observation = project.status_observations
+            && project.status_observations[dimension];
+          if (observation && typeof observation === "object") {
+            const timestamp = typeof observation.observed_at === "string"
+              ? new Date(observation.observed_at)
+              : null;
+            const observedLabel = timestamp && !Number.isNaN(timestamp.getTime())
+              ? timestamp.toLocaleString("fa-IR")
+              : observation.observed_at || "زمان نامشخص";
+            row.append(element(
+              "small",
+              "منبع: " + (observation.source || "نامشخص")
+                + " · زمان مشاهده: " + observedLabel
+                + " · کد: " + (observation.reason_code || "نامشخص")
+            ));
+          } else {
+            row.append(element("small", "منبع و زمان مشاهده ثبت نشده است."));
+          }
+          statuses.append(row);
+        }
+        card.append(statuses);
+        const links = element("div", undefined, "project-links");
+        if (typeof project.repository_url === "string"
+          && /^https:\/\/github\.com\/MRSIAVASSHIRBOT\/[A-Za-z0-9_.-]+$/.test(project.repository_url)) {
+          const repositoryLink = element("a", "مخزن GitHub");
+          repositoryLink.href = project.repository_url;
+          repositoryLink.target = "_blank";
+          repositoryLink.rel = "noopener noreferrer";
+          links.append(repositoryLink);
+        }
+        if (project.service_url === "https://gshop11.ir/") {
+          const serviceLink = element("a", "وب‌سایت");
+          serviceLink.href = project.service_url;
+          serviceLink.target = "_blank";
+          serviceLink.rel = "noopener noreferrer";
+          links.append(serviceLink);
+        }
+        card.append(links);
+        card.append(element("small", project.status_reason || ""));
+        container.append(card);
+      }
+      if (!projects.length) renderEmpty(container, "پروژه‌ای در فهرست ثبت نشده است.");
+      observed.textContent = payload.observed_at
+        ? "زمان ثبت فهرست: " + new Date(payload.observed_at).toLocaleString("fa-IR")
+        : "زمان مشاهده نامشخص";
+    } catch (error) {
+      renderEmpty(container, "دریافت فهرست پروژه‌ها ناموفق بود: " + error.message);
+      observed.textContent = "فهرست در دسترس نیست";
+    }
+  }
+
   async function loadOverview() {
     message("#workspace-message", "در حال به‌روزرسانی…");
+    // The optional project registry must not block core operator status panels.
+    void loadProjectRegistry();
     const [health, ready, providers, tasks, jobs, workflows] = await Promise.allSettled([
       api("/health", { auth: false }),
       api("/ready", { auth: false }),
