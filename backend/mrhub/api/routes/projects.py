@@ -48,12 +48,35 @@ def project_registry() -> dict[str, object]:
     observed_at = datetime.now(UTC).isoformat()
     projects = []
     for project in PROJECTS:
+        # Every status carries its own provenance and observation timestamp.
+        # These are configuration observations, not live health probes.
+        status_observations = {
+            "repository": {
+                "status": "not_configured",
+                "source": "project_registry_configuration",
+                "observed_at": observed_at,
+                "reason_code": "github_integration_not_configured",
+            },
+            "runtime": {
+                "status": "unknown",
+                "source": "project_registry_configuration",
+                "observed_at": observed_at,
+                "reason_code": "runtime_probe_not_configured",
+            },
+            "infrastructure": {
+                "status": "not_configured",
+                "source": "project_registry_configuration",
+                "observed_at": observed_at,
+                "reason_code": "cloudflare_integration_not_configured",
+            },
+        }
         projects.append(
             {
                 **project,
-                "repository_status": "not_configured",
-                "runtime_status": "unknown",
-                "infrastructure_status": "not_configured",
+                "repository_status": status_observations["repository"]["status"],
+                "runtime_status": status_observations["runtime"]["status"],
+                "infrastructure_status": status_observations["infrastructure"]["status"],
+                "status_observations": status_observations,
                 "status_reason": (
                     "GitHub and external runtime observations are not yet "
                     "configured for the Hub server."
