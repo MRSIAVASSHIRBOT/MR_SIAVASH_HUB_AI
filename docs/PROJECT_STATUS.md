@@ -1,6 +1,6 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-04 (UTC)
+Last reviewed: 2026-11-07 (UTC)
 
 This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI before every merge or implementation decision.
 
@@ -8,7 +8,7 @@ This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI be
 
 MR_SIAVASH_HUB_AI is a local-first, hybrid-capable modular AI workspace for one primary user. Discover and evaluate third-party open-source projects, then integrate them through reviewed adapters and bounded interfaces; do not blindly copy repositories. Prefer free/open-source components without promising every provider or operation is free. No silent cloud fallback.
 
-Unrelated repositories (Gshop, the game, Telegram bot, and others) must remain out of scope.
+Separate repositories remain independent products. Any cross-project visibility must be explicitly enrolled and read-only; it does not imply shared credentials, write access, deployment coupling, or automatic repository discovery. Unrelated game and other repositories remain out of scope.
 
 ## Main baseline and merged hardening
 
@@ -710,3 +710,32 @@ This section supersedes the open-PR states in sections 24–26 where they differ
 6. **PR #297:** remains blocked on `action_required` workflow authorization; do not bypass that gate.
 
 The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
+
+
+## 28. Current verified snapshot — 2026-11-07 UTC
+
+This section supersedes earlier live-main and open-PR snapshots wherever they differ. The latest GitHub refs and exact-head workflow states were re-read before this update.
+
+### Mainline and backup verification
+
+- Current `main`: `0d7356076c160d265d265f47405dc75e901b2b52`.
+- PR #311 merged as `0d7356076c160d265d265f47405dc75e901b2b52`. It makes media verification explicitly incomplete when directory enumeration raises an OS-level error, and adds a regression test for a permission-denied scan.
+- All four required workflow groups passed on exact PR head `f48309c3ed04ba72e2afcac9886149abb1bbe990`: Backend CI, CI (Python 3.11/3.12), Defensive Python Scan, and Linux/Windows Video Render Integration.
+- All four post-merge main workflows also passed on `0d7356076c160d265d265f47405dc75e901b2b52`: Backend CI run `42324775680`, CI run `42324775563`, Defensive Python Scan run `42324775627`, and Video Render Integration run `42324775718`.
+
+### Current open implementation and architecture PRs
+
+- **PR #308 — memory credential-pattern screening:** current head `76554168d6b2c3958632c842937a160549295e29`; synchronized with current main (12 commits ahead / 0 behind). All four groups passed on previous head `2672aafd4cd3af4c92fd4e19609cb8ec74685c87`; fresh workflows for the synchronized head were in progress at the latest observation. The heuristic detects only the six documented patterns and is not a complete secret scanner.
+- **PR #309 — central project control-center ADR:** current head `7b1da5b8e60f64f444340af2e647a47509891a56`; documentation-only, Draft, 2 commits ahead / 0 behind. Backend CI, Defensive Python Scan and Linux/Windows Video Render Integration passed; aggregate CI was still in progress. ADR status remains Proposed; no architecture decision is represented as accepted by this PR.
+- **PR #310 — authenticated project portfolio:** current head `3299c5605764499c0fd1b02b3f1dc38932c5c162`; Draft, 8 commits ahead / 0 behind. Defensive Python Scan passed; Backend CI, CI and Video Render Integration were in progress. It adds only an explicit authenticated registry and RTL dashboard cards. It does not yet query live GitHub metadata, Cloudflare resources or runtime health; statuses remain `not_configured`/`unknown`.
+- **PR #297 — scheduled payload-envelope cleanup:** head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`; 1 commit ahead / 7 behind current main. All four workflow groups report `action_required`. Do not bypass workflow authorization; this branch is not merge-ready.
+
+### Cloudflare and product acceptance boundaries
+
+- PR #300's Hub-side read-only Cloudflare client/tool registration, PR #302's owner-scoped grants/audit foundation, PR #301's gateway source, and PR #294's opt-in Kimi provider are merged. These are source-code integrations, not proof of a deployed or accepted Cloudflare gateway or a live Kimi account.
+- The last read-only Cloudflare inspection on 2026-11-06 found that the similarly named `mr-siavash-ai-gateway` Worker did not match the source-controlled gateway contract and had no observed route. That live state was not rechecked in this update; keep the gateway integration disabled until isolated staging acceptance is completed.
+- The existing `gahop` Worker, `gshop11.ir/api/*` route, payment configuration and D1 data remain outside this code-only work. No Cloudflare resource or secret was changed in this update.
+- Repository ruleset listing was empty and detailed branch-protection inspection returned 403 on 2026-11-06. An authorized owner/admin still needs to verify repository governance through an owner-compatible path.
+- Target Windows/browser acceptance, production restore/key/media drills, clean install/upgrade/rollback, external provider/social-account acceptance and release approval remain open. Green hosted CI is not production readiness.
+
+No whole-project-complete or production-ready claim is made.
