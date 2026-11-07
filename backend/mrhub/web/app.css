@@ -234,6 +234,7 @@ summary { color: var(--green); cursor: pointer; }
 .project-status-row { border-top: 1px solid var(--line); padding-top: .4rem; font-size: .82rem; }
 .project-status-row dt { color: var(--muted); }
 .project-status-row dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.project-status-row small { display: block; margin-top: .2rem; color: var(--muted); font-size: .72rem; line-height: 1.45; overflow-wrap: anywhere; }
 .project-links { justify-content: flex-start; }
 .project-links a { color: var(--green); text-decoration: underline; text-underline-offset: .2rem; }
 .project-card > small { color: var(--muted); line-height: 1.5; }
