@@ -751,3 +751,17 @@ This later observation supersedes the PR #308, #309 and #310 heads and workflow 
 - **PR #312:** this status refresh remains a documentation-only Draft PR. Its exact-head CI is tracked separately and must pass before merge.
 
 These are timestamped snapshots, not promises that concurrently updated PR branches will remain unchanged. Re-read the latest PR head and its associated runs before any merge decision.
+
+
+## 30. Latest exact-head verification — 2026-11-07 UTC
+
+This section supersedes earlier PR-head and workflow snapshots in this document. The latest observed `main` remains `0d7356076c160d265d265f47405dc75e901b2b52`.
+
+- **PR #308 — memory credential screening:** head `76554168d6b2c3958632c842937a160549295e29`, 12 ahead / 0 behind. CI (Python 3.11 and 3.12), Backend CI, Defensive Python Scan, and Video Render Integration all completed successfully on this exact head. An exact-head approval was recorded after reviewing the diff and test coverage. The heuristic remains defense-in-depth, not complete secret detection. No merge was performed.
+- **PR #309 — control-center ADR:** head `7b1da5b8e60f64f444340af2e647a47509891a56`, Draft, 2 ahead / 0 behind. All four workflow groups passed. The ADR remains Proposed; this PR is a documentation proposal, not an accepted architecture decision.
+- **PR #310 — authenticated project portfolio:** head `8d2e9226fc50adc76bc99ff42a583329d5e68d13`, Draft, 12 ahead / 0 behind. Defensive Python Scan passed; Backend CI, CI (Python 3.11/3.12), and Linux/Windows Video Render Integration were still in progress at this observation. The API now includes per-dimension status, source, observation timestamp, and reason code. It remains an explicit static registry: no live GitHub, Cloudflare, or runtime probes are implemented.
+- **PR #312 — this status documentation:** head `ef2f603d91883313315bf298323417a22fea6407`, Draft, 4 ahead / 0 behind. Defensive Python Scan, Backend CI, CI, and Video Render Integration were still running or pending at this observation. This document refresh must pass its own exact-head checks before merge.
+- **PR #297 — scheduled payload-envelope cleanup:** head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 ahead / 7 behind. All four workflow groups remain `action_required`; do not bypass authorization or merge this branch.
+- **PR #311:** merged as `0d7356076c160d265d265f47405dc75e901b2b52`. The merged media verifier correctly treats interrupted directory enumeration as truncated/invalid.
+
+The approval for PR #308 is exact-head-bound and does not imply merge authorization. No production deployment, Cloudflare resource mutation, secret change, branch-protection change, or payment configuration change was performed. Green hosted CI is not a substitute for target-device, restore/rollback, external-provider, and production acceptance. No whole-project-complete or production-ready claim is made.
