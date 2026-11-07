@@ -533,3 +533,69 @@ This section supersedes the open-PR states in sections 24–26 where they differ
 6. **PR #297:** remains blocked on `action_required` workflow authorization; do not bypass that gate.
 
 The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
+
+
+## 28. Current cross-domain acceptance snapshot — 2026-11-07 UTC
+
+**Verified main:** `0d7356076c160d265d265f47405dc75e901b2b52`. PR #311 is merged; its exact PR head and all four post-merge main workflow groups passed. The merged fix prevents incomplete media-directory enumeration from being reported as a complete media verification.
+
+### Current PR gates
+
+- PR #308 memory credential screening: synchronized with main, current head `76554168d6b2c3958632c842937a160549295e29`, 12 ahead / 0 behind. Prior-head tests passed; exact synchronized-head workflows were still running.
+- PR #309 control-center ADR: current head `7b1da5b8e60f64f444340af2e647a47509891a56`, Draft, 2 ahead / 0 behind. Three workflow groups passed; aggregate CI was still running. ADR remains Proposed.
+- PR #310 project portfolio: current head `3299c5605764499c0fd1b02b3f1dc38932c5c162`, Draft, 8 ahead / 0 behind. Defensive scan passed; Backend CI, Python CI and video integration were still running. The current implementation is a static explicit registry, not live cross-project monitoring.
+- PR #297 remains 7 commits behind current main and all four workflows are `action_required`; workflow approval must not be bypassed.
+
+### Operational boundaries
+
+- Cloudflare gateway source, Hub-side read-only client, owner-scoped grants/audit, and optional Kimi provider are merged. No live deployment acceptance or real Kimi inference/billing/retention acceptance is established by those merges.
+- The last Cloudflare live inspection (2026-11-06) did not accept the existing `mr-siavash-ai-gateway` Worker as a deployment of the repository gateway source. It had no observed route and did not expose the required source-contract bindings. This was not rechecked on 2026-11-07; production resources remain unchanged.
+- The `gahop` Worker and its payment bindings/routes remain untouched. Credential rotation, CORS/logging changes, staging deployment, production routes and repository protection are approval-gated.
+- Target-device browser acceptance, production database/media/key restore drills, clean install/upgrade/rollback, external-provider/social-account acceptance and release approval remain open.
+
+The evidence above is commit-specific. In-progress, queued, action-required or prior-head workflows are not passes for a newer commit. This audit does not declare production readiness or whole-project completion.
+
+
+## 29. Exact PR-head CI refresh — 2026-11-07 UTC
+
+At this observation, main was `0d7356076c160d265d265f47405dc75e901b2b52`.
+
+- PR #308 (`76554168d6b2c3958632c842937a160549295e29`): 12 ahead / 0 behind; Backend CI, Defensive Scan and Linux/Windows video integration passed; Python 3.11 passed and Python 3.12 remained in progress.
+- PR #309 (`7b1da5b8e60f64f444340af2e647a47509891a56`): Draft, 2 ahead / 0 behind; all four required workflow groups passed. Its ADR remains Proposed.
+- PR #310 (`8d2e9226fc50adc76bc99ff42a583329d5e68d13`): Draft, 12 ahead / 0 behind; adds explicit status source/timestamp/reason-code metadata and UI display. All four exact-head workflow groups were still running or queued.
+- PR #312 is a documentation-only Draft; its new exact-head workflows remain an independent merge gate.
+
+Do not reuse earlier-head CI results for a changed branch head. A passing PR suite does not establish runtime acceptance or production readiness.
+
+
+## 30. Latest exact-head acceptance refresh — 2026-11-07 UTC
+
+The following snapshot supersedes the PR-head and workflow observations in earlier sections. Main was re-read at `0d7356076c160d265d265f47405dc75e901b2b52`.
+
+- PR #308 head `76554168d6b2c3958632c842937a160549295e29`: 12 ahead / 0 behind; all four required workflow groups passed, including both Python CI versions and Linux/Windows video integration. Exact-head review approval was recorded. No merge was performed.
+- PR #309 head `7b1da5b8e60f64f444340af2e647a47509891a56`: Draft, 2 ahead / 0 behind; all four workflow groups passed. ADR remains Proposed.
+- PR #310 head `8d2e9226fc50adc76bc99ff42a583329d5e68d13`: Draft, 12 ahead / 0 behind; Defensive Python Scan passed; Backend CI, Python 3.11/3.12 CI, and Linux/Windows video integration remained in progress. The registry now carries status provenance, timestamp, and reason code per dimension, but still performs no live cross-project probes.
+- PR #312 documentation refresh: a new commit was added after the previous observation, so its exact-head workflow matrix must be re-read; prior-head results do not transfer.
+- PR #297 head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`: 1 ahead / 7 behind; all four workflows are `action_required`. Do not bypass this authorization gate.
+- PR #311 is merged as `0d7356076c160d265d265f47405dc75e901b2b52`; interrupted media-directory scans are now explicitly marked truncated and invalid.
+
+Cloudflare live gateway acceptance, the existing GSHOP Worker/payment configuration, GitHub branch protection, target Windows/browser acceptance, restore/rollback drills, and external-provider acceptance remain outstanding. No Cloudflare resource, secret, payment configuration, branch-protection setting, or production deployment was changed. No production-ready or whole-project-complete claim is made.
+
+
+## 31. Post-memory-merge acceptance refresh — 2026-11-07 UTC
+
+PR #308 merged to main as `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. Its exact PR head passed all four required workflow groups. The merged change centralizes six-pattern credential screening at both API and repository boundaries; it is explicitly heuristic and does not guarantee detection of all secrets.
+
+Main post-merge Defensive Python Scan and Linux/Windows FFmpeg integration passed; Backend CI and Python 3.11/3.12 CI were still in progress at the latest observation.
+
+- PR #309: synchronized Draft control-center ADR, head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, 3 ahead / 0 behind; Defensive Scan passed, remaining groups were running.
+- PR #310: synchronized Draft project registry, head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, 13 ahead / 0 behind; per-dimension source/timestamp/reason metadata is implemented in the branch, but exact-head checks were still running/queued and no live cross-project monitoring is claimed.
+- PR #312: documentation-only status refresh; exact-head CI remains a separate gate.
+- PR #297: 7 behind main; all four workflow groups remain `action_required`.
+
+The latest Cloudflare deployment acceptance remains the 2026-11-06 read-only finding; it was not rechecked here. No production Cloudflare changes, target-device acceptance, or release approval are claimed.
+
+
+### Cloudflare read-only check (same date)
+
+The Worker `mr-siavash-ai-gateway` has one recorded API deployment/version at 100% traffic but no attached route. Observability is enabled, query-string redaction is enabled, invocation logs and traces persist, and trace sampling is 10%. The separate `gahop` Worker retains `gshop11.ir/api/*`, query-string redaction disabled, and persistent invocation logs enabled. No secret values were read. No Cloudflare resources, routes, bindings, secrets, DNS, D1, payment settings, or production deployments were changed.
