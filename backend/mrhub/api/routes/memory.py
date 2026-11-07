@@ -56,12 +56,12 @@ class MemoryUpdate(BaseModel):
     @field_validator("content")
     @classmethod
     def content_must_not_look_like_a_secret(cls, value: str | None):
-        return _reject_obvious_secrets(value)
+        return MemoryRepository.validate_memory_text(value)
 
     @field_validator("provenance")
     @classmethod
     def provenance_must_not_look_like_a_secret(cls, value: str | None):
-        return _reject_obvious_secrets(value)
+        return MemoryRepository.validate_memory_text(value)
 
     @field_validator("expires_at")
     @classmethod
