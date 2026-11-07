@@ -582,7 +582,7 @@ The following snapshot supersedes the PR-head and workflow observations in earli
 Cloudflare live gateway acceptance, the existing GSHOP Worker/payment configuration, GitHub branch protection, target Windows/browser acceptance, restore/rollback drills, and external-provider acceptance remain outstanding. No Cloudflare resource, secret, payment configuration, branch-protection setting, or production deployment was changed. No production-ready or whole-project-complete claim is made.
 
 
-## 27. Post-memory-merge acceptance refresh — 2026-11-07 UTC
+## 28. Post-memory-merge acceptance refresh — 2026-11-07 UTC
 
 PR #308 merged to main as `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. Its exact PR head passed all four required workflow groups. The merged change centralizes six-pattern credential screening at both API and repository boundaries; it is explicitly heuristic and does not guarantee detection of all secrets.
 
@@ -594,3 +594,8 @@ Main post-merge Defensive Python Scan and Linux/Windows FFmpeg integration passe
 - PR #297: 7 behind main; all four workflow groups remain `action_required`.
 
 The latest Cloudflare deployment acceptance remains the 2026-11-06 read-only finding; it was not rechecked here. No production Cloudflare changes, target-device acceptance, or release approval are claimed.
+
+
+### Cloudflare read-only check (same date)
+
+The Worker `mr-siavash-ai-gateway` has one recorded API deployment/version at 100% traffic but no attached route. Observability is enabled, query-string redaction is enabled, invocation logs and traces persist, and trace sampling is 10%. The separate `gahop` Worker retains `gshop11.ir/api/*`, query-string redaction disabled, and persistent invocation logs enabled. No secret values were read. No Cloudflare resources, routes, bindings, secrets, DNS, D1, payment settings, or production deployments were changed.
