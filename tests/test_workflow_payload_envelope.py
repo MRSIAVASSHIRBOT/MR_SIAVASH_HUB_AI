@@ -16,6 +16,7 @@ from mrhub.jobs.payload_envelope import (
 
 
 KEY = b"k" * 32
+ENCODED_KEY = base64.urlsafe_b64encode(KEY).decode("ascii")
 BINDING = {
     "workflow_id": "workflow-1",
     "task_id": "task-1",
@@ -28,6 +29,12 @@ def test_round_trip_preserves_json_payload_and_version() -> None:
     envelope = encrypt_payload(payload, **BINDING, key=KEY)
     assert envelope.version == ENVELOPE_VERSION
     assert decrypt_payload(envelope, **BINDING, key=KEY) == payload
+
+
+def test_encoded_key_loads_correctly() -> None:
+    assert load_payload_key(ENCODED_KEY) == KEY
+    encoded = load_payload_key(ENCODED_KEY)
+    assert encoded == KEY
 
 
 def test_same_payload_uses_fresh_nonce() -> None:
