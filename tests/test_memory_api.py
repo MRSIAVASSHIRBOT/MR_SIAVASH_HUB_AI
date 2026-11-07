@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
@@ -162,3 +163,67 @@ def test_memory_export_is_owner_scoped_and_contains_expired_entries() -> None:
     assert [entry["memory_id"] for entry in exported.json()["entries"]] == [
         created.json()["memory_id"]
     ]
+
+
+@pytest.mark.parametrize("field", ["content", "provenance"])
+@pytest.mark.parametrize(
+    "credential",
+    [
+        "password=not-a-real-password",
+        "sk-abcdefghijklmnop",
+        "ghp_abcdefghijklmnopqrst",
+        "xoxb-abcdefghijklmnop",
+        "-----BEGIN PRIVATE KEY-----",
+        "Bearer abcdefghijklmnopqrstuvwxyz123456",
+    ],
+)
+def test_memory_rejects_credential_patterns_on_create_and_update(
+    field: str, credential: str
+) -> None:
+    client = authenticated_client()
+    unsafe_payload = {
+        "category": "security",
+        "content": "ordinary engineering note",
+        "provenance": "user-authored",
+    }
+    unsafe_payload[field] = credential
+    assert client.post("/memory", json=unsafe_payload).status_code == 422
+
+    created = client.post(
+        "/memory",
+        json={
+            "category": "security",
+            "content": "A note about how a secret manager works",
+            "provenance": "user-authored",
+        },
+    )
+    assert created.status_code == 201
+    updated = client.patch(
+        f"/memory/{created.json()['memory_id']}",
+        json={field: credential},
+    )
+    assert updated.status_code == 422
+
+
+@pytest.mark.parametrize("field", ["content", "provenance"])
+def test_memory_repository_rejects_non_text_values(field: str) -> None:
+    client = authenticated_client()
+    repository = MemoryRepository(get_settings().database_path)
+    invalid_create = {"category": "security", "content": "safe note"}
+    invalid_create[field] = {"unexpected": "object"}
+    with pytest.raises(ValueError, match="Memory fields must be text"):
+        repository.create("owner-test", invalid_create)
+
+    created = client.post(
+        "/memory",
+        json={"category": "security", "content": "safe repository update fixture"},
+    )
+    assert created.status_code == 201
+    from uuid import UUID
+
+    with pytest.raises(ValueError, match="Memory fields must be text"):
+        repository.update(
+            "owner-test",
+            UUID(created.json()["memory_id"]),
+            {field: ["not", "text"]},
+        )
