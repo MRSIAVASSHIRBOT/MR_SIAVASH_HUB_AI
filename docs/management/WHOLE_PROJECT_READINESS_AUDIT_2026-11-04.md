@@ -566,3 +566,17 @@ At this observation, main was `0d7356076c160d265d265f47405dc75e901b2b52`.
 - PR #312 is a documentation-only Draft; its new exact-head workflows remain an independent merge gate.
 
 Do not reuse earlier-head CI results for a changed branch head. A passing PR suite does not establish runtime acceptance or production readiness.
+
+
+## 27. Latest exact-head acceptance refresh — 2026-11-07 UTC
+
+The following snapshot supersedes the PR-head and workflow observations in earlier sections. Main was re-read at `0d7356076c160d265d265f47405dc75e901b2b52`.
+
+- PR #308 head `76554168d6b2c3958632c842937a160549295e29`: 12 ahead / 0 behind; all four required workflow groups passed, including both Python CI versions and Linux/Windows video integration. Exact-head review approval was recorded. No merge was performed.
+- PR #309 head `7b1da5b8e60f64f444340af2e647a47509891a56`: Draft, 2 ahead / 0 behind; all four workflow groups passed. ADR remains Proposed.
+- PR #310 head `8d2e9226fc50adc76bc99ff42a583329d5e68d13`: Draft, 12 ahead / 0 behind; Defensive Python Scan passed; Backend CI, Python 3.11/3.12 CI, and Linux/Windows video integration remained in progress. The registry now carries status provenance, timestamp, and reason code per dimension, but still performs no live cross-project probes.
+- PR #312 documentation refresh: a new commit was added after the previous observation, so its exact-head workflow matrix must be re-read; prior-head results do not transfer.
+- PR #297 head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`: 1 ahead / 7 behind; all four workflows are `action_required`. Do not bypass this authorization gate.
+- PR #311 is merged as `0d7356076c160d265d265f47405dc75e901b2b52`; interrupted media-directory scans are now explicitly marked truncated and invalid.
+
+Cloudflare live gateway acceptance, the existing GSHOP Worker/payment configuration, GitHub branch protection, target Windows/browser acceptance, restore/rollback drills, and external-provider acceptance remain outstanding. No Cloudflare resource, secret, payment configuration, branch-protection setting, or production deployment was changed. No production-ready or whole-project-complete claim is made.
