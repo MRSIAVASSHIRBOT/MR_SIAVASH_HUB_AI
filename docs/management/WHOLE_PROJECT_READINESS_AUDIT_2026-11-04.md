@@ -554,3 +554,15 @@ The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment conf
 - Target-device browser acceptance, production database/media/key restore drills, clean install/upgrade/rollback, external-provider/social-account acceptance and release approval remain open.
 
 The evidence above is commit-specific. In-progress, queued, action-required or prior-head workflows are not passes for a newer commit. This audit does not declare production readiness or whole-project completion.
+
+
+## 26. Exact PR-head CI refresh — 2026-11-07 UTC
+
+At this observation, main was `0d7356076c160d265d265f47405dc75e901b2b52`.
+
+- PR #308 (`76554168d6b2c3958632c842937a160549295e29`): 12 ahead / 0 behind; Backend CI, Defensive Scan and Linux/Windows video integration passed; Python 3.11 passed and Python 3.12 remained in progress.
+- PR #309 (`7b1da5b8e60f64f444340af2e647a47509891a56`): Draft, 2 ahead / 0 behind; all four required workflow groups passed. Its ADR remains Proposed.
+- PR #310 (`8d2e9226fc50adc76bc99ff42a583329d5e68d13`): Draft, 12 ahead / 0 behind; adds explicit status source/timestamp/reason-code metadata and UI display. All four exact-head workflow groups were still running or queued.
+- PR #312 is a documentation-only Draft; its new exact-head workflows remain an independent merge gate.
+
+Do not reuse earlier-head CI results for a changed branch head. A passing PR suite does not establish runtime acceptance or production readiness.
