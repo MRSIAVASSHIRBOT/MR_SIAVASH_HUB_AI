@@ -416,3 +416,32 @@ def test_clean_destination_restore_recovers_database_and_media_asset(
         assert download.content == media_payload
 
     get_settings.cache_clear()
+
+
+def test_verify_media_assets_marks_directory_scan_errors_as_truncated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mrhub.operations import backup
+
+    database = tmp_path / "hub.sqlite3"
+    media_root = tmp_path / "content_assets"
+    media_root.mkdir()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+
+    original_iterdir = Path.iterdir
+
+    def fail_media_directory_scan(path: Path):
+        if path == media_root:
+            raise PermissionError("media directory scan denied")
+        return original_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", fail_media_directory_scan)
+
+    result = backup.verify_media_assets(database)
+
+    assert result["ok"] is False
+    assert result["invalid_entries"] == 1
+    assert result["verification_truncated"] is True
