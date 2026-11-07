@@ -48,6 +48,20 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         for project in payload["projects"]
     )
     assert payload["projects"][2]["service_url"] == "https://gshop11.ir/"
+    for project in payload["projects"]:
+        observations = project["status_observations"]
+        assert set(observations) == {"repository", "runtime", "infrastructure"}
+        expected = {
+            "repository": ("not_configured", "github_integration_not_configured"),
+            "runtime": ("unknown", "runtime_probe_not_configured"),
+            "infrastructure": ("not_configured", "cloudflare_integration_not_configured"),
+        }
+        for dimension, (status, reason_code) in expected.items():
+            observation = observations[dimension]
+            assert observation["status"] == status
+            assert observation["source"] == "project_registry_configuration"
+            assert observation["observed_at"] == payload["observed_at"]
+            assert observation["reason_code"] == reason_code
 
 
 def test_project_registry_does_not_claim_unverified_health(tmp_path, monkeypatch):
