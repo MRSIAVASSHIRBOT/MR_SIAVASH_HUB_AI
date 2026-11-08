@@ -1,6 +1,6 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-04 (UTC)
+Last reviewed: 2026-11-08 (UTC)
 
 This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI before every merge or implementation decision.
 
@@ -710,3 +710,44 @@ This section supersedes the open-PR states in sections 24–26 where they differ
 6. **PR #297:** remains blocked on `action_required` workflow authorization; do not bypass that gate.
 
 The existing `gahop` route `gshop11.ir/api/*`, its D1 database, and payment configuration were not modified. No live credentials were read. Production credential rotation, CORS changes, Worker deployment, and branch-protection changes remain approval-gated.
+
+
+## 27. Current verified integration and release snapshot — 2026-11-08 UTC
+
+This section supersedes earlier mainline, PR, Cloudflare, and release observations in this ledger wherever they differ. All repository claims below are tied to the stated commit or exact PR head.
+
+### Current mainline
+
+- Current `main`: `95530b98584f80161268155600b088572da295d2`.
+- PR #323 merged as `9e3f43e027a65672a12599fa20b999f443eec9a1`. It validates the requested GitHub repository identity against the returned upstream `full_name`, rejects malformed status flags, and bounds untrusted metadata text before registry persistence/evaluation. All exact-head PR workflow groups passed.
+- PR #326 merged as `95530b98584f80161268155600b088572da295d2`. It exposes the existing synthetic, local-only Knowledge retrieval benchmark through an authenticated API; adds Windows clean-wheel build/install smoke coverage for Python 3.11 and 3.12; adds encoded workflow-key loading coverage; and pins checkout/setup-python/upload-artifact to verified immutable Node 24 action SHAs.
+- PR #326 exact-head acceptance passed: CI, Backend CI, Defensive Python Scan, Video Render Integration on Linux and Windows, Windows Launcher Validation, and both Windows wheel smoke cells (Python 3.11 and 3.12). These hosted checks do not replace real-device acceptance.
+- The post-merge main runs for `95530b98584f80161268155600b088572da295d2` were still running at the time of this snapshot: CI `42496885622`, Backend CI `42496885628`, Defensive Python Scan `42496885624`, and Video Render Integration `42496885716`. Re-read these exact runs before declaring post-merge verification complete.
+
+### PR reconciliation
+
+- The useful GitHub discovery hardening from stale PR #313 was rebuilt on current main and merged as PR #323.
+- The useful Knowledge evaluation endpoint from stale PR #321, the encoded-key test from PR #297, and the Windows wheel/action-pin work from PR #314 were rebuilt on current main and merged as PR #326.
+- PRs #297, #309, #312, #313, #314, #321, #324, and #325 were closed only after their useful changes were merged or their stale documentation/architecture snapshots were confirmed superseded.
+- The only open PR at this observation is Draft PR #315, a scheduled-development workflow security proposal. It remains blocked by Issue #316: provider credential isolation from agent-controlled processes has not been technically demonstrated. Do not manually dispatch the privileged scheduled publisher or merge the Draft proposal based only on static configuration.
+
+### Cloudflare live-state acceptance — read-only inspection
+
+The authenticated Cloudflare inventory returned three Workers: `gahop`, `mr-siavash-ai-gateway`, and `mr-siavash-ai-gateway-preview`; and three D1 databases: `gshop-db`, `mr-siavash-ai-prod`, and `mr-siavash-ai-preview`.
+
+- The only observed custom-zone route for `gshop11.ir` remains `gshop11.ir/api/* -> gahop`. No Hub gateway route was observed.
+- The live `mr-siavash-ai-gateway` settings expose binding metadata for `ADMIN_EMAILS`, `ALLOWED_ORIGINS`, `CF_ACCESS_AUD`, `CF_ACCESS_TEAM_DOMAIN`, and `DB`; the required Stage 1 Hub gateway bindings `CF_ACCOUNT_ID`, `CF_ZONE_ID`, `CF_API_TOKEN`, and `GATEWAY_AUTH_TOKEN` were not present in the projected binding list.
+- The preview Worker exposes `ALLOWED_ORIGINS`, `DB`, and `SUPPORT_RETENTION_DAYS`; it is not accepted as the Hub gateway.
+- The `gahop` Worker currently reports `DIGIPAY_CLIENT_SECRET` and `DIGIPAY_PASSWORD` as `secret_text`, while `DIGIPAY_CLIENT_ID` and `DIGIPAY_USERNAME` are `plain_text`. `ALLOWED_ORIGINS` is also `plain_text`. No binding values were requested, displayed, or changed.
+- No Worker, route, D1 database, secret, or production setting was modified during this inspection. Issue #305 remains open for isolated staging acceptance; Issue #298 remains open for owner-confirmed credential and CORS remediation.
+
+### Remaining hard release gates
+
+1. Resolve Issue #316 with a verified credential-isolation boundary and regression evidence before enabling the scheduled privileged development publisher.
+2. Configure and verify repository protection for `main`. The available GitHub integration returned 403 for the branch-protection read endpoint; protection is not claimed as enabled. Issues #304 and #149 remain open.
+3. Complete dedicated Cloudflare staging acceptance; do not attach the Hub gateway to the GShop production route or mutate `gahop`/ `gshop-db`.
+4. Complete the owner-approved payment credential review and exact CORS-origin decision for `gahop`.
+5. Register and test an explicitly selected Video Generation provider. The current generation registry remains empty by default and correctly returns `provider_unavailable`.
+6. Complete the target Windows device acceptance, coordinated database/media/key backup and restore drill, clean upgrade/rollback, dependency lock, license decision, and external provider/social-account acceptance.
+
+This snapshot does not declare the product release-ready. Merge and hosted CI evidence are not deployment or production acceptance evidence.
