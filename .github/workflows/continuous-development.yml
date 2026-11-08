@@ -153,8 +153,22 @@ jobs:
               b"CODEOWNERS",
               b"pyproject.toml",
               b".gitmodules",
+              b"SECURITY.md",
+              b"uv.lock",
+              b"poetry.lock",
+              b"Pipfile.lock",
+              b".env",
+              b".env.example",
+              b"wrangler.toml",
+              b"cloudflare/wrangler.toml",
           }
-          protected_prefixes = (b".github/", b"SECURITY/", b".git/")
+          protected_prefixes = (
+              b".github/",
+              b"SECURITY/",
+              b".git/",
+              b"scripts/deploy/",
+              b".devcontainer/",
+          )
           blocked = [
               path for path in paths
               if path in protected_exact
@@ -166,11 +180,14 @@ jobs:
                   print(f"::error::Agent proposal touches protected path: {path!r}")
               sys.exit(1)
 
+          staged_paths = set(paths)
           staged = subprocess.check_output(["git", "ls-files", "--stage", "-z"])
           for entry in staged.split(b"\\0"):
               if not entry:
                   continue
               metadata, path = entry.split(b"\\t", 1)
+              if path not in staged_paths:
+                  continue
               mode = metadata.split(b" ", 1)[0]
               if mode in {b"120000", b"160000"}:
                   print(f"::error::Unsupported symlink/submodule entry: {path!r}")
