@@ -62,7 +62,10 @@ jobs:
               "external_directory",
           ):
               if policy.get(tool) != "deny":
-                  raise SystemExit(f"Unsafe or external tool is not denied: {tool}")
+                  raise SystemExit("Unsafe or external tool is not denied: " + tool)
+          build_policy = config.get("agent", {}).get("build", {}).get("permission")
+          if not isinstance(build_policy, dict) or build_policy.get("*") != "deny":
+              raise SystemExit("Build agent is not configured with default-deny policy")
           print("Verified effective default-deny OpenCode tool policy.")
           PY
 
