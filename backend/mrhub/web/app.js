@@ -449,7 +449,11 @@
           repositoryLink.rel = "noopener noreferrer";
           links.append(repositoryLink);
         }
-        if (project.service_url === "https://gshop11.ir/") {
+        const approvedServiceUrls = new Set([
+          "https://gshop11.ir/",
+          "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/",
+        ]);
+        if (approvedServiceUrls.has(project.service_url)) {
           const serviceLink = element("a", "وب‌سایت");
           serviceLink.href = project.service_url;
           serviceLink.target = "_blank";
