@@ -45,7 +45,7 @@ def test_github_status_uses_only_fixed_public_api_paths_and_projects_metadata(mo
                 "updated_at": "2026-11-08T11:40:00Z",
             }])
         if request.url.path == f"/repos/{REPOSITORY}/actions/runs":
-            assert dict(request.url.params) == {"per_page": "1"}
+            assert dict(request.url.params) == {"branch": "main", "per_page": "1"}
             return httpx.Response(200, json={"workflow_runs": [{
                 "id": 12345,
                 "name": "Quality checks and GitHub Pages deployment",
@@ -140,3 +140,99 @@ def test_gitHub_status_client_rejects_unbounded_limits():
         GitHubStatusClient(timeout_seconds=5.1)
     with pytest.raises(ValueError):
         GitHubStatusClient(max_response_bytes=262_145)
+
+
+def test_latest_ci_is_scoped_to_default_branch_not_newer_feature_branch(monkeypatch):
+    client = GitHubStatusClient()
+    requested = []
+
+    def fake_get(path):
+        if path == f"/repos/{REPOSITORY}":
+            return _metadata()
+        if path.endswith("/commits/main"):
+            return _commit()
+        if path.endswith("/pulls?state=open&per_page=10"):
+            return []
+        if "/actions/runs?" in path:
+            requested.append(path)
+            assert path.endswith("/actions/runs?branch=main&per_page=1")
+            # The default-branch run is failing. A newer feature-branch success
+            # must not be used as the repository's default-branch CI signal.
+            return {"workflow_runs": [{
+                "id": 501,
+                "name": "Default branch checks",
+                "head_branch": "main",
+                "status": "completed",
+                "conclusion": "failure",
+            }]}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(client, "_get_json", fake_get)
+    result = client.read_repository_status(REPOSITORY)
+
+    assert requested == [f"/repos/{REPOSITORY}/actions/runs?branch=main&per_page=1"]
+    assert result["latest_ci"]["status"] == "failing"
+    assert result["latest_ci"]["workflow_name"] == "Default branch checks"
+
+
+def test_repository_status_cache_reuses_result_and_returns_defensive_copies(monkeypatch):
+    github_status._clear_status_cache()
+    calls = []
+
+    def fake_read(self, repository):
+        calls.append(repository)
+        return {
+            "status": "healthy",
+            "repository": repository,
+            "default_branch": "main",
+            "latest_ci": {"status": "healthy"},
+        }
+
+    monkeypatch.setattr(GitHubStatusClient, "read_repository_status", fake_read)
+    first = github_status.get_repository_status(REPOSITORY)
+    first["latest_ci"]["status"] = "tampered"
+    second = github_status.get_repository_status(REPOSITORY)
+
+    assert len(calls) == 1
+    assert second["latest_ci"]["status"] == "healthy"
+    github_status._clear_status_cache()
+
+
+def test_repository_status_cache_expires_and_unknown_results_use_short_ttl(monkeypatch):
+    github_status._clear_status_cache()
+    clock = [100.0]
+    calls = []
+
+    class FakeClient:
+        def read_repository_status(self, repository):
+            calls.append(repository)
+            if len(calls) == 1:
+                return {
+                    "status": "healthy",
+                    "repository": repository,
+                    "default_branch": "main",
+                }
+            return {
+                "status": "unknown",
+                "repository": repository,
+                "default_branch": None,
+                "reason_code": "github_rate_limited",
+            }
+
+    monkeypatch.setattr(github_status.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(github_status, "GitHubStatusClient", FakeClient)
+
+    assert github_status.get_repository_status(REPOSITORY)["status"] == "healthy"
+    assert github_status.get_repository_status(REPOSITORY)["status"] == "healthy"
+    assert len(calls) == 1
+
+    clock[0] += github_status.STATUS_CACHE_TTL_SECONDS + 0.1
+    assert github_status.get_repository_status(REPOSITORY)["status"] == "unknown"
+    assert len(calls) == 2
+    assert github_status.get_repository_status(REPOSITORY)["status"] == "unknown"
+    assert len(calls) == 2
+
+    clock[0] += github_status.STATUS_CACHE_FAILURE_TTL_SECONDS + 0.1
+    assert github_status.get_repository_status(REPOSITORY)["status"] == "unknown"
+    assert len(calls) == 3
+    github_status._clear_status_cache()
