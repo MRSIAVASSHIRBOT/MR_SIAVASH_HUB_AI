@@ -19,3 +19,5 @@ the project version follows Semantic Versioning (SemVer).
 - This entry does not declare a published release or create a Git tag.
 - Release notes for `0.1.0` must be assembled from merged changes and validated
   against the exact release commit before publication.
+
+- Harden scheduled development: disable OpenCode shell execution and external-directory access while the provider credential is present; protect OpenCode project configuration from agent proposals.
