@@ -141,7 +141,7 @@ jobs:
           import sys
 
           raw_paths = subprocess.check_output(
-              ["git", "diff", "--cached", "--name-only", "-z"]
+              ["git", "diff", "--cached", "--no-renames", "--name-only", "-z"]
           )
           paths = [path for path in raw_paths.split(bytes([0])) if path]
           if not paths:
@@ -151,16 +151,48 @@ jobs:
           protected_exact = {
               b"AGENTS.md",
               b"CODEOWNERS",
+              b".gitignore",
               b"pyproject.toml",
+              b"setup.py",
+              b"setup.cfg",
+              b"tox.ini",
+              b"noxfile.py",
+              b"Makefile",
               b".gitmodules",
               b"SECURITY.md",
               b"uv.lock",
               b"poetry.lock",
+              b"Pipfile",
               b"Pipfile.lock",
+              b"pdm.lock",
+              b"package.json",
+              b"package-lock.json",
+              b"pnpm-lock.yaml",
+              b"yarn.lock",
+              b"bun.lock",
+              b"bun.lockb",
+              b"Cargo.toml",
+              b"Cargo.lock",
+              b"go.mod",
+              b"go.sum",
+              b"composer.json",
+              b"composer.lock",
+              b"Gemfile",
+              b"Gemfile.lock",
               b".env",
               b".env.example",
               b"wrangler.toml",
+              b"wrangler.json",
+              b"wrangler.jsonc",
               b"cloudflare/wrangler.toml",
+              b"Dockerfile",
+              b"docker-compose.yml",
+              b"docker-compose.yaml",
+              b"compose.yml",
+              b"compose.yaml",
+              b"vercel.json",
+              b"netlify.toml",
+              b"fly.toml",
               b"backend/mrhub/api/routes/auth.py",
               b"backend/mrhub/api/routes/security_lab.py",
               b"tests/test_audit.py",
@@ -176,14 +208,42 @@ jobs:
               b"docs/security/",
               b"backend/mrhub/security/",
           )
-          blocked = [
-              path for path in paths
-              if path in protected_exact
-              or path in {b".github", b"SECURITY", b".git"}
-              or path.startswith(b".env")
-              or path.endswith(b"/wrangler.toml")
-              or any(path.startswith(prefix) for prefix in protected_prefixes)
-          ]
+          protected_basenames = {
+              b"requirements.txt",
+              b"requirements-dev.txt",
+              b"requirements-test.txt",
+              b"constraints.txt",
+              b"constraints-dev.txt",
+          }
+          blocked = []
+          for path in paths:
+              normalized = path.lower()
+              basename = normalized.rsplit(b"/", 1)[-1]
+              components = normalized.split(b"/")
+              is_dependency_or_build_file = (
+                  basename in protected_basenames
+                  or (basename.startswith(b"requirements") and basename.endswith(b".txt"))
+                  or (basename.startswith(b"constraints") and basename.endswith(b".txt"))
+                  or basename.endswith((b".lock", b".lockb"))
+                  or basename.startswith(b"dockerfile")
+                  or basename.startswith(b"docker-compose.")
+                  or basename.startswith(b"compose.")
+                  or basename in {
+                      b"pyproject.toml", b"setup.py", b"setup.cfg", b"tox.ini",
+                      b"noxfile.py", b"package.json", b"cargo.toml", b"go.mod",
+                      b"composer.json", b"gemfile", b"makefile",
+                  }
+              )
+              if (
+                  normalized in protected_exact
+                  or normalized in {b".github", b"security", b".git"}
+                  or any(part.startswith(b".env") for part in components)
+                  or basename.startswith(b"wrangler.")
+                  or basename in {b"vercel.json", b"netlify.toml", b"fly.toml"}
+                  or is_dependency_or_build_file
+                  or any(normalized.startswith(prefix.lower()) for prefix in protected_prefixes)
+              ):
+                  blocked.append(path)
           if blocked:
               for path in blocked:
                   print(f"::error::Agent proposal touches protected path: {path!r}")
