@@ -687,3 +687,18 @@ After the preceding exact-head snapshot, two additional Draft PRs appeared. They
 - Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0` and is reported as unprotected.
 
 The Hub Cloudflare Worker remains unaccepted: no route, incomplete source-contract bindings, and persistent invocation logs/traces requiring privacy/retention review. No Worker, route, secret, D1, DNS, payment, or branch-protection setting was changed. No PR was merged; no production-ready claim is made.
+
+
+## 36. Latest release-CI branch revision — 2026-11-08 UTC
+
+PR #314 now has exact head `805e9713ece1968b644806dd6f86408e88050717` (12 ahead / 0 behind main, eight files). Since its initial wheel-matrix commit, it additionally:
+- Replaced the TestClient-based health smoke with HTTPX `ASGITransport` + `AsyncClient`.
+- Pinned checkout v7.0.1, setup-python v7.1.0, and upload-artifact v7.0.2 to immutable commit SHAs verified against upstream Git refs; all three action manifests declare Node 24.
+- Applied those pins to CI, Backend CI, Defensive Python Scan, Video Render Integration, and Windows Launcher Validation.
+- Kept the privileged scheduled Continuous Development publisher outside this migration pending a dedicated artifact-contract/security review.
+
+On this exact head, Defensive Python Scan passed; all three Windows Launcher Validation jobs passed; Linux FFmpeg integration passed; Windows FFmpeg, Backend CI, Python 3.11/3.12 CI, and all four wheel-smoke cells were still running. Earlier-head checks are not reusable.
+
+PR #313 remains Draft and has all four validation groups passing, but its malformed boolean normalization concern remains unresolved in review. PR #312's prior head is superseded by this documentation update and must pass a fresh exact-head CI. PR #309/#310 remain Draft with passing validation; PR #297 remains 8 commits behind with all four checks `action_required`.
+
+No merge, release, production deployment, Cloudflare mutation, secret change, or branch-protection change was performed. Production readiness remains unproven.
