@@ -440,6 +440,58 @@
           statuses.append(row);
         }
         card.append(statuses);
+        const repositoryDetails = project.repository_details;
+        if (repositoryDetails && typeof repositoryDetails === "object") {
+          const details = element("div", undefined, "project-repository-details");
+          if (typeof repositoryDetails.default_branch === "string") {
+            details.append(element("small", "شاخهٔ اصلی: " + repositoryDetails.default_branch));
+          }
+          if (repositoryDetails.latest_commit && typeof repositoryDetails.latest_commit === "object") {
+            const commit = repositoryDetails.latest_commit;
+            details.append(element(
+              "small",
+              "آخرین Commit: " + String(commit.sha || "").slice(0, 7)
+                + (commit.message ? " · " + commit.message : "")
+            ));
+          } else {
+            details.append(element("small", "آخرین Commit: داده در دسترس نیست"));
+          }
+          const latestCi = repositoryDetails.latest_ci;
+          if (latestCi && typeof latestCi === "object") {
+            details.append(element(
+              "small",
+              "آخرین CI: " + (latestCi.status || "unknown")
+                + (latestCi.workflow_name ? " · " + latestCi.workflow_name : "")
+            ));
+            if (typeof latestCi.url === "string"
+              && /^https:\/\/github\.com\/MRSIAVASSHIRBOT\/[A-Za-z0-9_.-]+\/actions\/runs\/[0-9]+$/.test(latestCi.url)) {
+              const ciLink = element("a", "مشاهدهٔ CI");
+              ciLink.href = latestCi.url;
+              ciLink.target = "_blank";
+              ciLink.rel = "noopener noreferrer";
+              details.append(ciLink);
+            }
+          }
+          if (Array.isArray(repositoryDetails.open_pull_requests)) {
+            details.append(element(
+              "small",
+              "درخواست‌های ادغام باز (نمونه): " + repositoryDetails.open_pull_requests.length
+            ));
+            for (const pull of repositoryDetails.open_pull_requests.slice(0, 10)) {
+              if (!pull || typeof pull !== "object" || !Number.isInteger(pull.number)
+                || typeof pull.title !== "string") continue;
+              const expectedPrefix = "https://github.com/" + project.repository + "/pull/";
+              if (typeof pull.url !== "string" || !pull.url.startsWith(expectedPrefix)
+                || !/^[0-9]+$/.test(pull.url.slice(expectedPrefix.length))) continue;
+              const pullLink = element("a", "PR #" + pull.number + " · " + pull.title);
+              pullLink.href = pull.url;
+              pullLink.target = "_blank";
+              pullLink.rel = "noopener noreferrer";
+              details.append(pullLink);
+            }
+          }
+          card.append(details);
+        }
         const links = element("div", undefined, "project-links");
         if (typeof project.repository_url === "string"
           && /^https:\/\/github\.com\/MRSIAVASSHIRBOT\/[A-Za-z0-9_.-]+$/.test(project.repository_url)) {
