@@ -173,7 +173,7 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
     language = _safe_public_text(metadata.get("language"), 70)
     if language and len(capabilities) < 50:
         capabilities.append(f"language:{language}")
-    description = _safe_public_text(metadata.get("description"), 1000) or ""
+    summary = _safe_public_text(metadata.get("description"), 1000) or ""
     display_name = _safe_public_text(metadata.get("full_name"), 160)
     if display_name is None:
         raise GitHubDiscoveryError(
