@@ -162,6 +162,7 @@
       cache: "no-store",
       credentials: "omit",
       redirect: "error",
+      signal: options.signal,
     });
     let payload = null;
     try { payload = await response.json(); } catch { payload = null; }
@@ -398,10 +399,12 @@
   }
 
   async function loadProjectRegistry() {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 8_000);
     const container = $("#project-registry-list");
     const observed = $("#project-registry-observed");
     try {
-      const payload = await api("/projects/registry");
+      const payload = await api("/projects/registry", { signal: controller.signal });
       const projects = Array.isArray(payload.projects) ? payload.projects : [];
       container.replaceChildren();
       for (const project of projects) {
@@ -523,6 +526,8 @@
     } catch (error) {
       renderEmpty(container, "دریافت فهرست پروژه‌ها ناموفق بود: " + error.message);
       observed.textContent = "فهرست در دسترس نیست";
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
