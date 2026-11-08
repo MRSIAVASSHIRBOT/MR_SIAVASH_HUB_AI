@@ -136,7 +136,7 @@ def run_agent(
             "turns": result.get("turns"),
             "tool_calls": result.get("tool_calls"),
             "context_passage_count": context.get("passage_count", 0),
-            "project_id": payload.project_id,
+            **({"project_id": payload.project_id} if payload.project_id else {}),
         },
     )
     context_sources = [
