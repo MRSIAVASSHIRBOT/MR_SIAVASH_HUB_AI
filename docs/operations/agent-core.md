@@ -161,3 +161,19 @@ same content from the document. Inconsistent records are excluded from search
 results. This protects the local retrieval boundary against accidental or
 unauthorized row-level content changes; it does not authenticate the original
 publisher or prove that an external source is still current.
+
+
+## Selected project context for Agent runs
+
+Authenticated `POST /agent/run` requests may include one explicitly enrolled
+`project_id`. The API resolves that identifier against the server-defined
+project registry before provider selection; unknown identifiers return 404
+without starting model inference. Only the selected project's configured
+metadata is added to the bounded retrieval context, alongside owner-scoped
+memory and knowledge passages. The project evidence includes a stable
+`project-registry://` reference and is explicitly marked as untrusted data;
+it cannot authorize tools or override server policy. Repository, runtime, and
+infrastructure statuses remain configuration observations (not live health
+checks) until their respective integrations are implemented. The run response
+and audit metadata record the selected project identifier, while existing
+runs without a project identifier retain their prior metadata contract.
