@@ -21,3 +21,4 @@ the project version follows Semantic Versioning (SemVer).
   against the exact release commit before publication.
 
 - Harden scheduled development: disable OpenCode shell execution and external-directory access while the provider credential is present; protect OpenCode project configuration from agent proposals.
+- Expand the scheduled publisher's protected-path policy to cover API authorization/policy/tool routes, workflow execution endpoints, API dependencies/configuration, and the tool registry/built-ins.
