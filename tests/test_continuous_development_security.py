@@ -91,7 +91,7 @@ def test_publisher_validates_staged_paths_before_receiving_write_token() -> None
         "      - name: Apply proposal and create review PR", maxsplit=1
     )[1]
 
-    assert "git diff --cached --no-renames --name-only -z" in validation
+    assert '["git", "diff", "--cached", "--no-renames", "--name-only", "-z"]' in validation
     assert "git ls-files --stage -z" in validation
     assert 'b".github/"' in validation
     assert 'b".env"' in validation
