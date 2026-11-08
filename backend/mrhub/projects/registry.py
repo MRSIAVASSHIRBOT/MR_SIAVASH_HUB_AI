@@ -1,5 +1,6 @@
 """Explicitly enrolled project portfolio metadata and bounded Agent context."""
 
+import sqlite3
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -57,7 +58,7 @@ def _hub_runtime_observation() -> dict[str, object]:
                 "worker_heartbeat_age_seconds": None,
             },
         }
-    except Exception:
+    except (OSError, sqlite3.Error, TypeError, ValueError):
         return {
             "status": "unknown",
             "source": "local_health_and_readiness",
