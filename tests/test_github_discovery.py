@@ -146,3 +146,89 @@ def test_malformed_public_counters_are_bounded_instead_of_crashing(monkeypatch, 
 
     assert result["stargazers_count"] == 0
     assert result["open_issues_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_code"),
+    [
+        ({"full_name": None}, "invalid_github_response"),
+        ({"full_name": ["Example", "Tool"]}, "invalid_github_response"),
+        ({"full_name": "Example/Other"}, "github_repository_mismatch"),
+    ],
+)
+def test_metadata_response_rejects_malformed_or_mismatched_repository_identity(
+    monkeypatch, payload, expected_code
+):
+    class FakeResponse:
+        status_code = 200
+        headers: ClassVar[dict[str, str]] = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def iter_bytes(self):
+            yield json.dumps(payload).encode()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def stream(self, method, url):
+            return FakeResponse()
+
+    monkeypatch.setattr("mrhub.capabilities.github_discovery.httpx.Client", FakeClient)
+
+    with pytest.raises(GitHubDiscoveryError) as error:
+        _metadata_response("https://github.com/Example/Tool")
+
+    assert error.value.code == expected_code
+    assert error.value.status_code == 502
+
+
+def test_discovery_normalizes_untrusted_metadata_types_and_bounds_text(monkeypatch, tmp_path):
+    metadata = {
+        "full_name": "Example/Sanitized",
+        "description": "  Safe summary  ",
+        "default_branch": "  " + ("b" * 300),
+        "language": "  " + ("L" * 100),
+        "topics": ["  " + ("T" * 120)],
+        "license": {"spdx_id": "MIT"},
+        "archived": "false",
+        "disabled": "0",
+        "fork": 1,
+        "stargazers_count": 12,
+        "open_issues_count": 3,
+        "updated_at": "  2026-11-01T00:00:00Z  ",
+    }
+    monkeypatch.setattr(
+        "mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata
+    )
+    registry = CapabilityRegistry(tmp_path / "sanitized-metadata.sqlite3")
+
+    candidate, result = discover_github_candidate(
+        "https://github.com/Example/Sanitized", registry
+    )
+
+    assert candidate.capabilities == ("T" * 80, "language:" + "L" * 70)
+    assert result["description"] == "Safe summary"
+    assert result["default_branch"] == "b" * 255
+    assert result["language"] == "L" * 70
+    assert result["archived"] is False
+    assert result["disabled"] is False
+    assert result["fork"] is False
+    assert result["updated_at"] == "2026-11-01T00:00:00Z"
+    assert "repository_inactive" not in {
+        signal["code"] for signal in result["evaluation"]["signals"]
+    }
+    assert "repository_is_fork" not in {
+        signal["code"] for signal in result["evaluation"]["signals"]
+    }
