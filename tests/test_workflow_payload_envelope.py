@@ -86,6 +86,11 @@ def test_missing_or_invalid_environment_key_fails_closed(monkeypatch: pytest.Mon
         load_payload_key(base64.urlsafe_b64encode(b"short").decode("ascii"))
 
 
+def test_encoded_key_loads_correctly() -> None:
+    encoded = base64.urlsafe_b64encode(KEY).decode("ascii")
+    assert load_payload_key(encoded) == KEY
+
+
 def test_non_json_and_oversized_payload_are_rejected() -> None:
     with pytest.raises(PayloadEnvelopeError, match="finite JSON"):
         encrypt_payload({"not_finite": float("nan")}, **BINDING, key=KEY)
