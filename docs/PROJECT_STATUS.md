@@ -912,3 +912,37 @@ This section supersedes the earlier PR status snapshots above where they differ.
 - **PR #297:** 1 ahead / 8 behind; all four workflows remain `action_required`. Do not bypass authorization or merge the stale branch.
 
 No PR was merged. No scheduled publisher was manually dispatched. No secret, production resource, deployment, or branch-protection setting was changed. Target-device, restore/rollback, external-provider, isolated Cloudflare staging, and owner release-acceptance gates remain open.
+
+
+## 39. Fresh security and infrastructure recheck — 2026-11-08 UTC
+
+This snapshot supersedes earlier PR-head, workflow, and Cloudflare observations above wherever they differ. Current `main` remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; no mainline commit was made during this review.
+
+### Exact-head pull request validation
+
+- **PR #315 — scheduled development publisher hardening:** Draft, head `de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f`, 12 ahead / 0 behind. Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows FFmpeg integration all passed. These generic CI checks do not exercise the privileged scheduled publisher's artifact-validation path.
+- **PR #314 — clean wheel install matrix:** Draft, head `805e9713ece1968b644806dd6f86408e88050717`, 12 ahead / 0 behind. Backend CI, Python 3.11/3.12 CI, Defensive Scan, Linux/Windows FFmpeg, all four Ubuntu/Windows × Python 3.11/3.12 wheel-smoke cells, and Windows launcher runtime/cleanup/PowerShell checks passed.
+- **PR #313 — GitHub discovery metadata contract:** Draft, head `5a141bc12f534bd96be3d89467ab29549516c510`, 5 ahead / 0 behind. Backend CI, Python 3.11/3.12 CI, Defensive Scan, and Linux/Windows FFmpeg passed. The previous malformed-state-flag finding is resolved in this head: `archived`, `disabled`, and `fork` require actual JSON booleans; 15 regression cases cover five malformed values across all three fields.
+- **PR #312 — this documentation refresh:** head `7cf5b5b67ef587cd7a8b68678c32462cca5fe7c8`, 25 ahead / 0 behind immediately before this append. Backend CI, Python 3.11/3.12 CI, Defensive Scan, and Linux/Windows FFmpeg checks passed on that exact head. This append creates a new head and requires fresh exact-head checks.
+- **PR #309 and #310:** remain Draft; all four required validation groups passed on their current exact heads. ADR-0006 remains Proposed. The project registry remains explicit, authenticated and read-only; it is not live cross-project monitoring.
+- **PR #297:** 1 ahead / 8 behind; all four required workflow groups remain `action_required`. Do not bypass the authorization gate.
+- **Branch governance:** GitHub branch metadata reports `main` as `protected: false`; repository ruleset listing is empty. Detailed branch-protection inspection remains unavailable to this integration (HTTP 403). No governance setting was changed.
+
+### PR #315 security review
+
+A COMMENT review is recorded on exact head `de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f`. The patch artifact is size-bounded, staged paths are checked after application, and symlink/submodule entries are rejected. However, the inline protected-path denylist omits several security-sensitive files, including `backend/mrhub/api/routes/policy.py`, `backend/mrhub/api/routes/tools.py`, `backend/mrhub/tools/registry.py`, `backend/mrhub/tools/builtins.py`, `backend/mrhub/api/dependencies.py`, and `backend/mrhub/config.py`. The path validator also lacks automated regression tests. Keep PR #315 Draft until this boundary is made testable and those control paths are covered.
+
+A separate high-priority investigation was opened as **Issue #316**: the scheduled `develop` job passes `OPENROUTER_API_KEY` into the OpenCode process environment. Verify whether model-controlled shell/tool subprocesses can inherit that credential; prompt instructions and read-only GitHub token permissions are not proof of environment isolation. No credential value was read or changed.
+
+### Cloudflare live configuration — read-only recheck
+
+A fresh Cloudflare read on 2026-11-08 found:
+
+- The account still lists `gahop` and `mr-siavash-ai-gateway`.
+- `mr-siavash-ai-gateway` has no attached route; its workers.dev subdomain is enabled and previews are disabled.
+- Its only observed bindings are `ALLOWED_ORIGINS` (plain text) and `DB` (D1). The full source-controlled gateway contract remains unestablished; no secret values were read.
+- Observability is enabled. Invocation logs are enabled and persistent with sampling rate 1.0; traces are enabled and persistent with sampling rate 0.1.
+- **Query-string redaction is currently reported as disabled (`redact_query_string: false`).** This differs from the earlier observation that reported it enabled. Treat this as a higher-priority privacy/retention risk; do not route user traffic to this Worker until logging, trace, and redaction behavior is explicitly reviewed and validated.
+- No Worker deployment, binding, route, secret, DNS, D1, logging, or observability setting was changed. The separate `gahop` Worker and G SHOP route remain untouched.
+
+No PR was merged, no scheduled publisher was manually dispatched, and no production deployment or secret mutation was performed. Target-device acceptance, restore/rollback drills, isolated Cloudflare staging, external-provider acceptance, and owner release approval remain open. No whole-project-complete or production-ready claim is made.
