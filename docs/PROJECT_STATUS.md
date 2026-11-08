@@ -722,7 +722,7 @@ This section supersedes earlier mainline, PR, Cloudflare, and release observatio
 - PR #323 merged as `9e3f43e027a65672a12599fa20b999f443eec9a1`. It validates the requested GitHub repository identity against the returned upstream `full_name`, rejects malformed status flags, and bounds untrusted metadata text before registry persistence/evaluation. All exact-head PR workflow groups passed.
 - PR #326 merged as `95530b98584f80161268155600b088572da295d2`. It exposes the existing synthetic, local-only Knowledge retrieval benchmark through an authenticated API; adds Windows clean-wheel build/install smoke coverage for Python 3.11 and 3.12; adds encoded workflow-key loading coverage; and pins checkout/setup-python/upload-artifact to verified immutable Node 24 action SHAs.
 - PR #326 exact-head acceptance passed: CI, Backend CI, Defensive Python Scan, Video Render Integration on Linux and Windows, Windows Launcher Validation, and both Windows wheel smoke cells (Python 3.11 and 3.12). These hosted checks do not replace real-device acceptance.
-- The post-merge main runs for `95530b98584f80161268155600b088572da295d2` were still running at the time of this snapshot: CI `42496885622`, Backend CI `42496885628`, Defensive Python Scan `42496885624`, and Video Render Integration `42496885716`. Re-read these exact runs before declaring post-merge verification complete.
+- All four post-merge main workflows passed on exact commit `95530b98584f80161268155600b088572da295d2`: CI `42496885622`, Backend CI `42496885628`, Defensive Python Scan `42496885624`, and Video Render Integration `42496885716`.
 
 ### PR reconciliation
 
