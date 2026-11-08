@@ -1,7 +1,8 @@
 # ADR-0006: Central Project Control Center
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-06
+- Decision accepted: 2026-11-08
 - Decision owners: repository owner
 - Scope: MR_SIAVASH_HUB_AI operator experience and its integration boundaries
 
