@@ -27,7 +27,12 @@ def _config() -> dict[str, object]:
 def _assert_default_deny(policy: object) -> None:
     assert isinstance(policy, dict)
     assert policy.get("*") == "deny"
-    for tool in ("read", "edit", "glob", "grep"):
+    read_policy = policy.get("read")
+    assert isinstance(read_policy, dict)
+    assert read_policy.get("*") == "allow"
+    for pattern in ("*.env", "*.env.*", "**/.env", "**/.env.*"):
+        assert read_policy.get(pattern) == "deny"
+    for tool in ("edit", "glob", "grep"):
         assert policy.get(tool) == "allow"
     for tool in (
         "bash",
@@ -68,10 +73,29 @@ def test_effective_policy_is_checked_without_provider_credentials() -> None:
     assert "opencode --pure debug config" in verification
     assert "json.loads" in verification
     assert "OPENROUTER_API_KEY" not in verification
+    assert "build_policy = config.get(\"agent\", {}).get(\"build\", {}).get(\"permission\")" in verification
     assert "opencode --pure run" in run_step
     assert "OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}" in run_step
     assert "Add/update tests, but do not attempt to execute them." in run_step
     assert workflow.count("OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}") == 1
+
+
+def test_publisher_validates_staged_paths_before_receiving_write_token() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    validation = workflow.split(
+        "      - name: Validate proposal", maxsplit=1
+    )[1].split("      - name: Apply proposal and create review PR", maxsplit=1)[0]
+    publisher = workflow.split(
+        "      - name: Apply proposal and create review PR", maxsplit=1
+    )[1]
+
+    assert "git diff --cached --no-renames --name-only -z" in validation
+    assert "git ls-files --stage -z" in validation
+    assert 'b".github/"' in validation
+    assert 'b".env"' in validation
+    assert "b" + '"120000"' in validation
+    assert "b" + '"160000"' in validation
+    assert "git apply --index --binary" not in publisher
 
 
 def test_scheduled_publisher_uses_immutable_artifact_action_pins() -> None:
