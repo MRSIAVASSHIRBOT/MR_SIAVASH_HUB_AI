@@ -173,6 +173,8 @@ jobs:
               path for path in paths
               if path in protected_exact
               or path in {b".github", b"SECURITY", b".git"}
+              or path.startswith(b".env")
+              or path.endswith(b"/wrangler.toml")
               or any(path.startswith(prefix) for prefix in protected_prefixes)
           ]
           if blocked:
