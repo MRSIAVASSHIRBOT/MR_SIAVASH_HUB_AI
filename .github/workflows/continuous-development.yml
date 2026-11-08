@@ -208,6 +208,7 @@ jobs:
               b"backend/mrhub/api/routes/tasks.py", b"backend/mrhub/api/routes/tools.py",
               b"backend/mrhub/config.py", b"tests/test_audit.py", b"tests/test_auth.py",
               b"tests/test_tool_permissions.py",
+              b"tests/test_continuous_development_security.py",
           }
           protected_prefixes = (
               b".github/", b".opencode/", b"security/", b".git/",
