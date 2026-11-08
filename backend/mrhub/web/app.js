@@ -465,6 +465,7 @@
               "small",
               "آخرین CI: " + (latestCi.status || "unknown")
                 + (latestCi.workflow_name ? " · " + latestCi.workflow_name : "")
+                + (latestCi.branch ? " · شاخه: " + latestCi.branch : "")
             ));
             if (typeof latestCi.url === "string"
               && /^https:\/\/github\.com\/MRSIAVASSHIRBOT\/[A-Za-z0-9_.-]+\/actions\/runs\/[0-9]+$/.test(latestCi.url)) {
