@@ -27,8 +27,8 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
-from mrhub.providers.router import ModelRequest
 from mrhub.projects.registry import get_project_context
+from mrhub.providers.router import ModelRequest
 from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
