@@ -162,8 +162,6 @@ results. This protects the local retrieval boundary against accidental or
 unauthorized row-level content changes; it does not authenticate the original
 publisher or prove that an external source is still current.
 
-
-
 ## ARIA architecture specialist
 
 The server-defined `aria_architect` profile provides bounded project and
