@@ -751,3 +751,24 @@ The authenticated Cloudflare inventory returned three Workers: `gahop`, `mr-siav
 6. Complete the target Windows device acceptance, coordinated database/media/key backup and restore drill, clean upgrade/rollback, dependency lock, license decision, and external provider/social-account acceptance.
 
 This snapshot does not declare the product release-ready. Merge and hosted CI evidence are not deployment or production acceptance evidence.
+
+
+## 28. Central Project Control Center — verified implementation snapshot, 2026-11-08
+
+This section supersedes earlier control-center status notes above.
+
+- Current main: `0d03a7aac686255e6f895028ac4db1cae67dc2f4`.
+- PR #310 merged as `2798200cc3f4fe0b96876e62ab18ccbe2c67b9dd`: owner-authenticated, read-only registry for the three explicitly enrolled projects; public GitHub repository metadata, default-branch commit, open PR sample, and default-branch CI observation; bounded cache and truthful unknown states.
+- PR #329 merged as `0d03a7aac686255e6f895028ac4db1cae67dc2f4`: the Hub project card now uses the existing local `/health` and `/ready` functions to report liveness, database readiness, schema version, worker state, and heartbeat age. A ready database without a live worker is degraded, never healthy; unavailable readiness is failing/unknown with a sanitized reason code.
+- PR #329 exact-head verification passed: Backend CI, CI (Python 3.11 and 3.12, including Windows wheel smoke), Defensive Python Scan, and Linux/Windows Video Render Integration.
+- The registry remains owner-authenticated and read-only. The optional registry request is bounded and does not block the core operator overview.
+- MR_SIAVASH_AI and Gshop still show runtime `unknown` and infrastructure `not_configured`. The Hub already contains a typed Cloudflare gateway client and fixed-route Stage 1 Worker source (ADR-0001/0002), but the client is disabled by default and no dedicated Hub gateway Worker appears in the current Cloudflare Worker inventory. The existing `mr-siavash-ai-gateway` and its preview belong to MR_SIAVASH_AI and must not be repurposed; keep `gahop` and the GShop route isolated. No Hub gateway service credential is configured in the backend. Do not infer Worker, Pages, D1, DNS, or deployment health from repository CI.
+- Open PR #315 (scheduled development publisher) remains Draft and blocked by Issue #316 until credential isolation is demonstrated. PR #328 (default-deny OpenCode agent permissions) remains Draft; do not dispatch the privileged scheduled publisher.
+- No Cloudflare production deployment, DNS change, secret mutation, private repository access, or persistent infrastructure write was performed as part of the control-center work.
+
+### Remaining accepted-scope work
+
+1. After explicit owner approval, provision a dedicated isolated Hub staging Worker with `CF_ACCOUNT_ID` and `CF_ZONE_ID` variables, a least-privilege `CF_API_TOKEN` (Workers Scripts Read, Workers Routes Read, D1 Read), and a separate `GATEWAY_AUTH_TOKEN`; configure only the matching `MRH_CLOUDFLARE_GATEWAY_BASE_URL` and `MRH_CLOUDFLARE_GATEWAY_TOKEN` in the Hub server-side secret store. Never reuse the ChatGPT connector credential, the MR_SIAVASH_AI gateway, `gahop`, or the GShop production route.
+2. Add independently configured runtime probes for MR_SIAVASH_AI and Gshop only when their exact health contracts are known; otherwise keep them unknown.
+3. Add explainable risk summaries only from verified CI, runtime, and infrastructure observations.
+4. Keep all action proposals separate from monitoring and require fresh action-bound owner approval for production changes.

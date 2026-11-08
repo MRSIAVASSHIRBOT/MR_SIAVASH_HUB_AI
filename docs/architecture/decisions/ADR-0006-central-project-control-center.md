@@ -86,7 +86,7 @@ A later phase may propose reviewable repository changes or infrastructure action
 ### Implementation progress — 2026-11-08
 
 - Phase 1 read-only registry and public GitHub repository status are merged in PR #310.
-- The local Hub runtime portion of Phase 2 is implemented in the current change: the Hub project card reuses the existing read-only `/health` and `/ready` functions and reports the worker heartbeat age. A ready database without a live worker is shown as degraded, not healthy.
+- The local Hub runtime portion of Phase 2 is merged in PR #329: the Hub project card reuses the existing read-only `/health` and `/ready` functions and reports the worker heartbeat age. A ready database without a live worker is shown as degraded, not healthy.
 - Runtime and Cloudflare observations for MR_SIAVASH_AI and Gshop remain unknown/not_configured until their independent read-only integrations are explicitly configured. No external credentials or production mutation are introduced.
 
 ### Phase 3 — Risk and operational intelligence
