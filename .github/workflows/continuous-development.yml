@@ -161,6 +161,11 @@ jobs:
               b".env.example",
               b"wrangler.toml",
               b"cloudflare/wrangler.toml",
+              b"backend/mrhub/api/routes/auth.py",
+              b"backend/mrhub/api/routes/security_lab.py",
+              b"tests/test_audit.py",
+              b"tests/test_auth.py",
+              b"tests/test_tool_permissions.py",
           }
           protected_prefixes = (
               b".github/",
@@ -168,6 +173,8 @@ jobs:
               b".git/",
               b"scripts/deploy/",
               b".devcontainer/",
+              b"docs/security/",
+              b"backend/mrhub/security/",
           )
           blocked = [
               path for path in paths
