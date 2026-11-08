@@ -8,6 +8,7 @@ the project version follows Semantic Versioning (SemVer).
 ## [Unreleased]
 
 ### Added
+- Harden the scheduled development publisher's artifact boundary with normalized staged-path validation and Node 24 artifact actions.
 - Initial release-management baseline and release-readiness documentation.
 
 ### Changed
