@@ -238,3 +238,22 @@ summary { color: var(--green); cursor: pointer; }
 .project-links { justify-content: flex-start; }
 .project-links a { color: var(--green); text-decoration: underline; text-underline-offset: .2rem; }
 .project-card > small { color: var(--muted); line-height: 1.5; }
+
+.project-repository-details {
+  display: grid;
+  gap: .35rem;
+  padding-top: .55rem;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.project-repository-details small {
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.project-repository-details a {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: .2rem;
+  overflow-wrap: anywhere;
+}
