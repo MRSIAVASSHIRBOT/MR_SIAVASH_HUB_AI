@@ -613,3 +613,33 @@ A read-only inspection of the connected Cloudflare account rechecked the source-
 **Disposition:** do not enable the Hub Cloudflare client and do not treat the existing Worker as an accepted gateway deployment. Use a dedicated staging Worker and a least-privilege token, configure the two non-secret scope variables and two Worker secrets through an approved secure path, then test the authenticated `/health` and fixed read-only inventory operations. Never reuse the `gahop` Worker or its payment bindings.
 
 This was metadata-only inspection. Secret values were not requested or read. No Worker code, version, binding, secret, route, DNS record, D1 database, logging setting, payment configuration, or production resource was modified. Production changes remain approval-gated.
+
+
+## 33. Current exact-head and release-gate refresh — 2026-11-08 UTC
+
+This observation supersedes earlier workflow and PR status snapshots in this audit where they differ.
+
+### Mainline
+
+- Current `main`: `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+- The merged backup change marks media verification as truncated when directory enumeration fails; the merged memory change centralizes six-pattern credential screening at API and repository boundaries and rejects non-text repository input. The credential patterns are heuristic and cannot guarantee complete secret detection.
+- Exact-current-main Backend CI, CI (Python 3.11/3.12), Defensive Python Scan, and Linux/Windows Video Render Integration all passed on `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+- Continuous Development run `42426291290` also succeeded on this SHA with `develop` and `publish` jobs. This workflow is separate from the four validation groups.
+
+### Open PRs
+
+- **#312** — Draft documentation refresh; head `ed529106c5f3b9ee1be63da8a6f552e898390dd7` at the last PR-head poll. All four required workflow groups passed on that exact head. Its PR description still contains an obsolete head SHA and obsolete “checks not yet returned” statement; update the description after the latest documentation commits and rerun exact-head CI.
+- **#310** — Draft authenticated project registry; head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, 13 ahead / 0 behind current main. All four required workflow groups passed on that exact head. This is an explicitly enrolled, authenticated, read-only registry with configuration-derived status observations. It does not perform live cross-project probes.
+- **#309** — Draft Central Project Control Center ADR; head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, 3 ahead / 0 behind current main. All four required workflow groups passed on that exact head. ADR-0006 remains Proposed and requires owner review.
+- **#297** — open, non-draft; head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 ahead / 8 behind current main. All four workflow groups are `action_required`. Do not bypass the authorization gate or merge this stale branch.
+
+No PR was merged in this observation.
+
+### Cloudflare and governance
+
+- A read-only Cloudflare recheck found `mr-siavash-ai-gateway` has no attached route. Its observed settings bindings are `ALLOWED_ORIGINS` (plain text) and `DB` (D1); workers.dev is enabled, previews are disabled, and no custom Worker domain is listed. The required source-contract configuration was not established.
+- The separate `gahop` Worker still owns `gshop11.ir/api/*`. No Cloudflare resources, secrets, routes, DNS, D1, payment configuration, or production deployment were changed; no secret values were read.
+- GitHub branch metadata still reports `main` as unprotected. Detailed branch-protection inspection remains unavailable to this integration (HTTP 403). Owner/admin verification is required.
+- Target-device/browser acceptance, clean install/upgrade/rollback, production restore drills, external-provider acceptance, isolated staging gateway acceptance, and release approval remain open.
+
+Hosted CI does not establish deployed runtime health or production readiness. No whole-project-complete or production-ready claim is made.
