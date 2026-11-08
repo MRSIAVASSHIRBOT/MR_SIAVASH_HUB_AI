@@ -599,3 +599,17 @@ The latest Cloudflare deployment acceptance remains the 2026-11-06 read-only fin
 ### Cloudflare read-only check (same date)
 
 The Worker `mr-siavash-ai-gateway` has one recorded API deployment/version at 100% traffic but no attached route. Observability is enabled, query-string redaction is enabled, invocation logs and traces persist, and trace sampling is 10%. The separate `gahop` Worker retains `gshop11.ir/api/*`, query-string redaction disabled, and persistent invocation logs enabled. No secret values were read. No Cloudflare resources, routes, bindings, secrets, DNS, D1, payment settings, or production deployments were changed.
+
+
+## 32. Cloudflare gateway re-verification — 2026-11-08 UTC
+
+A read-only inspection of the connected Cloudflare account rechecked the source-controlled Hub gateway deployment boundary.
+
+- Worker `mr-siavash-ai-gateway` has a recorded API deployment with one version receiving 100% traffic; its workers.dev subdomain is enabled and previews are disabled.
+- The Worker settings expose only `ALLOWED_ORIGINS` (plain text) and `DB` (D1). The repository gateway source requires the separate `CF_ACCOUNT_ID`, `CF_ZONE_ID`, `CF_API_TOKEN`, and `GATEWAY_AUTH_TOKEN` configuration. Their presence was not established by the settings response.
+- No route is attached to `mr-siavash-ai-gateway`.
+- The `gshop11.ir` zone is active and its `gshop11.ir/api/*` route remains attached to `gahop`, not the Hub gateway.
+
+**Disposition:** do not enable the Hub Cloudflare client and do not treat the existing Worker as an accepted gateway deployment. Use a dedicated staging Worker and a least-privilege token, configure the two non-secret scope variables and two Worker secrets through an approved secure path, then test the authenticated `/health` and fixed read-only inventory operations. Never reuse the `gahop` Worker or its payment bindings.
+
+This was metadata-only inspection. Secret values were not requested or read. No Worker code, version, binding, secret, route, DNS record, D1 database, logging setting, payment configuration, or production resource was modified. Production changes remain approval-gated.
