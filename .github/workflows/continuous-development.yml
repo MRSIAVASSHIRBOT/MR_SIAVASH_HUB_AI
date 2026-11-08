@@ -37,10 +37,13 @@ jobs:
         env:
           MODEL: openrouter/cohere/north-mini-code:free
           OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
-          # Inline config has higher precedence than project config. Keep shell
-          # execution disabled so model-directed commands cannot inspect the
-          # OpenCode process environment that contains the provider credential.
-          OPENCODE_CONFIG_CONTENT: '{"tools":{"bash":false},"permission":{"bash":"deny","external_directory":"deny"}}'
+          # Inline config has higher precedence than project config. Disable
+          # process-spawning tools and external code/plugin surfaces while the
+          # provider credential is present in the OpenCode process environment.
+          OPENCODE_CONFIG_CONTENT: '{"tools":{"bash":false},"permission":{"bash":"deny","external_directory":"deny"},"lsp":false}'
+          OPENCODE_PURE: "true"
+          OPENCODE_EXPERIMENTAL_CODE_MODE: "false"
+          OPENCODE_DISABLE_EXTERNAL_SKILLS: "true"
         run: |
           if [ -z "$OPENROUTER_API_KEY" ]; then
             echo "::error::Repository secret MR_SIAVASH_HUB_AI is missing or empty."
