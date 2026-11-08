@@ -1,7 +1,12 @@
 """Explicitly enrolled project portfolio metadata and bounded Agent context."""
 
+import sqlite3
 from datetime import UTC, datetime
 
+from fastapi import HTTPException
+
+from mrhub.api.routes.health import health as read_local_health
+from mrhub.api.routes.health import readiness as read_local_readiness
 from mrhub.integrations.github_status import get_repository_status
 
 PROJECTS: tuple[dict[str, str | None], ...] = (
@@ -32,6 +37,77 @@ PROJECTS: tuple[dict[str, str | None], ...] = (
 )
 
 
+def _hub_runtime_observation() -> dict[str, object]:
+    """Observe this Hub process through its own read-only health/readiness checks."""
+    observed_at = datetime.now(UTC).isoformat()
+    try:
+        liveness = read_local_health()
+        readiness = read_local_readiness()
+    except HTTPException as exc:
+        failed = exc.status_code >= 500
+        return {
+            "status": "failing" if failed else "unknown",
+            "source": "local_health_and_readiness",
+            "observed_at": observed_at,
+            "reason_code": "hub_readiness_failed" if failed else "hub_readiness_unavailable",
+            "details": {
+                "liveness": "unknown",
+                "database": "unavailable",
+                "schema_version": None,
+                "worker": "unknown",
+                "worker_heartbeat_age_seconds": None,
+            },
+        }
+    except (OSError, sqlite3.Error, TypeError, ValueError):
+        return {
+            "status": "unknown",
+            "source": "local_health_and_readiness",
+            "observed_at": observed_at,
+            "reason_code": "hub_runtime_observation_failed",
+            "details": {
+                "liveness": "unknown",
+                "database": "unknown",
+                "schema_version": None,
+                "worker": "unknown",
+                "worker_heartbeat_age_seconds": None,
+            },
+        }
+
+    worker = readiness.get("worker")
+    database = readiness.get("database")
+    schema_version = readiness.get("schema_version")
+    heartbeat_age = readiness.get("worker_heartbeat_age_seconds")
+    details = {
+        "liveness": liveness.get("status") if isinstance(liveness, dict) else "unknown",
+        "database": database if isinstance(database, str) else "unknown",
+        "schema_version": schema_version
+        if isinstance(schema_version, int) and not isinstance(schema_version, bool)
+        else None,
+        "worker": worker if isinstance(worker, str) else "unknown",
+        "worker_heartbeat_age_seconds": heartbeat_age
+        if isinstance(heartbeat_age, int) and not isinstance(heartbeat_age, bool) and heartbeat_age >= 0
+        else None,
+    }
+
+    if details["liveness"] != "ok" or readiness.get("status") != "ready" or database != "ready":
+        status = "failing"
+        reason_code = "hub_runtime_not_ready"
+    elif worker != "running":
+        status = "degraded"
+        reason_code = "hub_worker_not_detected"
+    else:
+        status = "healthy"
+        reason_code = "hub_runtime_and_worker_healthy"
+
+    return {
+        "status": status,
+        "source": "local_health_and_readiness",
+        "observed_at": observed_at,
+        "reason_code": reason_code,
+        "details": details,
+    }
+
+
 def build_project_registry(*, include_live_status: bool = False) -> dict[str, object]:
     """Build the owner inventory; only the dashboard opts into live public GitHub reads.
 
@@ -39,6 +115,7 @@ def build_project_registry(*, include_live_status: bool = False) -> dict[str, ob
     requests during model inference and to keep the evidence payload deterministic.
     """
     observed_at = datetime.now(UTC).isoformat()
+    hub_runtime = _hub_runtime_observation() if include_live_status else None
     projects = []
     for project in PROJECTS:
         if include_live_status:
@@ -67,14 +144,28 @@ def build_project_registry(*, include_live_status: bool = False) -> dict[str, ob
                 "it is not a live repository or runtime health observation."
             )
 
-        status_observations = {
-            "repository": repository_observation,
-            "runtime": {
+        if include_live_status and project["project_id"] == "mr-siavash-hub-ai":
+            runtime_observation = hub_runtime
+            status_reason = (
+                "GitHub metadata is read-only; Hub runtime uses local /health, /ready "
+                "and worker heartbeat checks; Cloudflare observations remain unconfigured."
+            )
+        else:
+            runtime_observation = {
                 "status": "unknown",
                 "source": "project_registry_configuration",
                 "observed_at": observed_at,
                 "reason_code": "runtime_probe_not_configured",
-            },
+            }
+            if include_live_status:
+                status_reason = (
+                    "GitHub metadata is read-only; this project's runtime and Cloudflare "
+                    "observations remain independently unconfigured."
+                )
+
+        status_observations = {
+            "repository": repository_observation,
+            "runtime": runtime_observation,
             "infrastructure": {
                 "status": "not_configured",
                 "source": "project_registry_configuration",

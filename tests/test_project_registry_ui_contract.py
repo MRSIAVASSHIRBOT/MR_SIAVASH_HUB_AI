@@ -28,3 +28,13 @@ def test_project_registry_refresh_is_bounded_and_non_blocking_for_core_overview(
         'api("/agent/workflows?limit=50")',
     ):
         assert endpoint in overview_source
+
+
+def test_project_registry_renders_local_worker_heartbeat_provenance():
+    source_path = Path(__file__).resolve().parents[1] / "backend/mrhub/web/app.js"
+    source = source_path.read_text(encoding="utf-8")
+
+    assert 'observation.details' in source
+    assert 'runtime.worker_heartbeat_age_seconds' in source
+    assert 'runtime.schema_version' in source
+    assert 'تازگی heartbeat:' in source

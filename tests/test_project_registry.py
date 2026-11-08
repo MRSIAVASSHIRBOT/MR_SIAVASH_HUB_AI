@@ -1,7 +1,9 @@
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from mrhub.projects import registry
 
 
 def test_project_registry_requires_authenticated_owner(tmp_path, monkeypatch):
@@ -65,7 +67,11 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         for project in payload["projects"]
     )
     assert all(project["repository_details"]["default_branch"] == "main" for project in payload["projects"])
-    assert all(project["runtime_status"] == "unknown" for project in payload["projects"])
+    assert [project["runtime_status"] for project in payload["projects"]] == [
+        "degraded",
+        "unknown",
+        "unknown",
+    ]
     assert all(
         project["infrastructure_status"] == "not_configured"
         for project in payload["projects"]
@@ -77,7 +83,11 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         assert set(observations) == {"repository", "runtime", "infrastructure"}
         expected = {
             "repository": ("healthy", "repository_metadata_observed", "github_public_api"),
-            "runtime": ("unknown", "runtime_probe_not_configured", "project_registry_configuration"),
+            "runtime": (
+                ("degraded", "hub_worker_not_detected", "local_health_and_readiness")
+                if project["project_id"] == "mr-siavash-hub-ai"
+                else ("unknown", "runtime_probe_not_configured", "project_registry_configuration")
+            ),
             "infrastructure": ("not_configured", "cloudflare_integration_not_configured",
                                "project_registry_configuration"),
         }
@@ -85,7 +95,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
             observation = observations[dimension]
             assert observation["status"] == status
             assert observation["source"] == source
-            assert observation["observed_at"] == payload["observed_at"] or dimension == "repository"
+            assert isinstance(observation["observed_at"], str) and len(observation["observed_at"]) > 10
             assert observation["reason_code"] == reason_code
 
 
@@ -122,3 +132,61 @@ def test_project_registry_does_not_claim_unverified_health(tmp_path, monkeypatch
 
     assert not any(project["runtime_status"] == "healthy" for project in projects)
     assert not any(project["repository_status"] == "healthy" for project in projects)
+
+
+def test_hub_runtime_is_healthy_only_when_local_worker_heartbeat_is_live(monkeypatch):
+    monkeypatch.setattr(registry, "read_local_health", lambda: {"status": "ok"})
+    monkeypatch.setattr(
+        registry,
+        "read_local_readiness",
+        lambda: {
+            "status": "ready",
+            "database": "ready",
+            "schema_version": 30,
+            "worker": "running",
+            "worker_heartbeat_age_seconds": 2,
+        },
+    )
+
+    observation = registry._hub_runtime_observation()
+
+    assert observation["status"] == "healthy"
+    assert observation["source"] == "local_health_and_readiness"
+    assert observation["reason_code"] == "hub_runtime_and_worker_healthy"
+    assert observation["details"]["worker"] == "running"
+    assert observation["details"]["worker_heartbeat_age_seconds"] == 2
+
+
+def test_hub_runtime_is_degraded_when_worker_heartbeat_is_not_detected(monkeypatch):
+    monkeypatch.setattr(registry, "read_local_health", lambda: {"status": "ok"})
+    monkeypatch.setattr(
+        registry,
+        "read_local_readiness",
+        lambda: {
+            "status": "ready",
+            "database": "ready",
+            "schema_version": 30,
+            "worker": "not_detected",
+            "worker_heartbeat_age_seconds": None,
+        },
+    )
+
+    observation = registry._hub_runtime_observation()
+
+    assert observation["status"] == "degraded"
+    assert observation["reason_code"] == "hub_worker_not_detected"
+
+
+def test_hub_runtime_fails_closed_when_local_readiness_is_unavailable(monkeypatch):
+    monkeypatch.setattr(registry, "read_local_health", lambda: {"status": "ok"})
+
+    def unavailable():
+        raise HTTPException(status_code=503, detail="Database is not ready")
+
+    monkeypatch.setattr(registry, "read_local_readiness", unavailable)
+
+    observation = registry._hub_runtime_observation()
+
+    assert observation["status"] == "failing"
+    assert observation["reason_code"] == "hub_readiness_failed"
+    assert observation["details"]["database"] == "unavailable"
