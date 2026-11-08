@@ -430,7 +430,6 @@ def test_orchestrator_preserves_policy_denial_without_executing_tool():
     assert executed == []
 
 
-
 def test_aria_architect_is_registered_as_a_tool_free_bounded_specialist():
     tools = build_tool_registry()
     registry = build_default_agent_registry(tools)
