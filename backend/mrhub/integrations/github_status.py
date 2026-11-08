@@ -211,6 +211,7 @@ class GitHubStatusClient:
             "status": "unknown",
             "source": "github_actions_public_api",
             "observed_at": observed_at,
+            "branch": default_branch,
             "reason_code": "github_workflow_runs_unavailable",
         }
         try:
@@ -239,6 +240,7 @@ class GitHubStatusClient:
                         "status": ci_status,
                         "source": "github_actions_public_api",
                         "observed_at": observed_at,
+                        "branch": default_branch,
                         "reason_code": reason,
                         "workflow_name": str(run.get("name") or "")[:120],
                         "conclusion": conclusion if isinstance(conclusion, str) else None,
