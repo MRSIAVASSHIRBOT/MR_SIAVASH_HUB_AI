@@ -229,6 +229,7 @@ jobs:
                   or basename.startswith(b"docker-compose.")
                   or basename.startswith(b"compose.")
                   or basename in {
+                      b"agents.md", b"codeowners", b"security.md",
                       b"pyproject.toml", b"setup.py", b"setup.cfg", b"tox.ini",
                       b"noxfile.py", b"package.json", b"cargo.toml", b"go.mod",
                       b"composer.json", b"gemfile", b"pipfile", b"makefile",
