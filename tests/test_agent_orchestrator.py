@@ -428,3 +428,21 @@ def test_orchestrator_preserves_policy_denial_without_executing_tool():
     assert result["tools_executed"] is False
     assert result["trace"][0]["type"] == "tool_denied"
     assert executed == []
+
+
+def test_aria_architect_is_registered_as_a_tool_free_bounded_specialist():
+    tools = build_tool_registry()
+    registry = build_default_agent_registry(tools)
+
+    profile = registry.get("aria_architect")
+    catalog_entry = next(
+        item for item in registry.catalog() if item["name"] == "aria_architect"
+    )
+    scoped_tools = registry.scoped_tools("aria_architect", tools)
+
+    assert profile.max_turns == 3
+    assert profile.allowed_tools == frozenset()
+    assert catalog_entry["allowed_tools"] == []
+    assert scoped_tools.catalog() == []
+    assert "evidence-based architecture" in profile.description
+    assert "Never claim repository access" in profile.instructions
