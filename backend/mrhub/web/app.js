@@ -437,6 +437,19 @@
                 + " · زمان مشاهده: " + observedLabel
                 + " · کد: " + (observation.reason_code || "نامشخص")
             ));
+            if (dimension === "runtime" && observation.details
+              && typeof observation.details === "object") {
+              const runtime = observation.details;
+              const details = [];
+              if (typeof runtime.database === "string") details.push("پایگاه داده: " + runtime.database);
+              if (typeof runtime.worker === "string") details.push("Worker: " + runtime.worker);
+              if (Number.isInteger(runtime.worker_heartbeat_age_seconds)) {
+                details.push("تازگی heartbeat: " + runtime.worker_heartbeat_age_seconds + " ثانیه");
+              }
+              if (Number.isInteger(runtime.schema_version)) details.push("نسخهٔ طرح‌واره: " + runtime.schema_version);
+              if (details.length) row.append(element("small", details.join(" · ")));
+            }
+
           } else {
             row.append(element("small", "منبع و زمان مشاهده ثبت نشده است."));
           }
