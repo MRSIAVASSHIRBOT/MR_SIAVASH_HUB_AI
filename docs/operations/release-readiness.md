@@ -11,6 +11,7 @@ Read the [release management policy](release-management.md) for the repository b
 - [ ] Create fresh Python 3.11 and 3.12 environments and install the approved dependency set from the checked-out commit; record exact interpreter versions.
 - [ ] Confirm the installed package imports and the documented local startup command works.
 - [ ] Build a wheel, inspect its package data, install it into a clean virtual environment, and run the health smoke test.
+- [ ] Confirm the hosted clean-wheel smoke matrix passes on Ubuntu and Windows with Python 3.11 and 3.12; record the exact candidate SHA.
 - [ ] Start with a new database and verify all schema migrations apply once and remain idempotent.
 - [ ] Upgrade a copy of the prior release database and verify owner, task, workflow, approval, and content records remain readable.
 
@@ -40,7 +41,8 @@ Read the [release management policy](release-management.md) for the repository b
 - [ ] Complete [Windows Local Acceptance Checklist](windows-acceptance-checklist.md) on a real Windows machine; record the tested commit SHA and sanitized results. The checklist is a manual gate, not a claim of completion.
 - [ ] Confirm the supported-platform statement explicitly. Current automated coverage includes Linux and Windows hosted FFmpeg integration; this is not equivalent to owner-device acceptance.
 - [ ] If macOS is a supported target, run and record a separate macOS acceptance pass. Otherwise state that macOS is not a supported/validated target.
-- [ ] Do not infer Windows or macOS device compatibility from Linux CI or hosted Windows jobs.
+- [ ] Treat the Ubuntu/Windows wheel-smoke matrix and hosted FFmpeg jobs as automated compatibility evidence only; neither replaces installation and representative workflow acceptance on the owner's actual Windows device.
+- [ ] Do not infer macOS compatibility; no macOS runner is included in this matrix.
 
 ## Recent video snapshot integration
 - [x] Review and merge [PR #276](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/276), which fences new snapshot-backed renders to the exact current draft revision for both snapshot-value and snapshot-ID submissions while preserving accepted idempotent retries.
