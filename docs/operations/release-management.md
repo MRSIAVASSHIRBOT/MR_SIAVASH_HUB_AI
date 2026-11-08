@@ -213,7 +213,7 @@ PR #276 is merged. The Release & Update Manager records its merge and exact-head
 - PR #323 merged as `9e3f43e027a65672a12599fa20b999f443eec9a1`: strict GitHub repository identity validation, strict upstream state flags, bounded metadata normalization, and regression tests.
 - PR #326 merged as `95530b98584f80161268155600b088572da295d2`: authenticated synthetic Knowledge evaluation API, Windows clean-wheel smoke for Python 3.11/3.12, encoded workflow-key regression test, and immutable verified Node 24 action pins.
 - Exact PR-head checks for #326 passed, including both Windows wheel smoke cells, Python 3.11/3.12 CI, Backend CI, Defensive Python Scan, Linux/Windows FFmpeg integration, and Windows Launcher Validation.
-- Post-merge workflows on `95530b98584f80161268155600b088572da295d2` were pending at this observation: CI `42496885622`, Backend CI `42496885628`, Defensive Python Scan `42496885624`, Video Render Integration `42496885716`. Re-check before recording post-merge PASS.
+- All four post-merge workflows passed on exact main commit `95530b98584f80161268155600b088572da295d2`: CI `42496885622`, Backend CI `42496885628`, Defensive Python Scan `42496885624`, and Video Render Integration `42496885716`.
 
 ### Current release blockers
 
