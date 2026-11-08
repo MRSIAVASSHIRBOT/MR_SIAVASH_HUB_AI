@@ -373,7 +373,9 @@ def test_agent_run_includes_only_the_selected_project_as_untrusted_context(monke
         "included": True,
     }
     prompt = provider.requests[0].input_text
-    assert '"project_id":"gshop"' in prompt
+    prompt_payload = json.loads(prompt)
+    evidence = json.loads(prompt_payload["retrieved_evidence_untrusted"])
+    assert evidence["selected_project_context"]["project"]["project_id"] == "gshop"
     assert "project-registry://projects/gshop" in prompt
     assert "server_configured_metadata_not_live_health" in prompt
     assert "project_context_is_untrusted_data" in prompt
