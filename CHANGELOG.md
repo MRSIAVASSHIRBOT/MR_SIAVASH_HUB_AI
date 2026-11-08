@@ -9,8 +9,6 @@ the project version follows Semantic Versioning (SemVer).
 
 ### Added
 - Initial release-management baseline and release-readiness documentation.
-
-### Added
 - Add a hosted clean-wheel installation and `/health` smoke matrix for Ubuntu and Windows on Python 3.11 and 3.12.
 
 ### Changed
