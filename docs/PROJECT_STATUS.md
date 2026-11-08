@@ -825,3 +825,35 @@ The gateway is therefore **not accepted as a deployment of the source-controlled
 ### Acceptance boundary
 
 Green hosted CI confirms the tested commit, not target-device operation or production readiness. Windows/browser acceptance, clean install/upgrade/rollback, backup/key/media restore drills, external-provider acceptance, GitHub governance review, and isolated Cloudflare staging acceptance remain outstanding. No whole-project-complete or production-ready claim is made.
+
+
+## 33. Fresh repository and operational verification — 2026-11-08 UTC
+
+This snapshot supersedes earlier workflow and PR observations above wherever they differ. It records the state observed immediately before this documentation update.
+
+### Mainline and CI evidence
+
+- Current `main`: `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+- Exact-main Backend CI run `42325251955`: passed.
+- Exact-main CI run `42325251968`: Python 3.11 and Python 3.12 jobs both passed.
+- Exact-main Defensive Python Scan run `42325251978`: passed.
+- Exact-main Video Render Integration run `42325252133`: Linux and Windows FFmpeg integration jobs both passed.
+- Separate Continuous Development run `42426291290`: `develop` and `publish` jobs passed. This is not a substitute for the four validation groups above.
+- Main branch metadata reports `protected: false`. The detailed branch-protection endpoint remains unavailable to this integration (HTTP 403); no protection setting was changed.
+
+### Current PR state and exact-head evidence
+
+- **PR #309 — Central Project Control Center ADR:** head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, Draft, 3 commits ahead / 0 behind main. Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows Video Render Integration all passed on this exact head. ADR-0006 remains Proposed.
+- **PR #310 — authenticated project portfolio:** head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, Draft, 13 ahead / 0 behind main. All four required validation groups passed on this exact head. The registry is explicitly enrolled, authenticated, and read-only; it does not perform live GitHub, Cloudflare, or runtime health probes. Its configuration-derived statuses remain `not_configured` or `unknown`.
+- **PR #312 — this documentation refresh:** head `49203ad83d94bbebcce52436cd88d6111c38144c`, Draft, 15 ahead / 0 behind main immediately before this update. All required validation jobs passed on that exact head. The documentation commits made by this update create a new head; their checks must be observed independently before merge.
+- **PR #297 — scheduled payload-envelope cleanup:** head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 ahead / 8 behind main. Backend CI, CI, Video Render Integration, and Defensive Python Scan all report `action_required` on that exact head. Do not bypass this authorization gate or merge the stale branch.
+
+### Cloudflare gateway recheck (read-only)
+
+- The account currently lists the separate Workers `gahop` and `mr-siavash-ai-gateway`.
+- `mr-siavash-ai-gateway` has no attached route. Its workers.dev subdomain is enabled and previews are disabled.
+- Its observed bindings are only `ALLOWED_ORIGINS` (plain text) and `DB` (D1). The source-controlled Hub gateway contract requires additional scope/auth configuration; its presence was not established. No secret values were requested or read.
+- Observability is enabled; query-string redaction is enabled. Invocation logs are enabled and persistent with sampling rate 1.0; traces are enabled and persistent with sampling rate 0.1. Review the data-retention/privacy implications before enabling this Worker for any user traffic.
+- The existing `gahop` Worker and `gshop11.ir/api/*` route remain separate and unchanged.
+
+No Cloudflare resources, bindings, routes, secrets, DNS, D1 data, payment settings, or production deployments were changed. No PR was merged. No whole-project-complete or production-ready claim is made.
