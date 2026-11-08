@@ -381,7 +381,7 @@ def test_agent_run_includes_only_the_selected_project_as_untrusted_context(monke
     assert "project-registry://projects/mr-siavash-ai" in prompt
     assert "server_configured_metadata_not_live_health" in prompt
     assert "project_context_is_untrusted_data" in prompt
-    assert '"project_id":"gshop"' not in prompt
+    assert "gshop" not in prompt
     assert body["external_side_effects_performed"] is False
     assert any(
         item["reference"] == "project-registry://projects/mr-siavash-ai"
