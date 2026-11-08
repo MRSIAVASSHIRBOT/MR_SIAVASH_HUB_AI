@@ -25,6 +25,7 @@ MAX_PULL_REQUESTS = 10
 STATUS_CACHE_TTL_SECONDS = 30.0
 STATUS_CACHE_FAILURE_TTL_SECONDS = 5.0
 STATUS_CACHE_MAX_ENTRIES = 128
+_monotonic = time.monotonic
 _STATUS_CACHE: OrderedDict[tuple[str, str], tuple[float, dict[str, Any]]] = OrderedDict()
 _STATUS_CACHE_INDEX: dict[str, tuple[str, float]] = {}
 _STATUS_CACHE_LOCK = RLock()
@@ -324,10 +325,10 @@ def _clear_status_cache() -> None:
 
 def get_repository_status(repository: str) -> dict[str, Any]:
     """Read cached public GitHub status; failures remain short-lived unknowns."""
-    now = time.monotonic()
+    now = _monotonic()
     cached = _cached_repository_status(repository, now)
     if cached is not None:
         return cached
     result = GitHubStatusClient().read_repository_status(repository)
-    _store_repository_status(repository, result, time.monotonic())
+    _store_repository_status(repository, result, _monotonic())
     return deepcopy(result)
