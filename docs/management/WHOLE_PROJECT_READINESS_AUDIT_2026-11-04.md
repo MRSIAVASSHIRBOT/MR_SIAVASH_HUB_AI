@@ -643,3 +643,33 @@ No PR was merged in this observation.
 - Target-device/browser acceptance, clean install/upgrade/rollback, production restore drills, external-provider acceptance, isolated staging gateway acceptance, and release approval remain open.
 
 Hosted CI does not establish deployed runtime health or production readiness. No whole-project-complete or production-ready claim is made.
+
+
+## 34. Exact-head and live-infrastructure recheck — 2026-11-08 UTC
+
+This section supersedes earlier workflow, PR, and Cloudflare observations in this audit where they differ.
+
+### Mainline validation
+
+- Current `main`: `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+- Backend CI run `42325251955`: passed.
+- CI run `42325251968`: Python 3.11 and 3.12 both passed.
+- Defensive Python Scan run `42325251978`: passed.
+- Video Render Integration run `42325252133`: Linux and Windows jobs both passed.
+- Continuous Development run `42426291290` passed its `develop` and `publish` jobs; it is a separate workflow.
+- GitHub branch metadata reports `main` unprotected. Detailed protection inspection returned HTTP 403 to the connected integration. No governance settings were modified.
+
+### PR synchronization
+
+- #309: Draft ADR, head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, 3 ahead / 0 behind; all four validation groups passed on the exact head. ADR remains Proposed.
+- #310: Draft project registry, head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, 13 ahead / 0 behind; all four validation groups passed on the exact head. It is a static explicit registry, not live cross-project monitoring.
+- #312: Draft documentation refresh, head `49203ad83d94bbebcce52436cd88d6111c38144c`, 15 ahead / 0 behind immediately before this update; all required jobs passed on that exact head. The documentation update creates a new head requiring a fresh exact-head run.
+- #297: head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 ahead / 8 behind; all four workflows are `action_required`. Do not bypass workflow authorization.
+
+### Cloudflare observation
+
+The read-only Cloudflare account query returned only `gahop` and `mr-siavash-ai-gateway` as Workers. The Hub gateway has no route; workers.dev is enabled and previews are disabled. Its settings show only `ALLOWED_ORIGINS` (plain text) and `DB` (D1), not the complete source-controlled gateway configuration. Query-string redaction is enabled, but persistent invocation logs and traces are also enabled (invocation sampling 1.0; trace sampling 0.1). Treat this as an unresolved privacy/retention review before any user traffic. No secret values were read.
+
+The `gahop` Worker and `gshop11.ir/api/*` route were not modified. No Cloudflare resource, secret, route, DNS, D1, payment configuration, or production deployment was changed. No PR was merged. Target-device acceptance, restore/rollback drills, isolated staging gateway acceptance, external-provider validation, branch governance, and release approval remain outstanding.
+
+No whole-project-complete or production-ready claim is made.
