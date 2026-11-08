@@ -791,3 +791,37 @@ No production deployment, Cloudflare mutation, credential rotation or target-dev
 ### Cloudflare read-only check (same date)
 
 A fresh account read confirmed that `mr-siavash-ai-gateway` has one API deployment/version receiving 100% traffic but no attached route. Its observability is enabled, query-string redaction is enabled, persistent invocation logs and traces are enabled, and traces are sampled at 10%. The separate `gahop` Worker still owns `gshop11.ir/api/*`; query-string redaction is disabled and invocation logs persist. No secret values were read and no Cloudflare resources or settings were changed. The gateway remains unaccepted for production pending source-contract, route, and privacy-policy verification.
+
+
+## 32. Verified refresh — 2026-11-08 UTC
+
+This section supersedes earlier snapshots in this document where the observations differ. The latest inspected main head is `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+
+### Mainline and exact-head checks
+
+- PR #311 (backup media scan truncation) merged as `0d7356076c160d265d265f47405dc75e901b2b52`; all four required workflow groups passed on its exact PR head.
+- PR #308 (centralized heuristic credential screening) merged as `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; all four required workflow groups passed on its exact PR head. Screening remains heuristic defense-in-depth, not a complete secret detector.
+- On current main `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`, Backend CI, Python CI (3.11/3.12), Defensive Python Scan, and Linux/Windows Video Render Integration all have successful runs.
+- The separate Continuous Development workflow also succeeded on this main head; it is not substituted for the four CI groups above.
+
+### Current pull requests
+
+- **PR #309:** head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, Draft, 3 ahead / 0 behind main. Backend CI, CI, Defensive Python Scan, and Video Render Integration all passed on this exact head. ADR-0006 remains Proposed, not accepted.
+- **PR #310:** head `a869fad16242ae9ba949e4e44e8b774cfab5af56`, Draft, 13 ahead / 0 behind main. All four required workflow groups passed on this exact head. The explicit project registry and RTL dashboard are implemented, with status provenance and timestamps. Repository, runtime, and infrastructure health remain `not_configured`/`unknown`; no live cross-project probes are implemented.
+- **PR #312:** head `ed529106c5f3b9ee1be63da8a6f552e898390dd7`, Draft, 12 ahead / 0 behind main at the time of this refresh. All four required workflow groups passed on this exact head before this documentation update. New commits require fresh exact-head CI.
+- **PR #297:** head `01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 ahead / 7 behind main. Its workflow groups remain `action_required`; do not bypass authorization.
+
+### Cloudflare read-only acceptance observation
+
+A fresh read-only account inspection on 2026-11-08 found:
+
+- `mr-siavash-ai-gateway` has one deployment with one version receiving 100% of traffic and its workers.dev subdomain enabled.
+- Its Worker settings expose only `ALLOWED_ORIGINS` (plain text) and `DB` (D1) bindings. The source-controlled gateway contract additionally requires `CF_ACCOUNT_ID`, `CF_ZONE_ID`, `CF_API_TOKEN`, and `GATEWAY_AUTH_TOKEN`; their presence was not established.
+- No route is attached to `mr-siavash-ai-gateway`.
+- The active `gshop11.ir` zone retains `gshop11.ir/api/*` routed to the separate `gahop` Worker.
+
+The gateway is therefore **not accepted as a deployment of the source-controlled read-only gateway**. Keep the Hub integration disabled until a dedicated staging deployment has the required least-privilege configuration and passes authenticated acceptance tests. No secret values were read. No Cloudflare Worker, route, binding, secret, DNS, D1, payment setting, or production resource was changed.
+
+### Acceptance boundary
+
+Green hosted CI confirms the tested commit, not target-device operation or production readiness. Windows/browser acceptance, clean install/upgrade/rollback, backup/key/media restore drills, external-provider acceptance, GitHub governance review, and isolated Cloudflare staging acceptance remain outstanding. No whole-project-complete or production-ready claim is made.
