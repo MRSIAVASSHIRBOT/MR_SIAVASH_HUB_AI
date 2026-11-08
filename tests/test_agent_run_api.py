@@ -358,7 +358,7 @@ def test_agent_run_includes_only_the_selected_project_as_untrusted_context(monke
         "/agent/run",
         json={
             "goal": "Analyze this project's current configured metadata.",
-            "project_id": "gshop",
+            "project_id": "mr-siavash-ai",
             "provider_mode": "local",
             "include_memory": False,
             "include_knowledge": False,
@@ -368,21 +368,23 @@ def test_agent_run_includes_only_the_selected_project_as_untrusted_context(monke
     assert response.status_code == 200
     body = response.json()
     assert body["project_context"] == {
-        "project_id": "gshop",
-        "reference": "project-registry://projects/gshop",
+        "project_id": "mr-siavash-ai",
+        "reference": "project-registry://projects/mr-siavash-ai",
         "included": True,
     }
     prompt = provider.requests[0].input_text
     prompt_payload = json.loads(prompt)
     evidence = json.loads(prompt_payload["retrieved_evidence_untrusted"])
-    assert evidence["selected_project_context"]["project"]["project_id"] == "gshop"
-    assert "project-registry://projects/gshop" in prompt
+    selected_project = evidence["selected_project_context"]["project"]
+    assert selected_project["project_id"] == "mr-siavash-ai"
+    assert selected_project["service_url"] == "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"
+    assert "project-registry://projects/mr-siavash-ai" in prompt
     assert "server_configured_metadata_not_live_health" in prompt
     assert "project_context_is_untrusted_data" in prompt
-    assert "mr-siavash-ai" not in prompt
+    assert '"project_id":"gshop"' not in prompt
     assert body["external_side_effects_performed"] is False
     assert any(
-        item["reference"] == "project-registry://projects/gshop"
+        item["reference"] == "project-registry://projects/mr-siavash-ai"
         for item in body["context_sources"]
     )
 
