@@ -231,11 +231,11 @@ jobs:
                   or basename in {
                       b"pyproject.toml", b"setup.py", b"setup.cfg", b"tox.ini",
                       b"noxfile.py", b"package.json", b"cargo.toml", b"go.mod",
-                      b"composer.json", b"gemfile", b"makefile",
+                      b"composer.json", b"gemfile", b"pipfile", b"makefile",
                   }
               )
               if (
-                  normalized in protected_exact
+                  normalized in {item.lower() for item in protected_exact}
                   or normalized in {b".github", b"security", b".git"}
                   or any(part.startswith(b".env") for part in components)
                   or basename.startswith(b"wrangler.")
