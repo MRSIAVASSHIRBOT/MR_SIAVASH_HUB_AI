@@ -1,4 +1,4 @@
-""""FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
+"""FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
