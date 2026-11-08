@@ -93,6 +93,7 @@ def test_publisher_validates_staged_paths_before_receiving_write_token() -> None
     assert "git ls-files --stage -z" in validation
     assert 'b".github/"' in validation
     assert 'b".env"' in validation
+    assert 'b"tests/test_continuous_development_security.py"' in validation
     assert "b" + '"120000"' in validation
     assert "b" + '"160000"' in validation
     assert "git apply --index --binary" not in publisher
