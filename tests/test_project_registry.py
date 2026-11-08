@@ -16,7 +16,7 @@ def test_project_registry_requires_authenticated_owner(tmp_path, monkeypatch):
 
 def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "mrhub.api.routes.projects.get_repository_status",
+        "mrhub.projects.registry.get_repository_status",
         lambda repository: {
             "status": "healthy",
             "source": "github_public_api",
@@ -91,7 +91,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
 
 def test_project_registry_does_not_claim_unverified_health(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "mrhub.api.routes.projects.get_repository_status",
+        "mrhub.projects.registry.get_repository_status",
         lambda repository: {
             "status": "unknown",
             "source": "github_public_api",
