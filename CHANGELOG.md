@@ -10,6 +10,7 @@ the project version follows Semantic Versioning (SemVer).
 ### Added
 - Initial release-management baseline and release-readiness documentation.
 - Add a hosted clean-wheel installation and `/health` smoke matrix for Ubuntu and Windows on Python 3.11 and 3.12.
+- Pin CI actions to verified Node 24-compatible releases and use HTTPX ASGI transport for warning-free wheel health smoke checks.
 
 ### Changed
 - Refresh release-management evidence to the 2026-11-08 main baseline and align release gates with the latest merged work.
