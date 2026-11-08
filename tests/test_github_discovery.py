@@ -138,6 +138,9 @@ def test_malformed_public_counters_are_bounded_instead_of_crashing(monkeypatch, 
         "stargazers_count": "not-an-integer",
         "open_issues_count": -9,
         "license": {"spdx_id": "MIT"},
+        "archived": False,
+        "disabled": False,
+        "fork": False,
     }
     monkeypatch.setattr("mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata)
     registry = CapabilityRegistry(tmp_path / "bad-counters.sqlite3")
@@ -202,9 +205,9 @@ def test_discovery_normalizes_untrusted_metadata_types_and_bounds_text(monkeypat
         "language": "  " + ("L" * 100),
         "topics": ["  " + ("T" * 120)],
         "license": {"spdx_id": "MIT"},
-        "archived": "false",
-        "disabled": "0",
-        "fork": 1,
+        "archived": False,
+        "disabled": False,
+        "fork": False,
         "stargazers_count": 12,
         "open_issues_count": 3,
         "updated_at": "  2026-11-01T00:00:00Z  ",
@@ -232,3 +235,28 @@ def test_discovery_normalizes_untrusted_metadata_types_and_bounds_text(monkeypat
     assert "repository_is_fork" not in {
         signal["code"] for signal in result["evaluation"]["signals"]
     }
+
+
+@pytest.mark.parametrize("field", ["archived", "disabled", "fork"])
+@pytest.mark.parametrize("invalid_value", ["true", "false", "0", 1, None])
+def test_discovery_rejects_malformed_repository_state_flags(
+    monkeypatch, tmp_path, field, invalid_value
+):
+    metadata = {
+        "full_name": "Example/FlagValidation",
+        "license": {"spdx_id": "MIT"},
+        "archived": False,
+        "disabled": False,
+        "fork": False,
+    }
+    metadata[field] = invalid_value
+    monkeypatch.setattr(
+        "mrhub.capabilities.github_discovery._metadata_response", lambda url: metadata
+    )
+    registry = CapabilityRegistry(tmp_path / f"invalid-{field}.sqlite3")
+
+    with pytest.raises(GitHubDiscoveryError) as error:
+        discover_github_candidate("https://github.com/Example/FlagValidation", registry)
+
+    assert error.value.code == "invalid_github_response"
+    assert error.value.status_code == 502
