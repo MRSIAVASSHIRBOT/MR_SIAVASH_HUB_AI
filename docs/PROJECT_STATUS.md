@@ -888,3 +888,13 @@ Exact-head workflow state at this observation:
 PR #313 remains Draft at `82fa682e05af64562920734cc223a189a4bd1e75`; its four required groups passed, but the review concern about malformed status flags silently becoming `False` remains unresolved. PR #312's prior exact head `32ac2864fab34a338b92e0a56df6103a7a50519d` had newly queued validation jobs; this documentation update creates a new head and requires a fresh exact-head run. PRs #309/#310 remain Draft with passing exact-head checks. PR #297 remains 8 commits behind main with all four workflows `action_required`.
 
 No PR was merged. No production release, Cloudflare mutation, secret change, or branch-governance change was made.
+
+
+## 36. Exact-head review follow-up — 2026-11-08 UTC
+
+- **PR #313** is now at `5a141bc12f534bd96be3d89467ab29549516c510`, 5 commits ahead / 0 behind main. The malformed-status-flag review finding was addressed: `archived`, `disabled`, and `fork` now require real JSON booleans; malformed values return a typed metadata error. Fifteen regression cases cover `"true"`, `"false"`, `"0"`, integer `1`, and `null` across all three fields. Defensive Scan and Linux FFmpeg passed; Backend CI, Python 3.11/3.12 CI, and Windows FFmpeg were still in progress. Keep Draft until the full exact-head matrix passes.
+- **PR #314** remains at `805e9713ece1968b644806dd6f86408e88050717`, 12 ahead / 0 behind. All exact-head validation groups passed: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, Linux/Windows FFmpeg, all four wheel-smoke cells, and all Windows Launcher Validation jobs. Action pins were verified against upstream tags and Node 24 manifests. Keep Draft pending release/owner gates.
+- **PR #312** prior head `6227cdeb1f8b2a34b0d8b5e026e71d5bea586886` had its latest checks in progress. This documentation update creates a new head; run all exact-head checks again.
+- Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; no mainline commit was added by these PR updates.
+
+No PR was merged. No production deployment, Cloudflare mutation, secret change, or branch-protection change was performed.
