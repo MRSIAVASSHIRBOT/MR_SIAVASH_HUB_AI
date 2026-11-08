@@ -24,6 +24,7 @@ from mrhub.api.routes.memory import router as memory_router
 from mrhub.api.routes.models import router as models_router
 from mrhub.api.routes.nexus import router as nexus_router
 from mrhub.api.routes.policy import router as policy_router
+from mrhub.api.routes.projects import router as projects_router
 from mrhub.api.routes.public_media import router as public_media_router
 from mrhub.api.routes.security_lab import router as security_lab_router
 from mrhub.api.routes.tasks import router as tasks_router
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(knowledge_router)
     app.include_router(policy_router)
+    app.include_router(projects_router)
     app.include_router(models_router)
     app.include_router(nexus_router)
     app.include_router(memory_router)

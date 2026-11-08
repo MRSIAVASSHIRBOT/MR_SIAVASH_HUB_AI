@@ -162,6 +162,7 @@
       cache: "no-store",
       credentials: "omit",
       redirect: "error",
+      signal: options.signal,
     });
     let payload = null;
     try { payload = await response.json(); } catch { payload = null; }
@@ -397,8 +398,144 @@
     }
   }
 
+  async function loadProjectRegistry() {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 8_000);
+    const container = $("#project-registry-list");
+    const observed = $("#project-registry-observed");
+    try {
+      const payload = await api("/projects/registry", { signal: controller.signal });
+      const projects = Array.isArray(payload.projects) ? payload.projects : [];
+      container.replaceChildren();
+      for (const project of projects) {
+        const card = element("article", undefined, "project-card");
+        const heading = element("div", undefined, "project-card-heading");
+        heading.append(element("strong", project.name || project.project_id));
+        heading.append(element("span", project.repository_status || "unknown", "project-state"));
+        card.append(heading);
+        card.append(element("p", project.description || ""));
+        const statuses = element("dl", undefined, "project-status-list");
+        for (const [label, dimension, value] of [
+          ["مخزن", "repository", project.repository_status],
+          ["سرویس", "runtime", project.runtime_status],
+          ["زیرساخت", "infrastructure", project.infrastructure_status],
+        ]) {
+          const row = element("div", undefined, "project-status-row");
+          row.append(element("dt", label), element("dd", value || "unknown"));
+          const observation = project.status_observations
+            && project.status_observations[dimension];
+          if (observation && typeof observation === "object") {
+            const timestamp = typeof observation.observed_at === "string"
+              ? new Date(observation.observed_at)
+              : null;
+            const observedLabel = timestamp && !Number.isNaN(timestamp.getTime())
+              ? timestamp.toLocaleString("fa-IR")
+              : observation.observed_at || "زمان نامشخص";
+            row.append(element(
+              "small",
+              "منبع: " + (observation.source || "نامشخص")
+                + " · زمان مشاهده: " + observedLabel
+                + " · کد: " + (observation.reason_code || "نامشخص")
+            ));
+          } else {
+            row.append(element("small", "منبع و زمان مشاهده ثبت نشده است."));
+          }
+          statuses.append(row);
+        }
+        card.append(statuses);
+        const repositoryDetails = project.repository_details;
+        if (repositoryDetails && typeof repositoryDetails === "object") {
+          const details = element("div", undefined, "project-repository-details");
+          if (typeof repositoryDetails.default_branch === "string") {
+            details.append(element("small", "شاخهٔ اصلی: " + repositoryDetails.default_branch));
+          }
+          if (repositoryDetails.latest_commit && typeof repositoryDetails.latest_commit === "object") {
+            const commit = repositoryDetails.latest_commit;
+            details.append(element(
+              "small",
+              "آخرین Commit: " + String(commit.sha || "").slice(0, 7)
+                + (commit.message ? " · " + commit.message : "")
+            ));
+          } else {
+            details.append(element("small", "آخرین Commit: داده در دسترس نیست"));
+          }
+          const latestCi = repositoryDetails.latest_ci;
+          if (latestCi && typeof latestCi === "object") {
+            details.append(element(
+              "small",
+              "آخرین CI: " + (latestCi.status || "unknown")
+                + (latestCi.workflow_name ? " · " + latestCi.workflow_name : "")
+                + (latestCi.branch ? " · شاخه: " + latestCi.branch : "")
+            ));
+            if (typeof latestCi.url === "string"
+              && /^https:\/\/github\.com\/MRSIAVASSHIRBOT\/[A-Za-z0-9_.-]+\/actions\/runs\/[0-9]+$/.test(latestCi.url)) {
+              const ciLink = element("a", "مشاهدهٔ CI");
+              ciLink.href = latestCi.url;
+              ciLink.target = "_blank";
+              ciLink.rel = "noopener noreferrer";
+              details.append(ciLink);
+            }
+          }
+          if (Array.isArray(repositoryDetails.open_pull_requests)) {
+            details.append(element(
+              "small",
+              "درخواست‌های ادغام باز (نمونه): " + repositoryDetails.open_pull_requests.length
+            ));
+            for (const pull of repositoryDetails.open_pull_requests.slice(0, 10)) {
+              if (!pull || typeof pull !== "object" || !Number.isInteger(pull.number)
+                || typeof pull.title !== "string") continue;
+              const expectedPrefix = "https://github.com/" + project.repository + "/pull/";
+              if (typeof pull.url !== "string" || !pull.url.startsWith(expectedPrefix)
+                || !/^[0-9]+$/.test(pull.url.slice(expectedPrefix.length))) continue;
+              const pullLink = element("a", "PR #" + pull.number + " · " + pull.title);
+              pullLink.href = pull.url;
+              pullLink.target = "_blank";
+              pullLink.rel = "noopener noreferrer";
+              details.append(pullLink);
+            }
+          }
+          card.append(details);
+        }
+        const links = element("div", undefined, "project-links");
+        if (typeof project.repository_url === "string"
+          && /^https:\/\/github\.com\/MRSIAVASSHIRBOT\/[A-Za-z0-9_.-]+$/.test(project.repository_url)) {
+          const repositoryLink = element("a", "مخزن GitHub");
+          repositoryLink.href = project.repository_url;
+          repositoryLink.target = "_blank";
+          repositoryLink.rel = "noopener noreferrer";
+          links.append(repositoryLink);
+        }
+        const approvedServiceUrls = new Set([
+          "https://gshop11.ir/",
+          "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/",
+        ]);
+        if (approvedServiceUrls.has(project.service_url)) {
+          const serviceLink = element("a", "وب‌سایت");
+          serviceLink.href = project.service_url;
+          serviceLink.target = "_blank";
+          serviceLink.rel = "noopener noreferrer";
+          links.append(serviceLink);
+        }
+        card.append(links);
+        card.append(element("small", project.status_reason || ""));
+        container.append(card);
+      }
+      if (!projects.length) renderEmpty(container, "پروژه‌ای در فهرست ثبت نشده است.");
+      observed.textContent = payload.observed_at
+        ? "زمان ثبت فهرست: " + new Date(payload.observed_at).toLocaleString("fa-IR")
+        : "زمان مشاهده نامشخص";
+    } catch (error) {
+      renderEmpty(container, "دریافت فهرست پروژه‌ها ناموفق بود: " + error.message);
+      observed.textContent = "فهرست در دسترس نیست";
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   async function loadOverview() {
     message("#workspace-message", "در حال به‌روزرسانی…");
+    // The optional project registry must not block core operator status panels.
+    void loadProjectRegistry();
     const [health, ready, providers, tasks, jobs, workflows] = await Promise.allSettled([
       api("/health", { auth: false }),
       api("/ready", { auth: false }),
