@@ -1,4 +1,4 @@
-"""FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
+""""FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks_router)
     app.include_router(jobs_router)
     app.include_router(knowledge_router)
+    app.include_router(policy_router)
     app.include_router(knowledge_evaluation_router)
     app.include_router(models_router)
     app.include_router(nexus_router)
