@@ -712,3 +712,25 @@ No merge, release, production deployment, Cloudflare mutation, secret change, or
 - Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. No PR merge, release, production deployment, Cloudflare mutation, secret change, or branch-governance change occurred.
 
 The project is not release-ready: lockfile, license, target-device acceptance, restore/rollback, external-provider, isolated staging, and owner authorization gates remain open.
+
+
+## 38. Exact-head validation and scheduled publisher credential boundary — 2026-11-08 UTC
+
+Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; no new mainline commit was observed.
+
+### Exact-head CI recheck
+
+- PR #315 (`de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f`, 12 ahead / 0 behind): Backend CI, CI, Defensive Python Scan, and Video Render Integration all passed. The PR changes only the scheduled publisher workflow and changelog. These checks do not execute or validate the scheduled privileged publisher path.
+- PR #314 (`805e9713ece1968b644806dd6f86408e88050717`, 12 ahead / 0 behind): Backend CI, Python 3.11/3.12, Defensive Scan, Linux/Windows FFmpeg, all four clean-wheel smoke cells, and Windows Launcher Validation passed.
+- PR #313 (`5a141bc12f534bd96be3d89467ab29549516c510`, 5 ahead / 0 behind): Backend CI, Python 3.11/3.12, Defensive Scan, and Linux/Windows Video Render Integration passed. Malformed state flags are rejected with typed errors; 15 regression cases cover three flags × five malformed values.
+- PR #312 (`57dad160af166f0ac052dcb9a208d1581f8a9692`, 23 ahead / 0 behind before this append): all four required groups passed. This append creates a new head, requiring fresh exact-head CI.
+- PR #310 (`a869fad16242ae9ba949e4e44e8b774cfab5af56`, 13 ahead / 0 behind) and PR #309 (`de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d`, 3 ahead / 0 behind): all four required groups passed on their exact heads.
+- PR #297 (`01ba94f29ad0ddf9f1db7af0b0957bebf8d2abdf`, 1 ahead / 8 behind): all four workflows remain `action_required`; authorization must not be bypassed.
+
+### Blocking security review: PR #315
+
+The scheduled `develop` job exposes `OPENROUTER_API_KEY` directly in the environment of the OpenCode agent. Agent-controlled shell/tool subprocesses inherit process environment variables and can therefore read or exfiltrate this provider credential. Read-only GitHub token permissions, unpersisted checkout credentials, and prompt instructions do not mitigate this separate secret-exposure path.
+
+A COMMENT review is recorded against exact head `de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f`. Keep PR #315 Draft and do not manually dispatch the scheduled privileged workflow. Approval requires a credential boundary in which the key is held only by a separately isolated broker/proxy process, with a strict OpenRouter destination/request allowlist and regression evidence that agent-controlled descendants cannot read the credential. Re-run exact-head checks and independently review the changed workflow after remediation. No key value was read or changed.
+
+No PR was merged. No production deployment, scheduled publisher execution, secret mutation, Cloudflare change, or branch-governance change was performed. Existing Cloudflare staging, target-device, restore/rollback, external-provider, and owner release-acceptance gates remain outstanding. No production-readiness claim is made.
