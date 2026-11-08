@@ -37,6 +37,10 @@ jobs:
         env:
           MODEL: openrouter/cohere/north-mini-code:free
           OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
+          # Inline config has higher precedence than project config. Keep shell
+          # execution disabled so model-directed commands cannot inspect the
+          # OpenCode process environment that contains the provider credential.
+          OPENCODE_CONFIG_CONTENT: '{"tools":{"bash":false},"permission":{"bash":"deny","external_directory":"deny"}}'
         run: |
           if [ -z "$OPENROUTER_API_KEY" ]; then
             echo "::error::Repository secret MR_SIAVASH_HUB_AI is missing or empty."
@@ -56,11 +60,12 @@ jobs:
           Work only in the current automation workspace. Do not change workflow
           permissions, secrets, deployment settings, or security controls. Never
           expose credentials, weaken security, perform destructive operations, or
-          make unrelated refactors. Add/update tests. Run relevant tests and lint
-          commands discovered from the project documentation. Do not claim checks
-          passed unless they actually pass. If no safe useful change is justified,
-          leave the tree unchanged and explain why. Summarize exact files changed,
-          tests and results, risks, and next priority.
+          make unrelated refactors. The OpenCode bash tool is disabled by policy:
+          do not attempt shell execution. Add/update relevant tests, but do not
+          claim they were run. The resulting review PR's CI is the execution gate.
+          If no safe useful change is justified, leave the tree unchanged and
+          explain why. Summarize exact files changed, tests added or updated (and
+          explicitly mark them not run here), risks, and next priority.
           PROMPT
           )" > "$RUNNER_TEMP/opencode.log" 2>&1
           agent_status=$?
@@ -151,6 +156,9 @@ jobs:
           protected_exact = {
               b"agents.md",
               b"codeowners",
+              b"opencode.json",
+              b"opencode.jsonc",
+              b"opencode.json5",
               b".gitignore",
               b"pyproject.toml",
               b"setup.py",
@@ -201,6 +209,7 @@ jobs:
           }
           protected_prefixes = (
               b".github/",
+              b".opencode/",
               b"SECURITY/",
               b".git/",
               b"scripts/deploy/",
