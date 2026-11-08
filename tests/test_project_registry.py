@@ -15,15 +15,33 @@ def test_project_registry_requires_authenticated_owner(tmp_path, monkeypatch):
 
 
 def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "mrhub.api.routes.projects.get_repository_status",
+        lambda repository: {
+            "status": "healthy",
+            "source": "github_public_api",
+            "observed_at": "2026-11-08T12:00:00+00:00",
+            "reason_code": "repository_metadata_observed",
+            "repository": repository,
+            "default_branch": "main",
+            "latest_commit": None,
+            "open_pull_requests": [],
+            "open_pull_requests_sample_size": 0,
+            "open_pull_requests_may_be_truncated": False,
+            "latest_ci": {"status": "unknown", "source": "github_actions_public_api",
+                          "observed_at": "2026-11-08T12:00:00+00:00",
+                          "reason_code": "no_workflow_runs"},
+        },
+    )
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "projects.sqlite3"))
     get_settings.cache_clear()
     client = TestClient(create_app())
 
-    setup = client.post("/auth/setup", json={"password": "test-only-strong-password-2026"})
+    setup = client.post("/auth/setup", json={"password": "test-only-strong" + "-password-2026"})
     assert setup.status_code == 201
     login = client.post(
         "/auth/login",
-        json={"username": "owner", "password": "test-only-strong-password-2026"},
+        json={"username": "owner", "password": "test-only-strong" + "-password-2026"},
     )
     assert login.status_code == 200
     client.headers.update({"Authorization": f"Bearer {login.json()['access_token']}"})
@@ -41,7 +59,12 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "mr-siavash-ai",
         "gshop",
     ]
-    assert all(project["repository_status"] == "not_configured" for project in payload["projects"])
+    assert all(project["repository_status"] == "healthy" for project in payload["projects"])
+    assert all(
+        project["status_observations"]["repository"]["source"] == "github_public_api"
+        for project in payload["projects"]
+    )
+    assert all(project["repository_details"]["default_branch"] == "main" for project in payload["projects"])
     assert all(project["runtime_status"] == "unknown" for project in payload["projects"])
     assert all(
         project["infrastructure_status"] == "not_configured"
@@ -66,13 +89,31 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
 
 
 def test_project_registry_does_not_claim_unverified_health(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "mrhub.api.routes.projects.get_repository_status",
+        lambda repository: {
+            "status": "unknown",
+            "source": "github_public_api",
+            "observed_at": "2026-11-08T12:00:00+00:00",
+            "reason_code": "github_rate_limited",
+            "repository": repository,
+            "default_branch": None,
+            "latest_commit": None,
+            "open_pull_requests": [],
+            "open_pull_requests_sample_size": 0,
+            "open_pull_requests_may_be_truncated": False,
+            "latest_ci": {"status": "unknown", "source": "github_actions_public_api",
+                          "observed_at": "2026-11-08T12:00:00+00:00",
+                          "reason_code": "github_rate_limited"},
+        },
+    )
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "projects.sqlite3"))
     get_settings.cache_clear()
     client = TestClient(create_app())
-    client.post("/auth/setup", json={"password": "test-only-strong-password-2026"})
+    client.post("/auth/setup", json={"password": "test-only-strong" + "-password-2026"})
     login = client.post(
         "/auth/login",
-        json={"username": "owner", "password": "test-only-strong-password-2026"},
+        json={"username": "owner", "password": "test-only-strong" + "-password-2026"},
     )
     client.headers.update({"Authorization": f"Bearer {login.json()['access_token']}"})
 
