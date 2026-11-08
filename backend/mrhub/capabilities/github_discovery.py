@@ -126,9 +126,15 @@ def _validate_repository_identity(
         )
 
 
-def _safe_public_flag(value: object) -> bool:
-    """Accept only actual JSON booleans; strings such as 'false' are not truthy flags."""
-    return value if isinstance(value, bool) else False
+def _safe_public_flag(value: object, field: str) -> bool:
+    """Reject malformed upstream status flags rather than treating them as inactive."""
+    if not isinstance(value, bool):
+        raise GitHubDiscoveryError(
+            "invalid_github_response",
+            f"GitHub response contained an invalid {field} status flag",
+            status_code=502,
+        )
+    return value
 
 
 def _safe_public_text(value: object, limit: int) -> str | None:
@@ -179,9 +185,9 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         raise GitHubDiscoveryError(
             "invalid_github_response", "GitHub response is missing a valid repository identity", status_code=502
         )
-    archived = _safe_public_flag(metadata.get("archived"))
-    disabled = _safe_public_flag(metadata.get("disabled"))
-    fork = _safe_public_flag(metadata.get("fork"))
+    archived = _safe_public_flag(metadata.get("archived"), "archived")
+    disabled = _safe_public_flag(metadata.get("disabled"), "disabled")
+    fork = _safe_public_flag(metadata.get("fork"), "fork")
     default_branch = _safe_public_text(metadata.get("default_branch"), 255) or ""
     updated_at = _safe_public_text(metadata.get("updated_at"), 40) or ""
     try:
