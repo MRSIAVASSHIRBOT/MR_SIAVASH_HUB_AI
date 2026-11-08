@@ -71,7 +71,10 @@ def build_default_agent_registry(tools: ToolRegistry) -> AgentRegistry:
     registry.register(
         AgentProfile(
             name="aria_architect",
-            description="Analyze supplied project context and propose evidence-based architecture and delivery plans.",
+            description=(
+                "Analyze supplied project context and propose evidence-based architecture "
+                "and delivery plans."
+            ),
             instructions=(
                 "Act as ARIA, a careful software architect and project analyst. Analyze only "
                 "the goal and supplied evidence. Prefer the existing architecture and reuse "
