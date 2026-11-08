@@ -28,6 +28,10 @@ def test_scheduled_agent_disables_shell_and_external_directory_tools() -> None:
     permissions = config.get("permission", {})
     assert permissions.get("bash") == "deny"
     assert permissions.get("external_directory") == "deny"
+    assert config.get("lsp") is False
+    assert "OPENCODE_PURE: \"true\"" in run_step
+    assert "OPENCODE_EXPERIMENTAL_CODE_MODE: \"false\"" in run_step
+    assert "OPENCODE_DISABLE_EXTERNAL_SKILLS: \"true\"" in run_step
     assert "OPENROUTER_API_KEY:" in run_step
     assert "The OpenCode bash tool is disabled by policy" in run_step
     assert "do not attempt shell execution" in run_step
