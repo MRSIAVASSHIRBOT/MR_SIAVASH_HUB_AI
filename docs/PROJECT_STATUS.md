@@ -871,3 +871,20 @@ This follow-up was recorded after PRs #313 and #314 appeared following section 3
 - The latest `main` remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; it has not changed during this follow-up.
 
 The main branch remains reported as unprotected. Cloudflare staging remains unaccepted: the Hub Worker has no route and lacks established source-contract bindings; persistent invocation logs and traces remain a privacy/retention review item. No Cloudflare or repository governance settings were changed. No PR was merged.
+
+
+## 35. Release CI action-runtime modernization — 2026-11-08 UTC
+
+PR #314 advanced after the preceding inventory. Its current exact head is `805e9713ece1968b644806dd6f86408e88050717`, 12 commits ahead / 0 behind main, with eight files changed. It now pins `actions/checkout` v7.0.1, `actions/setup-python` v7.1.0, and `actions/upload-artifact` v7.0.2 to immutable commits. The upstream tag refs and action manifests were checked; each manifest declares Node 24. The wheel smoke now uses HTTPX `ASGITransport` and `AsyncClient` instead of the deprecated TestClient path. The privileged scheduled Continuous Development publisher remains excluded pending a separate artifact-contract/security review.
+
+Exact-head workflow state at this observation:
+- Defensive Python Scan passed.
+- Windows Launcher Validation: PowerShell parse, failure-cleanup, and runtime-smoke passed.
+- Video Render Integration: Linux passed; Windows was in progress.
+- Backend CI was in progress.
+- CI's Python 3.11/3.12 tests and all four Ubuntu/Windows wheel-smoke cells were in progress.
+- Previous-head results on `88a522e745e73d53bde86a88f658bd33b4da75a3` do not transfer to this new head.
+
+PR #313 remains Draft at `82fa682e05af64562920734cc223a189a4bd1e75`; its four required groups passed, but the review concern about malformed status flags silently becoming `False` remains unresolved. PR #312's prior exact head `32ac2864fab34a338b92e0a56df6103a7a50519d` had newly queued validation jobs; this documentation update creates a new head and requires a fresh exact-head run. PRs #309/#310 remain Draft with passing exact-head checks. PR #297 remains 8 commits behind main with all four workflows `action_required`.
+
+No PR was merged. No production release, Cloudflare mutation, secret change, or branch-governance change was made.
