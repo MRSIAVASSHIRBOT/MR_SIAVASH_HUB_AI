@@ -1,6 +1,7 @@
 """Regression tests for the scheduled OpenCode agent's tool boundary."""
-from pathlib import Path
+
 import json
+from pathlib import Path
 
 
 WORKFLOW = (
