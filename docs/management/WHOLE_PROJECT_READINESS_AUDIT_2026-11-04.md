@@ -734,3 +734,30 @@ The scheduled `develop` job exposes `OPENROUTER_API_KEY` directly in the environ
 A COMMENT review is recorded against exact head `de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f`. Keep PR #315 Draft and do not manually dispatch the scheduled privileged workflow. Approval requires a credential boundary in which the key is held only by a separately isolated broker/proxy process, with a strict OpenRouter destination/request allowlist and regression evidence that agent-controlled descendants cannot read the credential. Re-run exact-head checks and independently review the changed workflow after remediation. No key value was read or changed.
 
 No PR was merged. No production deployment, scheduled publisher execution, secret mutation, Cloudflare change, or branch-governance change was performed. Existing Cloudflare staging, target-device, restore/rollback, external-provider, and owner release-acceptance gates remain outstanding. No production-readiness claim is made.
+
+
+## 39. Fresh security and infrastructure recheck — 2026-11-08 UTC
+
+This section supersedes prior live PR and Cloudflare snapshots where observations differ. Current `main` remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+
+### PR exact-head checks
+
+- #315 (`de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f), Draft, 12 ahead / 0 behind): Backend CI, Python 3.11/3.12 CI, Defensive Scan, Linux/Windows FFmpeg all passed. The scheduled publisher path is not covered by these generic checks.
+- #314 (`805e9713ece1968b644806dd6f86408e88050717), Draft, 12 ahead / 0 behind): Backend CI, Python 3.11/3.12, Defensive Scan, Linux/Windows FFmpeg, four clean-wheel matrix cells, and Windows launcher checks all passed.
+- #313 (`5a141bc12f534bd96be3d89467ab29549516c510), Draft, 5 ahead / 0 behind): Backend CI, Python 3.11/3.12, Defensive Scan, Linux/Windows FFmpeg all passed. Invalid non-boolean `archived`, `disabled`, and `fork` metadata now fails closed; 15 malformed-value regression cases exist.
+- #312 (`7cf5b5b67ef587cd7a8b68678c32462cca5fe7c8), 25 ahead / 0 behind before this append): all four required groups passed. This update creates a new head; re-run exact-head validation.
+- #309/#310 remain Draft and all four required validation groups passed on their current heads. ADR-0006 remains Proposed; the project registry is static, authenticated, and read-only.
+- #297 remains 1 ahead / 8 behind with all four workflows `action_required`; no authorization bypass.
+- GitHub reports `main` unprotected and no repository rulesets. Detailed protection inspection returns HTTP 403 to this integration. No governance changes were made.
+
+### Scheduled publisher security review
+
+PR #315 received a COMMENT review. Its new patch validator checks staged normalized paths and rejects symlink/submodule entries, but the denylist omits several security-sensitive control paths (`backend/mrhub/api/routes/policy.py`, `backend/mrhub/api/routes/tools.py`, `backend/mrhub/tools/registry.py`, `backend/mrhub/tools/builtins.py`, `backend/mrhub/api/dependencies.py`, `backend/mrhub/config.py`) and is not covered by automated regression tests. Keep Draft until the policy is extracted/tested and expanded.
+
+Issue #316 tracks the separate credential-boundary concern: `OPENROUTER_API_KEY` is present in the OpenCode process environment. Confirm whether agent-controlled subprocesses inherit it and establish a tested isolation boundary. This is a threat-model investigation, not evidence of observed exfiltration. No secret was read or modified.
+
+### Cloudflare observation
+
+Read-only settings for `mr-siavash-ai-gateway` still show no route, workers.dev enabled, previews disabled, and only `ALLOWED_ORIGINS` (plain text) plus `DB` (D1) bindings. Observability is enabled; persistent invocation logs use sampling 1.0 and persistent traces use sampling 0.1. **Current `redact_query_string` is false**, contrary to an earlier observation that it was true. This raises the privacy risk and must be resolved before any user traffic. No secrets were read and no Cloudflare resource or setting was modified. The separate `gahop`/G SHOP route remains untouched.
+
+No PR was merged or deployed. Target-device, restore/rollback, isolated staging, external-provider, and owner release-approval gates remain open. No production-readiness claim is made.
