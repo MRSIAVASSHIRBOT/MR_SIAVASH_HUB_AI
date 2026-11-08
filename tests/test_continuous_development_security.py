@@ -18,7 +18,7 @@ def test_scheduled_agent_disables_shell_and_external_directory_tools() -> None:
     )[1].split("      - name: Detect and package changes", maxsplit=1)[0]
 
     config_match = re.search(
-        r"(?m)^\\s*OPENCODE_CONFIG_CONTENT:\\s*'([^']+)'$",
+        r"(?m)^\s*OPENCODE_CONFIG_CONTENT:\s*'([^']+)'$",
         run_step,
     )
     assert config_match is not None, "OpenCode must receive explicit inline security policy"
