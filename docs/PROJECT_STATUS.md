@@ -857,3 +857,17 @@ This snapshot supersedes earlier workflow and PR observations above wherever the
 - The existing `gahop` Worker and `gshop11.ir/api/*` route remain separate and unchanged.
 
 No Cloudflare resources, bindings, routes, secrets, DNS, D1 data, payment settings, or production deployments were changed. No PR was merged. No whole-project-complete or production-ready claim is made.
+
+
+## 34. Newly opened PRs and latest validation state — 2026-11-08 UTC
+
+This follow-up was recorded after PRs #313 and #314 appeared following section 33. It does not alter `main`.
+
+- **PR #313 — GitHub discovery metadata validation:** Draft, head `82fa682e05af64562920734cc223a189a4bd1e75`, 3 ahead / 0 behind. Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, and Linux/Windows Video Render Integration all passed on this exact head. Review found a remaining correctness concern: invalid non-boolean `archived`/`disabled`/`fork` values are currently coerced to `False`, which can suppress an inactive-repository warning. A COMMENT review requests fail-closed or explicit-unknown handling and tests for malformed `"true"`, integer, and null values. Keep Draft until resolved.
+- **PR #314 — Windows/Linux clean-wheel smoke matrix:** Draft, head `88a522e745e73d53bde86a88f658bd33b4da75a3`, 5 ahead / 0 behind. All four new wheel-smoke cells passed (Ubuntu/Windows × Python 3.11/3.12). Defensive Python Scan, Linux/Windows FFmpeg integration, and Windows FFmpeg integration passed; Backend CI and Python 3.11/3.12 CI were still in progress at this observation. This is hosted packaging evidence, not real-device acceptance. Keep Draft until every exact-head workflow completes.
+- **PR #312 — this status refresh:** head `aec710ec5317afc08b54d16cad4226e5aae0d043`, 17 ahead / 0 behind; all six exact-head checks passed. The follow-up documentation update will create a new head requiring fresh exact-head CI.
+- PRs #309 and #310 remain Draft with all four validation groups passing on their exact heads. ADR-0006 remains Proposed; the project registry remains static and read-only.
+- PR #297 remains 8 commits behind `main`; all four workflows remain `action_required`.
+- The latest `main` remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; it has not changed during this follow-up.
+
+The main branch remains reported as unprotected. Cloudflare staging remains unaccepted: the Hub Worker has no route and lacks established source-contract bindings; persistent invocation logs and traces remain a privacy/retention review item. No Cloudflare or repository governance settings were changed. No PR was merged.
