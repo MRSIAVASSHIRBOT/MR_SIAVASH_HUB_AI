@@ -73,3 +73,81 @@ jobs:
             /tmp/mrhub-wheel-smoke/bin/python -c "from fastapi.testclient import TestClient; from mrhub.main import create_app; response = TestClient(create_app()).get('/health'); assert response.status_code == 200"
       - name: Lint backend and tests
         run: python -m ruff check backend/mrhub tests backend/tests
+
+  wheel-smoke:
+    name: Wheel smoke (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Build wheel, verify package assets, and smoke-test clean install
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel . --no-deps --wheel-dir dist
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"expected one wheel, found {len(wheels)}"
+          wheel_path = wheels[0].resolve()
+          with ZipFile(wheel_path) as wheel:
+              packaged = set(wheel.namelist())
+          required = {
+              "mrhub/web/index.html",
+              "mrhub/web/app.css",
+              "mrhub/web/app.js",
+          }
+          missing = required - packaged
+          assert not missing, f"wheel is missing packaged UI assets: {sorted(missing)}"
+
+          smoke_root = Path(tempfile.mkdtemp(prefix="mrhub-wheel-smoke-"))
+          environment = smoke_root / "venv"
+          subprocess.run(
+              [sys.executable, "-m", "venv", str(environment)],
+              check=True,
+          )
+          installed_python = environment / (
+              "Scripts/python.exe" if os.name == "nt" else "bin/python"
+          )
+          subprocess.run(
+              [str(installed_python), "-m", "pip", "install", str(wheel_path)],
+              check=True,
+              cwd=smoke_root,
+          )
+          smoke_environment = os.environ.copy()
+          smoke_environment["MRH_ENVIRONMENT"] = "test"
+          smoke_environment["MRH_DATABASE_PATH"] = str(smoke_root / "smoke.sqlite3")
+          smoke_code = (
+              "from fastapi.testclient import TestClient; "
+              "from mrhub.main import create_app; "
+              "response = TestClient(create_app()).get('/health'); "
+              "assert response.status_code == 200, response.text"
+          )
+          subprocess.run(
+              [str(installed_python), "-c", smoke_code],
+              check=True,
+              cwd=smoke_root,
+              env=smoke_environment,
+          )
+          print(
+              f"Wheel install and /health smoke passed: {wheel_path.name}; "
+              f"OS={sys.platform}; Python={sys.version.split()[0]}"
+          )
+          PY
