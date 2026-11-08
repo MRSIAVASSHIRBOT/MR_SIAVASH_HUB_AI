@@ -729,7 +729,7 @@ This section supersedes earlier mainline, PR, Cloudflare, and release observatio
 - The useful GitHub discovery hardening from stale PR #313 was rebuilt on current main and merged as PR #323.
 - The useful Knowledge evaluation endpoint from stale PR #321, the encoded-key test from PR #297, and the Windows wheel/action-pin work from PR #314 were rebuilt on current main and merged as PR #326.
 - PRs #297, #309, #312, #313, #314, #321, #324, and #325 were closed only after their useful changes were merged or their stale documentation/architecture snapshots were confirmed superseded.
-- The only open PR at this observation is Draft PR #315, a scheduled-development workflow security proposal. It remains blocked by Issue #316: provider credential isolation from agent-controlled processes has not been technically demonstrated. Do not manually dispatch the privileged scheduled publisher or merge the Draft proposal based only on static configuration.
+- The only pre-existing open implementation PR at this observation is Draft PR #315, a scheduled-development workflow security proposal; this documentation refresh is tracked separately as PR #327. It remains blocked by Issue #316: provider credential isolation from agent-controlled processes has not been technically demonstrated. Do not manually dispatch the privileged scheduled publisher or merge the Draft proposal based only on static configuration.
 
 ### Cloudflare live-state acceptance — read-only inspection
 
