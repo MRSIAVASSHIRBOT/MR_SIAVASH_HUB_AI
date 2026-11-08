@@ -95,9 +95,54 @@ def _metadata_response(source_url: str) -> dict[str, Any]:
         raise GitHubDiscoveryError("github_timeout", "GitHub metadata request timed out", status_code=504) from exc
     except httpx.HTTPError as exc:
         raise GitHubDiscoveryError("github_network_error", "Could not retrieve GitHub repository metadata", status_code=502) from exc
-    if not isinstance(payload, dict) or payload.get("full_name") is None:
-        raise GitHubDiscoveryError("invalid_github_response", "GitHub response is missing repository metadata", status_code=502)
+    _validate_repository_identity(payload, owner, repository)
     return payload
+
+
+def _validate_repository_identity(
+    metadata: object, expected_owner: str, expected_repository: str
+) -> None:
+    """Reject malformed or mismatched upstream identity before persisting metadata."""
+    if not isinstance(metadata, dict):
+        raise GitHubDiscoveryError(
+            "invalid_github_response", "GitHub returned an invalid metadata object", status_code=502
+        )
+    full_name = metadata.get("full_name")
+    if not isinstance(full_name, str) or full_name.count("/") != 1:
+        raise GitHubDiscoveryError(
+            "invalid_github_response", "GitHub response is missing a valid repository identity", status_code=502
+        )
+    actual_owner, actual_repository = (part.strip() for part in full_name.split("/", 1))
+    if (
+        not actual_owner
+        or not actual_repository
+        or actual_owner.casefold() != expected_owner.casefold()
+        or actual_repository.casefold() != expected_repository.casefold()
+    ):
+        raise GitHubDiscoveryError(
+            "github_repository_mismatch",
+            "GitHub metadata identity did not match the requested repository",
+            status_code=502,
+        )
+
+
+def _safe_public_flag(value: object, field: str) -> bool:
+    """Reject malformed upstream status flags rather than treating them as inactive."""
+    if not isinstance(value, bool):
+        raise GitHubDiscoveryError(
+            "invalid_github_response",
+            f"GitHub response contained an invalid {field} status flag",
+            status_code=502,
+        )
+    return value
+
+
+def _safe_public_text(value: object, limit: int) -> str | None:
+    """Normalize optional upstream text to a bounded, non-empty string."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()[:limit]
+    return normalized or None
 
 
 def _safe_public_count(value: object) -> int:
@@ -115,6 +160,7 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
     """Inspect public repo metadata and persist a review candidate; never execute code."""
     owner, repository, canonical_url = parse_github_repository_url(source_url)
     metadata = _metadata_response(canonical_url)
+    _validate_repository_identity(metadata, owner, repository)
     license_data = metadata.get("license")
     license_id = "unknown"
     if isinstance(license_data, dict):
@@ -122,13 +168,28 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         if isinstance(spdx_id, str) and spdx_id.strip() not in {"", "NOASSERTION"}:
             license_id = spdx_id.strip()[:80]
     topics = metadata.get("topics", [])
-    capabilities = [topic for topic in topics if isinstance(topic, str)][:50] if isinstance(topics, list) else []
-    language = metadata.get("language")
-    if isinstance(language, str) and language.strip() and len(capabilities) < 50:
-        capabilities.append(f"language:{language.strip()[:70]}")
-    description = metadata.get("description")
-    summary = description.strip()[:1000] if isinstance(description, str) else ""
-    display_name = str(metadata.get("full_name") or f"{owner}/{repository}")[:160]
+    capabilities: list[str] = []
+    if isinstance(topics, list):
+        for topic in topics:
+            normalized_topic = _safe_public_text(topic, 80)
+            if normalized_topic:
+                capabilities.append(normalized_topic)
+            if len(capabilities) >= 50:
+                break
+    language = _safe_public_text(metadata.get("language"), 70)
+    if language and len(capabilities) < 50:
+        capabilities.append(f"language:{language}")
+    summary = _safe_public_text(metadata.get("description"), 1000) or ""
+    display_name = _safe_public_text(metadata.get("full_name"), 160)
+    if display_name is None:
+        raise GitHubDiscoveryError(
+            "invalid_github_response", "GitHub response is missing a valid repository identity", status_code=502
+        )
+    archived = _safe_public_flag(metadata.get("archived"), "archived")
+    disabled = _safe_public_flag(metadata.get("disabled"), "disabled")
+    fork = _safe_public_flag(metadata.get("fork"), "fork")
+    default_branch = _safe_public_text(metadata.get("default_branch"), 255) or ""
+    updated_at = _safe_public_text(metadata.get("updated_at"), 40) or ""
     try:
         candidate = registry.add_candidate(
             source_url=canonical_url,
@@ -147,18 +208,25 @@ def discover_github_candidate(source_url: str, registry: CapabilityRegistry) -> 
         "full_name": display_name,
         "html_url": canonical_url,
         "description": summary,
-        "default_branch": str(metadata.get("default_branch") or "")[:255],
-        "language": language if isinstance(language, str) else None,
+        "default_branch": default_branch,
+        "language": language,
         "topics": capabilities[:50],
         "license_spdx_id": license_id,
-        "archived": bool(metadata.get("archived", False)),
-        "disabled": bool(metadata.get("disabled", False)),
-        "fork": bool(metadata.get("fork", False)),
+        "archived": archived,
+        "disabled": disabled,
+        "fork": fork,
         "stargazers_count": _safe_public_count(metadata.get("stargazers_count", 0)),
         "open_issues_count": _safe_public_count(metadata.get("open_issues_count", 0)),
-        "updated_at": str(metadata.get("updated_at") or "")[:40],
+        "updated_at": updated_at,
         "candidate": candidate.as_dict(),
-        "evaluation": evaluate_repository_metadata(metadata),
+        "evaluation": evaluate_repository_metadata({
+            **metadata,
+            "archived": archived,
+            "disabled": disabled,
+            "fork": fork,
+            "stargazers_count": _safe_public_count(metadata.get("stargazers_count", 0)),
+            "updated_at": updated_at,
+        }),
         "source_code_fetched": False,
         "source_code_executed": False,
         "installation_started": False,
