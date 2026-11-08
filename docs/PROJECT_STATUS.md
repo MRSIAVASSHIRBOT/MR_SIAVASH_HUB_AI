@@ -898,3 +898,17 @@ No PR was merged. No production release, Cloudflare mutation, secret change, or 
 - Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`; no mainline commit was added by these PR updates.
 
 No PR was merged. No production deployment, Cloudflare mutation, secret change, or branch-protection change was performed.
+
+
+## 37. Latest exact-head CI and scheduled-publisher security review — 2026-11-08 UTC
+
+This section supersedes the earlier PR status snapshots above where they differ. Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`.
+
+- **PR #315 — scheduled publisher hardening:** Draft, head `de9f0c7d920bb7ceeddf2a92dd7920de1c27e14f`, 12 ahead / 0 behind main; exactly `.github/workflows/continuous-development.yml` and `CHANGELOG.md` differ. Backend CI, CI, Defensive Python Scan, and Video Render Integration all passed on this exact head. A blocking security finding remains: `OPENROUTER_API_KEY` is placed in the OpenCode agent process environment, where agent-controlled shell/tool subprocesses can inherit it. Read-only GitHub token permissions do not isolate this provider credential. Keep Draft; do not manually dispatch the scheduled privileged workflow. Require a separately isolated credential broker/proxy, constrained to the required OpenRouter request surface, plus a regression test proving agent-controlled descendants cannot read the key. CI success does not validate scheduled publisher isolation.
+- **PR #314:** Draft, head `805e9713ece1968b644806dd6f86408e88050717`, 12 ahead / 0 behind; all exact-head Backend CI, Python 3.11/3.12, Defensive Scan, Linux/Windows FFmpeg, four wheel-smoke cells, and Windows Launcher Validation checks passed.
+- **PR #313:** Draft, head `5a141bc12f534bd96be3d89467ab29549516c510`, 5 ahead / 0 behind; Backend CI, Python 3.11/3.12, Defensive Scan, and Linux/Windows Video Render Integration all passed on this exact head. Malformed `archived`, `disabled`, and `fork` values now fail closed; 15 regression cases cover malformed strings, integer, and null values.
+- **PR #312:** current documentation branch head before this append was `57dad160af166f0ac052dcb9a208d1581f8a9692`, 23 ahead / 0 behind; all four required groups passed on that exact head. This append creates a new head and requires fresh exact-head CI.
+- **PR #310** and **PR #309:** remain Draft; all four required groups passed on their respective exact heads. The project registry remains static/authenticated/read-only; ADR-0006 remains Proposed.
+- **PR #297:** 1 ahead / 8 behind; all four workflows remain `action_required`. Do not bypass authorization or merge the stale branch.
+
+No PR was merged. No scheduled publisher was manually dispatched. No secret, production resource, deployment, or branch-protection setting was changed. Target-device, restore/rollback, external-provider, isolated Cloudflare staging, and owner release-acceptance gates remain open.
