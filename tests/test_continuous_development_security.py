@@ -45,3 +45,19 @@ def test_agent_patch_validator_protects_opencode_project_configuration() -> None
     assert 'b"opencode.jsonc"' in workflow
     assert 'b"opencode.json5"' in workflow
     assert 'b".opencode/"' in workflow
+    protected_control_paths = (
+        "backend/mrhub/api/dependencies.py",
+        "backend/mrhub/api/routes/agent_model_runs.py",
+        "backend/mrhub/api/routes/agent_run.py",
+        "backend/mrhub/api/routes/approvals.py",
+        "backend/mrhub/api/routes/auth.py",
+        "backend/mrhub/api/routes/jobs.py",
+        "backend/mrhub/api/routes/policy.py",
+        "backend/mrhub/api/routes/security_lab.py",
+        "backend/mrhub/api/routes/tasks.py",
+        "backend/mrhub/api/routes/tools.py",
+        "backend/mrhub/config.py",
+    )
+    for path in protected_control_paths:
+        assert f'b"{path}"' in workflow
+    assert 'b"backend/mrhub/tools/"' in workflow
