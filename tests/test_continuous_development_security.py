@@ -32,7 +32,7 @@ def _assert_default_deny(policy: object) -> None:
     assert read_policy.get("*") == "allow"
     for pattern in ("*.env", "*.env.*", "**/.env", "**/.env.*"):
         assert read_policy.get(pattern) == "deny"
-    for tool in ("edit", "glob", "grep"):
+    for tool in ("edit", "glob"):
         assert policy.get(tool) == "allow"
     for tool in (
         "bash",
@@ -41,6 +41,7 @@ def _assert_default_deny(policy: object) -> None:
         "webfetch",
         "websearch",
         "lsp",
+        "grep",
         "external_directory",
     ):
         assert policy.get(tool) == "deny"
@@ -94,8 +95,8 @@ def test_publisher_validates_staged_paths_before_receiving_write_token() -> None
     assert 'b".github/"' in validation
     assert 'b".env"' in validation
     assert 'b"tests/test_continuous_development_security.py"' in validation
-    assert "b" + '"120000"' in validation
-    assert "b" + '"160000"' in validation
+    assert 'b"120000"' in validation
+    assert 'b"160000"' in validation
     assert "git apply --index --binary" not in publisher
 
 
