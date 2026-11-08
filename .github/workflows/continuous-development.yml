@@ -187,7 +187,7 @@ jobs:
           for entry in staged.split(bytes([0])):
               if not entry:
                   continue
-              metadata, path = entry.split(b"\\t", 1)
+              metadata, path = entry.split(bytes([9]), 1)
               if path not in staged_paths:
                   continue
               mode = metadata.split(b" ", 1)[0]
