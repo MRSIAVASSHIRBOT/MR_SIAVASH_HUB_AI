@@ -73,3 +73,73 @@ jobs:
             /tmp/mrhub-wheel-smoke/bin/python -c "from fastapi.testclient import TestClient; from mrhub.main import create_app; response = TestClient(create_app()).get('/health'); assert response.status_code == 200"
       - name: Lint backend and tests
         run: python -m ruff check backend/mrhub tests backend/tests
+
+
+  wheel-smoke-windows:
+    name: Windows wheel smoke (Python ${{ matrix.python-version }})
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Build wheel and verify packaged UI assets
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip wheel . --no-deps --wheel-dir dist
+          @'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"expected one wheel, found {len(wheels)}"
+          with ZipFile(wheels[0]) as wheel:
+              packaged = set(wheel.namelist())
+          required = {
+              "mrhub/web/index.html",
+              "mrhub/web/app.css",
+              "mrhub/web/app.js",
+          }
+          missing = required - packaged
+          assert not missing, f"wheel is missing packaged UI assets: {sorted(missing)}"
+          print(f"Verified wheel: {wheels[0].name}; UI assets: {len(required)}")
+          '@ | python -
+      - name: Install wheel into a clean environment
+        shell: pwsh
+        run: |
+          python -m venv .wheel-smoke
+          $wheel = (Get-ChildItem dist/*.whl).FullName
+          & .\.wheel-smoke\Scripts\python.exe -m pip install $wheel
+          if ($LASTEXITCODE -ne 0) { throw "Clean wheel installation failed." }
+      - name: Exercise packaged API and UI
+        shell: pwsh
+        run: |
+          $env:MRH_ENVIRONMENT = "test"
+          $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-wheel-smoke.sqlite3"
+          @'
+          import asyncio
+          import httpx
+          from mrhub.main import create_app
+
+          async def main() -> None:
+              transport = httpx.ASGITransport(app=create_app())
+              async with httpx.AsyncClient(
+                  transport=transport, base_url="http://testserver"
+              ) as client:
+                  health = await client.get("/health")
+                  assert health.status_code == 200, health.text
+                  ui = await client.get("/ui/")
+                  assert ui.status_code == 200, ui.status_code
+                  assert "MR" in ui.text or "MR" in ui.text.upper()
+
+          asyncio.run(main())
+          '@ | & .\.wheel-smoke\Scripts\python.exe -
