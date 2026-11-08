@@ -47,6 +47,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         project["infrastructure_status"] == "not_configured"
         for project in payload["projects"]
     )
+    assert payload["projects"][1]["service_url"] == "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"
     assert payload["projects"][2]["service_url"] == "https://gshop11.ir/"
     for project in payload["projects"]:
         observations = project["status_observations"]
