@@ -247,3 +247,15 @@ This update adds a dedicated clean-wheel smoke matrix on Ubuntu and Windows for 
 ### Current release decision
 
 **Not release-ready.** Hard blockers remain: a genuine canonical dependency lock and locked-install proof; a project license decision and included LICENSE file; Windows real-device acceptance; coordinated database/media/encryption-key backup and restore drill; clean install/upgrade/rollback; browser/operator acceptance; external provider and social-account acceptance; exact release-candidate CI; and explicit owner authorization. No tag, GitHub Release, or package publication is created by this work.
+
+
+### GitHub Actions runtime and pin baseline — 2026-11-08
+
+The release CI refresh pins the following official GitHub Actions to verified Node 24-compatible release commits:
+- `actions/checkout` v7.0.1 — `3d3c42e5aac5ba805825da76410c181273ba90b1`.
+- `actions/setup-python` v7.1.0 — `6d4fd22b20465ccc0f7354476588e8df7c9ca0e0`.
+- `actions/upload-artifact` v7.0.2 — `cf430e030ddbb5b0abf93d22962f4752f3646cd9`.
+
+These pins are applied to the CI, Backend CI, Defensive Python Scan, Video Render Integration, and Windows Launcher Validation workflows. The separate scheduled Continuous Development publisher workflow retains its existing artifact action contract pending a dedicated review of its privileged publish boundary; it is intentionally not changed in this PR.
+
+The wheel health smoke checks use HTTPX `ASGITransport` and `AsyncClient` rather than Starlette's deprecated `TestClient` + HTTPX integration. This avoids suppressing a deprecation warning while retaining an in-process ASGI health check. The exact candidate workflows must verify these changes.
