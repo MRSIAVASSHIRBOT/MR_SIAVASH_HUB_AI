@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends
 
 from mrhub.api.dependencies import require_user
+from mrhub.integrations.github_status import get_repository_status
 
 router = APIRouter(
     prefix="/projects",
@@ -50,12 +51,13 @@ def project_registry() -> dict[str, object]:
     for project in PROJECTS:
         # Every status carries its own provenance and observation timestamp.
         # These are configuration observations, not live health probes.
+        github_status = get_repository_status(str(project["repository"]))
         status_observations = {
             "repository": {
-                "status": "not_configured",
-                "source": "project_registry_configuration",
-                "observed_at": observed_at,
-                "reason_code": "github_integration_not_configured",
+                "status": github_status["status"],
+                "source": github_status["source"],
+                "observed_at": github_status["observed_at"],
+                "reason_code": github_status["reason_code"],
             },
             "runtime": {
                 "status": "unknown",
@@ -77,9 +79,10 @@ def project_registry() -> dict[str, object]:
                 "runtime_status": status_observations["runtime"]["status"],
                 "infrastructure_status": status_observations["infrastructure"]["status"],
                 "status_observations": status_observations,
+                "repository_details": github_status,
                 "status_reason": (
-                    "GitHub and external runtime observations are not yet "
-                    "configured for the Hub server."
+                    "GitHub metadata is read-only and public; runtime and Cloudflare "
+                    "observations remain independently unconfigured."
                 ),
             }
         )
