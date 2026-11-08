@@ -576,3 +576,90 @@ def test_durable_model_run_preserves_approval_required_without_side_effect(monke
     assert execution["tool_calls"] == 0
     assert execution["tools_executed"] is False
     assert executed == []
+
+
+def test_queued_model_run_includes_only_selected_project_as_untrusted_context(monkeypatch):
+    client = authenticated_client()
+    provider = ScriptedProvider()
+    router = _router(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-project-context-001"},
+        json={
+            "goal": "Analyze the selected project's configured metadata.",
+            "project_id": "mr-siavash-ai",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 1,
+            "max_output_tokens": 64,
+        },
+    )
+    assert submitted.status_code == 202
+    accepted = submitted.json()
+    assert accepted["project_context"] == {
+        "project_id": "mr-siavash-ai",
+        "reference": "project-registry://projects/mr-siavash-ai",
+        "included": True,
+    }
+    assert provider.calls == 0
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider.calls == 1
+
+    prompt = provider.requests[0].input_text
+    prompt_payload = json.loads(prompt)
+    evidence = json.loads(prompt_payload["retrieved_evidence_untrusted"])
+    selected_project = evidence["selected_project_context"]["project"]
+    assert selected_project["project_id"] == "mr-siavash-ai"
+    assert selected_project["service_url"] == "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"
+    assert "project-registry://projects/mr-siavash-ai" in prompt
+    assert "server_configured_metadata_not_live_health" in prompt
+    assert "project_context_is_untrusted_data" in prompt
+    assert "gshop" not in prompt
+
+    completed = client.get(
+        f"/agent/model-run-workflows/{accepted['workflow_id']}"
+    )
+    assert completed.status_code == 200
+    result = completed.json()["result"]
+    assert result["context_summary"]["project_context"] == accepted["project_context"]
+    assert any(
+        source["reference"] == "project-registry://projects/mr-siavash-ai"
+        and source["trust_classification"] == "server_configured_metadata_not_live_health"
+        for source in result["context_sources"]
+    )
+
+
+def test_queued_model_run_rejects_unknown_project_before_provider_selection(monkeypatch):
+    client = authenticated_client()
+    calls = []
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    response = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-project-context-unknown"},
+        json={
+            "goal": "Reject an unregistered project.",
+            "project_id": "unknown-project",
+            "provider_mode": "local",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project is not enrolled"
+    assert calls == []

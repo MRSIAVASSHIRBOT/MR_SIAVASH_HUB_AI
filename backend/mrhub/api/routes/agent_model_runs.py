@@ -27,6 +27,7 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.projects.registry import get_project_context
 from mrhub.providers.router import ModelRequest
 from mrhub.security.auth import AuthenticatedUser
 
@@ -54,6 +55,12 @@ def submit_model_run(
 ) -> dict[str, object]:
     """Queue one bounded model-driven run; the HTTP request never executes inference."""
     settings = get_settings()
+    selected_project = None
+    if payload.project_id is not None:
+        selected_project = get_project_context(payload.project_id)
+        if selected_project is None:
+            raise HTTPException(status_code=404, detail="Project is not enrolled")
+
     scope = f"agent.model_run:{user.user_id}"
     request_data = payload.model_dump(mode="json")
     request_digest = _digest(request_data)
@@ -104,8 +111,15 @@ def submit_model_run(
     context = AgentContextAssembler(settings.database_path).assemble(
         user.user_id, **context_options
     )
+    evidence_payload: object = context["passages"]
+    if selected_project is not None:
+        evidence_payload = {
+            "memory_knowledge_passages": context["passages"],
+            "selected_project_context": selected_project,
+            "project_context_is_untrusted_data": True,
+        }
     evidence = json.dumps(
-        context["passages"], ensure_ascii=False, separators=(",", ":")
+        evidence_payload, ensure_ascii=False, separators=(",", ":")
     )
     try:
         AgentLoopRequest(
@@ -133,7 +147,21 @@ def submit_model_run(
         }
         for passage in context["passages"]
     ]
+    if selected_project is not None:
+        context_sources.append({
+            "reference": selected_project["reference"],
+            "trust_classification": selected_project["trust_classification"],
+        })
 
+    project_context_summary = (
+        {
+            "project_id": payload.project_id,
+            "reference": selected_project["reference"],
+            "included": True,
+        }
+        if selected_project is not None
+        else None
+    )
     workflow_id = uuid4()
     task = TaskRecord(
         task_type="agent.model_run",
@@ -160,6 +188,7 @@ def submit_model_run(
                 "freshness_review_max_age_days": context.get(
                     "freshness_review_max_age_days", 30
                 ),
+                "project_context": project_context_summary,
             },
         },
         workflow_id=str(workflow_id),
@@ -213,6 +242,7 @@ def submit_model_run(
         "freshness_review_max_age_days": context.get(
             "freshness_review_max_age_days", 30
         ),
+        "project_context": project_context_summary,
     }
 
 

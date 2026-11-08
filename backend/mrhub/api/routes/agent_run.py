@@ -17,6 +17,7 @@ from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker_control import WorkerControlRepository
+from mrhub.projects.registry import get_project_context
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
@@ -29,6 +30,10 @@ class AgentRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     goal: str = Field(min_length=1, max_length=1_000)
+    project_id: str | None = Field(
+        default=None, min_length=1, max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9-]{0,63}$",
+    )
     context_query: str | None = Field(default=None, min_length=1, max_length=200)
     provider_mode: Literal["local", "remote"] = "local"
     include_memory: bool = True
@@ -48,6 +53,12 @@ def run_agent(
 ) -> dict[str, object]:
     """Run one explicitly bounded model loop; no stub or provider fallback is permitted."""
     settings = get_settings()
+    selected_project = None
+    if payload.project_id is not None:
+        selected_project = get_project_context(payload.project_id)
+        if selected_project is None:
+            raise HTTPException(status_code=404, detail="Project is not enrolled")
+
     model_router = build_model_router(
         provider_mode=payload.provider_mode,
         include_stub=False,
@@ -74,8 +85,15 @@ def run_agent(
         include_knowledge=payload.include_knowledge,
         knowledge_freshness_policy=payload.knowledge_freshness_policy,
     )
+    evidence_payload: object = context["passages"]
+    if selected_project is not None:
+        evidence_payload = {
+            "memory_knowledge_passages": context["passages"],
+            "selected_project_context": selected_project,
+            "project_context_is_untrusted_data": True,
+        }
     evidence = json.dumps(
-        context["passages"],
+        evidence_payload,
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -118,6 +136,7 @@ def run_agent(
             "turns": result.get("turns"),
             "tool_calls": result.get("tool_calls"),
             "context_passage_count": context.get("passage_count", 0),
+            **({"project_id": payload.project_id} if payload.project_id else {}),
         },
     )
     context_sources = [
@@ -139,8 +158,22 @@ def run_agent(
         }
         for passage in context["passages"]
     ]
+    if selected_project is not None:
+        context_sources.append({
+            "reference": selected_project["reference"],
+            "trust_classification": selected_project["trust_classification"],
+        })
     return {
         "run_id": run_id,
+        "project_context": (
+            {
+                "project_id": payload.project_id,
+                "reference": selected_project["reference"],
+                "included": True,
+            }
+            if selected_project is not None
+            else None
+        ),
         "provider_mode": payload.provider_mode,
         "context_passage_count": context["passage_count"],
         "knowledge_freshness_policy": context["knowledge_freshness_policy"],
