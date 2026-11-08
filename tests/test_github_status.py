@@ -74,6 +74,7 @@ def test_github_status_uses_only_fixed_public_api_paths_and_projects_metadata(mo
         f"https://github.com/{REPOSITORY}/pull/71"
     )
     assert result["latest_ci"]["status"] == "healthy"
+    assert result["latest_ci"]["branch"] == "main"
     assert result["latest_ci"]["url"].endswith("/actions/runs/12345")
     assert len(calls) == 4
     assert all(request.url.host == "api.github.com" for request in calls)
