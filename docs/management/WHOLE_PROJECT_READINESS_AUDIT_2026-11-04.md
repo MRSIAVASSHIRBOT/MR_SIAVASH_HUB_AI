@@ -702,3 +702,13 @@ On this exact head, Defensive Python Scan passed; all three Windows Launcher Val
 PR #313 remains Draft and has all four validation groups passing, but its malformed boolean normalization concern remains unresolved in review. PR #312's prior head is superseded by this documentation update and must pass a fresh exact-head CI. PR #309/#310 remain Draft with passing validation; PR #297 remains 8 commits behind with all four checks `action_required`.
 
 No merge, release, production deployment, Cloudflare mutation, secret change, or branch-protection change was performed. Production readiness remains unproven.
+
+
+## 37. Review remediation and release-matrix completion — 2026-11-08 UTC
+
+- PR #313 exact head `5a141bc12f534bd96be3d89467ab29549516c510`, 5 ahead / 0 behind: the malformed boolean concern is fixed by rejecting non-boolean `archived`, `disabled`, and `fork` values with a typed upstream metadata error. Fifteen regression cases cover string true/false/zero, integer one, and null for all three fields. Defensive Scan and Linux FFmpeg passed; Backend CI, Python 3.11/3.12, and Windows FFmpeg remained in progress.
+- PR #314 exact head `805e9713ece1968b644806dd6f86408e88050717`, 12 ahead / 0 behind: all exact-head groups passed, including Backend CI, Python 3.11/3.12, Defensive Scan, Linux/Windows FFmpeg, all four clean-wheel smoke cells, and all Windows Launcher Validation jobs. Upstream action tags and Node 24 runtimes were verified. The PR remains Draft; hosted tests do not replace owner-device acceptance or other release gates.
+- PR #312 exact head `6227cdeb1f8b2a34b0d8b5e026e71d5bea586886` was still validating. This documentation update creates a new exact head, so its own CI must be rechecked.
+- Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`. No PR merge, release, production deployment, Cloudflare mutation, secret change, or branch-governance change occurred.
+
+The project is not release-ready: lockfile, license, target-device acceptance, restore/rollback, external-provider, isolated staging, and owner authorization gates remain open.
