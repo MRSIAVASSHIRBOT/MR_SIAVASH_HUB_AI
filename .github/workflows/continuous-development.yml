@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"allow","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"},"agent":{"build":{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"allow","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"}}},"tools":{"bash":false},"lsp":false,"mcp":{}}'
+      OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"deny","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"},"agent":{"build":{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"deny","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"}}},"tools":{"bash":false},"lsp":false,"mcp":{}}'
     permissions:
       contents: read
       issues: read
@@ -54,11 +54,11 @@ jobs:
           for pattern in ("*.env", "*.env.*", "**/.env", "**/.env.*"):
               if read_policy.get(pattern) != "deny":
                   raise SystemExit("Secret-file read pattern is not denied: " + pattern)
-          for tool in ("edit", "glob", "grep"):
+          for tool in ("edit", "glob"):
               if policy.get(tool) != "allow":
                   raise SystemExit("Required workspace tool is not allowed: " + tool)
           for tool in (
-              "bash", "task", "skill", "webfetch", "websearch", "lsp",
+              "bash", "task", "skill", "webfetch", "websearch", "lsp", "grep",
               "external_directory",
           ):
               if policy.get(tool) != "deny":
@@ -94,7 +94,7 @@ jobs:
           permissions, secrets, deployment settings, or security controls. Never
           expose credentials, weaken security, perform destructive operations, or
           make unrelated refactors. Only workspace read/write/search tools are
-          available; shell, network, skills, subagents, and external paths are denied.
+          available; shell, content-search, network, skills, subagents, and external paths are denied.
           Add/update tests, but do not attempt to execute them. CI on the resulting
           review PR is the test gate. Do not claim checks passed unless they actually
           pass. If no safe useful change is justified, leave the tree unchanged and
