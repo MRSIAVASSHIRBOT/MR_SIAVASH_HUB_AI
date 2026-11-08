@@ -146,6 +146,7 @@ class GitHubStatusClient:
         except GitHubStatusError as exc:
             return self._unknown(repository, observed_at, exc.code)
         if (not isinstance(metadata, dict) or metadata.get("full_name") != repository
+                or not isinstance(metadata.get("archived"), bool)
                 or not isinstance(metadata.get("default_branch"), str)
                 or not _BRANCH_PATTERN.fullmatch(metadata["default_branch"])):
             return self._unknown(repository, observed_at, "github_invalid_repository_metadata")
@@ -174,9 +175,11 @@ class GitHubStatusClient:
 
         pull_requests: list[dict[str, Any]] = []
         pulls_error = "github_pull_requests_unavailable"
+        pulls_observed = False
         try:
             records = self._get_json(prefix + "/pulls?state=open&per_page=10")
             if isinstance(records, list):
+                pulls_observed = True
                 for item in records[:MAX_PULL_REQUESTS]:
                     if not isinstance(item, dict):
                         continue
@@ -249,8 +252,7 @@ class GitHubStatusClient:
             "open_pull_requests": pull_requests,
             "open_pull_requests_sample_size": len(pull_requests),
             "open_pull_requests_may_be_truncated": len(pull_requests) == MAX_PULL_REQUESTS,
-            "pull_requests_reason_code": None if pulls_error == "github_pull_requests_unavailable"
-                else None,
+            "pull_requests_reason_code": None if pulls_observed else pulls_error,
             "latest_ci": latest_ci,
         }
 
