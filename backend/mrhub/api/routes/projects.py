@@ -28,7 +28,7 @@ PROJECTS: tuple[dict[str, str | None], ...] = (
         "name": "MR_SIAVASH_AI",
         "repository": "MRSIAVASSHIRBOT/MR_SIAVASH_AI",
         "repository_url": "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI",
-        "service_url": None,
+        "service_url": "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/",
         "description": "وب‌سایت و هویت دیجیتال شخصی",
     },
     {
