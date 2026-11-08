@@ -673,3 +673,17 @@ The read-only Cloudflare account query returned only `gahop` and `mr-siavash-ai-
 The `gahop` Worker and `gshop11.ir/api/*` route were not modified. No Cloudflare resource, secret, route, DNS, D1, payment configuration, or production deployment was changed. No PR was merged. Target-device acceptance, restore/rollback drills, isolated staging gateway acceptance, external-provider validation, branch governance, and release approval remain outstanding.
 
 No whole-project-complete or production-ready claim is made.
+
+
+## 35. Follow-up PR and review inventory — 2026-11-08 UTC
+
+After the preceding exact-head snapshot, two additional Draft PRs appeared. They do not change mainline behavior.
+
+- **PR #313:** head `82fa682e05af64562920734cc223a189a4bd1e75`, 3 ahead / 0 behind. All four required validation groups passed. Review identified that malformed non-boolean upstream state flags are coerced to `False`; this can hide archived/disabled status and make metadata triage too favorable. A COMMENT review requests fail-closed or explicit-unknown handling with regression tests for malformed true/integer/null values. Do not mark ready until addressed.
+- **PR #314:** head `88a522e745e73d53bde86a88f658bd33b4da75a3`, 5 ahead / 0 behind. All four clean-wheel smoke cells (Ubuntu/Windows × Python 3.11/3.12) passed. Defensive scan and Linux/Windows FFmpeg integration passed; Backend CI and the Python 3.11/3.12 suite were still running. The wheel matrix is useful hosted package-install evidence, not real Windows-device acceptance.
+- **PR #312:** head `aec710ec5317afc08b54d16cad4226e5aae0d043`, 17 ahead / 0 behind; all six exact-head checks passed. This follow-up documentation commit creates a new head and therefore requires a new exact-head validation cycle.
+- **PR #309/#310:** both remain Draft and all four required groups passed on their current exact heads. The ADR remains Proposed; the project registry does not perform live external probes.
+- **PR #297:** 8 commits behind main, all four workflow groups `action_required`; do not bypass authorization.
+- Main remains `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0` and is reported as unprotected.
+
+The Hub Cloudflare Worker remains unaccepted: no route, incomplete source-contract bindings, and persistent invocation logs/traces requiring privacy/retention review. No Worker, route, secret, D1, DNS, payment, or branch-protection setting was changed. No PR was merged; no production-ready claim is made.
