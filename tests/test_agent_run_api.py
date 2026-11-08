@@ -339,3 +339,69 @@ def test_agent_run_exposes_approval_required_without_invoking_external_tool(monk
     assert execution["tools_executed"] is False
     assert body["external_side_effects_performed"] is False
     assert calls == []
+
+
+def test_agent_run_includes_only_the_selected_project_as_untrusted_context(monkeypatch):
+    client = authenticated_client()
+    provider = ScriptedProvider(json.dumps({
+        "type": "final",
+        "answer": "The selected project metadata is available.",
+    }))
+    router = ModelRouter()
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Analyze this project's current configured metadata.",
+            "project_id": "gshop",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["project_context"] == {
+        "project_id": "gshop",
+        "reference": "project-registry://projects/gshop",
+        "included": True,
+    }
+    prompt = provider.requests[0].input_text
+    assert '"project_id":"gshop"' in prompt
+    assert "project-registry://projects/gshop" in prompt
+    assert "server_configured_metadata_not_live_health" in prompt
+    assert "project_context_is_untrusted_data" in prompt
+    assert "mr-siavash-ai" not in prompt
+    assert body["external_side_effects_performed"] is False
+    assert any(
+        item["reference"] == "project-registry://projects/gshop"
+        for item in body["context_sources"]
+    )
+
+
+def test_agent_run_rejects_unknown_project_before_model_provider_selection(monkeypatch):
+    client = authenticated_client()
+    calls = []
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Analyze an unregistered project.",
+            "project_id": "unknown-project",
+            "provider_mode": "local",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project is not enrolled"
+    assert calls == []
