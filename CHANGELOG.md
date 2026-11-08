@@ -10,8 +10,11 @@ the project version follows Semantic Versioning (SemVer).
 ### Added
 - Initial release-management baseline and release-readiness documentation.
 
+### Added
+- Add a hosted clean-wheel installation and `/health` smoke matrix for Ubuntu and Windows on Python 3.11 and 3.12.
+
 ### Changed
-- Refresh release-management evidence to the 2026-11-04 main baseline and align platform acceptance references with the maintained Windows checklist.
+- Refresh release-management evidence to the 2026-11-08 main baseline and align release gates with the latest merged work.
 
 ### Notes
 - The package metadata currently declares version `0.1.0` in `pyproject.toml`.
