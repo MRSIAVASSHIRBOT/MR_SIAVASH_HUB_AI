@@ -220,7 +220,7 @@ def test_repository_status_cache_expires_and_unknown_results_use_short_ttl(monke
                 "reason_code": "github_rate_limited",
             }
 
-    monkeypatch.setattr(github_status.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(github_status, "_monotonic", lambda: clock[0])
     monkeypatch.setattr(github_status, "GitHubStatusClient", FakeClient)
 
     assert github_status.get_repository_status(REPOSITORY)["status"] == "healthy"
