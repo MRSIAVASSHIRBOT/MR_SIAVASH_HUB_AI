@@ -1,6 +1,5 @@
 """Regression tests for the scheduled OpenCode agent's tool boundary."""
 import json
-import re
 from pathlib import Path
 
 
@@ -14,12 +13,16 @@ WORKFLOW = (
 
 def _config() -> dict[str, object]:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    match = re.search(
-        r"(?m)^\s*OPENCODE_CONFIG_CONTENT:\s*'([^']+)'$",
-        workflow,
+    line = next(
+        (
+            item.strip()
+            for item in workflow.splitlines()
+            if item.strip().startswith("OPENCODE_CONFIG_CONTENT: '")
+        ),
+        None,
     )
-    assert match is not None, "scheduled agent must receive inline security policy"
-    return json.loads(match.group(1))
+    assert line is not None, "scheduled agent must receive inline security policy"
+    return json.loads(line.split("'", 2)[1])
 
 
 def _assert_default_deny(policy: object) -> None:
