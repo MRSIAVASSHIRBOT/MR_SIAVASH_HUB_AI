@@ -120,7 +120,7 @@ def test_archived_repository_is_degraded_and_ci_failure_is_explicit(monkeypatch)
             return _commit()
         if path.endswith("/pulls?state=open&per_page=10"):
             return []
-        if path.endswith("/actions/runs?per_page=1"):
+        if path.endswith("/actions/runs?branch=main&per_page=1"):
             return {"workflow_runs": [{
                 "id": 99,
                 "status": "completed",
