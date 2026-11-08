@@ -139,7 +139,7 @@ jobs:
                   assert health.status_code == 200, health.text
                   ui = await client.get("/ui/")
                   assert ui.status_code == 200, ui.status_code
-                  assert "MR" in ui.text or "MR" in ui.text.upper()
+                  assert ui.headers.get("content-type", "").startswith("text/html")
 
           asyncio.run(main())
           '@ | & .\.wheel-smoke\Scripts\python.exe -
