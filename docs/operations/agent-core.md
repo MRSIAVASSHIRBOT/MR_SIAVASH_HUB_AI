@@ -162,13 +162,18 @@ results. This protects the local retrieval boundary against accidental or
 unauthorized row-level content changes; it does not authenticate the original
 publisher or prove that an external source is still current.
 
-## ARIA architecture specialist
 
-The server-defined `aria_architect` profile provides bounded project and
-architecture analysis from the goal and evidence supplied by its parent Agent.
-It prioritizes reuse of the existing architecture, evidence/assumption
-separation, security, maintainability, testability, and measurable acceptance
-criteria. It has no tool grants and a three-turn maximum. It cannot inspect a
-repository independently, execute tests, deploy changes, approve actions, or
-claim external work that was not performed. Its output remains an untrusted
-specialist observation and does not grant permissions.
+## Selected project context for Agent runs
+
+Authenticated `POST /agent/run` requests may include one explicitly enrolled
+`project_id`. The API resolves that identifier against the server-defined
+project registry before provider selection; unknown identifiers return 404
+without starting model inference. Only the selected project's configured
+metadata is added to the bounded retrieval context, alongside owner-scoped
+memory and knowledge passages. The project evidence includes a stable
+`project-registry://` reference and is explicitly marked as untrusted data;
+it cannot authorize tools or override server policy. Repository, runtime, and
+infrastructure statuses remain configuration observations (not live health
+checks) until their respective integrations are implemented. The run response
+and audit metadata record the selected project identifier, while existing
+runs without a project identifier retain their prior metadata contract.
