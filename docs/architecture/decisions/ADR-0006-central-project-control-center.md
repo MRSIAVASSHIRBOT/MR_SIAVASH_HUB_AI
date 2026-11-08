@@ -68,7 +68,8 @@ A later phase may propose reviewable repository changes or infrastructure action
 ### Phase 1 — Read-only project registry and repository status
 
 - Add a typed, validated project registry with stable project IDs and explicit repository names.
-- Add a GitHub adapter that reads public repository metadata, default-branch head, open PR metadata, and latest CI summaries through fixed, read-only API routes.
+- Add a GitHub adapter that reads public repository metadata, default-branch head, open PR metadata, and CI summaries filtered to the configured default branch through fixed, read-only API routes.
+- Cache projected observations in a bounded process-local TTL cache keyed by repository/default branch; use a shorter failure TTL and never serve expired observations as current.
 - Use anonymous public API access by default; a future server-side least-privilege token may increase rate limits but must never reach the browser.
 - Do not expose raw GitHub credentials or source contents to the browser.
 - Return partial results per project; a failure for one repository must not fail the whole dashboard.
