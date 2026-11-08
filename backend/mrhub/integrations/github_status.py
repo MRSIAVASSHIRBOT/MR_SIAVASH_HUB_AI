@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import json
 import re
+import time
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import UTC, datetime
+from threading import RLock
 from typing import Any
 from urllib.parse import quote
 
@@ -18,6 +22,12 @@ API_ROOT = "https://api.github.com"
 REQUEST_TIMEOUT_SECONDS = 5.0
 MAX_RESPONSE_BYTES = 262_144
 MAX_PULL_REQUESTS = 10
+STATUS_CACHE_TTL_SECONDS = 30.0
+STATUS_CACHE_FAILURE_TTL_SECONDS = 5.0
+STATUS_CACHE_MAX_ENTRIES = 128
+_STATUS_CACHE: OrderedDict[tuple[str, str], tuple[float, dict[str, Any]]] = OrderedDict()
+_STATUS_CACHE_INDEX: dict[str, tuple[str, float]] = {}
+_STATUS_CACHE_LOCK = RLock()
 _REPOSITORY_PATTERN = re.compile(r"^([A-Za-z0-9_.-]{1,100})/([A-Za-z0-9_.-]{1,100})$")
 _BRANCH_PATTERN = re.compile(r"^[A-Za-z0-9_./-]{1,255}$")
 _SHA_PATTERN = re.compile(r"^[a-f0-9]{40}$")
@@ -204,7 +214,10 @@ class GitHubStatusClient:
             "reason_code": "github_workflow_runs_unavailable",
         }
         try:
-            runs = self._get_json(prefix + "/actions/runs?per_page=1")
+            runs = self._get_json(
+                prefix + "/actions/runs?branch=" + quote(default_branch, safe="")
+                + "&per_page=1"
+            )
             workflow_runs = runs.get("workflow_runs") if isinstance(runs, dict) else None
             if isinstance(workflow_runs, list) and workflow_runs:
                 run = workflow_runs[0]
@@ -257,6 +270,62 @@ class GitHubStatusClient:
         }
 
 
+def _cached_repository_status(repository: str, now: float) -> dict[str, Any] | None:
+    """Return a defensive copy of an unexpired process-local cache entry."""
+    with _STATUS_CACHE_LOCK:
+        index = _STATUS_CACHE_INDEX.get(repository)
+        if index is None:
+            return None
+        branch, expires_at = index
+        key = (repository, branch)
+        entry = _STATUS_CACHE.get(key)
+        if entry is None or expires_at <= now or entry[0] <= now:
+            _STATUS_CACHE_INDEX.pop(repository, None)
+            _STATUS_CACHE.pop(key, None)
+            return None
+        _STATUS_CACHE.move_to_end(key)
+        return deepcopy(entry[1])
+
+
+def _store_repository_status(repository: str, result: dict[str, Any], now: float) -> None:
+    """Cache bounded status projections by repository and observed default branch."""
+    branch_value = result.get("default_branch")
+    branch = branch_value if isinstance(branch_value, str) else ""
+    ttl = (
+        STATUS_CACHE_FAILURE_TTL_SECONDS
+        if result.get("status") == "unknown"
+        else STATUS_CACHE_TTL_SECONDS
+    )
+    expires_at = now + ttl
+    key = (repository, branch)
+    with _STATUS_CACHE_LOCK:
+        previous = _STATUS_CACHE_INDEX.get(repository)
+        if previous is not None:
+            _STATUS_CACHE.pop((repository, previous[0]), None)
+        _STATUS_CACHE[key] = (expires_at, deepcopy(result))
+        _STATUS_CACHE.move_to_end(key)
+        _STATUS_CACHE_INDEX[repository] = (branch, expires_at)
+        while len(_STATUS_CACHE) > STATUS_CACHE_MAX_ENTRIES:
+            evicted_key, _ = _STATUS_CACHE.popitem(last=False)
+            evicted_repository = evicted_key[0]
+            indexed = _STATUS_CACHE_INDEX.get(evicted_repository)
+            if indexed is not None and indexed[0] == evicted_key[1]:
+                _STATUS_CACHE_INDEX.pop(evicted_repository, None)
+
+
+def _clear_status_cache() -> None:
+    """Clear process-local status cache; intended for deterministic tests."""
+    with _STATUS_CACHE_LOCK:
+        _STATUS_CACHE.clear()
+        _STATUS_CACHE_INDEX.clear()
+
+
 def get_repository_status(repository: str) -> dict[str, Any]:
-    """Read public GitHub status; return unknown on all sanitized integration errors."""
-    return GitHubStatusClient().read_repository_status(repository)
+    """Read cached public GitHub status; failures remain short-lived unknowns."""
+    now = time.monotonic()
+    cached = _cached_repository_status(repository, now)
+    if cached is not None:
+        return cached
+    result = GitHubStatusClient().read_repository_status(repository)
+    _store_repository_status(repository, result, time.monotonic())
+    return deepcopy(result)
