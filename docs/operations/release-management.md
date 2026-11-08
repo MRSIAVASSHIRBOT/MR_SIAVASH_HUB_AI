@@ -201,3 +201,49 @@ PR #276 is merged. The Release & Update Manager records its merge and exact-head
 ### Current release decision
 
 **Not release-ready.** The following are still hard gates: canonical dependency lock and locked installation; license selection; actual Windows device acceptance; coordinated database/media/encryption-key restore drill; clean install/upgrade/rollback; browser/operator acceptance; external provider and social-account acceptance; exact-candidate CI; and explicit owner authorization. No release tag, GitHub Release, or package publication is created by this update.
+
+
+## Superseding release-manager baseline — 2026-11-08 UTC
+
+This section supersedes the 2026-11-04 release-manager snapshot above. It records the state observed on the exact current `main` commit; PR branch checks are listed separately and are not treated as merged behavior.
+
+**Current main:** `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`  
+**Observed mainline delta:** 20 commits since the previously inspected `8f190eeac4b4627692b60ac27e6dd5c12e4557bc`.  
+**Package version:** `0.1.0` in `pyproject.toml`; development metadata only.  
+**Python declaration:** `>=3.11`; automated full test matrix currently covers 3.11 and 3.12.  
+**Tags / GitHub Releases:** current Git tag refs and Releases API both returned empty arrays.  
+**Dependency lock / license:** no root `uv.lock` or `requirements.lock` found; no root `LICENSE` found. Both remain hard release blockers.
+
+### Verified mainline integration
+
+The following relevant changes are merged into main:
+- PR #276: stale snapshot/new render race fence, with accepted idempotent retries preserved.
+- PR #278: release management evidence and readiness documentation refresh.
+- PR #311: media scan interruptions now produce an explicit incomplete/truncated verification result.
+- PR #308: shared heuristic credential screening is enforced at API and repository persistence boundaries. It is defense-in-depth pattern screening, not a complete secret scanner.
+
+All four required push workflow groups passed on exact main commit `6a5db881c9cacea2b32f2e89b5d62d6f7ef91cf0`:
+- Backend CI: [run 42325251955](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/42325251955)
+- CI (Python 3.11/3.12): [run 42325251968](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/42325251968)
+- Defensive Python Scan: [run 42325251978](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/42325251978)
+- Video Render Integration (hosted Linux/Windows): [run 42325252133](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/42325252133)
+
+A later duplicate push attempt on the same SHA had a Backend CI run still in progress and a Defensive Python Scan attempt cancelled; it does not erase the separate complete successful four-workflow set above. Re-run all required groups on any future release-candidate SHA.
+
+### Current open PR and workflow inventory
+
+The following branches are not merged and do not alter mainline release behavior:
+- **PR #312**, Draft documentation/status refresh: 15 commits ahead / 0 behind current main. All four required exact-head groups passed on `49203ad83d94bbebcce52436cd88d6111c38144c` (Backend CI `42428122021`, CI `42428122030`, Defensive Scan `42428122033`, Video Integration `42428122022`). Keep its Draft state until the project owner/manager accepts its content.
+- **PR #310**, Draft authenticated project portfolio: 13 commits ahead / 0 behind. All four required groups passed on exact head `a869fad16242ae9ba949e4e44e8b774cfab5af56` (Backend CI `42325299006`, CI `42325299000`, Defensive Scan `42325298999`, Video Integration `42325299070`). This is a static explicit registry, not live cross-repository or infrastructure monitoring. Keep Draft pending architecture and product acceptance.
+- **PR #309**, Draft central control-center ADR: 3 commits ahead / 0 behind. All four required groups passed on exact head `de6a3dbdc1730bbe6f460d8e84a36b7c8aac215d` (Backend CI `42325283920`, CI `42325283936`, Defensive Scan `42325283918`, Video Integration `42325283919`). ADR status remains Proposed; CI success does not accept the architecture decision.
+- **PR #297**, workflow payload-envelope formatting/key-load test: 1 commit ahead / 8 behind current main; all four workflow groups are `action_required`. It is not merge-ready. Do not bypass authorization. Reconcile the branch with current main and re-run the full matrix before review.
+
+### Packaging and platform decision
+
+The existing full CI job still runs on Ubuntu with Python 3.11 and 3.12. It builds and installs a wheel in a clean Linux virtual environment. The separate FFmpeg/FFprobe integration has hosted Linux and Windows jobs, but that is not a Windows wheel-install test or a real-device acceptance run.
+
+This update adds a dedicated clean-wheel smoke matrix on Ubuntu and Windows for Python 3.11 and 3.12. For each cell it builds a wheel, verifies the three packaged UI assets, installs the wheel into a fresh virtual environment, and checks `/health`. This provides automated package-install evidence for Windows while keeping actual Windows-device, browser, media workflow, and macOS acceptance as separate gates. The matrix is proposed in the associated PR and is not yet part of main until merged.
+
+### Current release decision
+
+**Not release-ready.** Hard blockers remain: a genuine canonical dependency lock and locked-install proof; a project license decision and included LICENSE file; Windows real-device acceptance; coordinated database/media/encryption-key backup and restore drill; clean install/upgrade/rollback; browser/operator acceptance; external provider and social-account acceptance; exact release-candidate CI; and explicit owner authorization. No tag, GitHub Release, or package publication is created by this work.
