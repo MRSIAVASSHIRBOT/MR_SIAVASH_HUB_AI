@@ -31,8 +31,11 @@ Read the [release management policy](release-management.md) for the repository b
 
 ## CI and integration acceptance
 - [ ] Confirm all required checks pass on the exact release commit, including Python 3.11/3.12 CI, Backend CI, Defensive Python Scan, and applicable FFmpeg/FFprobe integration jobs.
+- [x] Confirmed post-merge CI, Backend CI, Defensive Python Scan, and Linux/Windows Video Render Integration passed on main commit `95530b98584f80161268155600b088572da295d2` (runs `42496885622`, `42496885628`, `42496885624`, `42496885716`). Re-run for each release candidate.
 - [ ] Run dependency auditing and review all findings.
 - [ ] Exercise provider adapters with mocks and verify ambiguous external outcomes are quarantined rather than blindly retried.
+- [x] Hosted Windows clean-wheel build/install smoke passed on the exact PR #326 head for Python 3.11 and 3.12; re-run and record the post-merge main result for each release candidate.
+- [x] Checkout, setup-python, and upload-artifact references are pinned to verified immutable Node 24 action SHAs in the maintained CI workflows.
 - [ ] For any real external account, perform a controlled test only after explicit configuration and approval; verify provider-side results manually.
 - [ ] Document known limitations and rollback steps before release.
 

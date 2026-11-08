@@ -201,3 +201,31 @@ PR #276 is merged. The Release & Update Manager records its merge and exact-head
 ### Current release decision
 
 **Not release-ready.** The following are still hard gates: canonical dependency lock and locked installation; license selection; actual Windows device acceptance; coordinated database/media/encryption-key restore drill; clean install/upgrade/rollback; browser/operator acceptance; external provider and social-account acceptance; exact-candidate CI; and explicit owner authorization. No release tag, GitHub Release, or package publication is created by this update.
+
+
+## Superseding release-manager baseline — 2026-11-08 UTC
+
+**Current main:** `95530b98584f80161268155600b088572da295d2`.  
+**Package metadata:** `0.1.0`; development metadata only. No public release or tag is implied.
+
+### Merged release-relevant work
+
+- PR #323 merged as `9e3f43e027a65672a12599fa20b999f443eec9a1`: strict GitHub repository identity validation, strict upstream state flags, bounded metadata normalization, and regression tests.
+- PR #326 merged as `95530b98584f80161268155600b088572da295d2`: authenticated synthetic Knowledge evaluation API, Windows clean-wheel smoke for Python 3.11/3.12, encoded workflow-key regression test, and immutable verified Node 24 action pins.
+- Exact PR-head checks for #326 passed, including both Windows wheel smoke cells, Python 3.11/3.12 CI, Backend CI, Defensive Python Scan, Linux/Windows FFmpeg integration, and Windows Launcher Validation.
+- All four post-merge workflows passed on exact main commit `95530b98584f80161268155600b088572da295d2`: CI `42496885622`, Backend CI `42496885628`, Defensive Python Scan `42496885624`, and Video Render Integration `42496885716`.
+
+### Current release blockers
+
+- Canonical dependency lock and clean locked installation remain unresolved.
+- Root distribution license decision remains unresolved.
+- Real Windows-device acceptance remains open; hosted Windows wheel smoke is automated evidence, not owner-device acceptance.
+- Coordinated SQLite/media/encryption-key backup and restore has not been accepted on the target device.
+- Clean upgrade/rollback and browser/operator acceptance remain open.
+- External provider and social-account acceptance remain open. Video generation has no registered provider by default.
+- Scheduled development publisher credential isolation remains blocked by Issue #316; PR #315 remains Draft.
+- Repository branch protection remains unverified; the available integration cannot read the protection endpoint (403).
+- Cloudflare Hub gateway live staging acceptance remains open. The similarly named site gateway and preview Worker do not establish the required Hub gateway contract.
+- GShop production credential/CORS remediation remains owner-dependent; no live Cloudflare resources were changed in this update.
+
+**Current release decision: NOT RELEASE-READY.** No tag, GitHub Release, package publication, or production deployment is created by this evidence update.
