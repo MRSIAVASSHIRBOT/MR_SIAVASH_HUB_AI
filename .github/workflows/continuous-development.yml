@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":"allow","edit":"allow","glob":"allow","grep":"allow","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"},"agent":{"build":{"permission":{"*":"deny","read":"allow","edit":"allow","glob":"allow","grep":"allow","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"}}},"tools":{"bash":false},"lsp":false,"mcp":{}}'
+      OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"allow","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"},"agent":{"build":{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"allow","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"}}},"tools":{"bash":false},"lsp":false,"mcp":{}}'
     permissions:
       contents: read
       issues: read
@@ -48,9 +48,15 @@ jobs:
           policy = config.get("permission")
           if not isinstance(policy, dict) or policy.get("*") != "deny":
               raise SystemExit("OpenCode effective policy is not default-deny")
-          for tool in ("read", "edit", "glob", "grep"):
+          read_policy = policy.get("read")
+          if not isinstance(read_policy, dict) or read_policy.get("*") != "allow":
+              raise SystemExit("Workspace file reading is not explicitly allowed")
+          for pattern in ("*.env", "*.env.*", "**/.env", "**/.env.*"):
+              if read_policy.get(pattern) != "deny":
+                  raise SystemExit("Secret-file read pattern is not denied: " + pattern)
+          for tool in ("edit", "glob", "grep"):
               if policy.get(tool) != "allow":
-                  raise SystemExit(f"Required workspace tool is not allowed: {tool}")
+                  raise SystemExit("Required workspace tool is not allowed: " + tool)
           for tool in (
               "bash", "task", "skill", "webfetch", "websearch", "lsp",
               "external_directory",
@@ -161,10 +167,101 @@ jobs:
           [ -f "$PATCH" ] || { echo "::error::Missing agent patch"; exit 1; }
           SIZE=$(wc -c < "$PATCH")
           [ "$SIZE" -le 1048576 ] || { echo "::error::Patch exceeds 1 MiB"; exit 1; }
-          if grep -E '^(\+\+\+ b/|--- a/)(\.github(/|$)|AGENTS\.md$|SECURITY(/|$)|\.git(/|$))' "$PATCH"; then
-            echo "::error::Agent proposal touches protected workflow/policy paths"; exit 1
-          fi
           git apply --check --index --binary "$PATCH"
+          git apply --index --binary "$PATCH"
+
+          # Inspect normalized staged paths, not patch headers. This catches
+          # rename targets, nested secrets/configuration, and unusual path spellings.
+          python - <<'PY'
+          import subprocess
+          import sys
+
+          raw_paths = subprocess.check_output(
+              ["git", "diff", "--cached", "--no-renames", "--name-only", "-z"]
+          )
+          paths = [path for path in raw_paths.split(bytes([0])) if path]
+          if not paths:
+              print("No staged paths in the proposed patch.")
+              sys.exit(1)
+
+          protected_exact = {
+              b"agents.md", b"codeowners", b"opencode.json", b"opencode.jsonc",
+              b"opencode.json5", b".gitignore", b"pyproject.toml", b"setup.py",
+              b"setup.cfg", b"tox.ini", b"noxfile.py", b"makefile", b".gitmodules",
+              b"security.md", b"uv.lock", b"poetry.lock", b"pipfile", b"pipfile.lock",
+              b"pdm.lock", b"package.json", b"package-lock.json", b"pnpm-lock.yaml",
+              b"yarn.lock", b"bun.lock", b"bun.lockb", b"cargo.toml", b"cargo.lock",
+              b"go.mod", b"go.sum", b"composer.json", b"composer.lock", b"gemfile",
+              b"gemfile.lock", b"wrangler.toml", b"wrangler.json", b"wrangler.jsonc",
+              b"dockerfile", b"docker-compose.yml", b"docker-compose.yaml",
+              b"compose.yml", b"compose.yaml", b"vercel.json", b"netlify.toml",
+              b"fly.toml", b"backend/mrhub/api/dependencies.py",
+              b"backend/mrhub/api/routes/agent_model_runs.py",
+              b"backend/mrhub/api/routes/agent_run.py",
+              b"backend/mrhub/api/routes/approvals.py",
+              b"backend/mrhub/api/routes/auth.py", b"backend/mrhub/api/routes/jobs.py",
+              b"backend/mrhub/api/routes/policy.py",
+              b"backend/mrhub/api/routes/security_lab.py",
+              b"backend/mrhub/api/routes/tasks.py", b"backend/mrhub/api/routes/tools.py",
+              b"backend/mrhub/config.py", b"tests/test_audit.py", b"tests/test_auth.py",
+              b"tests/test_tool_permissions.py",
+          }
+          protected_prefixes = (
+              b".github/", b".opencode/", b"security/", b".git/",
+              b"scripts/deploy/", b".devcontainer/", b"docs/security/",
+              b"backend/mrhub/security/", b"backend/mrhub/tools/",
+          )
+          protected_basenames = {
+              b"requirements.txt", b"requirements-dev.txt", b"requirements-test.txt",
+              b"constraints.txt", b"constraints-dev.txt",
+          }
+          blocked = []
+          for path in paths:
+              normalized = path.lower()
+              basename = normalized.rsplit(b"/", 1)[-1]
+              components = normalized.split(b"/")
+              dependency_or_build_file = (
+                  basename in protected_basenames
+                  or (basename.startswith(b"requirements") and basename.endswith(b".txt"))
+                  or (basename.startswith(b"constraints") and basename.endswith(b".txt"))
+                  or basename.endswith((b".lock", b".lockb"))
+                  or basename.startswith((b"dockerfile", b"docker-compose.", b"compose."))
+                  or basename in {
+                      b"agents.md", b"codeowners", b"security.md", b"pyproject.toml",
+                      b"setup.py", b"setup.cfg", b"tox.ini", b"noxfile.py",
+                      b"package.json", b"cargo.toml", b"go.mod", b"composer.json",
+                      b"gemfile", b"pipfile", b"makefile",
+                  }
+              )
+              if (
+                  normalized in protected_exact
+                  or normalized in {b".github", b"security", b".git"}
+                  or any(part.startswith(b".env") for part in components)
+                  or basename.startswith(b"wrangler.")
+                  or basename in {b"vercel.json", b"netlify.toml", b"fly.toml"}
+                  or dependency_or_build_file
+                  or any(normalized.startswith(prefix) for prefix in protected_prefixes)
+              ):
+                  blocked.append(path)
+          if blocked:
+              for path in blocked:
+                  print("::error::Agent proposal touches protected path: %r" % path)
+              sys.exit(1)
+
+          staged_paths = set(paths)
+          staged = subprocess.check_output(["git", "ls-files", "--stage", "-z"])
+          for entry in staged.split(bytes([0])):
+              if not entry:
+                  continue
+              metadata, path = entry.split(bytes([9]), 1)
+              if path not in staged_paths:
+                  continue
+              mode = metadata.split(b" ", 1)[0]
+              if mode in {b"120000", b"160000"}:
+                  print("::error::Unsupported symlink/submodule entry: %r" % path)
+                  sys.exit(1)
+          print("Validated %d staged path(s)." % len(paths))
+          PY
           echo "valid=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply proposal and create review PR
@@ -176,7 +273,7 @@ jobs:
           set -euo pipefail
           BRANCH="automation/continuous-development-${GITHUB_RUN_ID}"
           git switch -c "$BRANCH"
-          git apply --index --binary "$RUNNER_TEMP/agent-proposal/agent.patch"
+          # The validation step already applied and staged the checked patch.
           if git diff --cached --quiet; then
             echo "No applicable changes; nothing to publish."
             exit 0
