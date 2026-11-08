@@ -17,6 +17,8 @@ def test_project_registry_refresh_is_bounded_and_non_blocking_for_core_overview(
     assert "void loadProjectRegistry();" in overview_source
     assert "await loadProjectRegistry()" not in overview_source
     assert "Promise.allSettled([" in overview_source
+
+    assert 'latestCi.branch ? " · شاخه: " + latestCi.branch' in source
     for endpoint in (
         'api("/health"',
         'api("/ready"',
