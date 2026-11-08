@@ -38,14 +38,14 @@ def test_github_status_uses_only_fixed_public_api_paths_and_projects_metadata(mo
         if request.url.path == f"/repos/{REPOSITORY}/commits/main":
             return httpx.Response(200, json=_commit())
         if request.url.path == f"/repos/{REPOSITORY}/pulls":
-            assert request.url.params == {"state": "open", "per_page": "10"}
+            assert dict(request.url.params) == {"state": "open", "per_page": "10"}
             return httpx.Response(200, json=[{
                 "number": 71,
                 "title": "Publish and verify the static site",
                 "updated_at": "2026-11-08T11:40:00Z",
             }])
         if request.url.path == f"/repos/{REPOSITORY}/actions/runs":
-            assert request.url.params == {"per_page": "1"}
+            assert dict(request.url.params) == {"per_page": "1"}
             return httpx.Response(200, json={"workflow_runs": [{
                 "id": 12345,
                 "name": "Quality checks and GitHub Pages deployment",
