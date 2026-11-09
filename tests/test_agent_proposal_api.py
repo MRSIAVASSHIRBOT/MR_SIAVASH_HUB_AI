@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 from client_helpers import authenticated_client
 from mrhub.agents.proposal_repository import AgentProposalRepository
 from mrhub.config import get_settings
-from mrhub.main import create_app
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.main import create_app
 from mrhub.security.auth import _password_digest
 
 
@@ -118,7 +118,6 @@ def test_agent_proposal_is_owner_scoped():
         UUID(record["proposal_id"]),
         owner_user_id="different-owner",
     ) is None
-
 
 
 def test_agent_proposal_api_isolates_records_between_authenticated_owners():
