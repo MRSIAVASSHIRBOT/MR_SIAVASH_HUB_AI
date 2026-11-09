@@ -66,23 +66,24 @@ def create_agent_proposal(
         _validate(payload)
         proposal_id = uuid4()
         fingerprint = _fingerprint(proposal_id, payload)
+        audit_event = AuditLogger(TaskRepository(get_settings().database_path)).build_event(
+            event_type="agent.proposal_created",
+            outcome="pending_review",
+            subject_type="agent_proposal",
+            subject_id=str(proposal_id),
+            actor_type="user",
+            actor_id=user.user_id,
+        ).model_dump(mode="json")
         record = _repository().create(
             proposal_id,
             user.user_id,
             payload.model_dump(mode="json"),
             fingerprint,
+            audit_event,
         )
     except (ValueError, LookupError) as exc:
         raise HTTPException(status_code=422, detail="Agent proposal failed validation") from exc
 
-    AuditLogger(TaskRepository(get_settings().database_path)).record(
-        event_type="agent.proposal_created",
-        outcome="pending_review",
-        subject_type="agent_proposal",
-        subject_id=str(proposal_id),
-        actor_type="user",
-        actor_id=user.user_id,
-    )
     return record
 
 
@@ -132,21 +133,22 @@ def review_agent_proposal(
     except (ValueError, LookupError) as exc:
         raise HTTPException(status_code=409, detail="Proposal is no longer valid") from exc
 
-    reviewed = repository.review(
-        proposal_id,
-        owner_user_id=user.user_id,
-        fingerprint=expected_fingerprint,
-        decision=payload.decision,
-    )
-    if reviewed is None:
-        raise HTTPException(status_code=409, detail="Proposal was already reviewed or changed")
-
-    AuditLogger(TaskRepository(get_settings().database_path)).record(
+    audit_event = AuditLogger(TaskRepository(get_settings().database_path)).build_event(
         event_type="agent.proposal_reviewed",
         outcome=payload.decision,
         subject_type="agent_proposal",
         subject_id=str(proposal_id),
         actor_type="user",
         actor_id=user.user_id,
+    ).model_dump(mode="json")
+    reviewed = repository.review(
+        proposal_id,
+        owner_user_id=user.user_id,
+        fingerprint=expected_fingerprint,
+        decision=payload.decision,
+        audit_event=audit_event,
     )
+    if reviewed is None:
+        raise HTTPException(status_code=409, detail="Proposal was already reviewed or changed")
+
     return reviewed
