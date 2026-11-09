@@ -40,8 +40,6 @@ class AgentProposalRepository:
             connection.close()
 
     def initialize(self) -> None:
-        from mrhub.infrastructure.database import TaskRepository
-
         TaskRepository(self.database_path).initialize()
 
     @staticmethod
