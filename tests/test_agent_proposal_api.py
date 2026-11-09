@@ -1,5 +1,7 @@
 import secrets
 import sqlite3
+
+import pytest
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -208,3 +210,59 @@ def test_agent_proposal_lifecycle_writes_audit_events_atomically():
         ("agent.proposal_reviewed", "approved", "agent_proposal",
          record["proposal_id"], record["owner_user_id"]),
     ]
+
+
+
+def test_agent_proposal_create_rolls_back_when_audit_write_fails(monkeypatch):
+    client = authenticated_client()
+
+    def fail_audit_write(connection, event):
+        raise RuntimeError("simulated audit storage failure")
+
+    monkeypatch.setattr(
+        TaskRepository, "_insert_audit_event", staticmethod(fail_audit_write)
+    )
+    with pytest.raises(RuntimeError, match="simulated audit storage failure"):
+        client.post("/agent/proposals", json=proposal_payload())
+
+    with sqlite3.connect(get_settings().database_path) as connection:
+        proposal_count = connection.execute(
+            "SELECT COUNT(*) FROM agent_proposals"
+        ).fetchone()[0]
+        audit_count = connection.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE event_type = 'agent.proposal_created'"
+        ).fetchone()[0]
+
+    assert proposal_count == 0
+    assert audit_count == 0
+
+
+def test_agent_proposal_review_rolls_back_when_audit_write_fails(monkeypatch):
+    client = authenticated_client()
+    created = client.post("/agent/proposals", json=proposal_payload())
+    assert created.status_code == 201
+    record = created.json()
+
+    def fail_audit_write(connection, event):
+        raise RuntimeError("simulated audit storage failure")
+
+    monkeypatch.setattr(
+        TaskRepository, "_insert_audit_event", staticmethod(fail_audit_write)
+    )
+    with pytest.raises(RuntimeError, match="simulated audit storage failure"):
+        client.post(
+            f"/agent/proposals/{record['proposal_id']}/review",
+            json={"fingerprint": record["fingerprint"], "decision": "approved"},
+        )
+
+    with sqlite3.connect(get_settings().database_path) as connection:
+        status = connection.execute(
+            "SELECT status FROM agent_proposals WHERE proposal_id = ?",
+            (record["proposal_id"],),
+        ).fetchone()[0]
+        review_events = connection.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE event_type = 'agent.proposal_reviewed'"
+        ).fetchone()[0]
+
+    assert status == "pending"
+    assert review_events == 0
