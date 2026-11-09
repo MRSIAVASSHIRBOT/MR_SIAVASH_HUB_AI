@@ -181,6 +181,16 @@ jobs:
 
           environment = os.environ.copy()
           environment["OPENCODE_CONFIG_CONTENT"] = policy_json
+          required_environment = {
+              "OPENCODE_EXPERIMENTAL_CODE_MODE": "false",
+              "OPENCODE_DISABLE_EXTERNAL_SKILLS": "true",
+              "OPENCODE_DISABLE_PROJECT_CONFIG": "true",
+              "OPENCODE_DISABLE_CLAUDE_CODE": "true",
+          }
+          for name, expected in required_environment.items():
+              if f'{name}: "{expected}"' not in workflow:
+                  raise SystemExit("Scheduled workflow is missing required setting: " + name)
+              environment[name] = expected
           result = subprocess.run(
               ["opencode", "--pure", "debug", "config"],
               check=True,
