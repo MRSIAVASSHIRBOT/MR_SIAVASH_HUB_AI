@@ -7,7 +7,7 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import require_user
@@ -217,6 +217,7 @@ def create_telegram_task(
     payload: TaskCreateRequest,
     identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:create"))],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=255)],
+    response: Response,
 ) -> dict[str, object]:
     policy = PolicyEngine()
     risk_class = policy.classify_task_type(payload.task_type)
@@ -259,6 +260,8 @@ def create_telegram_task(
         raise HTTPException(status_code=422, detail="Invalid idempotency request") from exc
     if reservation.record.task_id is None:
         raise HTTPException(status_code=409, detail="Task reservation is incomplete")
+    if not reservation.created:
+        response.status_code = 200
     saved = repository.get(UUID(reservation.record.task_id))
     if saved is None:
         raise HTTPException(status_code=409, detail="Reserved task is unavailable")
