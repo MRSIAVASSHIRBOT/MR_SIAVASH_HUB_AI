@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from mrhub.api.dependencies import require_user
 from mrhub.api.telegram_auth import require_telegram_scope
 from mrhub.config import get_settings
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.telegram_pairing import (
     TelegramClientIdentity,
