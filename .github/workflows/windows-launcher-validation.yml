@@ -49,7 +49,7 @@ jobs:
         run: |
           py -3.11 -m venv .venv
           if ($LASTEXITCODE -ne 0) { throw "Virtual environment creation failed." }
-          & .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check -e .
+          & .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -e .
           if ($LASTEXITCODE -ne 0) { throw "Project installation failed." }
       - name: Start, verify, and stop API plus worker
         shell: pwsh
@@ -58,7 +58,7 @@ jobs:
           $env:MRH_DATABASE_PATH = Join-Path $env:RUNNER_TEMP "mrhub-launcher-smoke.sqlite3"
           $env:MRH_REQUIRE_WORKER_FOR_READINESS = "true"
           try {
-            & .\\scripts\\start-local.ps1 -SkipInstall
+            & .\scripts\start-local.ps1 -SkipInstall
             if ($LASTEXITCODE -ne 0) { throw "Local launcher failed." }
             $health = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -TimeoutSec 5
             $ready = Invoke-RestMethod -Uri "http://127.0.0.1:8000/ready" -TimeoutSec 5
@@ -71,7 +71,7 @@ jobs:
           }
           finally {
             if (Test-Path ".mrhub-runtime.json") {
-              & .\\scripts\\stop-local.ps1
+              & .\scripts\stop-local.ps1
             }
           }
 
@@ -86,7 +86,7 @@ jobs:
         run: |
           py -3.11 -m venv .venv
           if ($LASTEXITCODE -ne 0) { throw "Virtual environment creation failed." }
-          & .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check -e .
+          & .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -e .
           if ($LASTEXITCODE -ne 0) { throw "Project installation failed." }
       - name: Verify worker cleanup when API port is unavailable
         shell: pwsh
@@ -97,7 +97,7 @@ jobs:
           $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 8000)
           $listener.Start()
           try {
-            & pwsh -NoProfile -File .\\scripts\\start-local.ps1 -SkipInstall
+            & pwsh -NoProfile -File .\scripts\start-local.ps1 -SkipInstall
             $launcherExit = $LASTEXITCODE
             if ($launcherExit -eq 0) {
               throw "Launcher unexpectedly reported success while port 8000 was occupied."
