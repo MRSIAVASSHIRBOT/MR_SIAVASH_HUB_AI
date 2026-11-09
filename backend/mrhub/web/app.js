@@ -216,14 +216,6 @@
     return button;
   }
 
-  function generateTelegramClientId() {
-    if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
-      message("#telegram-pairing-message", "مرورگر از تولید UUID امن پشتیبانی نمی‌کند.", "error");
-      return;
-    }
-    $("#telegram-client-id").value = window.crypto.randomUUID();
-  }
-
   async function loadTelegramClients() {
     try {
       const result = await api("/integrations/telegram/clients");
@@ -1959,7 +1951,6 @@
   });
 
   $("#telegram-pairing-form").addEventListener("submit", createTelegramPairing);
-  $("#telegram-client-id-generate").addEventListener("click", generateTelegramClientId);
   $("#telegram-clients-refresh").addEventListener("click", loadTelegramClients);
   $("#telegram-pairing-copy").addEventListener("click", async () => {
     const code = $("#telegram-pairing-code").value;
@@ -1978,7 +1969,6 @@
     $("#telegram-pairing-code-panel").hidden = true;
     message("#telegram-pairing-message", "کد از صفحه پاک شد.");
   });
-  if (!$("#telegram-client-id").value) generateTelegramClientId();
 
   $("#workflow-refresh-button").addEventListener("click", () =>
     loadOverview().catch((error) => message("#workspace-message", error.message, "error"))
