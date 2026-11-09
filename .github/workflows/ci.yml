@@ -163,7 +163,7 @@ jobs:
           python - <<'PY'
           import json
           import os
-                    import subprocess
+          import subprocess
           from pathlib import Path
 
           workflow = Path(".github/workflows/continuous-development.yml").read_text(encoding="utf-8")
