@@ -36,10 +36,8 @@ This creates a safe validation boundary for a future owner-reviewed agent creati
 
 ## Follow-up gates
 
-Before exposing activation through an API or UI:
-1. Add durable proposal records with owner/workspace scope and audit events.
-2. Require an authenticated owner decision bound to a proposal fingerprint.
-3. Revalidate tool availability and policy at activation time.
-4. Keep agent execution budgets and delegation depth bounded.
-5. Add API authorization, persistence, migration, UI, and end-to-end tests.
-6. Run the complete CI and security checks on the exact release candidate.
+The owner-scoped proposal API, durable records, authenticated review, fingerprint binding, and regression tests are implemented in the next delivery stage (ADR-0009). Before any separate activation API or UI is introduced:
+1. Revalidate tool availability and policy at activation time.
+2. Keep agent execution budgets and delegation depth bounded.
+3. Add explicit activation/revocation semantics and tests; proposal approval alone must never activate an agent.
+4. Run the complete CI and security checks on the exact release candidate.
