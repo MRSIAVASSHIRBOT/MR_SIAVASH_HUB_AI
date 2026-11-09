@@ -10,9 +10,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from mrhub.agents.proposal_repository import AgentProposalRepository
 from mrhub.agents.proposals import AgentProposal, validate_agent_proposal
 from mrhub.agents.registry import build_default_agent_registry
-from mrhub.agents.proposal_repository import AgentProposalRepository
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
