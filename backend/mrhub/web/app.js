@@ -148,6 +148,8 @@
     $("#video-prompt-source").disabled = true;
     $("#video-compose-prompt").disabled = true;
     $("#video-copy-prompt").disabled = true;
+    $("#telegram-pairing-code").value = "";
+    $("#telegram-pairing-code-panel").hidden = true;
     setAuthenticated(false);
   }
 
