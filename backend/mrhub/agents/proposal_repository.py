@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -22,6 +24,18 @@ class AgentProposalRepository:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def initialize(self) -> None:
         from mrhub.infrastructure.database import TaskRepository
@@ -57,7 +71,7 @@ class AgentProposalRepository:
         self.initialize()
         created_at = datetime.now(UTC).isoformat()
         try:
-            with self._connect() as connection:
+            with self._connection() as connection:
                 connection.execute(
                     """INSERT INTO agent_proposals (
                         proposal_id, owner_user_id, name, description, instructions,
@@ -86,7 +100,7 @@ class AgentProposalRepository:
 
     def get(self, proposal_id: UUID, *, owner_user_id: str) -> dict[str, object] | None:
         self.initialize()
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM agent_proposals WHERE proposal_id = ? AND owner_user_id = ?",
                 (str(proposal_id), owner_user_id),
@@ -96,7 +110,7 @@ class AgentProposalRepository:
     def list(self, *, owner_user_id: str, limit: int = 50) -> list[dict[str, object]]:
         self.initialize()
         bounded_limit = max(1, min(limit, 100))
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """SELECT * FROM agent_proposals
                    WHERE owner_user_id = ?
@@ -117,7 +131,7 @@ class AgentProposalRepository:
             raise ValueError("Unsupported proposal decision")
         self.initialize()
         reviewed_at = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             cursor = connection.execute(
                 """UPDATE agent_proposals
                    SET status = ?, reviewed_at = ?, reviewed_by = ?
