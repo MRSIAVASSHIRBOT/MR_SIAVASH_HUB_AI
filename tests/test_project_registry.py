@@ -60,6 +60,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "mr-siavash-hub-ai",
         "mr-siavash-ai",
         "gshop",
+        "mr-siavash-el-ai",
     ]
     assert all(project["repository_status"] == "healthy" for project in payload["projects"])
     assert all(
@@ -71,6 +72,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "degraded",
         "unknown",
         "unknown",
+        "unknown",
     ]
     assert all(
         project["infrastructure_status"] == "not_configured"
@@ -78,6 +80,8 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
     )
     assert payload["projects"][1]["service_url"] == "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"
     assert payload["projects"][2]["service_url"] == "https://gshop11.ir/"
+    assert payload["projects"][3]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI"
+    assert payload["projects"][3]["service_url"] is None
     for project in payload["projects"]:
         observations = project["status_observations"]
         assert set(observations) == {"repository", "runtime", "infrastructure"}
