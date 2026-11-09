@@ -107,7 +107,6 @@ class AgentProposalRepository:
                 "SELECT * FROM agent_proposals WHERE proposal_id = ? AND owner_user_id = ?",
                 (str(proposal_id), owner_user_id),
             ).fetchone()
-            TaskRepository._insert_audit_event(connection, audit_event)
         return self._serialize(row) if row is not None else None
 
     def list(self, *, owner_user_id: str, limit: int = 50) -> list[dict[str, object]]:
@@ -156,4 +155,5 @@ class AgentProposalRepository:
                 "SELECT * FROM agent_proposals WHERE proposal_id = ? AND owner_user_id = ?",
                 (str(proposal_id), owner_user_id),
             ).fetchone()
+            TaskRepository._insert_audit_event(connection, audit_event)
         return self._serialize(row) if row is not None else None
