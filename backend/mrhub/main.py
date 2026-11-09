@@ -29,6 +29,7 @@ from mrhub.api.routes.projects import router as projects_router
 from mrhub.api.routes.public_media import router as public_media_router
 from mrhub.api.routes.security_lab import router as security_lab_router
 from mrhub.api.routes.tasks import router as tasks_router
+from mrhub.api.routes.telegram_integration import router as telegram_integration_router
 from mrhub.api.routes.tools import router as tools_router
 from mrhub.api.routes.video_intelligence import router as video_intelligence_router
 from mrhub.config import get_settings
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(content_router)
     app.include_router(content_schedules_router)
     app.include_router(tasks_router)
+    app.include_router(telegram_integration_router)
     app.include_router(jobs_router)
     app.include_router(knowledge_router)
     app.include_router(knowledge_evaluation_router)
