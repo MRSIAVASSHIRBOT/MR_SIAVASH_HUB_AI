@@ -87,7 +87,7 @@ def test_preflight_reports_duplicate_tool_identifiers():
     ] == "failed"
 
 
-def test_preflight_api_is_owner_scoped_and_does_not_change_proposal_state():
+def test_preflight_api_is_read_only_and_keeps_pending_state():
     from client_helpers import authenticated_client
 
     client = authenticated_client()
