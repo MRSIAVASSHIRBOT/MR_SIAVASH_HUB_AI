@@ -363,4 +363,4 @@ def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
     assert "Telegram Numeric User ID" in page.text
     assert "/pairinfo" in page.text
     assert "generateTelegramClientId" not in script.text
-    assert "randomUUID" not in script.text
+    assert "telegram-client-id-generate" not in page.text
