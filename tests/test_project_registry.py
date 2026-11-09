@@ -22,7 +22,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         lambda repository: {
             "status": "healthy",
             "source": "github_public_api",
-            "observed_at": "2026-11-08T12:00:00+00:00",
+            "observed_at": "2026-11-09T12:00:00+00:00",
             "reason_code": "repository_metadata_observed",
             "repository": repository,
             "default_branch": "main",
@@ -31,7 +31,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
             "open_pull_requests_sample_size": 0,
             "open_pull_requests_may_be_truncated": False,
             "latest_ci": {"status": "unknown", "source": "github_actions_public_api",
-                          "observed_at": "2026-11-08T12:00:00+00:00",
+                          "observed_at": "2026-11-09T12:00:00+00:00",
                           "reason_code": "no_workflow_runs"},
         },
     )
@@ -60,6 +60,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "mr-siavash-hub-ai",
         "mr-siavash-ai",
         "gshop",
+        "mr-siavash-el-ai",
     ]
     assert all(project["repository_status"] == "healthy" for project in payload["projects"])
     assert all(
@@ -71,6 +72,7 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "degraded",
         "unknown",
         "unknown",
+        "unknown",
     ]
     assert all(
         project["infrastructure_status"] == "not_configured"
@@ -78,6 +80,8 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
     )
     assert payload["projects"][1]["service_url"] == "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"
     assert payload["projects"][2]["service_url"] == "https://gshop11.ir/"
+    assert payload["projects"][3]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI"
+    assert payload["projects"][3]["service_url"] is None
     for project in payload["projects"]:
         observations = project["status_observations"]
         assert set(observations) == {"repository", "runtime", "infrastructure"}
@@ -105,7 +109,7 @@ def test_project_registry_does_not_claim_unverified_health(tmp_path, monkeypatch
         lambda repository: {
             "status": "unknown",
             "source": "github_public_api",
-            "observed_at": "2026-11-08T12:00:00+00:00",
+            "observed_at": "2026-11-09T12:00:00+00:00",
             "reason_code": "github_rate_limited",
             "repository": repository,
             "default_branch": None,
@@ -114,7 +118,7 @@ def test_project_registry_does_not_claim_unverified_health(tmp_path, monkeypatch
             "open_pull_requests_sample_size": 0,
             "open_pull_requests_may_be_truncated": False,
             "latest_ci": {"status": "unknown", "source": "github_actions_public_api",
-                          "observed_at": "2026-11-08T12:00:00+00:00",
+                          "observed_at": "2026-11-09T12:00:00+00:00",
                           "reason_code": "github_rate_limited"},
         },
     )
