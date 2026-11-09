@@ -143,3 +143,69 @@ jobs:
 
           asyncio.run(main())
           '@ | & .\.wheel-smoke\Scripts\python.exe -
+
+
+  opencode-policy:
+    name: Validate scheduled OpenCode security policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install pinned OpenCode CLI
+        run: npm install --global opencode-ai@1.19.4
+      - name: Verify effective default-deny configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/continuous-development.yml").read_text(encoding="utf-8")
+          policy_line = next(
+              (
+                  line.strip()
+                  for line in workflow.splitlines()
+                  if line.strip().startswith("OPENCODE_CONFIG_CONTENT: '")
+              ),
+              None,
+          )
+          if policy_line is None:
+              raise SystemExit("Scheduled workflow is missing its inline OpenCode policy.")
+          policy_json = policy_line.split("'", 2)[1]
+
+          environment = os.environ.copy()
+          environment["OPENCODE_CONFIG_CONTENT"] = policy_json
+          result = subprocess.run(
+              ["opencode", "--pure", "debug", "config"],
+              check=True,
+              capture_output=True,
+              text=True,
+              env=environment,
+          )
+          config = json.loads(result.stdout)
+          policy = config.get("permission")
+          if not isinstance(policy, dict) or policy.get("*") != "deny":
+              raise SystemExit("Effective OpenCode policy is not default-deny.")
+          read_policy = policy.get("read")
+          if not isinstance(read_policy, dict) or read_policy.get("*") != "allow":
+              raise SystemExit("Workspace file reading is not explicitly allowed.")
+          for pattern in ("*.env", "*.env.*", "**/.env", "**/.env.*"):
+              if read_policy.get(pattern) != "deny":
+                  raise SystemExit("Secret-file read pattern is not denied: " + pattern)
+          for tool in ("edit", "glob"):
+              if policy.get(tool) != "allow":
+                  raise SystemExit("Required workspace tool is not allowed: " + tool)
+          for tool in ("bash", "task", "skill", "webfetch", "websearch", "lsp", "grep", "external_directory"):
+              if policy.get(tool) != "deny":
+                  raise SystemExit("Unsafe or external tool is not denied: " + tool)
+          build_policy = config.get("agent", {}).get("build", {}).get("permission")
+          if not isinstance(build_policy, dict) or build_policy.get("*") != "deny":
+              raise SystemExit("Build agent is not configured with default-deny policy.")
+          print("Verified effective default-deny OpenCode tool policy.")
+          PY
