@@ -2296,8 +2296,8 @@
   function renderAgentProposal(record) {
     const card = recordCard(
       record.name || "عامل بدون شناسه",
-      (record.description || "") + "\\n\\nدستورها: " + (record.instructions || "")
-        + "\\n\\nدلیل: " + (record.rationale || ""),
+      (record.description || "") + "\n\nدستورها: " + (record.instructions || "")
+        + "\n\nدلیل: " + (record.rationale || ""),
       [
         proposalStatusLabels[record.status] || record.status || "وضعیت نامشخص",
         "حداکثر نوبت: " + (record.max_turns ?? "—"),
@@ -2390,7 +2390,7 @@
     const warning = decision === "approved"
       ? "این کار فقط تصمیم بازبینی را ثبت می‌کند و عامل را فعال یا مجوز ابزارها را اعطا نمی‌کند."
       : "این پیشنهاد به وضعیت نهایی ردشده منتقل می‌شود.";
-    if (!window.confirm("پیشنهاد «" + record.name + "» " + action + " شود؟\\n" + warning)) return;
+    if (!window.confirm("پیشنهاد «" + record.name + "» " + action + " شود؟\n" + warning)) return;
     try {
       await api("/agent/proposals/" + encodeURIComponent(record.proposal_id) + "/review", {
         method: "POST",
