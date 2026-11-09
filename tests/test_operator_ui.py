@@ -336,7 +336,6 @@ def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
         "telegram-pairing-form",
         "telegram-pairing-message",
         "telegram-client-id",
-        "telegram-client-id-generate",
         "telegram-pairing-code-panel",
         "telegram-pairing-code",
         "telegram-pairing-copy",
@@ -358,3 +357,6 @@ def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
     assert '$("#telegram-pairing-code").value = "";' in script.text
     assert '$("#telegram-pairing-code-panel").hidden = true;' in script.text
     assert "Telegram Numeric User ID" in page.text
+    assert "/pairinfo" in page.text
+    assert "generateTelegramClientId" not in script.text
+    assert "randomUUID" not in script.text
