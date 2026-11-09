@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
@@ -81,7 +83,7 @@ def test_agent_proposal_is_owner_scoped():
     record = created.json()
     repository = AgentProposalRepository(get_settings().database_path)
     assert repository.get(
-        __import__("uuid").UUID(record["proposal_id"]),
+        UUID(record["proposal_id"]),
         owner_user_id="different-owner",
     ) is None
 
