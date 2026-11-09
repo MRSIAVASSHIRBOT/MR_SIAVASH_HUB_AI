@@ -111,3 +111,14 @@ def test_scheduled_publisher_uses_immutable_artifact_action_pins() -> None:
         "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333"
         in workflow
     )
+
+
+def test_scheduled_agent_disables_code_mode_and_automatic_project_skills() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    for setting in (
+        'OPENCODE_EXPERIMENTAL_CODE_MODE: "false"',
+        'OPENCODE_DISABLE_EXTERNAL_SKILLS: "true"',
+        'OPENCODE_DISABLE_PROJECT_CONFIG: "true"',
+        'OPENCODE_DISABLE_CLAUDE_CODE: "true"',
+    ):
+        assert setting in workflow
