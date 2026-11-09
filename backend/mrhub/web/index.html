@@ -414,6 +414,58 @@
         <div id="memory-results" class="record-list"></div>
       </section>
 
+      <section class="panel" id="telegram-pairing-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">TELEGRAM CLIENT PAIRING</p>
+            <h2>اتصال امن ربات تلگرام</h2>
+          </div>
+          <span class="status-pill status-muted">مالک‌محور · یک‌بارمصرف · قابل لغو</span>
+        </div>
+        <p class="muted">ابتدا در گفت‌وگوی خصوصی ربات دستور /pairinfo را اجرا کنید. شناسهٔ عددی تلگرام و Client UUID را در این فرم وارد کنید. کد اتصال فقط یک‌بار نمایش داده می‌شود و پس از پنج دقیقه منقضی خواهد شد.</p>
+        <form id="telegram-pairing-form" class="form-grid">
+          <label>Telegram Numeric User ID
+            <input name="telegram_user_id" type="number" min="1" max="9007199254740991" required inputmode="numeric" placeholder="شناسهٔ عددی دریافتی از /pairinfo">
+          </label>
+          <label>EL_AI Client UUID
+            <input id="telegram-client-id" name="client_id" required maxlength="36" pattern="[0-9a-fA-F-]{36}" placeholder="UUID دریافتی از /pairinfo">
+          </label>
+          <label class="field-wide">نام این اتصال
+            <input name="label" required maxlength="64" value="MR_SIAVASH_EL_AI Telegram Bot">
+          </label>
+          <fieldset class="telegram-scope-fieldset field-wide">
+            <legend>مجوزهای قابل اعطا</legend>
+            <div class="checkbox-grid">
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="status:read" checked> مشاهدهٔ وضعیت Hub</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="tasks:read" checked> مشاهدهٔ وظایف</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="tasks:create"> ثبت وظیفه از طریق Policy Engine</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="memory:search"> جست‌وجوی حافظهٔ خصوصی</label>
+            </div>
+            <p class="muted">Agent execution، تأیید عملیات، انتشار محتوا و عملیات مخرب در این نسخه مجوز ندارند. وظایف پرخطر همچنان نیازمند تأیید مالک هستند.</p>
+          </fieldset>
+          <div class="button-row field-wide">
+            <button class="button button-primary" type="submit">ساخت کد اتصال یک‌بارمصرف</button>
+          </div>
+        </form>
+        <p id="telegram-pairing-message" class="message" role="status" aria-live="polite"></p>
+        <div id="telegram-pairing-code-panel" class="telegram-pairing-code" hidden>
+          <label>کد یک‌بارمصرف — فقط در گفت‌وگوی خصوصی ربات وارد شود
+            <input id="telegram-pairing-code" readonly spellcheck="false" autocomplete="off">
+          </label>
+          <div class="button-row">
+            <button id="telegram-pairing-copy" class="button button-secondary" type="button">کپی کد</button>
+            <button id="telegram-pairing-clear" class="button button-quiet" type="button">پاک‌کردن کد از صفحه</button>
+          </div>
+          <p id="telegram-pairing-expiry" class="muted"></p>
+          <p class="muted">اکنون در تلگرام دستور /pair CODE را در همان گفت‌وگوی خصوصی ارسال کنید. کد را برای هیچ شخص دیگری نفرستید.</p>
+        </div>
+        <div class="section-heading telegram-client-list-heading">
+          <h3>اتصال‌های ثبت‌شده</h3>
+          <button id="telegram-clients-refresh" class="button button-quiet" type="button">به‌روزرسانی فهرست</button>
+        </div>
+        <div id="telegram-client-list" class="record-list" aria-live="polite"></div>
+      </section>
+
       <section class="panel">
         <div class="section-heading">
           <div><p class="eyebrow">SOURCE-BACKED KNOWLEDGE</p><h2>اسناد دانشی</h2></div>

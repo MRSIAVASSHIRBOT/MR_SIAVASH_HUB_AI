@@ -148,6 +148,8 @@
     $("#video-prompt-source").disabled = true;
     $("#video-compose-prompt").disabled = true;
     $("#video-copy-prompt").disabled = true;
+    $("#telegram-pairing-code").value = "";
+    $("#telegram-pairing-code-panel").hidden = true;
     setAuthenticated(false);
   }
 
@@ -212,6 +214,85 @@
     button.type = "button";
     button.addEventListener("click", onAction);
     return button;
+  }
+
+  async function loadTelegramClients() {
+    try {
+      const result = await api("/integrations/telegram/clients");
+      renderRecords(
+        "#telegram-client-list",
+        result.clients,
+        (client) => {
+          const scopes = Array.isArray(client.scopes) ? client.scopes.join(", ") : "بدون Scope";
+          const card = recordCard(
+            client.label || client.client_id,
+            "Telegram ID: " + client.telegram_user_id,
+            [
+              "وضعیت: " + client.status,
+              "Client: " + client.client_id,
+              "مجوزها: " + scopes,
+              "آخرین استفاده: " + (client.last_seen_at || "هنوز استفاده نشده"),
+              "ایجاد: " + (client.created_at || "نامشخص"),
+            ].join(" · ")
+          );
+          if (client.status === "active") {
+            card.append(actionButton("لغو این اتصال", async () => {
+              if (!window.confirm("دسترسی این ربات لغو شود؟ تمام Access و Refresh Tokenهای آن باطل می‌شوند.")) return;
+              try {
+                await api(
+                  "/integrations/telegram/clients/" + encodeURIComponent(client.client_id) + "/revoke",
+                  { method: "POST" }
+                );
+                message("#telegram-pairing-message", "اتصال لغو شد و اعتبارنامه‌های آن باطل شدند.", "success");
+                await loadTelegramClients();
+              } catch (error) {
+                message("#telegram-pairing-message", error.message, "error");
+              }
+            }));
+          }
+          return card;
+        },
+        "هنوز ربات تلگرامی Pair نشده است."
+      );
+    } catch (error) {
+      message("#telegram-pairing-message", error.message, "error");
+    }
+  }
+
+  async function createTelegramPairing(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const scopes = Array.from(form.querySelectorAll('input[name="scopes"]:checked'))
+      .map((input) => input.value);
+    if (!scopes.length) {
+      message("#telegram-pairing-message", "حداقل یک مجوز باید انتخاب شود.", "error");
+      return;
+    }
+    const outputPanel = $("#telegram-pairing-code-panel");
+    outputPanel.hidden = true;
+    $("#telegram-pairing-code").value = "";
+    message("#telegram-pairing-message", "در حال ساخت کد یک‌بارمصرف…");
+    try {
+      const result = await api("/integrations/telegram/pairing-challenges", {
+        method: "POST",
+        body: {
+          telegram_user_id: Number(values.get("telegram_user_id")),
+          client_id: String(values.get("client_id") || "").trim(),
+          label: String(values.get("label") || "").trim(),
+          scopes,
+        },
+      });
+      $("#telegram-pairing-code").value = result.pairing_code;
+      $("#telegram-pairing-expiry").textContent =
+        "انقضا: " + new Date(result.expires_at).toLocaleString("fa-IR") +
+        " · این کد فقط یک‌بار قابل استفاده است.";
+      outputPanel.hidden = false;
+      message("#telegram-pairing-message", "کد اتصال ساخته شد. آن را فقط در گفت‌وگوی خصوصی ربات وارد کنید.", "success");
+      await loadTelegramClients();
+    } catch (error) {
+      message("#telegram-pairing-message", error.message, "error");
+    }
   }
 
   function renderJobSummary(summary) {
@@ -1806,7 +1887,14 @@
 
   async function refreshAll() {
     try {
-      await Promise.all([loadOverview(), loadContentDrafts(), loadMediaAssets(), loadMemory(), loadKnowledge()]);
+      await Promise.all([
+        loadOverview(),
+        loadContentDrafts(),
+        loadMediaAssets(),
+        loadMemory(),
+        loadKnowledge(),
+        loadTelegramClients(),
+      ]);
       if (activeVideoAnalysisId) {
         $("#video-analysis-refresh").disabled = false;
         await refreshVideoAnalysis();
@@ -1860,6 +1948,26 @@
     } catch (error) {
       message("#auth-message", error.message, "error");
     }
+  });
+
+  $("#telegram-pairing-form").addEventListener("submit", createTelegramPairing);
+  $("#telegram-clients-refresh").addEventListener("click", loadTelegramClients);
+  $("#telegram-pairing-copy").addEventListener("click", async () => {
+    const code = $("#telegram-pairing-code").value;
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      message("#telegram-pairing-message", "کد اتصال کپی شد؛ آن را فقط در گفت‌وگوی خصوصی ربات استفاده کنید.", "success");
+    } catch {
+      $("#telegram-pairing-code").focus();
+      $("#telegram-pairing-code").select();
+      message("#telegram-pairing-message", "کپی خودکار در دسترس نیست؛ کد انتخاب شد تا آن را دستی کپی کنید.");
+    }
+  });
+  $("#telegram-pairing-clear").addEventListener("click", () => {
+    $("#telegram-pairing-code").value = "";
+    $("#telegram-pairing-code-panel").hidden = true;
+    message("#telegram-pairing-message", "کد از صفحه پاک شد.");
   });
 
   $("#workflow-refresh-button").addEventListener("click", () =>
