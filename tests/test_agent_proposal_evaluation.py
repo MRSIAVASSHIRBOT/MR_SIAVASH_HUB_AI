@@ -49,7 +49,8 @@ def test_preflight_blocks_existing_agent_name():
 
     assert report["status"] == "blocked"
     assert report["recommendation"] == "revise_proposal"
-    assert next(check for check in report["checks"] if check["id"] == "name_available")["status"] == "failed"
+    name_check = next(check for check in report["checks"] if check["id"] == "name_available")
+    assert name_check["status"] == "failed"
 
 
 def test_preflight_blocks_unknown_tools_without_invoking_them():
@@ -80,7 +81,10 @@ def test_preflight_reports_duplicate_tool_identifiers():
     )
 
     assert report["status"] == "blocked"
-    assert next(check for check in report["checks"] if check["id"] == "tool_scope_unique")["status"] == "failed"
+    duplicate_check = next(
+        check for check in report["checks"] if check["id"] == "tool_scope_unique"
+    )
+    assert duplicate_check["status"] == "failed"
 
 
 def test_preflight_api_is_read_only_and_keeps_pending_state():
