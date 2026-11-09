@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from mrhub.infrastructure.database import TaskRepository
+
 
 class AgentProposalRepository:
     """Persist candidate definitions without activating them or granting tools."""
@@ -67,6 +69,7 @@ class AgentProposalRepository:
         owner_user_id: str,
         payload: dict[str, object],
         fingerprint: str,
+        audit_event: dict[str, object],
     ) -> dict[str, object]:
         self.initialize()
         created_at = datetime.now(UTC).isoformat()
@@ -91,6 +94,7 @@ class AgentProposalRepository:
                         created_at,
                     ),
                 )
+                TaskRepository._insert_audit_event(connection, audit_event)
         except sqlite3.IntegrityError as exc:
             raise ValueError("An active or pending proposal already uses this name") from exc
         result = self.get(proposal_id, owner_user_id=owner_user_id)
@@ -105,6 +109,7 @@ class AgentProposalRepository:
                 "SELECT * FROM agent_proposals WHERE proposal_id = ? AND owner_user_id = ?",
                 (str(proposal_id), owner_user_id),
             ).fetchone()
+            TaskRepository._insert_audit_event(connection, audit_event)
         return self._serialize(row) if row is not None else None
 
     def list(self, *, owner_user_id: str, limit: int = 50) -> list[dict[str, object]]:
@@ -126,6 +131,7 @@ class AgentProposalRepository:
         owner_user_id: str,
         fingerprint: str,
         decision: str,
+        audit_event: dict[str, object],
     ) -> dict[str, object] | None:
         if decision not in {"approved", "rejected"}:
             raise ValueError("Unsupported proposal decision")
