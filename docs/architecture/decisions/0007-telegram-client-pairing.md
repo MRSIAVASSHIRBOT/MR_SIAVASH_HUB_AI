@@ -1,6 +1,6 @@
 # ADR-0007: Owner-initiated Telegram client pairing
 
-- Status: Implemented in the feature branch; pending CI and review
+- Status: Accepted; Hub API implementation and EL_AI explicit opt-in hardening are on their respective main branches. Live pairing remains unverified.
 - Date: 2026-11-09
 
 ## Context
@@ -55,5 +55,6 @@ Paired bot requests use a dedicated /integrations/telegram/* route family and mu
 ## Limitations and follow-up
 
 - The initial scope set is intentionally narrow; Agent execution and Telegram approvals require separate ADRs and explicit scopes.
-- EL_AI must use a protected local secret store for access/refresh credentials before live pairing is enabled.
+- EL_AI uses an OS-backed Keyring credential store for access/refresh credentials. Explicit opt-in enforcement is merged in EL_AI PR #6; Hub client initialization and `/pair` remain disabled unless `HUB_INTEGRATION_ENABLED=true`.
+- No live Telegram pairing or production bot deployment has been verified.
 - Production remote hosting remains a separate threat-model and deployment decision.
