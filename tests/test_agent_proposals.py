@@ -86,3 +86,10 @@ def test_proposal_rejects_unbounded_turn_limits(max_turns):
 def test_proposal_rejects_unknown_fields():
     with pytest.raises(ValidationError):
         make_proposal(unreviewed_permission="admin")
+
+
+def test_proposal_rejects_empty_or_oversized_tool_identifiers():
+    with pytest.raises(ValidationError):
+        make_proposal(allowed_tools=[""])
+    with pytest.raises(ValidationError):
+        make_proposal(allowed_tools=["x" * 81])
