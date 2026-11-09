@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from mrhub.agents.proposal_evaluation import evaluate_agent_proposal
 from mrhub.agents.proposal_repository import AgentProposalRepository
 from mrhub.agents.proposals import AgentProposal, validate_agent_proposal
 from mrhub.agents.registry import build_default_agent_registry
@@ -152,3 +153,33 @@ def review_agent_proposal(
         raise HTTPException(status_code=409, detail="Proposal was already reviewed or changed")
 
     return reviewed
+
+
+@router.get("/{proposal_id}/evaluation")
+def evaluate_agent_proposal_preflight(
+    proposal_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return a deterministic preflight report; never execute or activate the candidate."""
+    record = _repository().get(proposal_id, owner_user_id=user.user_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Agent proposal not found")
+
+    try:
+        proposal = AgentProposal.model_validate(
+            {key: record[key] for key in (
+                "name", "description", "instructions", "allowed_tools",
+                "max_turns", "rationale",
+            )}
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="Stored proposal is invalid") from exc
+
+    tools = build_tool_registry()
+    agents = build_default_agent_registry(tools)
+    report = evaluate_agent_proposal(proposal, agents=agents, tools=tools)
+    return {
+        "proposal_id": str(proposal_id),
+        "proposal_status": record["status"],
+        **report,
+    }
