@@ -323,3 +323,36 @@ def test_operator_ui_blocks_storyboard_mutation_while_render_is_active():
     assert "const renderIdentity = activeVideoRenderIdentity" in cancel
     assert "activeVideoRenderId !== renderId" in cancel
     assert "activeVideoRenderIdentity !== renderIdentity" in cancel
+
+
+def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    for element_id in (
+        "telegram-pairing-form",
+        "telegram-pairing-message",
+        "telegram-client-id",
+        "telegram-client-id-generate",
+        "telegram-pairing-code-panel",
+        "telegram-pairing-code",
+        "telegram-pairing-copy",
+        "telegram-pairing-clear",
+        "telegram-clients-refresh",
+        "telegram-client-list",
+    ):
+        assert f'id="{element_id}"' in page.text
+
+    for scope in ("status:read", "tasks:read", "tasks:create", "memory:search"):
+        assert f'value="{scope}"' in page.text
+    assert "/integrations/telegram/pairing-challenges" in script.text
+    assert "/integrations/telegram/clients" in script.text
+    assert "/revoke" in script.text
+    assert "navigator.clipboard.writeText" in script.text
+    assert "sessionStorage" in script.text
+    assert "localStorage" not in script.text
+    assert "pairing_code" in script.text
+    assert "Telegram Numeric User ID" in page.text
