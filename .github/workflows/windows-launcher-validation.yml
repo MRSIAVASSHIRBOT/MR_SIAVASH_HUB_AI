@@ -2,9 +2,15 @@ name: Windows Launcher Validation
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
   pull_request:
     paths:
-      - "scripts/*.ps1"
+      - "scripts/**"
+      - "backend/**"
+      - "pyproject.toml"
+      - ".env.example"
       - ".github/workflows/windows-launcher-validation.yml"
 
 permissions:
