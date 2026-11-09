@@ -34,6 +34,14 @@ PROJECTS: tuple[dict[str, str | None], ...] = (
         "service_url": "https://gshop11.ir/",
         "description": "فروشگاه اینترنتی و پنل مدیریت",
     },
+    {
+        "project_id": "mr-siavash-el-ai",
+        "name": "MR_SIAVASH_EL_AI",
+        "repository": "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI",
+        "repository_url": "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI",
+        "service_url": None,
+        "description": "رابط تلگرامی هوش مصنوعی با حافظه و اجرای کنترل‌شده از طریق Hub",
+    },
 )
 
 
