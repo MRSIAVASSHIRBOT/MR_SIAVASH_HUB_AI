@@ -347,6 +347,10 @@ def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
 
     for scope in ("status:read", "tasks:read", "tasks:create", "memory:search"):
         assert f'value="{scope}"' in page.text
+    assert 'value="status:read" checked' in page.text
+    assert 'value="tasks:read" checked' in page.text
+    assert 'value="tasks:create" checked' not in page.text
+    assert 'value="memory:search" checked' not in page.text
     assert "/integrations/telegram/pairing-challenges" in script.text
     assert "/integrations/telegram/clients" in script.text
     assert "/revoke" in script.text
