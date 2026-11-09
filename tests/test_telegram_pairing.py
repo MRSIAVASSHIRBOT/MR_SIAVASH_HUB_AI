@@ -234,3 +234,41 @@ def test_pairing_challenge_requires_owner_authentication(tmp_path, monkeypatch):
     )
     assert response.status_code == 401
     get_settings.cache_clear()
+
+
+
+def test_telegram_task_listing_isolated_between_paired_clients(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload_a, challenge_a = _create_pairing(client, telegram_user_id=123456789,
+                                               scopes=["tasks:create", "tasks:read"])
+    payload_b, challenge_b = _create_pairing(client, telegram_user_id=987654321,
+                                               scopes=["tasks:create", "tasks:read"])
+    tokens_a = _exchange(client, payload_a, challenge_a).json()
+    tokens_b = _exchange(client, payload_b, challenge_b).json()
+
+    task_a = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "private task for client A"},
+        headers={**_bot_headers(tokens_a, 123456789), "Idempotency-Key": "client-a-task-0001"},
+    )
+    task_b = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "private task for client B"},
+        headers={**_bot_headers(tokens_b, 987654321), "Idempotency-Key": "client-b-task-0001"},
+    )
+    assert task_a.status_code == 201
+    assert task_b.status_code == 201
+
+    listed_a = client.get(
+        "/integrations/telegram/tasks",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    listed_b = client.get(
+        "/integrations/telegram/tasks",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert listed_a.status_code == 200
+    assert listed_b.status_code == 200
+    assert [item["task_id"] for item in listed_a.json()["tasks"]] == [task_a.json()["task_id"]]
+    assert [item["task_id"] for item in listed_b.json()["tasks"]] == [task_b.json()["task_id"]]
+    get_settings.cache_clear()

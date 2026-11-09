@@ -208,7 +208,7 @@ def list_telegram_tasks(
 ) -> dict[str, object]:
     if not 1 <= limit <= 50:
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 50")
-    tasks = _tasks_repository().list_recent(limit)
+    tasks = _tasks_repository().list_recent_for_telegram_client(identity.client_id, limit)
     return {"tasks": [task.model_dump(mode="json") for task in tasks], "count": len(tasks)}
 
 
