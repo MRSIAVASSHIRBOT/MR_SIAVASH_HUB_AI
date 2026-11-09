@@ -6,6 +6,8 @@ Activation must remain a separate owner-reviewed operation.
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.registry import AgentProfile, AgentRegistry
@@ -20,7 +22,9 @@ class AgentProposal(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(min_length=1, max_length=200)
     instructions: str = Field(min_length=1, max_length=1_200)
-    allowed_tools: list[str] = Field(default_factory=list, max_length=10)
+    allowed_tools: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        default_factory=list, max_length=10
+    )
     max_turns: int = Field(default=2, ge=1, le=3)
     rationale: str = Field(min_length=1, max_length=1_000)
 
