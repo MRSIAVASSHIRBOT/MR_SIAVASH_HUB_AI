@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.agent_context import router as agent_context_router
 from mrhub.api.routes.agent_model_runs import router as agent_model_runs_router
+from mrhub.api.routes.agent_proposals import router as agent_proposals_router
 from mrhub.api.routes.agent_run import router as agent_run_router
 from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_context_router)
     app.include_router(agent_run_router)
     app.include_router(agent_model_runs_router)
+    app.include_router(agent_proposals_router)
     app.mount(
         "/ui",
         StaticFiles(directory=Path(__file__).resolve().parent / "web", html=True),
