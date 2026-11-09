@@ -911,7 +911,7 @@ MIGRATIONS = (
     ),
 )
 
- 
+
 class SchemaMigrator:
     """Applies immutable schema versions and detects migration-history drift."""
 
