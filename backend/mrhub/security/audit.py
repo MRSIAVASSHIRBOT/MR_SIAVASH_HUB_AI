@@ -44,6 +44,9 @@ class AuditLogger:
         "tool_name",
         "permission",
         "correlation_id",
+        "client_id",
+        "telegram_user_id",
+        "scope_count",
     })
 
     def __init__(self, repository: TaskRepository) -> None:
