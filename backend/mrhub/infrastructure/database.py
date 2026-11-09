@@ -101,6 +101,40 @@ class TaskRepository:
             for row in rows
         ]
 
+    def list_recent_for_telegram_client(
+        self, client_id: str, limit: int = 20
+    ) -> Iterable[TaskRecord]:
+        """Return only tasks submitted by this exact paired Telegram client."""
+        bounded_limit = max(1, min(limit, 50))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT t.*
+                FROM tasks AS t
+                INNER JOIN audit_events AS a
+                    ON a.subject_id = t.task_id
+                   AND a.event_type = 'task.submitted'
+                   AND a.subject_type = 'task'
+                   AND a.actor_type = 'telegram_client'
+                   AND a.actor_id = ?
+                ORDER BY t.created_at DESC, t.task_id DESC
+                LIMIT ?
+                """,
+                (client_id, bounded_limit),
+            ).fetchall()
+        return [
+            TaskRecord(
+                task_id=UUID(row["task_id"]),
+                task_type=row["task_type"],
+                status=TaskStatus(row["status"]),
+                risk_class=RiskClass(row["risk_class"]),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                description=row["description"],
+            )
+            for row in rows
+        ]
+
     def update_status(
         self,
         task_id: UUID,
