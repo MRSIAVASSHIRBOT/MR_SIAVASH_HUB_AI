@@ -1,4 +1,5 @@
 import secrets
+import sqlite3
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -175,3 +176,35 @@ def test_agent_proposal_rejects_duplicate_name_while_pending():
     assert first.status_code == 201
     second = client.post("/agent/proposals", json=proposal_payload())
     assert second.status_code == 422
+
+
+
+def test_agent_proposal_lifecycle_writes_audit_events_atomically():
+    client = authenticated_client()
+    created = client.post("/agent/proposals", json=proposal_payload())
+    assert created.status_code == 201
+    record = created.json()
+
+    reviewed = client.post(
+        f"/agent/proposals/{record['proposal_id']}/review",
+        json={"fingerprint": record["fingerprint"], "decision": "approved"},
+    )
+    assert reviewed.status_code == 200
+
+    with sqlite3.connect(get_settings().database_path) as connection:
+        events = connection.execute(
+            """
+            SELECT event_type, outcome, subject_type, subject_id, actor_id
+            FROM audit_events
+            WHERE subject_type = 'agent_proposal' AND subject_id = ?
+            ORDER BY event_type
+            """,
+            (record["proposal_id"],),
+        ).fetchall()
+
+    assert events == [
+        ("agent.proposal_created", "pending_review", "agent_proposal",
+         record["proposal_id"], record["owner_user_id"]),
+        ("agent.proposal_reviewed", "approved", "agent_proposal",
+         record["proposal_id"], record["owner_user_id"]),
+    ]
