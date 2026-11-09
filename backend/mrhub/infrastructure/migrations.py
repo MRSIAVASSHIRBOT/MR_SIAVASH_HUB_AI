@@ -845,6 +845,45 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_kimi_request_events_time ON kimi_request_events(requested_at)",
         ),
     ),
+    Migration.build(
+        33,
+        "telegram_scoped_client_pairing",
+        (
+            """CREATE TABLE IF NOT EXISTS telegram_pairing_challenges (
+                challenge_hash TEXT PRIMARY KEY CHECK (length(challenge_hash) = 64),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                telegram_user_id INTEGER NOT NULL CHECK (telegram_user_id > 0),
+                client_id TEXT NOT NULL CHECK (length(client_id) = 36),
+                label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 64),
+                scopes_json TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                consumed_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_telegram_pairing_challenges_expiry ON telegram_pairing_challenges(expires_at)",
+            """CREATE TABLE IF NOT EXISTS telegram_clients (
+                client_id TEXT PRIMARY KEY CHECK (length(client_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                telegram_user_id INTEGER NOT NULL CHECK (telegram_user_id > 0),
+                label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 64),
+                scopes_json TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+                created_at TEXT NOT NULL,
+                last_seen_at TEXT,
+                revoked_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_telegram_clients_owner_status ON telegram_clients(owner_user_id, status, created_at)",
+            """CREATE TABLE IF NOT EXISTS telegram_access_tokens (
+                token_hash TEXT PRIMARY KEY CHECK (length(token_hash) = 64),
+                client_id TEXT NOT NULL REFERENCES telegram_clients(client_id) ON DELETE CASCADE,
+                token_type TEXT NOT NULL CHECK (token_type IN ('access', 'refresh')),
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                revoked_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_telegram_access_tokens_client_expiry ON telegram_access_tokens(client_id, expires_at)",
+        ),
+    ),
 )
 
 
