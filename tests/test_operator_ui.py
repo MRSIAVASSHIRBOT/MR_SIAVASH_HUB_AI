@@ -355,4 +355,6 @@ def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
     assert "sessionStorage" in script.text
     assert "localStorage" not in script.text
     assert "pairing_code" in script.text
+    assert '$("#telegram-pairing-code").value = "";' in script.text
+    assert '$("#telegram-pairing-code-panel").hidden = true;' in script.text
     assert "Telegram Numeric User ID" in page.text
