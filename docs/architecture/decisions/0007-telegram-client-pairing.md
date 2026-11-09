@@ -1,24 +1,34 @@
 # ADR-0007: Owner-initiated Telegram client pairing
 
-- Status: Implemented in the feature branch; pending CI and review
+- Status: Accepted; Hub-side API and owner controls are implemented on main; end-to-end client pairing is not verified
 - Date: 2026-11-09
 
 ## Context
 
-MR_SIAVASH_EL_AI is a Telegram transport and conversation interface. It must not receive the Hub owner's password or an unrestricted Hub web session. Telegram usernames are mutable and are not an authorization mechanism.
+A Telegram transport may act as a narrow client of the local Hub, but it must not receive the Hub owner's password or an unrestricted Hub web session. Telegram usernames are mutable and are not an authorization mechanism.
 
 ## Decision
 
-The Hub owns Telegram client registration, scopes, credential issuance, expiry, revocation and audit.
+The Hub owns Telegram client registration, explicit scopes, credential issuance, expiry, revocation and audit. The Hub API remains bound to the local trust boundary; this ADR does not authorize public exposure or remote hosting.
 
 ### Pairing
 
-1. The bot obtains the sender's numeric Telegram user ID and generates a unique client UUID.
-2. The owner authenticates to the local Hub and creates a pairing challenge bound to that Telegram ID, client UUID, label and explicit scopes.
+1. The client obtains the sender's numeric Telegram user ID and a stable client UUID.
+2. The owner authenticates to the local Hub and creates a pairing challenge bound to that Telegram ID, client UUID, label and selected scopes.
 3. The Hub returns a cryptographically random one-time code. Only its SHA-256 hash is stored; it expires after five minutes.
-4. The owner enters the code in the intended private Telegram chat.
-5. EL_AI exchanges the code, Telegram numeric ID and client UUID. The Hub atomically consumes the challenge and issues scoped credentials.
+4. The owner transfers the code only through the intended private client channel.
+5. The client exchanges the code, Telegram numeric ID and client UUID. The Hub atomically consumes the challenge and issues scoped credentials.
 6. The one-time code cannot be reused or exchanged for a different Telegram ID/client UUID.
+
+### Least-privilege scopes
+
+The only default scope is status:read. The owner must explicitly opt in to any additional permission:
+
+- tasks:read
+- tasks:create
+- memory:search
+
+Agent execution, approval decisions, publishing, destructive actions and arbitrary tools are not available through this integration. Task creation still passes through the Hub PolicyEngine; high-risk task types remain waiting for owner approval.
 
 ### Credentials
 
@@ -26,34 +36,29 @@ The Hub owns Telegram client registration, scopes, credential issuance, expiry, 
 - Refresh token: 30 days, bound to the same client and Telegram numeric ID.
 - Only token hashes are stored by the Hub.
 - Owner can list and revoke paired clients; revocation invalidates access and refresh credentials.
-- EL_AI must store returned credentials in an OS-backed or equivalently protected secret store, never in source control, browser storage or Telegram chat logs.
+- Clients must store returned credentials in an OS-backed or equivalently protected secret store, never in source control, browser storage or chat logs.
 - Refresh tokens are bearer secrets and must be treated as credentials.
-
-### Initial scopes
-
-- status:read
-- tasks:read
-- tasks:create
-- memory:search
-
-No Agent execution, approval decision, publishing, destructive or arbitrary tool scope is granted by default. Task creation still passes through the Hub PolicyEngine; high-risk task types remain waiting for owner approval.
 
 ### API boundary
 
-Paired bot requests use a dedicated /integrations/telegram/* route family and must include the access token plus the bound X-Telegram-User-Id. This does not make the token valid for general Hub routes. Existing owner routes continue to require the owner's normal session.
+Paired bot requests use a dedicated /integrations/telegram/* route family and must include the access token plus the bound X-Telegram-User-Id. Each endpoint enforces its required scope. The task-list endpoint returns only tasks attributed to the exact paired client. These credentials do not authorize general Hub routes; owner routes continue to require the owner's normal session.
 
 ## Security properties
 
 - Owner-initiated consent and five-minute, single-use pairing code.
 - Numeric Telegram ID and client UUID binding.
-- Server-side scope enforcement on each bot endpoint.
+- Least-privilege default: status-only until the owner explicitly grants more.
+- Server-side scope enforcement on each client endpoint.
 - Short-lived access tokens and revocable refresh credentials.
 - Hashed token storage, bounded inputs, idempotent task submission and audit metadata allowlisting.
+- Per-client task listing prevents one paired client from reading another client's task history.
 - No public tunnel or external exposure of the local Hub API.
 - Public MR_SIAVASH_AI Gateway is not used as a private Hub proxy.
 
-## Limitations and follow-up
+## Verification status and limitations
 
-- The initial scope set is intentionally narrow; Agent execution and Telegram approvals require separate ADRs and explicit scopes.
-- EL_AI must use a protected local secret store for access/refresh credentials before live pairing is enabled.
+- Hub API, owner pairing controls, scoped authentication, task/memory routes, idempotent task submission, revocation and per-client task isolation are present on Hub main.
+- Automated Hub tests cover pairing identity binding, one-time expiry, scopes, revocation, idempotency and cross-client task isolation.
+- No live Telegram pairing, client-side credential-store verification, production bot deployment or end-to-end smoke test has been verified.
+- Agent execution and Telegram approvals require separate ADRs and explicit scopes.
 - Production remote hosting remains a separate threat-model and deployment decision.

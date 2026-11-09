@@ -34,7 +34,7 @@ TelegramScope = Literal[
     "tasks:create",
     "memory:search",
 ]
-DEFAULT_SCOPES = ["status:read", "tasks:read", "tasks:create", "memory:search"]
+DEFAULT_SCOPES = ["status:read"]
 
 
 class PairingChallengeRequest(BaseModel):

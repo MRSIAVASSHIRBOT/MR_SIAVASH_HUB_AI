@@ -58,7 +58,7 @@ def test_pairing_is_owner_initiated_and_issues_scoped_credentials(tmp_path, monk
     client, database_path = _owner_client(tmp_path, monkeypatch)
     payload, challenge = _create_pairing(client)
     assert len(challenge["pairing_code"]) >= 40
-    assert "memory:search" in challenge["scopes"]
+    assert challenge["scopes"] == ["status:read"]
 
     exchanged = _exchange(client, payload, challenge)
     assert exchanged.status_code == 200
@@ -73,6 +73,14 @@ def test_pairing_is_owner_initiated_and_issues_scoped_credentials(tmp_path, monk
     )
     assert status.status_code == 200
     assert status.json()["client_id"] == payload["client_id"]
+    assert client.get(
+        "/integrations/telegram/tasks", headers=_bot_headers(tokens)
+    ).status_code == 403
+    assert client.post(
+        "/integrations/telegram/memory/search",
+        json={"query": "private"},
+        headers=_bot_headers(tokens),
+    ).status_code == 403
 
     with sqlite3.connect(database_path) as connection:
         stored_hashes = {
