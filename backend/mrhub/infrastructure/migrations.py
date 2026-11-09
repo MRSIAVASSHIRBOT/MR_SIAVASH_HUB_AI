@@ -884,6 +884,31 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_telegram_access_tokens_client_expiry ON telegram_access_tokens(client_id, expires_at)",
         ),
     ),
+    Migration.build(
+        34,
+        "owner_scoped_reviewable_agent_proposals",
+        (
+            """CREATE TABLE IF NOT EXISTS agent_proposals (
+                proposal_id TEXT PRIMARY KEY CHECK (length(proposal_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 64),
+                description TEXT NOT NULL CHECK (length(description) BETWEEN 1 AND 200),
+                instructions TEXT NOT NULL CHECK (length(instructions) BETWEEN 1 AND 1200),
+                allowed_tools_json TEXT NOT NULL,
+                max_turns INTEGER NOT NULL CHECK (max_turns BETWEEN 1 AND 3),
+                rationale TEXT NOT NULL CHECK (length(rationale) BETWEEN 1 AND 1000),
+                fingerprint TEXT NOT NULL CHECK (
+                    length(fingerprint) = 64 AND fingerprint NOT GLOB '*[^a-f0-9]*'
+                ),
+                status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT,
+                reviewed_by TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_agent_proposals_owner_created ON agent_proposals(owner_user_id, created_at DESC)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_proposals_owner_name_active ON agent_proposals(owner_user_id, name) WHERE status IN ('pending', 'approved')",
+        ),
+    ),
 )
 
 
