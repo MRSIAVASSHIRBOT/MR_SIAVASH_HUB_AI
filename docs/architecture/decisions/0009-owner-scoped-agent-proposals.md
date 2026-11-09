@@ -1,6 +1,6 @@
 # ADR-0009: Owner-scoped reviewable agent proposal lifecycle
 
-- Status: Implemented on the feature branch; pending CI and review
+- Status: Implemented and merged; API lifecycle and security checks passed. Owner-facing review UI is implemented in the follow-up delivery.
 - Date: 2026-11-09
 
 ## Decision

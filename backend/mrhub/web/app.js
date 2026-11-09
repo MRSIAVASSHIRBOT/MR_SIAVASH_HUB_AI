@@ -1894,6 +1894,8 @@
         loadMemory(),
         loadKnowledge(),
         loadTelegramClients(),
+        loadAgentProposalTools(),
+        loadAgentProposals(),
       ]);
       if (activeVideoAnalysisId) {
         $("#video-analysis-refresh").disabled = false;
@@ -2090,6 +2092,15 @@
   $("#agent-queued-refresh-button").addEventListener("click", refreshQueuedAgentRun);
   $("#agent-queued-cancel-button").addEventListener("click", cancelQueuedAgentRun);
   $("#agent-history-refresh-button").addEventListener("click", loadAgentRunHistory);
+  $("#agent-proposal-form").addEventListener("submit", createAgentProposal);
+  $("#agent-proposals-refresh").addEventListener("click", refreshAgentProposals);
+  $("#agent-proposal-tool-options").addEventListener("change", (event) => {
+    const selected = $("#agent-proposal-tool-options").querySelectorAll('input[name="allowed_tools"]:checked').length;
+    if (selected > 10) {
+      event.target.checked = false;
+      message("#agent-proposal-message", "حداکثر ۱۰ ابزار را می‌توان در یک پیشنهاد انتخاب کرد.", "error");
+    }
+  });
   $("#agent-queued-workflow-id").addEventListener("input", (event) => {
     $("#agent-queued-refresh-button").disabled = !event.currentTarget.value.trim();
   });
@@ -2241,6 +2252,155 @@
     } catch (error) {
       output.textContent = error.message;
       message("#workspace-message", error.message, "error");
+    }
+  }
+
+  const proposalStatusLabels = {
+    pending: "در انتظار بازبینی",
+    approved: "تأیید شده؛ هنوز غیرفعال",
+    rejected: "رد شده",
+  };
+
+  async function loadAgentProposalTools() {
+    const container = $("#agent-proposal-tool-options");
+    container.replaceChildren(element("p", "در حال دریافت فهرست ابزارهای ثبت‌شده…", "muted"));
+    try {
+      const tools = await api("/tools");
+      container.replaceChildren();
+      for (const tool of (Array.isArray(tools) ? tools : [])) {
+        const label = element("label", undefined, "checkbox-row agent-proposal-tool-label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.name = "allowed_tools";
+        checkbox.value = tool.name;
+        const details = element("span", undefined, "agent-proposal-tool-copy");
+        details.append(element("strong", tool.name));
+        details.append(element("small",
+          (tool.description || "بدون توضیح")
+          + " · ریسک: " + (tool.risk_class || "نامشخص")
+          + (tool.external_side_effect ? " · دارای اثر خارجی" : " · بدون اثر خارجی اعلام‌شده")
+          + (Array.isArray(tool.required_permissions) && tool.required_permissions.length
+            ? " · مجوزهای لازم: " + tool.required_permissions.join(", ")
+            : "")
+        ));
+        label.append(checkbox, details);
+        container.append(label);
+      }
+      if (!container.children.length) renderEmpty(container, "ابزار ثبت‌شده‌ای در دسترس نیست.");
+    } catch (error) {
+      renderEmpty(container, "دریافت فهرست ابزارها ناموفق بود: " + error.message);
+      message("#agent-proposal-message", error.message, "error");
+    }
+  }
+
+  function renderAgentProposal(record) {
+    const card = recordCard(
+      record.name || "عامل بدون شناسه",
+      (record.description || "") + "\n\nدستورها: " + (record.instructions || "")
+        + "\n\nدلیل: " + (record.rationale || ""),
+      [
+        proposalStatusLabels[record.status] || record.status || "وضعیت نامشخص",
+        "حداکثر نوبت: " + (record.max_turns ?? "—"),
+        "ابزارها: " + ((record.allowed_tools || []).join(", ") || "بدون ابزار"),
+        record.created_at || "",
+        "Activation: " + (record.activation_state || "unknown"),
+      ].filter(Boolean).join(" · ")
+    );
+    if (record.status === "pending") {
+      const actions = element("div", undefined, "agent-proposal-card-actions");
+      const approve = element("button", "تأیید پیشنهاد (بدون فعال‌سازی)", "button button-secondary");
+      approve.type = "button";
+      approve.addEventListener("click", () => reviewAgentProposal(record, "approved"));
+      const reject = element("button", "رد پیشنهاد", "button button-quiet");
+      reject.type = "button";
+      reject.addEventListener("click", () => reviewAgentProposal(record, "rejected"));
+      actions.append(approve, reject);
+      card.append(actions);
+    }
+    return card;
+  }
+
+  async function loadAgentProposals() {
+    const container = $("#agent-proposal-list");
+    try {
+      const result = await api("/agent/proposals?limit=50");
+      renderRecords(
+        "#agent-proposal-list",
+        result.proposals,
+        renderAgentProposal,
+        "هنوز پیشنهادی برای عامل‌ها ثبت نشده است."
+      );
+      return result;
+    } catch (error) {
+      renderEmpty(container, "دریافت پیشنهادها ناموفق بود: " + error.message);
+      throw error;
+    }
+  }
+
+  async function refreshAgentProposals() {
+    const button = $("#agent-proposals-refresh");
+    button.disabled = true;
+    try {
+      await Promise.all([loadAgentProposalTools(), loadAgentProposals()]);
+      message("#agent-proposal-message", "فهرست ابزارها و پیشنهادهای متعلق به حساب فعلی به‌روزرسانی شد.", "success");
+    } catch (error) {
+      message("#agent-proposal-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function createAgentProposal(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const button = $("#agent-proposal-submit");
+    button.disabled = true;
+    message("#agent-proposal-message", "در حال اعتبارسنجی و ثبت پیشنهاد…");
+    const values = new FormData(form);
+    const allowedTools = Array.from(
+      form.querySelectorAll('input[name="allowed_tools"]:checked')
+    ).map((input) => input.value);
+    const payload = {
+      name: String(values.get("name") || "").trim(),
+      description: String(values.get("description") || "").trim(),
+      instructions: String(values.get("instructions") || "").trim(),
+      allowed_tools: allowedTools,
+      max_turns: Number(values.get("max_turns") || 2),
+      rationale: String(values.get("rationale") || "").trim(),
+    };
+    try {
+      const created = await api("/agent/proposals", { method: "POST", body: payload });
+      form.reset();
+      await loadAgentProposals();
+      message(
+        "#agent-proposal-message",
+        "پیشنهاد «" + created.name + "» ثبت شد و در انتظار بازبینی مالک است؛ عامل همچنان غیرفعال است.",
+        "success"
+      );
+    } catch (error) {
+      message("#agent-proposal-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function reviewAgentProposal(record, decision) {
+    const action = decision === "approved" ? "تأیید" : "رد";
+    const warning = decision === "approved"
+      ? "این کار فقط تصمیم بازبینی را ثبت می‌کند و عامل را فعال یا مجوز ابزارها را اعطا نمی‌کند."
+      : "این پیشنهاد به وضعیت نهایی ردشده منتقل می‌شود.";
+    if (!window.confirm("پیشنهاد «" + record.name + "» " + action + " شود؟\n" + warning)) return;
+    try {
+      await api("/agent/proposals/" + encodeURIComponent(record.proposal_id) + "/review", {
+        method: "POST",
+        body: { fingerprint: record.fingerprint, decision },
+      });
+      await loadAgentProposals();
+      message("#agent-proposal-message", "تصمیم بازبینی ثبت شد؛ وضعیت فعال‌سازی همچنان غیرفعال است.", "success");
+    } catch (error) {
+      message("#agent-proposal-message", error.message, "error");
+      await loadAgentProposals().catch(() => {});
     }
   }
 

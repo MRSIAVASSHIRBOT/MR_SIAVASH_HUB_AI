@@ -173,6 +173,45 @@
           <pre id="agent-history-result" class="output-box" aria-live="polite">برای دریافت تاریخچه، دکمه را انتخاب کنید.</pre>
           <div id="agent-run-history" class="record-list"></div>
         </div>
+        <div class="workflow-tools" id="agent-proposal-manager">
+          <div class="section-heading">
+            <div><p class="eyebrow">SPECIALIST AGENT PROPOSALS</p><h3>ساخت و بازبینی عامل تخصصی</h3></div>
+            <span class="status-pill status-warning">تأیید ≠ فعال‌سازی</span>
+          </div>
+          <p class="muted">می‌توانی یک عامل پیشنهادی با دستورهای محدود و ابزارهای موجود تعریف کنی. هر پیشنهاد فقط برای مالک فعلی ذخیره می‌شود. ثبت «تأیید» صرفاً تصمیم بازبینی را ثبت می‌کند؛ عامل فعال نمی‌شود، دسترسی تازه‌ای نمی‌گیرد و هیچ ابزاری اجرا نمی‌شود.</p>
+          <form id="agent-proposal-form" class="stack-form">
+            <div class="form-grid">
+              <label>شناسهٔ عامل
+                <input name="name" required maxlength="64" pattern="[a-z][a-z0-9_.-]{0,63}" placeholder="مثلاً research_assistant">
+              </label>
+              <label>حداکثر نوبت اجرا
+                <select name="max_turns">
+                  <option value="1">۱</option><option value="2" selected>۲</option><option value="3">۳</option>
+                </select>
+              </label>
+            </div>
+            <label>توضیح کوتاه
+              <input name="description" required maxlength="200" placeholder="این عامل دقیقاً چه مسئله‌ای را حل می‌کند؟">
+            </label>
+            <label>دستورهای عامل
+              <textarea name="instructions" rows="4" required maxlength="1200" placeholder="نقش، محدودیت‌ها و معیار پاسخ‌گویی را دقیق بنویس…"></textarea>
+            </label>
+            <fieldset class="agent-proposal-tools">
+              <legend>ابزارهای درخواستی (حداکثر ۱۰؛ بدون اعطای مجوز)</legend>
+              <p class="muted">فقط ابزارهای ثبت‌شده نمایش داده می‌شوند. سیاست و مجوز هر ابزار هنگام اجرا جداگانه بررسی خواهد شد.</p>
+              <div id="agent-proposal-tool-options" class="checkbox-grid"><p class="muted">در حال دریافت فهرست ابزارها…</p></div>
+            </fieldset>
+            <label>دلیل نیاز به این عامل
+              <textarea name="rationale" rows="3" required maxlength="1000" placeholder="چرا این عامل باید جداگانه تعریف و بازبینی شود؟"></textarea>
+            </label>
+            <div class="button-row">
+              <button id="agent-proposal-submit" class="button button-primary" type="submit">ثبت پیشنهاد برای بازبینی</button>
+              <button id="agent-proposals-refresh" class="button button-quiet" type="button">تازه‌سازی فهرست</button>
+            </div>
+          </form>
+          <p id="agent-proposal-message" class="message" role="status" aria-live="polite"></p>
+          <div id="agent-proposal-list" class="record-list"></div>
+        </div>
       </section>
 
       <section class="panel">
