@@ -119,7 +119,7 @@ def test_preflight_api_is_owner_scoped_and_does_not_change_proposal_state():
     assert unchanged.json()["activation_state"] == "inactive"
 
 
-def test_preflight_api_hides_another_owners_proposal():
+def test_preflight_api_requires_authentication():
     from client_helpers import authenticated_client
 
     owner_client = authenticated_client()
