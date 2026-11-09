@@ -1,3 +1,4 @@
+import secrets
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -6,6 +7,8 @@ from client_helpers import authenticated_client
 from mrhub.agents.proposal_repository import AgentProposalRepository
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.security.auth import _password_digest
 
 
 def proposal_payload(**overrides):
@@ -116,6 +119,56 @@ def test_agent_proposal_is_owner_scoped():
         owner_user_id="different-owner",
     ) is None
 
+
+
+def test_agent_proposal_api_isolates_records_between_authenticated_owners():
+    owner_client = authenticated_client()
+    created = owner_client.post("/agent/proposals", json=proposal_payload())
+    assert created.status_code == 201
+    record = created.json()
+
+    # Create a second legitimate account in the same test database. The
+    # production bootstrap remains single-owner; this exercises the schema's
+    # owner boundary as soon as additional accounts exist.
+    password = "second-owner-test-password-2026"
+    salt = secrets.token_bytes(16)
+    TaskRepository(get_settings().database_path).create_auth_user(
+        "second-owner",
+        "second-owner",
+        salt.hex(),
+        _password_digest(password, salt).hex(),
+    )
+    login = owner_client.post(
+        "/auth/login",
+        json={"username": "second-owner", "password": password},
+    )
+    assert login.status_code == 200
+    second_owner_headers = {
+        "Authorization": f"Bearer {login.json()['access_token']}"
+    }
+
+    listed = owner_client.get("/agent/proposals", headers=second_owner_headers)
+    assert listed.status_code == 200
+    assert listed.json() == {"proposals": [], "count": 0}
+
+    fetched = owner_client.get(
+        f"/agent/proposals/{record['proposal_id']}",
+        headers=second_owner_headers,
+    )
+    assert fetched.status_code == 404
+
+    reviewed = owner_client.post(
+        f"/agent/proposals/{record['proposal_id']}/review",
+        headers=second_owner_headers,
+        json={"fingerprint": record["fingerprint"], "decision": "approved"},
+    )
+    assert reviewed.status_code == 404
+
+    owner_record = owner_client.get(
+        f"/agent/proposals/{record['proposal_id']}"
+    )
+    assert owner_record.status_code == 200
+    assert owner_record.json()["status"] == "pending"
 
 def test_agent_proposal_rejects_duplicate_name_while_pending():
     client = authenticated_client()
