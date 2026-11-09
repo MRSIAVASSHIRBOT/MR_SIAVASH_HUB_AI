@@ -163,17 +163,24 @@ jobs:
           python - <<'PY'
           import json
           import os
-          import re
-          import subprocess
+                    import subprocess
           from pathlib import Path
 
           workflow = Path(".github/workflows/continuous-development.yml").read_text(encoding="utf-8")
-          match = re.search(r"(?m)^\\s*OPENCODE_CONFIG_CONTENT:\\s*'([^']+)'$", workflow)
-          if match is None:
+          policy_line = next(
+              (
+                  line.strip()
+                  for line in workflow.splitlines()
+                  if line.strip().startswith("OPENCODE_CONFIG_CONTENT: '")
+              ),
+              None,
+          )
+          if policy_line is None:
               raise SystemExit("Scheduled workflow is missing its inline OpenCode policy.")
+          policy_json = policy_line.split("'", 2)[1]
 
           environment = os.environ.copy()
-          environment["OPENCODE_CONFIG_CONTENT"] = match.group(1)
+          environment["OPENCODE_CONFIG_CONTENT"] = policy_json
           result = subprocess.run(
               ["opencode", "--pure", "debug", "config"],
               check=True,
