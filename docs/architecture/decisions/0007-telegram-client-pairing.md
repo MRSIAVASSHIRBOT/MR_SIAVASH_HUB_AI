@@ -1,6 +1,6 @@
 # ADR-0007: Owner-initiated Telegram client pairing
 
-- Status: Accepted; Hub-side API and owner controls are implemented on main; end-to-end client pairing is not verified
+- Status: Accepted; Hub API and owner controls are on main; EL_AI client is on main; live pairing remains unverified
 - Date: 2026-11-09
 
 ## Context
@@ -22,7 +22,7 @@ The Hub owns Telegram client registration, explicit scopes, credential issuance,
 
 ### Least-privilege scopes
 
-The only default scope is status:read. The owner must explicitly opt in to any additional permission:
+The default scope is status:read only. The owner must explicitly opt in to any additional permission:
 
 - tasks:read
 - tasks:create
@@ -41,7 +41,7 @@ Agent execution, approval decisions, publishing, destructive actions and arbitra
 
 ### API boundary
 
-Paired bot requests use a dedicated /integrations/telegram/* route family and must include the access token plus the bound X-Telegram-User-Id. Each endpoint enforces its required scope. The task-list endpoint returns only tasks attributed to the exact paired client. These credentials do not authorize general Hub routes; owner routes continue to require the owner's normal session.
+Paired client requests use a dedicated /integrations/telegram/* route family and must include the access token plus the bound X-Telegram-User-Id. Each endpoint enforces its required scope. The task-list endpoint returns only tasks attributed to the exact paired client. These credentials do not authorize general Hub routes; owner routes continue to require the owner's normal session.
 
 ## Security properties
 
@@ -57,7 +57,8 @@ Paired bot requests use a dedicated /integrations/telegram/* route family and mu
 
 ## Verification status and limitations
 
-- Hub API, owner pairing controls, scoped authentication, task/memory routes, idempotent task submission, revocation and per-client task isolation are present on Hub main.
+- Hub pairing API, owner-facing pairing/revocation controls, scoped authentication, task/memory routes, idempotent task submission, revocation and per-client task isolation are present on Hub main.
+- EL_AI main contains the scoped Hub client, stable installation identity, OS-backed Keyring credential storage, explicit Hub opt-in and the public-only MR_SIAVASH_AI Gateway client.
 - Automated Hub tests cover pairing identity binding, one-time expiry, scopes, revocation, idempotency and cross-client task isolation.
 - No live Telegram pairing, client-side credential-store verification, production bot deployment or end-to-end smoke test has been verified.
 - Agent execution and Telegram approvals require separate ADRs and explicit scopes.
