@@ -55,6 +55,35 @@ def test_agent_proposal_create_list_get_and_owner_review():
     assert reviewed.json()["activation_state"] == "inactive"
     assert reviewed.json()["reviewed_by"] == record["owner_user_id"]
 
+    repeated_review = client.post(
+        f"/agent/proposals/{record['proposal_id']}/review",
+        json={"fingerprint": record["fingerprint"], "decision": "approved"},
+    )
+    assert repeated_review.status_code == 409
+    assert repeated_review.json()["detail"] == "Proposal was already reviewed or changed"
+
+
+def test_agent_proposal_rejection_is_terminal_and_never_activates():
+    client = authenticated_client()
+    created = client.post("/agent/proposals", json=proposal_payload())
+    assert created.status_code == 201
+    record = created.json()
+
+    rejected = client.post(
+        f"/agent/proposals/{record['proposal_id']}/review",
+        json={"fingerprint": record["fingerprint"], "decision": "rejected"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["activation_state"] == "inactive"
+
+    repeated_review = client.post(
+        f"/agent/proposals/{record['proposal_id']}/review",
+        json={"fingerprint": record["fingerprint"], "decision": "approved"},
+    )
+    assert repeated_review.status_code == 409
+    assert client.get(f"/agent/proposals/{record['proposal_id']}").json()["status"] == "rejected"
+
 
 def test_agent_proposal_rejects_stale_fingerprint():
     client = authenticated_client()
