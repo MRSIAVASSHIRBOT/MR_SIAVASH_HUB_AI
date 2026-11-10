@@ -198,3 +198,54 @@ def test_preflight_api_requires_authentication():
         headers={"Authorization": "Bearer invalid-owner-token"},
     )
     assert response.status_code in (401, 403)
+
+
+@pytest.mark.parametrize(
+    "risk_class",
+    [RiskClass.MODERATE, RiskClass.HIGH, RiskClass.PROHIBITED],
+)
+def test_preflight_blocks_every_non_low_risk_class(risk_class):
+    tools = SimpleNamespace(
+        get=lambda _name: SimpleNamespace(
+            risk_class=risk_class,
+            required_permissions=frozenset({"review.required"}),
+            external_side_effect=False,
+        )
+    )
+    agents = build_default_agent_registry(build_tool_registry())
+
+    report = evaluate_agent_proposal(
+        make_proposal(allowed_tools=["review.required"]),
+        agents=agents,
+        tools=tools,
+    )
+
+    assert report["status"] == "blocked"
+    check = next(item for item in report["checks"] if item["id"] == "tool_risk_policy")
+    assert check["status"] == "failed"
+    assert report["tool_assessments"][0]["risk_class"] == risk_class.value
+    assert report["permission_granted"] is False
+    assert report["permission_grant_performed"] is False
+
+
+def test_preflight_blocks_low_risk_tools_with_external_side_effects():
+    tools = SimpleNamespace(
+        get=lambda _name: SimpleNamespace(
+            risk_class=RiskClass.LOW,
+            required_permissions=frozenset({"external.publish"}),
+            external_side_effect=True,
+        )
+    )
+    agents = build_default_agent_registry(build_tool_registry())
+
+    report = evaluate_agent_proposal(
+        make_proposal(allowed_tools=["external.publish"]),
+        agents=agents,
+        tools=tools,
+    )
+
+    assert report["status"] == "blocked"
+    check = next(item for item in report["checks"] if item["id"] == "tool_risk_policy")
+    assert check["status"] == "failed"
+    assert "external.publish" in check["detail"]
+    assert report["permission_grant_performed"] is False
