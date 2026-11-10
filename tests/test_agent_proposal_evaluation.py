@@ -1,5 +1,6 @@
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 from mrhub.agents.proposal_evaluation import evaluate_agent_proposal
 from mrhub.agents.proposals import AgentProposal
