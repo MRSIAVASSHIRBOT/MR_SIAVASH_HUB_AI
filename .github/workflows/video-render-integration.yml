@@ -32,11 +32,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use the GitHub Release alias to fetch this exact, SHA-256-pinned archive.
-          # A changed release asset fails checksum verification instead of being trusted.
+          # Pin the official FFmpeg-Builds release asset by its published SHA-256 digest.
+          # Any unexpected release change fails closed before the binaries are executed.
           release_tag="latest"
           archive_name="ffmpeg-master-latest-linux64-gpl.tar.xz"
-          archive_sha256="843e959b12d8d8337db13bda6d9aa59400c392b75c2a6434be10b627655e325f"
+          archive_sha256="f6f8a35568815b7a99e0c513d7c6593262422986047068db190980c4bc186865"
           archive_path="$RUNNER_TEMP/$archive_name"
           install_dir="$RUNNER_TEMP/ffmpeg-bin"
 
@@ -44,7 +44,7 @@ jobs:
           curl --fail --show-error --location \
             --retry 3 --retry-delay 2 --retry-connrefused \
             --connect-timeout 20 --max-time 360 \
-            "https://github.com/BtbN/FFmpeg-Builds/releases/download/$release_tag/$archive_name" \
+            "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/$release_tag/$archive_name" \
             --output "$archive_path"
 
           printf '%s  %s\n' "$archive_sha256" "$archive_path" | sha256sum --check --strict
