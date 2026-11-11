@@ -32,9 +32,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use a pinned, self-contained build rather than Ubuntu apt mirrors.
-          # The archive digest is pinned to the selected GitHub Release asset.
-          release_tag="autobuild-2026-11-06-12-50"
+          # Use the GitHub Release alias to fetch this exact, SHA-256-pinned archive.
+          # A changed release asset fails checksum verification instead of being trusted.
+          release_tag="latest"
           archive_name="ffmpeg-master-latest-linux64-gpl.tar.xz"
           archive_sha256="843e959b12d8d8337db13bda6d9aa59400c392b75c2a6434be10b627655e325f"
           archive_path="$RUNNER_TEMP/$archive_name"
