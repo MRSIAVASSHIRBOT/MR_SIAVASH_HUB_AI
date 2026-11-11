@@ -28,15 +28,28 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install FFmpeg and FFprobe
+        timeout-minutes: 12
         run: |
+          set -euo pipefail
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
             APT_OPTIONS=(
-              -o Acquire::Retries=3
-              -o Acquire::http::Timeout=30
-              -o Acquire::https::Timeout=30
+              -o Acquire::Retries=1
+              -o Acquire::http::Timeout=20
+              -o Acquire::https::Timeout=20
+              -o Acquire::http::ConnectionTimeout=10
+              -o Acquire::https::ConnectionTimeout=10
             )
-            sudo apt-get "${APT_OPTIONS[@]}" update
-            sudo apt-get "${APT_OPTIONS[@]}" install --no-install-recommends -y ffmpeg
+
+            # Prefer the runner's cached package indexes; update them only when
+            # the package cannot be installed from the existing metadata.
+            if ! timeout --signal=TERM --kill-after=10s 180s \
+              sudo apt-get "${APT_OPTIONS[@]}" install --no-install-recommends -y ffmpeg; then
+              echo "::warning::FFmpeg install from cached apt metadata failed; refreshing package indexes once."
+              timeout --signal=TERM --kill-after=10s 300s \
+                sudo apt-get "${APT_OPTIONS[@]}" update
+              timeout --signal=TERM --kill-after=10s 180s \
+                sudo apt-get "${APT_OPTIONS[@]}" install --no-install-recommends -y ffmpeg
+            fi
           else
             echo "Using runner-provided FFmpeg and FFprobe."
           fi
