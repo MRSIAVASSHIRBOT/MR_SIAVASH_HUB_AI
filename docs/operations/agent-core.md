@@ -187,3 +187,17 @@ infrastructure statuses remain configuration observations (not live health
 checks) until their respective integrations are implemented. The run response
 and audit metadata record the selected project identifier, while existing
 runs without a project identifier retain their prior metadata contract.
+
+
+
+## Cancellation during model inference and specialist delegation
+
+Agent cancellation is cooperative. A synchronous provider request that is already
+in flight cannot be forcibly interrupted by the orchestrator. When that request
+returns, the orchestrator re-checks the cancellation signal before parsing or
+accepting its proposal. A late final answer is not reported as completed, and a
+late tool or delegation proposal is not dispatched. Cancellation returned by a
+delegated specialist is propagated to the parent run rather than being converted
+into a successful continuation. Provider adapters must continue to enforce
+their own bounded request timeouts; the orchestrator runtime budget remains an
+additional post-call guard, not a hard thread interruption mechanism.

@@ -446,3 +446,99 @@ def test_aria_architect_is_registered_as_a_tool_free_bounded_specialist():
     assert scoped_tools.catalog() == []
     assert "evidence-based architecture" in profile.description
     assert "Never claim repository access" in profile.instructions
+
+
+
+def test_orchestrator_discards_final_answer_when_cancelled_during_inference():
+    orchestrator, provider = make_orchestrator([
+        json.dumps({"type": "final", "answer": "Must not be accepted after cancellation."})
+    ])
+    checks = iter([False, True])
+
+    result = orchestrator.run(
+        AgentLoopRequest(goal="Cancel while waiting for the model"),
+        should_cancel=lambda: next(checks),
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["error_code"] == "cancelled"
+    assert result["turns"] == 1
+    assert "answer" not in result
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert result["selected_provider"] == {"provider": "scripted", "model": "scripted-test"}
+    assert len(provider.requests) == 1
+
+
+def test_orchestrator_discards_delegation_when_cancelled_during_inference():
+    orchestrator, provider = make_orchestrator([
+        json.dumps({
+            "type": "delegate",
+            "agent": "knowledge_synthesizer",
+            "goal": "This child must never start.",
+        }),
+        json.dumps({"type": "final", "answer": "Unexpected child call."}),
+    ], with_agents=True)
+    checks = iter([False, True])
+
+    result = orchestrator.run(
+        AgentLoopRequest(goal="Cancel before specialist delegation"),
+        should_cancel=lambda: next(checks),
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["error_code"] == "cancelled"
+    assert result["turns"] == 1
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert len(provider.requests) == 1
+
+
+def test_orchestrator_propagates_cancellation_from_delegated_specialist():
+    orchestrator, provider = make_orchestrator([
+        json.dumps({
+            "type": "delegate",
+            "agent": "knowledge_synthesizer",
+            "goal": "Stop this delegated task.",
+        }),
+        json.dumps({"type": "final", "answer": "Unexpected parent continuation."}),
+    ], with_agents=True)
+    checks = iter([False, False, True])
+
+    result = orchestrator.run(
+        AgentLoopRequest(goal="Propagate child cancellation"),
+        should_cancel=lambda: next(checks),
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["error_code"] == "cancelled"
+    assert result["turns"] == 1
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert len(provider.requests) == 1
+
+
+
+def test_orchestrator_reports_cancellation_when_provider_fails_after_stop():
+    from mrhub.providers.base import ProviderError
+
+    orchestrator, provider = make_orchestrator([])
+
+    def failing_generate(_request):
+        provider.requests.append(_request)
+        raise ProviderError("provider failed after cancellation")
+
+    provider.generate = failing_generate
+    checks = iter([False, True])
+
+    result = orchestrator.run(
+        AgentLoopRequest(goal="Cancel during a failing provider request"),
+        should_cancel=lambda: next(checks),
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["error_code"] == "cancelled"
+    assert result["turns"] == 1
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert len(provider.requests) == 1
