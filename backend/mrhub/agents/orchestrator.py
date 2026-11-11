@@ -162,6 +162,14 @@ class AgentOrchestrator:
                     "budget_exhausted", transcript, selection, turn, tool_calls,
                     error_code="runtime_budget_exceeded",
                 )
+            # Cancellation may arrive while synchronous provider inference is in flight.
+            # Discard every late proposal, including final answers and delegations, before
+            # parsing it or allowing it to influence the rest of the run.
+            if should_cancel is not None and should_cancel():
+                return self._result(
+                    "cancelled", transcript, selection, turn, tool_calls,
+                    error_code="cancelled",
+                )
 
             selection = {"provider": response.provider, "model": response.model}
             try:
@@ -273,6 +281,11 @@ class AgentOrchestrator:
                     "observation_is_untrusted_data": True,
                 })
                 delegations += 1
+                if child_result.get("status") == "cancelled":
+                    return self._result(
+                        "cancelled", transcript, selection, turn, tool_calls,
+                        error_code="cancelled",
+                    )
                 if time.monotonic() >= deadline:
                     return self._result(
                         "budget_exhausted", transcript, selection, turn, tool_calls,
