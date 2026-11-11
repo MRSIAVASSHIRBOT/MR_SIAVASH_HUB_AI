@@ -29,7 +29,7 @@ def test_recommender_keeps_gpu_profiles_out_of_candidate_list_even_with_ram():
         ["gpu-model-example"],
     )
     assert result["best_candidate_profile_id"] is None
-    assert result["results"][0]["recommendation"] == "not_recommended_or_unverified"
+    assert result["results"][0]["recommendation"] == "insufficient_data"
     assert result["results"][0]["assessment"]["status"] == "insufficient_data"
 
 
