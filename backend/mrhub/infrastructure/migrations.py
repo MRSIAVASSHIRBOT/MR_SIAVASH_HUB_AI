@@ -909,6 +909,13 @@ MIGRATIONS = (
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_proposals_owner_name_active ON agent_proposals(owner_user_id, name) WHERE status IN ('pending', 'approved')",
         ),
     ),
+    Migration.build(
+        35,
+        "telegram_client_task_audit_lookup_index",
+        (
+            "CREATE INDEX IF NOT EXISTS idx_audit_telegram_task_owner ON audit_events(actor_type, actor_id, event_type, subject_type, subject_id)",
+        ),
+    ),
 )
 
 

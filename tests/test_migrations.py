@@ -468,3 +468,44 @@ def test_v28_renderer_snapshot_schema_enforces_pair_and_retention_policy(tmp_pat
         assert draft_foreign_keys["video_analysis_runs"] == "CASCADE"
     finally:
         connection.close()
+
+
+def test_telegram_client_task_ownership_query_uses_composite_audit_index(tmp_path):
+    connection = connect(tmp_path / "telegram-audit-index.sqlite3")
+    try:
+        SchemaMigrator(connection).migrate()
+        for index in range(1_000):
+            task_id = f"task-{index}"
+            actor_id = "client-target" if index == 500 else f"client-{index}"
+            connection.execute(
+                """INSERT INTO tasks (
+                    task_id, task_type, status, risk_class, created_at, updated_at, description
+                ) VALUES (?, 'test', 'queued', 'low', ?, ?, '')""",
+                (task_id, "2026-11-09T00:00:00+00:00", "2026-11-09T00:00:00+00:00"),
+            )
+            connection.execute(
+                """INSERT INTO audit_events (
+                    event_id, event_type, outcome, subject_type, subject_id,
+                    actor_type, actor_id, created_at, metadata_json
+                ) VALUES (?, 'task.submitted', 'queued', 'task', ?, 'telegram_client', ?, ?, '{}')""",
+                (f"event-{index}", task_id, actor_id, "2026-11-09T00:00:00+00:00"),
+            )
+        connection.execute("ANALYZE")
+        plan = connection.execute(
+            """EXPLAIN QUERY PLAN
+               SELECT t.*
+               FROM tasks AS t
+               INNER JOIN audit_events AS a
+                   ON a.subject_id = t.task_id
+                  AND a.event_type = 'task.submitted'
+                  AND a.subject_type = 'task'
+                  AND a.actor_type = 'telegram_client'
+                  AND a.actor_id = ?
+               ORDER BY t.created_at DESC, t.task_id DESC
+               LIMIT ?""",
+            ("client-target", 20),
+        ).fetchall()
+        details = [row["detail"] for row in plan]
+        assert any("idx_audit_telegram_task_owner" in detail for detail in details), details
+    finally:
+        connection.close()
