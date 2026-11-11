@@ -27,36 +27,45 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install FFmpeg and FFprobe
-        timeout-minutes: 12
+      - name: Install verified FFmpeg and FFprobe
+        timeout-minutes: 8
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            APT_OPTIONS=(
-              -o Acquire::Retries=1
-              -o Acquire::http::Timeout=20
-              -o Acquire::https::Timeout=20
-              -o Acquire::http::ConnectionTimeout=10
-              -o Acquire::https::ConnectionTimeout=10
-            )
 
-            # Prefer the runner's cached package indexes; update them only when
-            # the package cannot be installed from the existing metadata.
-            if ! timeout --signal=TERM --kill-after=10s 180s \
-              sudo apt-get "${APT_OPTIONS[@]}" install --no-install-recommends -y ffmpeg; then
-              echo "::warning::FFmpeg install from cached apt metadata failed; refreshing package indexes once."
-              timeout --signal=TERM --kill-after=10s 300s \
-                sudo apt-get "${APT_OPTIONS[@]}" update
-              timeout --signal=TERM --kill-after=10s 180s \
-                sudo apt-get "${APT_OPTIONS[@]}" install --no-install-recommends -y ffmpeg
-            fi
-          else
-            echo "Using runner-provided FFmpeg and FFprobe."
+          # Use a pinned, self-contained build rather than Ubuntu apt mirrors.
+          # The archive digest is pinned to the selected GitHub Release asset.
+          release_tag="autobuild-2026-11-06-12-50"
+          archive_name="ffmpeg-master-latest-linux64-gpl.tar.xz"
+          archive_sha256="843e959b12d8d8337db13bda6d9aa59400c392b75c2a6434be10b627655e325f"
+          archive_path="$RUNNER_TEMP/$archive_name"
+          install_dir="$RUNNER_TEMP/ffmpeg-bin"
+
+          mkdir -p "$install_dir"
+          curl --fail --show-error --location \
+            --retry 3 --retry-delay 2 --retry-connrefused \
+            --connect-timeout 20 --max-time 360 \
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/$release_tag/$archive_name" \
+            --output "$archive_path"
+
+          printf '%s  %s\n' "$archive_sha256" "$archive_path" | sha256sum --check --strict
+          tar -xJf "$archive_path" -C "$install_dir" \
+            --strip-components=2 --no-anchored ffmpeg ffprobe
+          chmod 0755 "$install_dir/ffmpeg" "$install_dir/ffprobe"
+
+          test -x "$install_dir/ffmpeg"
+          test -x "$install_dir/ffprobe"
+          encoders="$("$install_dir/ffmpeg" -hide_banner -encoders 2>&1)"
+          if ! grep -Eq '[[:space:]]libx264[[:space:]]' <<<"$encoders"; then
+            echo "::error::Pinned FFmpeg build does not expose the required libx264 encoder."
+            exit 1
           fi
+
+          echo "$install_dir" >> "$GITHUB_PATH"
+          export PATH="$install_dir:$PATH"
           command -v ffmpeg
           command -v ffprobe
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
+          ffmpeg -version | sed -n '1p'
+          ffprobe -version | sed -n '1p'
       - name: Install project and development dependencies
         run: |
           python -m pip install --upgrade pip
