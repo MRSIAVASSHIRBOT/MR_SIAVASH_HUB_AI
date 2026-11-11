@@ -44,15 +44,38 @@ The Hub API defaults to status-only access when the scopes field is omitted. Cli
 
 No Agent execution, approval decisions, content publishing, destructive actions or arbitrary tools are exposed through this initial integration.
 
+## Separate Cloudflare Edge + Local Bridge transport
+
+The dedicated \`MR_SIAVASH_EL_IR_BOT\` repository is developing a second transport path in [PR #2](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_IR_BOT/pull/2). Do not confuse this repository/transport with the older EL_AI client described above.
+
+The proposed path is:
+
+1. Telegram sends updates to the Cloudflare Worker webhook. The Worker validates Telegram's webhook secret and accepts private messages only from the configured owner ID.
+2. The Worker stores bounded command jobs in D1. Command payloads are encrypted with AES-256-GCM; update IDs, replay nonces and job lease tokens are tracked separately.
+3. A Local Bridge process on the owner's machine polls the Worker over outbound HTTPS. Requests are authenticated with HMAC-SHA256 over timestamp, nonce, method, path and body digest.
+4. The Bridge calls only the loopback Hub API (\`http://127.0.0.1:8000\`) and stores Hub access/refresh credentials in the operating-system Keyring.
+5. The Bridge submits a bounded reply to the Worker; the Worker validates the lease and sends the reply through Telegram.
+
+The Worker must never call the local Hub directly. Do not create a public tunnel, expose the Hub port, or place Hub bearer credentials in D1, Worker variables, browser storage or Telegram messages. The initial command surface is limited to pairing, status and explicitly scoped task listing; it does not authorize shell execution, arbitrary tools, Agent execution, approval decisions, publishing or destructive operations.
+
+### Provisioning and rollout gates
+
+- PR #2 is a separate, unmerged implementation under review; its CI status must be checked on the current head before merge.
+- The Worker and D1 resources have been provisioned, but the absence of configured Worker secrets means the webhook path must fail closed.
+- Telegram webhook registration, owner ID configuration, Worker secrets, Local Bridge OS Keyring verification, real Hub pairing and a full Telegram-to-Hub-to-Telegram round trip are still required.
+- The webhook registration script refuses to replace a different existing webhook unless the operator explicitly confirms the migration. Preserve pending Telegram updates.
+- Do not describe the bot as operational until the owner has completed provisioning and the end-to-end acceptance checks pass.
+
 ## Public website Gateway
 
 EL_AI calls only the public MR_SIAVASH_AI assistant route. It sends the current public message only; it never forwards private Hub context, memory, task details, Telegram identifiers or Hub credentials. Public mode is disabled by default. The production Gateway currently has no Workers AI binding, so its assistant returns verified knowledge fallback rather than live model inference.
 
-## Current verification status — 2026-11-09
+## Current verification status — 2026-11-11
 
 - Hub pairing API, owner-facing pairing/revocation controls, scoped authentication, task/memory routes and per-client task isolation are implemented on Hub main.
 - Hub CI, Windows launcher validation, video integration and defensive scan passed on the commits associated with the pairing and task-isolation changes.
 - EL_AI main contains the client-side Keyring credential store and explicit integration opt-in; its public Gateway client is implemented and CI-tested.
-- No live Telegram pairing, client-side credential-store verification on the owner's machine, production bot deployment or end-to-end Telegram smoke test has been verified.
+- The separate `MR_SIAVASH_EL_IR_BOT` PR #2 adds the Cloudflare Worker + encrypted D1 queue + outbound Local Bridge implementation; its latest CI and review status must be checked before merge.
+- The new bot transport has not completed webhook registration, secret provisioning, owner-device Keyring verification, live Hub pairing or an end-to-end round trip. Worker deployment alone does not establish an operational Telegram bot.
 
 Remote Hub hosting remains out of scope until its threat model, transport, access controls and deployment are separately reviewed.
