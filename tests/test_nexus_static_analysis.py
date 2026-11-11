@@ -208,3 +208,37 @@ def test_static_analysis_detects_httpx_tls_verification_disabled_and_client_alia
     assert all(item["severity"] == "high" for item in findings)
     assert result["code_executed"] is False
     assert result["source_code_included"] is False
+
+
+
+def test_static_analysis_detects_tls_disabled_on_chained_requests_session_calls():
+    result = analyze_python_source(
+        "import requests as http\n"
+        "http.Session().get(url, verify=False)\n"
+        "http.Session().get(secure_url, verify=True)\n",
+        path="src/requests_session.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert len(findings) == 1
+    assert findings[0]["line"] == 2
+    assert findings[0]["severity"] == "high"
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
+
+
+def test_static_analysis_detects_tls_disabled_on_chained_httpx_client_calls():
+    result = analyze_python_source(
+        "import httpx as transport\n"
+        "transport.Client().get(url, verify=False)\n"
+        "transport.AsyncClient().post(url, verify=False)\n"
+        "transport.Client().get(secure_url, verify=True)\n",
+        path="src/httpx_client_session.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert len(findings) == 2
+    assert [item["line"] for item in findings] == [2, 3]
+    assert all(item["severity"] == "high" for item in findings)
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
