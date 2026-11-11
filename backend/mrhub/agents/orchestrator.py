@@ -144,6 +144,11 @@ class AgentOrchestrator:
                     ),
                 )
             except (LookupError, ProviderError):
+                if should_cancel is not None and should_cancel():
+                    return self._result(
+                        "cancelled", transcript, selection, turn, tool_calls,
+                        error_code="cancelled",
+                    )
                 if time.monotonic() >= deadline:
                     return self._result(
                         "budget_exhausted", transcript, selection, turn, tool_calls,
