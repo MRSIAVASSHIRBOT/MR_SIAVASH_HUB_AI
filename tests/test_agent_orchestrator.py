@@ -466,6 +466,7 @@ def test_orchestrator_discards_final_answer_when_cancelled_during_inference():
     assert "answer" not in result
     assert result["tool_calls"] == 0
     assert result["tools_executed"] is False
+    assert result["selected_provider"] == {"provider": "scripted", "model": "scripted-test"}
     assert len(provider.requests) == 1
 
 
