@@ -516,3 +516,29 @@ def test_orchestrator_propagates_cancellation_from_delegated_specialist():
     assert result["tool_calls"] == 0
     assert result["tools_executed"] is False
     assert len(provider.requests) == 1
+
+
+
+def test_orchestrator_reports_cancellation_when_provider_fails_after_stop():
+    from mrhub.providers.base import ProviderError
+
+    orchestrator, provider = make_orchestrator([])
+
+    def failing_generate(_request):
+        provider.requests.append(_request)
+        raise ProviderError("provider failed after cancellation")
+
+    provider.generate = failing_generate
+    checks = iter([False, True])
+
+    result = orchestrator.run(
+        AgentLoopRequest(goal="Cancel during a failing provider request"),
+        should_cancel=lambda: next(checks),
+    )
+
+    assert result["status"] == "cancelled"
+    assert result["error_code"] == "cancelled"
+    assert result["turns"] == 1
+    assert result["tool_calls"] == 0
+    assert result["tools_executed"] is False
+    assert len(provider.requests) == 1
