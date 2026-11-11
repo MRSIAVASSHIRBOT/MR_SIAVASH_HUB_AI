@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mrhub.agents.proposals import AgentProposal
 from mrhub.agents.registry import AgentProfile, AgentRegistry
+from mrhub.domain.tasks import RiskClass
 from mrhub.tools.registry import ToolRegistry
 
 
@@ -63,16 +64,42 @@ def evaluate_agent_proposal(
     )
 
     unknown_tools: list[str] = []
+    restricted_tools: list[str] = []
+    tool_assessments: list[dict[str, object]] = []
     for tool_name in sorted(set(proposal.allowed_tools)):
         try:
-            tools.get(tool_name)
+            definition = tools.get(tool_name)
         except LookupError:
             unknown_tools.append(tool_name)
+            continue
+
+        risk_class = getattr(definition.risk_class, "value", str(definition.risk_class))
+        required_permissions = sorted(definition.required_permissions)
+        external_side_effect = bool(definition.external_side_effect)
+        tool_assessments.append({
+            "name": tool_name,
+            "risk_class": risk_class,
+            "required_permissions": required_permissions,
+            "external_side_effect": external_side_effect,
+        })
+        if risk_class != RiskClass.LOW.value or external_side_effect:
+            restricted_tools.append(
+                f"{tool_name} (risk={risk_class}, "
+                f"external_side_effect={str(external_side_effect).lower()})"
+            )
+
     record(
         "tools_registered",
         not unknown_tools,
         "Every requested tool exists in the server registry"
         if not unknown_tools else "Unknown tools: " + ", ".join(unknown_tools),
+    )
+    record(
+        "tool_risk_policy",
+        not restricted_tools,
+        "All requested tools are low-risk and declare no external side effects"
+        if not restricted_tools
+        else "Manual security review required for: " + ", ".join(restricted_tools),
     )
 
     bounded_turns = 1 <= proposal.max_turns <= 3
@@ -88,7 +115,9 @@ def evaluate_agent_proposal(
         "status": "passed" if passed else "blocked",
         "recommendation": "eligible_for_owner_review" if passed else "revise_proposal",
         "checks": checks,
+        "tool_assessments": tool_assessments,
         "execution_performed": False,
         "activation_performed": False,
         "permission_granted": False,
+        "permission_grant_performed": False,
     }
