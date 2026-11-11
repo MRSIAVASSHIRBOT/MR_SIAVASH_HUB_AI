@@ -59,8 +59,13 @@ def recommend_model_profiles(
             "source_kind": profile["source_kind"],
             "assessment": assessment,
             "recommendation": (
-                "candidate" if assessment["status"] in {"likely_fit", "likely_tight"}
-                and not profile["requires_gpu"] else "not_recommended_or_unverified"
+                "unverified_estimate" if not profile["verified"]
+                else "candidate"
+                if assessment["status"] in {"likely_fit", "likely_tight"}
+                and not profile["requires_gpu"]
+                else "insufficient_data"
+                if assessment["status"] == "insufficient_data"
+                else "not_recommended"
             ),
         })
 
@@ -80,7 +85,8 @@ def recommend_model_profiles(
         "downloads_model": False,
         "selects_provider": False,
         "limitations": [
-            "Registry entries are illustrative and currently unverified.",
+            "Unverified profiles are estimates only and are never promoted to candidates.",
+            "A candidate requires a verified profile and a sufficient resource assessment.",
             "RAM fit is an estimate; CPU throughput, context length, quantization, and runtime overhead are not benchmarked.",
             "GPU-required profiles remain non-candidates until GPU VRAM and compute data are measured.",
         ],
