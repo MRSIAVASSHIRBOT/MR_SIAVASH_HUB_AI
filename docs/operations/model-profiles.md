@@ -34,11 +34,16 @@ real recommendation. The advisor must keep GPU-required entries in
 `POST /models/recommend` ranks a bounded list of registered profile IDs (by
 default, the two sample profiles) using the same resource assessment. The
 response is explicitly `advisory_only`: it never selects a provider, starts
-inference, or downloads a model. Unknown IDs are rejected. A CPU profile is
-only marked as a candidate when its declared RAM assessment is `likely_fit`
-or `likely_tight`; GPU-required profiles remain non-candidates until GPU data
-is available. Because the current entries are unverified examples, this is a
-software-level demonstration, not a recommendation for a specific real model.
+inference, or downloads a model. Unknown IDs are rejected. A profile is marked as a candidate only when it is explicitly
+verified and its resource assessment is `likely_fit` or `likely_tight`.
+Unverified profiles are returned as `unverified_estimate`, even when their RAM
+estimate appears to fit; they never populate `best_candidate_profile_id`.
+Profiles blocked by missing required measurements are labeled
+`insufficient_data`. GPU-required profiles remain non-candidates until GPU
+VRAM and compute data are measured. Because the current registry entries are
+unverified examples, the default response intentionally has no best candidate.
+This is a software-level demonstration, not a recommendation for a specific
+real model.
 
 
 ## Provider inventory

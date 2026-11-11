@@ -182,9 +182,10 @@ def test_model_recommendation_is_advisory_and_ranks_cpu_candidate(tmp_path, monk
     assert body["starts_inference"] is False
     assert body["downloads_model"] is False
     assert body["selects_provider"] is False
-    assert body["best_candidate_profile_id"] == "small-text-cpu-example"
+    assert body["best_candidate_profile_id"] is None
     assert body["results"][0]["profile_id"] == "small-text-cpu-example"
-    assert body["results"][0]["recommendation"] == "candidate"
+    assert body["results"][0]["recommendation"] == "unverified_estimate"
+    assert body["results"][0]["verified"] is False
     assert body["results"][1]["assessment"]["status"] == "insufficient_data"
     get_settings.cache_clear()
 
