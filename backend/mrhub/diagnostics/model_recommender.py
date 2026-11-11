@@ -59,12 +59,13 @@ def recommend_model_profiles(
             "source_kind": profile["source_kind"],
             "assessment": assessment,
             "recommendation": (
-                "unverified_estimate" if not profile["verified"]
+                "insufficient_data"
+                if assessment["status"] == "insufficient_data"
+                else "unverified_estimate"
+                if not profile["verified"]
                 else "candidate"
                 if assessment["status"] in {"likely_fit", "likely_tight"}
                 and not profile["requires_gpu"]
-                else "insufficient_data"
-                if assessment["status"] == "insufficient_data"
                 else "not_recommended"
             ),
         })
