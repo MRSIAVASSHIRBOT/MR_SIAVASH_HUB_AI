@@ -162,6 +162,9 @@ class AgentOrchestrator:
                     "budget_exhausted", transcript, selection, turn, tool_calls,
                     error_code="runtime_budget_exceeded",
                 )
+            # Retain non-secret provider identity for diagnostics even when the
+            # response is discarded because cancellation arrived during inference.
+            selection = {"provider": response.provider, "model": response.model}
             # Cancellation may arrive while synchronous provider inference is in flight.
             # Discard every late proposal, including final answers and delegations, before
             # parsing it or allowing it to influence the rest of the run.
@@ -170,8 +173,6 @@ class AgentOrchestrator:
                     "cancelled", transcript, selection, turn, tool_calls,
                     error_code="cancelled",
                 )
-
-            selection = {"provider": response.provider, "model": response.model}
             try:
                 proposal = ModelProposal.model_validate_json(response.output_text)
             except (ValidationError, ValueError):
