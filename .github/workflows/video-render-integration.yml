@@ -18,7 +18,7 @@ jobs:
   real-ffmpeg-render:
     name: Real FFmpeg MP4 integration
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
@@ -29,8 +29,17 @@ jobs:
           cache: pip
       - name: Install FFmpeg and FFprobe
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ffmpeg
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            APT_OPTIONS=(
+              -o Acquire::Retries=3
+              -o Acquire::http::Timeout=30
+              -o Acquire::https::Timeout=30
+            )
+            sudo apt-get "${APT_OPTIONS[@]}" update
+            sudo apt-get "${APT_OPTIONS[@]}" install --no-install-recommends -y ffmpeg
+          else
+            echo "Using runner-provided FFmpeg and FFprobe."
+          fi
           command -v ffmpeg
           command -v ffprobe
           ffmpeg -version | head -n 1
