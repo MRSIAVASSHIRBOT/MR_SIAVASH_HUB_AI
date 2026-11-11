@@ -273,6 +273,13 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             message,
         ))
 
+    def root_module_name(expression: ast.AST) -> str | None:
+        # Resolve direct module calls and chained clients such as
+        # requests.Session().get(...) without evaluating any target expression.
+        while isinstance(expression, (ast.Attribute, ast.Call)):
+            expression = expression.value if isinstance(expression, ast.Attribute) else expression.func
+        return expression.id if isinstance(expression, ast.Name) else None
+
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -321,10 +328,10 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                     add("PY106", node, "high", "HTTP client explicitly disables TLS certificate verification.")
             continue
 
-        if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
+        if not isinstance(node.func, ast.Attribute):
             continue
 
-        module_name = node.func.value.id
+        module_name = root_module_name(node.func.value)
         function_name = node.func.attr
 
         if module_name in module_aliases["builtins"] and function_name in {"eval", "exec"}:
