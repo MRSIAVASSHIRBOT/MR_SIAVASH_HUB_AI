@@ -62,6 +62,7 @@ The Worker must never call the local Hub directly. Do not create a public tunnel
 
 - PR #2 is a separate, unmerged implementation under review; its CI status must be checked on the current head before merge.
 - The Worker and D1 resources have been provisioned, but the absence of configured Worker secrets means the webhook path must fail closed.
+- The bot Worker now distinguishes `GET /health` (liveness only) from `GET /ready` (configuration readiness, HTTP 200/503); neither endpoint proves that webhook registration, the local Bridge, Keyring, pairing or the full round trip works.
 - Telegram webhook registration, owner ID configuration, Worker secrets, Local Bridge OS Keyring verification, real Hub pairing and a full Telegram-to-Hub-to-Telegram round trip are still required.
 - The webhook registration script refuses to replace a different existing webhook unless the operator explicitly confirms the migration. Preserve pending Telegram updates.
 - Do not describe the bot as operational until the owner has completed provisioning and the end-to-end acceptance checks pass.
