@@ -46,14 +46,14 @@ No Agent execution, approval decisions, content publishing, destructive actions 
 
 ## Separate Cloudflare Edge + Local Bridge transport
 
-The dedicated \`MR_SIAVASH_EL_IR_BOT\` repository is developing a second transport path in [PR #2](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_IR_BOT/pull/2). Do not confuse this repository/transport with the older EL_AI client described above.
+The dedicated `MR_SIAVASH_EL_IR_BOT` repository is developing a second transport path in [PR #2](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_IR_BOT/pull/2). Do not confuse this repository/transport with the older EL_AI client described above.
 
 The proposed path is:
 
 1. Telegram sends updates to the Cloudflare Worker webhook. The Worker validates Telegram's webhook secret and accepts private messages only from the configured owner ID.
 2. The Worker stores bounded command jobs in D1. Command payloads are encrypted with AES-256-GCM; update IDs, replay nonces and job lease tokens are tracked separately.
 3. A Local Bridge process on the owner's machine polls the Worker over outbound HTTPS. Requests are authenticated with HMAC-SHA256 over timestamp, nonce, method, path and body digest.
-4. The Bridge calls only the loopback Hub API (\`http://127.0.0.1:8000\`) and stores Hub access/refresh credentials in the operating-system Keyring.
+4. The Bridge calls only the loopback Hub API (`http://127.0.0.1:8000`) and stores Hub access/refresh credentials in the operating-system Keyring.
 5. The Bridge submits a bounded reply to the Worker; the Worker validates the lease and sends the reply through Telegram.
 
 The Worker must never call the local Hub directly. Do not create a public tunnel, expose the Hub port, or place Hub bearer credentials in D1, Worker variables, browser storage or Telegram messages. The initial command surface is limited to pairing, status and explicitly scoped task listing; it does not authorize shell execution, arbitrary tools, Agent execution, approval decisions, publishing or destructive operations.
