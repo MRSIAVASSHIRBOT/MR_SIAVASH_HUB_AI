@@ -350,19 +350,6 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         return None
 
     for assignment in assignments:
-        value = assignment.value
-        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
-        module = client_constructor_module(value) if value is not None else None
-        scope = lexical_scope(assignment)
-        for target in targets:
-            for name in target_names(target):
-                key = (scope, name)
-                if module is None:
-                    client_aliases.pop(key, None)
-                else:
-                    client_aliases[key] = module
-
-    for assignment in assignments:
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
         value = assignment.value
         if not (
