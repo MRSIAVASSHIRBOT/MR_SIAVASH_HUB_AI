@@ -308,7 +308,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
     # This intentionally tracks only simple local assignments. It never imports
     # or executes the target and keeps the rule advisory rather than pretending
     # to be a complete Python data-flow analysis.
-    client_aliases: dict[str, str] = {}
+    client_aliases: dict[str, set[str]] = {}
     assignments = sorted(
         (
             item for item in ast.walk(tree)
@@ -323,9 +323,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         for target in targets:
             for name in target_names(target):
                 if module:
-                    client_aliases[name] = module
-                else:
-                    client_aliases.pop(name, None)
+                    client_aliases.setdefault(name, set()).add(module)
 
     for assignment in assignments:
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
@@ -438,19 +436,21 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         if module_name in module_aliases["os"] and function_name in {"system", "popen"}:
             add("PY105", node, "high", "OS shell command API requires manual security review.")
 
-        client_module = next(
+        direct_client_module = next(
             (
                 module for module in ("requests", "httpx")
                 if module_name in module_aliases[module]
             ),
             None,
         )
-        if client_module is None:
-            client_module = client_aliases.get(module_name)
+        client_modules = (
+            {direct_client_module}
+            if direct_client_module is not None
+            else client_aliases.get(module_name, set())
+        )
 
         if (
-            client_module in {"requests", "httpx"}
-            and function_name in risky_imports[client_module]
+            any(function_name in risky_imports[module] for module in client_modules)
             and any(
                 keyword.arg == "verify"
                 and isinstance(keyword.value, ast.Constant)
