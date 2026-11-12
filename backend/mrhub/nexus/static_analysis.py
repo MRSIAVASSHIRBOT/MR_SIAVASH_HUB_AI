@@ -323,7 +323,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 return current
         return tree
 
-    client_aliases: dict[tuple[ast.AST, str], str] = {}
+    client_aliases: dict[tuple[ast.AST, str], list[tuple[int, str | None]]] = {}
     assignments = sorted(
         (
             item for item in ast.walk(tree)
@@ -331,6 +331,24 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         ),
         key=lambda item: getattr(item, "lineno", 0),
     )
+    for assignment in assignments:
+        value = assignment.value
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        module = client_constructor_module(value) if value is not None else None
+        scope = lexical_scope(assignment)
+        for target in targets:
+            for name in target_names(target):
+                client_aliases.setdefault((scope, name), []).append(
+                    (getattr(assignment, "lineno", 0), module)
+                )
+
+    def client_module_at(scope: ast.AST, name: str, line: int) -> str | None:
+        history = client_aliases.get((scope, name), ())
+        for assigned_line, module in reversed(history):
+            if assigned_line <= line:
+                return module
+        return None
+
     for assignment in assignments:
         value = assignment.value
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
@@ -358,7 +376,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 isinstance(target, ast.Attribute)
                 and target.attr == "verify"
                 and isinstance(target.value, ast.Name)
-                and (scope, target.value.id) in client_aliases
+                and client_module_at(scope, target.value.id, getattr(assignment, "lineno", 0)) in {"requests", "httpx"}
             ):
                 add(
                     "PY106",
@@ -467,8 +485,8 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             {direct_client_module}
             if direct_client_module is not None
             else (
-                {client_aliases[(lexical_scope(node), module_name)]}
-                if (lexical_scope(node), module_name) in client_aliases
+                {client_module_at(lexical_scope(node), module_name, getattr(node, "lineno", 0))}
+                if client_module_at(lexical_scope(node), module_name, getattr(node, "lineno", 0)) is not None
                 else set()
             )
         )
