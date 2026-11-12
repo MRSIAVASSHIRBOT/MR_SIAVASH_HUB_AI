@@ -181,7 +181,9 @@ class TelegramPairingRepository:
     def refresh(self, *, refresh_token: str, telegram_user_id: int) -> dict[str, object]:
         now = self._now()
         access_token = secrets.token_urlsafe(32)
+        refresh_token_next = secrets.token_urlsafe(48)
         access_expires = now + timedelta(seconds=self.ACCESS_TTL_SECONDS)
+        refresh_expires = now + timedelta(seconds=self.REFRESH_TTL_SECONDS)
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
@@ -200,11 +202,34 @@ class TelegramPairingRepository:
                 or row["telegram_user_id"] != telegram_user_id
             ):
                 raise TelegramPairingError("Refresh credential is invalid, expired, or revoked")
-            connection.execute(
+            revoked = connection.execute(
+                """UPDATE telegram_access_tokens
+                   SET revoked_at = ?
+                   WHERE token_hash = ? AND token_type = 'refresh' AND revoked_at IS NULL""",
+                (now.isoformat(), self._hash(refresh_token)),
+            )
+            if revoked.rowcount != 1:
+                raise TelegramPairingError("Refresh credential has already been rotated")
+            connection.executemany(
                 """INSERT INTO telegram_access_tokens (
                     token_hash, client_id, token_type, expires_at, created_at, revoked_at
-                ) VALUES (?, ?, 'access', ?, ?, NULL)""",
-                (self._hash(access_token), row["client_id"], access_expires.isoformat(), now.isoformat()),
+                ) VALUES (?, ?, ?, ?, ?, NULL)""",
+                [
+                    (
+                        self._hash(access_token),
+                        row["client_id"],
+                        "access",
+                        access_expires.isoformat(),
+                        now.isoformat(),
+                    ),
+                    (
+                        self._hash(refresh_token_next),
+                        row["client_id"],
+                        "refresh",
+                        refresh_expires.isoformat(),
+                        now.isoformat(),
+                    ),
+                ],
             )
             connection.execute(
                 "UPDATE telegram_clients SET last_seen_at = ? WHERE client_id = ?",
@@ -215,6 +240,8 @@ class TelegramPairingRepository:
             "access_token": access_token,
             "token_type": "bearer",
             "expires_in": self.ACCESS_TTL_SECONDS,
+            "refresh_token": refresh_token_next,
+            "refresh_expires_in": self.REFRESH_TTL_SECONDS,
             "client_id": row["client_id"],
             "scopes": scopes,
         }

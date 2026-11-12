@@ -280,3 +280,41 @@ def test_telegram_task_listing_isolated_between_paired_clients(tmp_path, monkeyp
     assert [item["task_id"] for item in listed_a.json()["tasks"]] == [task_a.json()["task_id"]]
     assert [item["task_id"] for item in listed_b.json()["tasks"]] == [task_b.json()["task_id"]]
     get_settings.cache_clear()
+
+def test_refresh_rotates_refresh_token_and_rejects_reuse(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client)
+    original = _exchange(client, payload, challenge).json()
+
+    rotated_response = client.post(
+        "/integrations/telegram/refresh",
+        json={
+            "refresh_token": original["refresh_token"],
+            "telegram_user_id": payload["telegram_user_id"],
+        },
+    )
+    assert rotated_response.status_code == 200
+    rotated = rotated_response.json()
+    assert rotated["access_token"] != original["access_token"]
+    assert rotated["refresh_token"] != original["refresh_token"]
+    assert rotated["refresh_expires_in"] == 30 * 24 * 60 * 60
+
+    reused = client.post(
+        "/integrations/telegram/refresh",
+        json={
+            "refresh_token": original["refresh_token"],
+            "telegram_user_id": payload["telegram_user_id"],
+        },
+    )
+    assert reused.status_code == 401
+
+    second_rotation = client.post(
+        "/integrations/telegram/refresh",
+        json={
+            "refresh_token": rotated["refresh_token"],
+            "telegram_user_id": payload["telegram_user_id"],
+        },
+    )
+    assert second_rotation.status_code == 200
+    assert second_rotation.json()["refresh_token"] != rotated["refresh_token"]
+    get_settings.cache_clear()
