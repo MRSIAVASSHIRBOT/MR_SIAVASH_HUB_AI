@@ -249,3 +249,26 @@ def test_preflight_blocks_low_risk_tools_with_external_side_effects():
     assert check["status"] == "failed"
     assert "external.publish" in check["detail"]
     assert report["permission_grant_performed"] is False
+
+@pytest.mark.parametrize("name", ["Invalid Name", "UppercaseName", "-starts-with-dash"])
+def test_preflight_blocks_names_rejected_by_the_canonical_agent_registry(name):
+    tools = build_tool_registry()
+    agents = build_default_agent_registry(tools)
+    before = agents.catalog()
+
+    report = evaluate_agent_proposal(
+        make_proposal(name=name),
+        agents=agents,
+        tools=tools,
+    )
+
+    assert report["status"] == "blocked"
+    assert report["recommendation"] == "revise_proposal"
+    profile_check = next(
+        item for item in report["checks"] if item["id"] == "profile_constraints"
+    )
+    assert profile_check["status"] == "failed"
+    assert agents.catalog() == before
+    assert report["execution_performed"] is False
+    assert report["activation_performed"] is False
+    assert report["permission_granted"] is False
