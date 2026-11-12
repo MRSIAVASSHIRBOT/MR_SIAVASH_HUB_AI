@@ -305,10 +305,25 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 return "httpx"
         return None
 
-    # This intentionally tracks only simple local assignments. It never imports
-    # or executes the target and keeps the rule advisory rather than pretending
-    # to be a complete Python data-flow analysis.
-    client_aliases: dict[str, set[str]] = {}
+    # Track only simple assignments within their lexical scope. This avoids
+    # treating an unrelated local variable with the same name in another
+    # function as an HTTP client. It is not full Python data-flow analysis.
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def lexical_scope(node: ast.AST) -> ast.AST:
+        current = node
+        while current in parents:
+            current = parents[current]
+            if isinstance(current, (
+                ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef
+            )):
+                return current
+        return tree
+
+    client_aliases: dict[tuple[ast.AST, str], str] = {}
     assignments = sorted(
         (
             item for item in ast.walk(tree)
@@ -320,10 +335,14 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         value = assignment.value
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
         module = client_constructor_module(value) if value is not None else None
+        scope = lexical_scope(assignment)
         for target in targets:
             for name in target_names(target):
-                if module:
-                    client_aliases.setdefault(name, set()).add(module)
+                key = (scope, name)
+                if module is None:
+                    client_aliases.pop(key, None)
+                else:
+                    client_aliases[key] = module
 
     for assignment in assignments:
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
@@ -333,12 +352,13 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             and value.value is False
         ):
             continue
+        scope = lexical_scope(assignment)
         for target in targets:
             if (
                 isinstance(target, ast.Attribute)
                 and target.attr == "verify"
                 and isinstance(target.value, ast.Name)
-                and target.value.id in client_aliases
+                and (scope, target.value.id) in client_aliases
             ):
                 add(
                     "PY106",
@@ -446,7 +466,11 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         client_modules = (
             {direct_client_module}
             if direct_client_module is not None
-            else client_aliases.get(module_name, set())
+            else (
+                {client_aliases[(lexical_scope(node), module_name)]}
+                if (lexical_scope(node), module_name) in client_aliases
+                else set()
+            )
         )
 
         if (
