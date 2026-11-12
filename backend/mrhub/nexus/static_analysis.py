@@ -242,11 +242,12 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         "subprocess": {"run", "Popen", "call", "check_call", "check_output"},
         "os": {"system", "popen"},
         "builtins": {"eval", "exec"},
-        "requests": {"request", "get", "post", "put", "patch", "delete", "head", "options"},
+        "requests": {"Session", "request", "get", "post", "put", "patch", "delete", "head", "options"},
         "httpx": {"Client", "AsyncClient", "request", "get", "post", "put", "patch", "delete", "head", "options"},
     }
     imported_calls: dict[str, set[str]] = {name: set() for name in tracked_modules}
     safe_loader_names = {"SafeLoader"}
+    http_client_imports: dict[str, str] = {}
 
     # Resolve straightforward import aliases so common defensive checks do not
     # disappear merely because a module or imported function was renamed.
@@ -263,6 +264,10 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                     safe_loader_names.add(local_name)
                 if alias.name in risky_imports[module]:
                     imported_calls[module].add(local_name)
+                if module == "requests" and alias.name == "Session":
+                    http_client_imports[local_name] = "requests"
+                elif module == "httpx" and alias.name in {"Client", "AsyncClient"}:
+                    http_client_imports[local_name] = "httpx"
 
     def add(rule_id: str, node: ast.AST, severity: str, message: str) -> None:
         findings.append(_finding(
@@ -279,6 +284,70 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         while isinstance(expression, (ast.Attribute, ast.Call)):
             expression = expression.value if isinstance(expression, ast.Attribute) else expression.func
         return expression.id if isinstance(expression, ast.Name) else None
+
+    def target_names(target: ast.AST) -> set[str]:
+        if isinstance(target, ast.Name):
+            return {target.id}
+        if isinstance(target, (ast.Tuple, ast.List)):
+            return {item.id for item in target.elts if isinstance(item, ast.Name)}
+        return set()
+
+    def client_constructor_module(value: ast.AST) -> str | None:
+        if not isinstance(value, ast.Call):
+            return None
+        if isinstance(value.func, ast.Name):
+            return http_client_imports.get(value.func.id)
+        if isinstance(value.func, ast.Attribute):
+            module_name = root_module_name(value.func.value)
+            if module_name in module_aliases["requests"] and value.func.attr == "Session":
+                return "requests"
+            if module_name in module_aliases["httpx"] and value.func.attr in {"Client", "AsyncClient"}:
+                return "httpx"
+        return None
+
+    # This intentionally tracks only simple local assignments. It never imports
+    # or executes the target and keeps the rule advisory rather than pretending
+    # to be a complete Python data-flow analysis.
+    client_aliases: dict[str, str] = {}
+    assignments = sorted(
+        (
+            item for item in ast.walk(tree)
+            if isinstance(item, (ast.Assign, ast.AnnAssign))
+        ),
+        key=lambda item: getattr(item, "lineno", 0),
+    )
+    for assignment in assignments:
+        value = assignment.value
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        module = client_constructor_module(value) if value is not None else None
+        for target in targets:
+            for name in target_names(target):
+                if module:
+                    client_aliases[name] = module
+                else:
+                    client_aliases.pop(name, None)
+
+    for assignment in assignments:
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        value = assignment.value
+        if not (
+            isinstance(value, ast.Constant)
+            and value.value is False
+        ):
+            continue
+        for target in targets:
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr == "verify"
+                and isinstance(target.value, ast.Name)
+                and target.value.id in client_aliases
+            ):
+                add(
+                    "PY106",
+                    assignment,
+                    "high",
+                    "HTTP client instance explicitly disables TLS certificate verification.",
+                )
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -369,9 +438,19 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         if module_name in module_aliases["os"] and function_name in {"system", "popen"}:
             add("PY105", node, "high", "OS shell command API requires manual security review.")
 
+        client_module = next(
+            (
+                module for module in ("requests", "httpx")
+                if module_name in module_aliases[module]
+            ),
+            None,
+        )
+        if client_module is None:
+            client_module = client_aliases.get(module_name)
+
         if (
-            module_name in module_aliases["requests"] | module_aliases["httpx"]
-            and function_name in risky_imports["requests"] | risky_imports["httpx"]
+            client_module in {"requests", "httpx"}
+            and function_name in risky_imports[client_module]
             and any(
                 keyword.arg == "verify"
                 and isinstance(keyword.value, ast.Constant)
