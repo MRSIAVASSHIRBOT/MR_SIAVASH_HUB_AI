@@ -242,3 +242,26 @@ def test_static_analysis_detects_tls_disabled_on_chained_httpx_client_calls():
     assert all(item["severity"] == "high" for item in findings)
     assert result["code_executed"] is False
     assert result["source_code_included"] is False
+
+
+
+def test_static_analysis_detects_tls_disabled_on_http_client_instance_assignments_and_calls():
+    result = analyze_python_source(
+        "import requests as http\\n"
+        "from httpx import AsyncClient as AsyncHTTP\\n"
+        "session = http.Session()\\n"
+        "session.verify = False\\n"
+        "client = AsyncHTTP()\\n"
+        "client.verify = False\\n"
+        "client.get(url, verify=False)\\n"
+        "safe = object()\\n"
+        "safe.verify = False\\n"
+        "session.verify = True\\n",
+        path="src/http_client_instance.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert [item["line"] for item in findings] == [4, 6, 7]
+    assert all(item["severity"] == "high" for item in findings)
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
