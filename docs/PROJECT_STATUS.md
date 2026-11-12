@@ -1,6 +1,20 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-08 (UTC)
+Last reviewed: 2026-11-12 (UTC)
+
+## Live status addendum — 2026-11-12
+
+This addendum supersedes older live-status and workflow snapshots below where they conflict. Historical merge records remain unchanged.
+
+- Current `main`: `fcfde61efc504c4204eb6b7c3bb2ea76bf11ee9a`. It is 7 commits ahead of the prior recorded baseline `9556c73901d239d366bb7eb8f456eac74c615516`, with no commits behind.
+- Exact-head checks on the current main commit succeeded: Backend CI, main CI, Defensive Python Scan, Windows Launcher Validation, and Video Render Integration.
+- Scheduled Continuous Development run `43195708170` on 2026-11-12 failed at the provider invocation with `API key expired.`. Checkout, CLI installation, and effective default-deny tool-policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
+- The provider credential was not read, copied, rotated, or changed. Owner-managed credential renewal remains required, and the independent credential-isolation decision in Issue #316 remains a gate before resuming scheduled publishing.
+- No open Hub pull request was found in the current portfolio scan. Issues #332 (expired provider credential) and #316 (provider credential isolation) remain open.
+- The scheduled workflow is still configured on its existing cadence; no schedule, secret, permission, deployment, or security-policy setting was changed during this review.
+
+## Previous status snapshot
+
 
 This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI before every merge or implementation decision.
 
