@@ -270,12 +270,12 @@ def test_static_analysis_detects_tls_disabled_on_http_client_instance_assignment
 
 def test_static_analysis_preserves_client_alias_evidence_across_function_scopes():
     result = analyze_python_source(
-        "import httpx\\n"
-        "def unsafe_request():\\n"
-        "    client = httpx.Client()\\n"
-        "    client.get(url, verify=False)\\n"
-        "def unrelated_scope():\\n"
-        "    client = object()\\n",
+        "import httpx\n"
+        "def unsafe_request():\n"
+        "    client = httpx.Client()\n"
+        "    client.get(url, verify=False)\n"
+        "def unrelated_scope():\n"
+        "    client = object()\n",
         path="src/client_scope_reuse.py",
     )
 
