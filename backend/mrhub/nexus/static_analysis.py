@@ -329,18 +329,11 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             item for item in ast.walk(tree)
             if isinstance(item, (ast.Assign, ast.AnnAssign))
         ),
-        key=lambda item: getattr(item, "lineno", 0),
+        key=lambda item: (
+            getattr(item, "lineno", 0),
+            getattr(item, "col_offset", 0),
+        ),
     )
-    for assignment in assignments:
-        value = assignment.value
-        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
-        module = client_constructor_module(value) if value is not None else None
-        scope = lexical_scope(assignment)
-        for target in targets:
-            for name in target_names(target):
-                client_aliases.setdefault((scope, name), []).append(
-                    (getattr(assignment, "lineno", 0), module)
-                )
 
     def client_module_at(scope: ast.AST, name: str, line: int) -> str | None:
         history = client_aliases.get((scope, name), ())
@@ -348,6 +341,20 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             if assigned_line <= line:
                 return module
         return None
+
+    # Preserve simple local aliases (including alias chains), while recording
+    # non-client reassignments as None so stale client identities are dropped.
+    for assignment in assignments:
+        value = assignment.value
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        scope = lexical_scope(assignment)
+        line = getattr(assignment, "lineno", 0)
+        module = client_constructor_module(value) if value is not None else None
+        if module is None and isinstance(value, ast.Name):
+            module = client_module_at(scope, value.id, line)
+        for target in targets:
+            for name in target_names(target):
+                client_aliases.setdefault((scope, name), []).append((line, module))
 
     for assignment in assignments:
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
