@@ -10,7 +10,7 @@ This addendum supersedes older live-status and workflow snapshots below where th
 - Exact-head checks on the current main commit succeeded: Backend CI, main CI, Defensive Python Scan, Windows Launcher Validation, and Video Render Integration.
 - Scheduled Continuous Development run `43195708170` on 2026-11-12 failed at the provider invocation with `API key expired.`. Checkout, CLI installation, and effective default-deny tool-policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
 - The provider credential was not read, copied, rotated, or changed. Owner-managed credential renewal remains required, and the independent credential-isolation decision in Issue #316 remains a gate before resuming scheduled publishing.
-- No open Hub pull request was found in the current portfolio scan. Issues #332 (expired provider credential) and #316 (provider credential isolation) remain open.
+- Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issues #332 (expired provider credential) and #316 (provider credential isolation) remain open.
 - The scheduled workflow is still configured on its existing cadence; no schedule, secret, permission, deployment, or security-policy setting was changed during this review.
 
 ## Previous status snapshot
