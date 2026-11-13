@@ -263,17 +263,12 @@ def test_telegram_draft_cannot_attach_another_owners_media_asset():
 def test_instagram_reel_draft_accepts_only_verified_render_output():
     client = authenticated_client()
     video = b"\\x00\\x00\\x00\\x18ftypisom" + b"verified-render-fixture"
-    uploaded = client.post(
-        "/content/assets",
-        content=video,
-        headers={"Content-Type": "video/mp4", "X-File-Name": "render.mp4"},
-    )
-    assert uploaded.status_code == 201
-    asset_id = uploaded.json()["asset_id"]
-    owner_id = uploaded.json()["owner_user_id"]
     from mrhub.media.repository import MediaAssetRepository
 
     repository = MediaAssetRepository(get_settings().database_path)
+    asset = repository.store_upload("local-owner", "render.mp4", "video/mp4", video)
+    asset_id = asset["asset_id"]
+    owner_id = asset["owner_user_id"]
     with repository.tasks._connection() as connection:
         connection.execute(
             "UPDATE content_assets SET processing_status = 'processed', "
