@@ -14,6 +14,7 @@ from mrhub.operations.backup import (
 
 
 def make_media_database(tmp_path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     database = tmp_path / "hub.sqlite3"
     media_root = tmp_path / "content_assets"
     media_root.mkdir()
