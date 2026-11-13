@@ -323,7 +323,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 return current
         return tree
 
-    client_aliases: dict[tuple[ast.AST, str], list[tuple[int, str | None]]] = {}
+    client_aliases: dict[tuple[ast.AST, str], list[tuple[tuple[int, int], str | None]]] = {}
     assignments = sorted(
         (
             item for item in ast.walk(tree)
@@ -335,10 +335,20 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         ),
     )
 
-    def client_module_at(scope: ast.AST, name: str, line: int) -> str | None:
+    def source_position(node: ast.AST) -> tuple[int, int]:
+        return (
+            getattr(node, "lineno", 0),
+            getattr(node, "col_offset", 0),
+        )
+
+    def client_module_at(
+        scope: ast.AST,
+        name: str,
+        position: tuple[int, int],
+    ) -> str | None:
         history = client_aliases.get((scope, name), ())
-        for assigned_line, module in reversed(history):
-            if assigned_line <= line:
+        for assigned_position, module in reversed(history):
+            if assigned_position <= position:
                 return module
         return None
 
@@ -348,13 +358,13 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
         value = assignment.value
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
         scope = lexical_scope(assignment)
-        line = getattr(assignment, "lineno", 0)
+        position = source_position(assignment)
         module = client_constructor_module(value) if value is not None else None
         if module is None and isinstance(value, ast.Name):
-            module = client_module_at(scope, value.id, line)
+            module = client_module_at(scope, value.id, position)
         for target in targets:
             for name in target_names(target):
-                client_aliases.setdefault((scope, name), []).append((line, module))
+                client_aliases.setdefault((scope, name), []).append((position, module))
 
     for assignment in assignments:
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
@@ -370,7 +380,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 isinstance(target, ast.Attribute)
                 and target.attr == "verify"
                 and isinstance(target.value, ast.Name)
-                and client_module_at(scope, target.value.id, getattr(assignment, "lineno", 0)) in {"requests", "httpx"}
+                and client_module_at(scope, target.value.id, source_position(assignment)) in {"requests", "httpx"}
             ):
                 add(
                     "PY106",
