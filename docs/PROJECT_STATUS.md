@@ -1,17 +1,18 @@
 # Project Status Ledger
 
-Last reviewed: 2026-11-12 (UTC)
+Last reviewed: 2026-11-13 (UTC)
 
-## Live status addendum — 2026-11-12
+## Live status addendum — 2026-11-13
 
 This addendum supersedes older live-status and workflow snapshots below where they conflict. Historical merge records remain unchanged.
 
-- Current `main`: `fcfde61efc504c4204eb6b7c3bb2ea76bf11ee9a`. It is 7 commits ahead of the prior recorded baseline `9556c73901d239d366bb7eb8f456eac74c615516`, with no commits behind.
-- Exact-head checks on the current main commit succeeded: Backend CI, main CI, Defensive Python Scan, Windows Launcher Validation, and Video Render Integration.
-- Scheduled Continuous Development run `43195708170` on 2026-11-12 failed at the provider invocation with `API key expired.`. Checkout, CLI installation, and effective default-deny tool-policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
-- The provider credential was not read, copied, rotated, or changed. Owner-managed credential renewal remains required, and the independent credential-isolation decision in Issue #316 remains a gate before resuming scheduled publishing.
+- Current `main`: `0aa9e7643110ac96f5f36268da54864f05ea81f2`. It is 5 commits ahead of the prior recorded baseline `fcfde61efc504c4204eb6b7c3bb2ea76bf11ee9a`, with no commits behind.
+- Exact-head checks on the current main commit all succeeded: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, Windows Launcher Validation, and Linux/Windows Video Render Integration. The effective scheduled OpenCode default-deny policy validation also passed.
+- Hub PR #365 corrected the Windows display-class registry path and added a mocked `winreg` regression test. It was merged on 2026-11-13 as `0aa9e7643110ac96f5f36268da54864f05ea81f2`; all 12 exact-main check runs passed.
+- Latest scheduled Continuous Development run `43403189626` (2026-11-13) failed at the provider invocation with `API key expired.`. Checkout, CLI installation, and effective default-deny tool-policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
+- The provider credential was not read, copied, rotated, or changed. Owner-managed credential renewal remains required, and the independent credential-isolation decision in Issue #316 remains open; current tool restrictions reduce exposure but do not prove an OS-level credential broker or complete process isolation.
 - Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issues #332 (expired provider credential) and #316 (provider credential isolation) remain open.
-- The scheduled workflow is still configured on its existing cadence; no schedule, secret, permission, deployment, or security-policy setting was changed during this review.
+- The scheduled workflow cadence and security controls were not changed during this review. No secrets, permissions, deployment settings, or production resources were modified.
 
 ## Previous status snapshot
 
