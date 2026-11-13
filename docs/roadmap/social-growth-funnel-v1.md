@@ -26,7 +26,8 @@ No follow-gating, forced follows, unsolicited bulk DMs, scraping private data, o
 - Instagram publishing requires a professional account, Graph API credentials, and a publicly reachable signed HTTPS media origin.
 - Provider delivery is not exactly-once. Ambiguous outcomes enter unknown_outcome and must be reconciled before retry.
 - Video generation and the lease-fenced FFmpeg render worker register owner-scoped MP4 assets with the `video_render_cut_v1` profile. A new integration assertion verifies that the actual render-worker asset can be attached to an Instagram Reel draft; campaign creation and dispatch revalidate the same profile.
-- PostZen Default profile has connected Instagram and Telegram accounts. The comment-automation inventory is empty. The API key is valid. Do not activate any live comment/DM automation until copy, resource URL, scope, and behavior are explicitly approved.
+- PostZen Default profile has connected Instagram and Telegram accounts. The comment-automation inventory is empty.
+- The in-repository video-generation provider registry is empty by default and currently has no configured provider. Existing local FFmpeg timeline rendering can process source footage, but prompt-to-video generation is not enabled; this remains a separate provider/local-template workstream and must not be described as operational. The API key is valid. Do not activate any live comment/DM automation until copy, resource URL, scope, and behavior are explicitly approved.
 - Current external account credentials, Meta scopes, public media reachability, and real-account publishing have not been verified by this repository audit.
 
 ## Current implementation status (feature branch)
