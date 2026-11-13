@@ -502,3 +502,25 @@ def test_media_verification_cli_returns_nonzero_for_inconsistent_registry(tmp_pa
     assert result["ok"] is False
     assert result["invalid_entries"] == 1
     assert "../outside.mp4" not in str(result)
+
+
+def test_verify_backup_cli_checks_integrity_without_creating_a_restore_file(tmp_path, capsys):
+    from mrhub.operations.backup import main
+
+    source = tmp_path / "source.sqlite3"
+    backup = tmp_path / "backup.sqlite3"
+    make_database(source)
+    backup_database(source, backup)
+
+    assert main(["verify-backup", str(backup)]) == 0
+    verified = json.loads(capsys.readouterr().out)
+    assert verified["verified"] is True
+    assert verified["sqlite_integrity"] == "ok"
+    assert not (tmp_path / "restored.sqlite3").exists()
+
+    with backup.open("ab") as stream:
+        stream.write(b"tampered")
+    assert main(["verify-backup", str(backup)]) == 2
+    failure = json.loads(capsys.readouterr().err)
+    assert failure["ok"] is False
+    assert "checksum" in failure["error"]
