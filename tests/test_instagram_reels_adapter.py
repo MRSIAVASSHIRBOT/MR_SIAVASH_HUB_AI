@@ -63,7 +63,7 @@ def test_reels_adapter_creates_container_checks_readiness_then_publishes():
     assert create_form["share_to_feed"] == ["true"]
     assert create_form["caption"] == ["A useful educational Reel\n\n#AI #Learning"]
     assert requests[1].url.path.endswith("/reel-container-123")
-    assert "status_code,status" in requests[1].url.query.decode()
+    assert parse_qs(requests[1].url.query.decode())["fields"] == ["status_code,status"]
     publish_form = parse_qs(requests[2].content.decode())
     assert publish_form["creation_id"] == ["reel-container-123"]
 
