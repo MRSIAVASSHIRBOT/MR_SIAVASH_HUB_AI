@@ -294,20 +294,19 @@ def _copy_media_file(
 ) -> None:
     digest = hashlib.sha256()
     copied = 0
-    with source.open("rb") as source_stream:
-        with destination.open("xb") as destination_stream:
-            created_files.append(destination)
-            while True:
-                chunk = source_stream.read(min(1024 * 1024, expected_size - copied + 1))
-                if not chunk:
-                    break
-                copied += len(chunk)
-                if copied > expected_size:
-                    raise BackupError("Media file changed while it was being copied")
-                digest.update(chunk)
-                destination_stream.write(chunk)
-            destination_stream.flush()
-            os.fsync(destination_stream.fileno())
+    with source.open("rb") as source_stream, destination.open("xb") as destination_stream:
+        created_files.append(destination)
+        while True:
+            chunk = source_stream.read(min(1024 * 1024, expected_size - copied + 1))
+            if not chunk:
+                break
+            copied += len(chunk)
+            if copied > expected_size:
+                raise BackupError("Media file changed while it was being copied")
+            digest.update(chunk)
+            destination_stream.write(chunk)
+        destination_stream.flush()
+        os.fsync(destination_stream.fileno())
     if copied != expected_size or digest.hexdigest() != expected_hash:
         raise BackupError("Media file changed or failed checksum verification during copy")
     _private_permissions(destination)
