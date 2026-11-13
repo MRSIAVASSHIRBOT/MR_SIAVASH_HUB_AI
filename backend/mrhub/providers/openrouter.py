@@ -7,6 +7,7 @@ import httpx
 
 from mrhub.providers.base import (
     ProviderConfigurationError,
+    ProviderError,
     ProviderHealth,
     ProviderRequest,
     ProviderResponse,
@@ -122,12 +123,18 @@ class OpenRouterProvider:
                 raise ProviderUnavailableError("Remote model returned an invalid response")
         except ProviderTimeoutError:
             raise
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Remote model request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailableError("Remote model service is unavailable") from exc
-        except ValueError as exc:
-            raise ProviderUnavailableError("Remote model returned an invalid response") from exc
+        except httpx.TimeoutException:
+            failure: ProviderError | None = ProviderTimeoutError(
+                "Remote model request timed out"
+            )
+        except httpx.HTTPError:
+            failure = ProviderUnavailableError("Remote model service is unavailable")
+        except ValueError:
+            failure = ProviderUnavailableError("Remote model returned an invalid response")
+        else:
+            failure = None
+        if failure is not None:
+            raise failure
 
         choices = payload.get("choices")
         if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
