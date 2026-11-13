@@ -1022,7 +1022,7 @@ MIGRATIONS = (
             "CREATE INDEX idx_content_publish_schedules_retry_due ON content_publish_schedules(status, next_attempt_at, scheduled_at)",
             "CREATE UNIQUE INDEX uq_content_publish_schedules_active_draft ON content_publish_schedules(owner_user_id, draft_id) WHERE status IN ('scheduled', 'publishing', 'unknown_outcome')",
         ),
-    ),,
+    ),
     Migration.build(
         37,
         "owner_scoped_cross_platform_content_campaigns",
