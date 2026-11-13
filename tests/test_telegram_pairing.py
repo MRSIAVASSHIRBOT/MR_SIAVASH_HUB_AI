@@ -76,6 +76,9 @@ def test_pairing_is_owner_initiated_and_issues_scoped_credentials(tmp_path, monk
     assert client.get(
         "/integrations/telegram/tasks", headers=_bot_headers(tokens)
     ).status_code == 403
+    assert client.get(
+        f"/integrations/telegram/tasks/{uuid4()}", headers=_bot_headers(tokens)
+    ).status_code == 403
     assert client.post(
         "/integrations/telegram/memory/search",
         json={"query": "private"},
@@ -279,6 +282,24 @@ def test_telegram_task_listing_isolated_between_paired_clients(tmp_path, monkeyp
     assert listed_b.status_code == 200
     assert [item["task_id"] for item in listed_a.json()["tasks"]] == [task_a.json()["task_id"]]
     assert [item["task_id"] for item in listed_b.json()["tasks"]] == [task_b.json()["task_id"]]
+
+    detail_a = client.get(
+        f"/integrations/telegram/tasks/{task_a.json()['task_id']}",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    detail_b = client.get(
+        f"/integrations/telegram/tasks/{task_b.json()['task_id']}",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    cross_client = client.get(
+        f"/integrations/telegram/tasks/{task_a.json()['task_id']}",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert detail_a.status_code == 200
+    assert detail_a.json()["description"] == "private task for client A"
+    assert detail_b.status_code == 200
+    assert detail_b.json()["description"] == "private task for client B"
+    assert cross_client.status_code == 404
     get_settings.cache_clear()
 
 def test_refresh_rotates_refresh_token_and_rejects_reuse(tmp_path, monkeypatch):

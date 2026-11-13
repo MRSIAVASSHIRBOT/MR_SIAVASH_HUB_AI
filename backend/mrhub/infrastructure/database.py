@@ -135,6 +135,36 @@ class TaskRepository:
             for row in rows
         ]
 
+    def get_for_telegram_client(self, client_id: str, task_id: UUID) -> TaskRecord | None:
+        """Return a task only when its submission audit belongs to this exact bot client."""
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT t.*
+                FROM tasks AS t
+                INNER JOIN audit_events AS a
+                    ON a.subject_id = t.task_id
+                   AND a.event_type = 'task.submitted'
+                   AND a.subject_type = 'task'
+                   AND a.actor_type = 'telegram_client'
+                   AND a.actor_id = ?
+                WHERE t.task_id = ?
+                LIMIT 1
+                """,
+                (client_id, str(task_id)),
+            ).fetchone()
+        if row is None:
+            return None
+        return TaskRecord(
+            task_id=UUID(row["task_id"]),
+            task_type=row["task_type"],
+            status=TaskStatus(row["status"]),
+            risk_class=RiskClass(row["risk_class"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            description=row["description"],
+        )
+
     def update_status(
         self,
         task_id: UUID,
