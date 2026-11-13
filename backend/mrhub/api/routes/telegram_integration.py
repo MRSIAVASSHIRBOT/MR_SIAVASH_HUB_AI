@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
+import re
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -70,6 +74,29 @@ class TaskCreateRequest(BaseModel):
 class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=5, ge=1, le=10)
+
+
+def _encode_telegram_task_cursor(created_at: str, task_id: str) -> str:
+    payload = f"{created_at}\n{task_id}".encode()
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", cursor):
+        raise ValueError("Invalid task cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = base64.b64decode(cursor + padding, altchars=b"-_", validate=True).decode("utf-8")
+        created_at, task_id = payload.split("\n", 1)
+        if not created_at or len(created_at) > 64:
+            raise ValueError("Invalid task cursor")
+        datetime.fromisoformat(created_at)
+        parsed_task_id = UUID(task_id)
+        if str(parsed_task_id) != task_id.lower():
+            raise ValueError("Invalid task cursor")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid task cursor") from None
+    return created_at, str(parsed_task_id)
 
 
 def _pairing_repository() -> TelegramPairingRepository:
@@ -205,11 +232,27 @@ def telegram_status(
 def list_telegram_tasks(
     identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:read"))],
     limit: int = 20,
+    cursor: str | None = None,
 ) -> dict[str, object]:
+    """List this paired client's recent tasks; pass next_cursor unchanged for older pages."""
     if not 1 <= limit <= 50:
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 50")
-    tasks = _tasks_repository().list_recent_for_telegram_client(identity.client_id, limit)
-    return {"tasks": [task.model_dump(mode="json") for task in tasks], "count": len(tasks)}
+    try:
+        before = _decode_telegram_task_cursor(cursor) if cursor is not None else None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid task cursor") from None
+    tasks, has_more, cursor_after = _tasks_repository().list_recent_for_telegram_client(
+        identity.client_id,
+        limit,
+        before=before,
+    )
+    next_cursor = _encode_telegram_task_cursor(*cursor_after) if cursor_after else None
+    return {
+        "tasks": [task.model_dump(mode="json") for task in tasks],
+        "count": len(tasks),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+    }
 
 
 @router.get("/tasks/{task_id}")
