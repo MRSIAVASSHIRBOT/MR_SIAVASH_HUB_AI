@@ -84,6 +84,8 @@ def test_openrouter_timeout_is_sanitized() -> None:
     with pytest.raises(ProviderTimeoutError) as error:
         provider.generate(ProviderRequest(input_text="hello"))
     assert str(error.value) == "Remote model request timed out"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
 
 
 def test_openrouter_invalid_response_fails_closed() -> None:
@@ -110,3 +112,20 @@ def test_openrouter_health_probe_does_not_start_inference() -> None:
     )
     assert provider.health().available is True
     assert paths == ["/api/v1/models"]
+
+
+
+def test_openrouter_transport_error_does_not_retain_api_key_context() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("private transport details", request=request)
+
+    provider = OpenRouterProvider(
+        model="example/free-model",
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderUnavailableError) as error:
+        provider.generate(ProviderRequest(input_text="hello"))
+    assert str(error.value) == "Remote model service is unavailable"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
