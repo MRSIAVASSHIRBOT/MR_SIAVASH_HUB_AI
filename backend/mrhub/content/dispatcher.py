@@ -200,9 +200,10 @@ class ContentScheduleDispatcher:
                         if (
                             media_type != "video/mp4"
                             or asset["processing_status"] != "processed"
+                            or asset["processing_profile"] != "video_render_cut_v1"
                         ):
                             raise ValueError(
-                                "Instagram Reels require a processed MP4 output asset"
+                                "Instagram Reels require a verified video_render_cut_v1 MP4 render"
                             )
                         draft["media_type"] = media_type
                     elif media_type not in {"image/jpeg", "image/png"}:
