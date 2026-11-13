@@ -468,6 +468,7 @@ def _read_media_backup_manifest(backup: str | Path) -> tuple[Path, dict[str, Any
         or not isinstance(manifest.get("asset_count"), int)
         or isinstance(manifest.get("total_bytes"), bool)
         or not isinstance(manifest.get("total_bytes"), int)
+        or not 0 <= manifest["total_bytes"] <= MAX_MEDIA_BACKUP_TOTAL_BYTES
     ):
         raise BackupError("Media backup manifest schema is invalid")
     return backup_path, manifest
@@ -601,12 +602,12 @@ def restore_media_assets(
         or not 1 <= max_total_bytes <= MAX_MEDIA_BACKUP_TOTAL_BYTES
     ):
         raise BackupError("Media restore size limit is outside the supported range")
-    verification = verify_media_backup(backup)
+    backup_path, manifest = _read_media_backup_manifest(backup)
+    if manifest["total_bytes"] > max_total_bytes:
+        raise BackupError("Media backup exceeds the requested restore size limit")
+    verification = verify_media_backup(backup_path)
     if verification.get("ok") is not True:
         raise BackupError("Media backup failed integrity verification")
-    if verification["total_bytes"] > max_total_bytes:
-        raise BackupError("Media backup exceeds the requested restore size limit")
-    backup_path, manifest = _read_media_backup_manifest(backup)
     destination_path = Path(destination).expanduser().absolute()
     destination_resolved = destination_path.resolve(strict=False)
     if (
