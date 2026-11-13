@@ -95,7 +95,6 @@ def test_mcp_service_accepts_real_streamable_http_client_over_loopback(tmp_path)
             process.wait(timeout=5)
 
 
-
 def test_mcp_service_accepts_modern_2026_protocol_client_over_loopback(tmp_path):
     """The current SDK client must negotiate the stateless 2026-07-28 protocol."""
     from mcp import Client
