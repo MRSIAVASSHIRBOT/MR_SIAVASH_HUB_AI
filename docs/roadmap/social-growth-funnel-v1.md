@@ -1,6 +1,6 @@
 # Social Growth Funnel v1 — Engineering Plan
 
-Status: planning baseline recorded; implementation not yet enabled.
+Status: implementation in progress; campaign linkage is implemented on the feature branch, while CI and external account acceptance remain pending.
 Base commit: b1c66a36074b8bb0df3ccd1d9658632925303dc5
 Branch: feat/social-growth-funnel-v1
 
@@ -28,6 +28,17 @@ No follow-gating, forced follows, unsolicited bulk DMs, scraping private data, o
 - Video intelligence/generation/render modules and FFmpeg processing exist; their output-to-social publishing handoff needs an integration audit.
 - PostZen currently has one connected Instagram account in the Default profile and no comment automations. The API key is valid. Do not activate any live comment/DM automation until copy, resource URL, scope, and behavior are explicitly approved.
 - Current external account credentials, Meta scopes, public media reachability, and real-account publishing have not been verified by this repository audit.
+
+## Current implementation status (feature branch)
+
+- Instagram Reels adapter: implemented with bounded polling of the same container; only a confirmed FINISHED container is published.
+- Signed public media: JPEG/PNG/MP4 path and owner-scoped processed-render checks are implemented.
+- Reel draft type: database migration 36 rebuilds the draft/version/schedule tables to allow `reel` while preserving existing records.
+- Cross-platform campaign linkage: migration 37, owner-scoped repository, authenticated API, atomic paired scheduling, paired cancellation, and API tests are implemented.
+- Existing content scheduler and worker are reused; no parallel scheduler was added.
+- CI for the current feature head is pending. Do not treat this branch as production-ready until every required check passes.
+- PostZen Instagram comment automation inventory currently returns zero automations. Do not create or activate one until the exact keyword, approved DM copy, and public resource URL are supplied and reviewed.
+- A previous Telegram diagnostic exposed a bot-token-bearing URL in stored error details. Rotate the bot token through BotFather and update the connected secret before enabling Telegram publishing. Do not copy tokens into chat or source control.
 
 ## Workstreams
 
@@ -68,8 +79,8 @@ No follow-gating, forced follows, unsolicited bulk DMs, scraping private data, o
 
 1. Complete integration audit and verify current tests/configuration.
 2. Implement and test MP4 signed-media delivery and Instagram Reels adapter.
-3. Implement campaign linkage and cross-platform publishing acceptance tests.
-4. Configure one inactive PostZen comment automation for review.
+3. Implement campaign linkage and cross-platform publishing acceptance tests. (feature-branch implementation completed; CI verification pending)
+4. Configure one inactive PostZen comment automation for review only after keyword, DM copy, and resource URL are approved.
 5. Run a controlled test with one harmless campaign after explicit approval.
 6. Enable scheduled operation only after successful acceptance and quota checks.
 7. Add weekly reporting and tune topics based on observed outcomes.
