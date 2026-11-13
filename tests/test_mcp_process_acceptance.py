@@ -93,3 +93,63 @@ def test_mcp_service_accepts_real_streamable_http_client_over_loopback(tmp_path)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+
+
+
+def test_mcp_service_accepts_modern_2026_protocol_client_over_loopback(tmp_path):
+    """The current SDK client must negotiate the stateless 2026-07-28 protocol."""
+    from mcp import Client
+
+    port = _free_loopback_port()
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "MRH_MCP_ENABLED": "true",
+            "MRH_MCP_HOST": "127.0.0.1",
+            "MRH_MCP_PORT": str(port),
+            "MRH_DATABASE_PATH": str(tmp_path / "mcp-modern-acceptance.sqlite3"),
+        }
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-m", "mrhub.mcp_service"],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_for_listener(process, port)
+
+        async def exercise_host() -> None:
+            async with Client(f"http://127.0.0.1:{port}/mcp") as client:
+                assert client.protocol_version == "2026-07-28"
+                tools = await client.list_tools()
+                assert {item.name for item in tools.tools} == {
+                    "hub.list_tools",
+                    "hub.invoke_tool",
+                }
+                result = await client.call_tool(
+                    "hub.invoke_tool",
+                    {
+                        "name": "text.echo",
+                        "payload": {"text": "modern stateless acceptance"},
+                    },
+                )
+                assert not result.is_error
+                response = json.loads(result.content[0].text)
+                assert response == {
+                    "ok": True,
+                    "result": {
+                        "text": "modern stateless acceptance",
+                        "character_count": 27,
+                    },
+                }
+
+        asyncio.run(exercise_host())
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
