@@ -554,7 +554,7 @@ def test_v36_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [36]
+    assert SchemaMigrator(connection).migrate() == [36, 37]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -583,6 +583,26 @@ def test_v36_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
                   'Reel', 'Reel body', '[]', ?, 'owner-1', ?, NULL)""",
         ("b" * 64, now),
     )
+    connection.execute(
+        """INSERT INTO content_drafts (
+            draft_id, owner_user_id, platform, content_type, title, body, hashtags_json,
+            status, content_hash, version, approved_by, approved_at, created_at, updated_at,
+            media_asset_id
+        ) VALUES ('telegram-draft', 'owner-1', 'telegram', 'post_text', 'Lesson',
+                  'Companion lesson', '[]', 'draft', ?, 1, NULL, NULL, ?, ?, NULL)""",
+        ("c" * 64, now, now),
+    )
+    connection.execute(
+        """INSERT INTO content_campaigns (
+            campaign_id, owner_user_id, title, instagram_draft_id, telegram_draft_id,
+            status, created_at, updated_at
+        ) VALUES ('campaign-1', 'owner-1', 'Campaign', 'reel-draft',
+                  'telegram-draft', 'draft', ?, ?)""",
+        (now, now),
+    )
+    assert connection.execute(
+        "SELECT campaign_id FROM content_campaigns WHERE campaign_id = 'campaign-1'"
+    ).fetchone()["campaign_id"] == "campaign-1"
     connection.commit()
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
