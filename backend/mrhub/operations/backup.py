@@ -460,6 +460,7 @@ def _read_media_backup_manifest(backup: str | Path) -> tuple[Path, dict[str, Any
     if (
         not isinstance(manifest, dict)
         or isinstance(manifest.get("format_version"), bool)
+        or not isinstance(manifest.get("format_version"), int)
         or manifest.get("format_version") != 1
         or not isinstance(manifest.get("assets"), list)
         or len(manifest["assets"]) > MAX_MEDIA_ASSETS_TO_VERIFY
