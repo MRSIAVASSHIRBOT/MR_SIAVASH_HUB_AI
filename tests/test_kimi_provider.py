@@ -78,6 +78,8 @@ def test_kimi_timeout_is_sanitized() -> None:
         provider.generate(ProviderRequest(input_text="hello"))
     assert str(error.value) == "Kimi request timed out"
     assert "sensitive" not in str(error.value)
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
 
 
 def test_kimi_failure_does_not_expose_body_or_follow_redirects() -> None:
@@ -265,3 +267,20 @@ def test_kimi_vision_rejects_boolean_output_token_limit() -> None:
             image_data_url=image_data_url,
             max_output_tokens=True,
         )
+
+
+
+def test_kimi_transport_error_does_not_retain_api_key_context() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("private transport details", request=request)
+
+    provider = KimiProvider(
+        model="kimi-k3.1-pro",
+        api_key="test-key",
+        transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ProviderUnavailableError) as error:
+        provider.generate(ProviderRequest(input_text="hello"))
+    assert str(error.value) == "Kimi service is unavailable"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None

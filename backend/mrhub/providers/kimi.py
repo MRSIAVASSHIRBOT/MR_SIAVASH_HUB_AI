@@ -11,6 +11,7 @@ import httpx
 
 from mrhub.providers.base import (
     ProviderConfigurationError,
+    ProviderError,
     ProviderHealth,
     ProviderRequest,
     ProviderResponse,
@@ -124,12 +125,16 @@ class KimiProvider:
             if not isinstance(payload, dict):
                 raise ProviderUnavailableError("Kimi returned an invalid response")
             return payload
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Kimi request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailableError("Kimi service is unavailable") from exc
-        except (ValueError, UnicodeError) as exc:
-            raise ProviderUnavailableError("Kimi returned an invalid response") from exc
+        except httpx.TimeoutException:
+            failure: ProviderError | None = ProviderTimeoutError("Kimi request timed out")
+        except httpx.HTTPError:
+            failure = ProviderUnavailableError("Kimi service is unavailable")
+        except (ValueError, UnicodeError):
+            failure = ProviderUnavailableError("Kimi returned an invalid response")
+        else:
+            failure = None
+        if failure is not None:
+            raise failure
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
         if (
