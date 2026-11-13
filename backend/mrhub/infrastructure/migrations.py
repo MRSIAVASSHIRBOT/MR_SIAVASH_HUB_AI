@@ -1022,7 +1022,29 @@ MIGRATIONS = (
             "CREATE INDEX idx_content_publish_schedules_retry_due ON content_publish_schedules(status, next_attempt_at, scheduled_at)",
             "CREATE UNIQUE INDEX uq_content_publish_schedules_active_draft ON content_publish_schedules(owner_user_id, draft_id) WHERE status IN ('scheduled', 'publishing', 'unknown_outcome')",
         ),
-    ),
+    ),,
+    Migration.build(
+        37,
+        "owner_scoped_cross_platform_content_campaigns",
+        (
+            """CREATE TABLE content_campaigns (
+                campaign_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                instagram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE RESTRICT,
+                telegram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE RESTRICT,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK (
+                    status IN ('draft', 'scheduled', 'published', 'partial', 'failed', 'cancelled')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (instagram_draft_id <> telegram_draft_id),
+                UNIQUE(owner_user_id, instagram_draft_id, telegram_draft_id)
+            )""",
+            "CREATE INDEX idx_content_campaigns_owner_updated ON content_campaigns(owner_user_id, updated_at DESC)",
+            "CREATE INDEX idx_content_campaigns_status_updated ON content_campaigns(status, updated_at)",
+        ),
+    )
 )
 
 
