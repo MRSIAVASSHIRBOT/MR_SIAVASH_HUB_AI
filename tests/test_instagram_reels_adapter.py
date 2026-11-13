@@ -25,16 +25,20 @@ def make_adapter(handler):
         "v24.0",
         client=client,
     )
+    adapter._CONTAINER_POLL_ATTEMPTS = 3
+    adapter._CONTAINER_POLL_INTERVAL_SECONDS = 0
     return adapter, client
 
 
 def test_reels_adapter_creates_container_checks_readiness_then_publishes():
     requests = []
 
+    statuses = iter(["IN_PROGRESS", "FINISHED"])
+
     def handler(request):
         requests.append(request)
         if request.method == "GET":
-            return httpx.Response(200, json={"status_code": "FINISHED"})
+            return httpx.Response(200, json={"status_code": next(statuses)})
         if request.url.path.endswith("/media"):
             return httpx.Response(200, json={"id": "reel-container-123"})
         return httpx.Response(200, json={"id": "reel-post-456"})
@@ -56,19 +60,20 @@ def test_reels_adapter_creates_container_checks_readiness_then_publishes():
         client.close()
 
     assert receipt.provider_post_id == "reel-post-456"
-    assert [request.method for request in requests] == ["POST", "GET", "POST"]
+    assert [request.method for request in requests] == ["POST", "GET", "GET", "POST"]
     create_form = parse_qs(requests[0].content.decode())
     assert create_form["media_type"] == ["REELS"]
     assert create_form["video_url"] == ["https://media.example-cdn.com/reel.mp4"]
     assert create_form["share_to_feed"] == ["true"]
     assert create_form["caption"] == ["A useful educational Reel\n\n#AI #Learning"]
     assert requests[1].url.path.endswith("/reel-container-123")
+    assert requests[2].url.path.endswith("/reel-container-123")
     assert parse_qs(requests[1].url.query.decode())["fields"] == ["status_code,status"]
-    publish_form = parse_qs(requests[2].content.decode())
+    publish_form = parse_qs(requests[3].content.decode())
     assert publish_form["creation_id"] == ["reel-container-123"]
 
 
-def test_reels_adapter_does_not_publish_while_container_is_processing():
+def test_reels_adapter_quarantines_container_that_never_finishes():
     requests = []
 
     def handler(request):
@@ -79,7 +84,7 @@ def test_reels_adapter_does_not_publish_while_container_is_processing():
 
     adapter, client = make_adapter(handler)
     try:
-        with pytest.raises(TransientPublishError):
+        with pytest.raises(UnknownPublishOutcome):
             adapter.publish(
                 {
                     "platform": "instagram",
@@ -93,7 +98,7 @@ def test_reels_adapter_does_not_publish_while_container_is_processing():
     finally:
         client.close()
 
-    assert [request.method for request in requests] == ["POST", "GET"]
+    assert [request.method for request in requests] == ["POST", "GET", "GET", "GET"]
 
 
 def test_reels_adapter_rejects_non_mp4_before_provider_request():
