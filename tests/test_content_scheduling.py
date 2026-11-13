@@ -126,7 +126,7 @@ def _create_approved_campaign_drafts(client):
         owner_id,
         "campaign-reel.mp4",
         "video/mp4",
-        b"\\x00\\x00\\x00\\x18ftypisom" + b"campaign-test-render",
+        b"\x00\x00\x00\x18ftypisom" + b"campaign-test-render",
     )
     with media.tasks._connection() as connection:
         connection.execute(
