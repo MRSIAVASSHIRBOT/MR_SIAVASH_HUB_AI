@@ -10,7 +10,6 @@ from mrhub.content.dispatcher import (
     ContentScheduleDispatcher,
     PermanentPublishError,
     PublishReceipt,
-    TransientPublishError,
     UnknownPublishOutcome,
 )
 from mrhub.content.instagram_reels import InstagramGraphPublishingAdapter
