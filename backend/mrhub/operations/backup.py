@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -265,6 +266,382 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
     return result
 
 
+
+
+DEFAULT_MEDIA_BACKUP_MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
+MAX_MEDIA_BACKUP_TOTAL_BYTES = MAX_MEDIA_ASSETS_TO_VERIFY * MAX_MEDIA_ASSET_BYTES
+
+
+def _cleanup_created_paths(files: list[Path], directories: list[Path]) -> None:
+    for path in reversed(files):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    for path in reversed(directories):
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+
+
+def _copy_media_file(
+    source: Path,
+    destination: Path,
+    expected_size: int,
+    expected_hash: str,
+    created_files: list[Path],
+) -> None:
+    digest = hashlib.sha256()
+    copied = 0
+    with source.open("rb") as source_stream:
+        with destination.open("xb") as destination_stream:
+            created_files.append(destination)
+            while True:
+                chunk = source_stream.read(min(1024 * 1024, expected_size - copied + 1))
+                if not chunk:
+                    break
+                copied += len(chunk)
+                if copied > expected_size:
+                    raise BackupError("Media file changed while it was being copied")
+                digest.update(chunk)
+                destination_stream.write(chunk)
+            destination_stream.flush()
+            os.fsync(destination_stream.fileno())
+    if copied != expected_size or digest.hexdigest() != expected_hash:
+        raise BackupError("Media file changed or failed checksum verification during copy")
+    _private_permissions(destination)
+
+
+def _read_media_registry(database_path: Path) -> list[tuple[str, int, str]]:
+    try:
+        with closing(
+            sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
+        ) as connection:
+            rows = connection.execute(
+                "SELECT storage_key, file_size, content_hash FROM content_assets ORDER BY storage_key"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise BackupError("Media asset registry could not be read") from exc
+    if len(rows) > MAX_MEDIA_ASSETS_TO_VERIFY:
+        raise BackupError("Media asset registry exceeds the configured verification limit")
+    return [(str(key), int(size), str(digest)) for key, size, digest in rows]
+
+
+def backup_media_assets(
+    database: str | Path,
+    destination: str | Path,
+    *,
+    max_total_bytes: int = DEFAULT_MEDIA_BACKUP_MAX_TOTAL_BYTES,
+) -> dict[str, Any]:
+    """Copy verified registered media into a new private directory with a checksum manifest."""
+    if (
+        isinstance(max_total_bytes, bool)
+        or not isinstance(max_total_bytes, int)
+        or not 1 <= max_total_bytes <= MAX_MEDIA_BACKUP_TOTAL_BYTES
+    ):
+        raise BackupError("Media backup size limit is outside the supported range")
+    database_path = Path(database).expanduser().resolve(strict=True)
+    if not database_path.is_file():
+        raise BackupError("Media backup source must be a regular database file")
+    source_root = database_path.parent / "content_assets"
+    source_verification = verify_media_assets(database_path)
+    if source_verification.get("ok") is not True:
+        raise BackupError("Media source failed integrity verification")
+    rows = _read_media_registry(database_path)
+    total_bytes = sum(size for _, size, _ in rows)
+    if total_bytes > max_total_bytes:
+        raise BackupError("Registered media exceeds the requested backup size limit")
+
+    destination_path = Path(destination).expanduser().absolute()
+    source_root_resolved = source_root.resolve(strict=False)
+    destination_resolved = destination_path.resolve(strict=False)
+    if (
+        destination_resolved == source_root_resolved
+        or destination_resolved.is_relative_to(source_root_resolved)
+    ):
+        raise BackupError("Media backup destination must be outside the source media directory")
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+    created_files: list[Path] = []
+    created_directories: list[Path] = []
+    try:
+        destination_path.mkdir(mode=0o700, exist_ok=False)
+        created_directories.append(destination_path)
+        media_destination = destination_path / "content_assets"
+        media_destination.mkdir(mode=0o700)
+        created_directories.append(media_destination)
+
+        resolved_root = source_root.resolve(strict=False)
+        assets: list[dict[str, Any]] = []
+        for storage_key, expected_size, expected_hash in rows:
+            if (
+                not _MEDIA_STORAGE_KEY_PATTERN.fullmatch(storage_key)
+                or not 0 <= expected_size <= MAX_MEDIA_ASSET_BYTES
+                or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
+            ):
+                raise BackupError("Media registry contains an invalid asset entry")
+            source_candidate = source_root / storage_key
+            if source_candidate.is_symlink():
+                raise BackupError("Media source contains a symbolic link")
+            try:
+                source_file = source_candidate.resolve(strict=True)
+            except OSError as exc:
+                raise BackupError("A registered media file is missing or inaccessible") from exc
+            if source_file.parent != resolved_root or not source_file.is_file():
+                raise BackupError("A registered media file is outside the media directory")
+            target = media_destination / storage_key
+            _copy_media_file(
+                source_file,
+                target,
+                expected_size,
+                expected_hash,
+                created_files,
+            )
+            assets.append(
+                {
+                    "storage_key": storage_key,
+                    "byte_size": expected_size,
+                    "sha256": expected_hash,
+                }
+            )
+
+        manifest = {
+            "format_version": 1,
+            "created_at": datetime.now(UTC).isoformat(),
+            "source_database_name": database_path.name,
+            "asset_count": len(assets),
+            "total_bytes": total_bytes,
+            "assets": assets,
+        }
+        manifest_path = destination_path / "manifest.json"
+        with manifest_path.open("x", encoding="utf-8") as stream:
+            created_files.append(manifest_path)
+            json.dump(manifest, stream, ensure_ascii=False, sort_keys=True, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        _private_permissions(manifest_path)
+        return {
+            "ok": True,
+            "destination_name": destination_path.name,
+            "asset_count": len(assets),
+            "total_bytes": total_bytes,
+            "manifest": "manifest.json",
+        }
+    except Exception as exc:
+        _cleanup_created_paths(created_files, created_directories)
+        if isinstance(exc, BackupError):
+            raise
+        if isinstance(exc, OSError):
+            raise BackupError("Media backup failed; existing files were not overwritten") from exc
+        raise
+
+
+def _read_media_backup_manifest(backup: str | Path) -> tuple[Path, dict[str, Any]]:
+    input_path = Path(backup).expanduser()
+    if input_path.is_symlink():
+        raise BackupError("Media backup directory must not be a symbolic link")
+    try:
+        backup_path = input_path.resolve(strict=True)
+    except OSError as exc:
+        raise BackupError("Media backup directory is missing or inaccessible") from exc
+    if not backup_path.is_dir():
+        raise BackupError("Media backup source must be a directory")
+    manifest_path = backup_path / "manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise BackupError("Media backup manifest is missing or unsafe")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise BackupError("Media backup manifest is invalid") from exc
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("format_version") != 1
+        or not isinstance(manifest.get("assets"), list)
+        or len(manifest["assets"]) > MAX_MEDIA_ASSETS_TO_VERIFY
+        or isinstance(manifest.get("asset_count"), bool)
+        or not isinstance(manifest.get("asset_count"), int)
+        or isinstance(manifest.get("total_bytes"), bool)
+        or not isinstance(manifest.get("total_bytes"), int)
+    ):
+        raise BackupError("Media backup manifest schema is invalid")
+    return backup_path, manifest
+
+
+def verify_media_backup(backup: str | Path) -> dict[str, Any]:
+    """Verify every file and manifest entry in a previously created media backup."""
+    backup_path, manifest = _read_media_backup_manifest(backup)
+    assets = manifest["assets"]
+    result: dict[str, Any] = {
+        "ok": False,
+        "asset_count": len(assets),
+        "verified_assets": 0,
+        "missing_assets": 0,
+        "size_mismatched_assets": 0,
+        "hash_mismatched_assets": 0,
+        "invalid_entries": 0,
+        "unregistered_entries": 0,
+        "total_bytes": 0,
+    }
+    if manifest["asset_count"] != len(assets):
+        result["invalid_entries"] += 1
+
+    media_root = backup_path / "content_assets"
+    if media_root.is_symlink() or not media_root.is_dir():
+        result["invalid_entries"] += 1
+        result["missing_assets"] += len(assets)
+        return result
+    resolved_root = media_root.resolve(strict=True)
+    registered: set[str] = set()
+    expected_total = 0
+
+    for asset in assets:
+        if not isinstance(asset, dict):
+            result["invalid_entries"] += 1
+            continue
+        storage_key = asset.get("storage_key")
+        expected_size = asset.get("byte_size")
+        expected_hash = asset.get("sha256")
+        if (
+            not isinstance(storage_key, str)
+            or not _MEDIA_STORAGE_KEY_PATTERN.fullmatch(storage_key)
+            or storage_key in registered
+            or isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or not 0 <= expected_size <= MAX_MEDIA_ASSET_BYTES
+            or not isinstance(expected_hash, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
+        ):
+            result["invalid_entries"] += 1
+            continue
+        registered.add(storage_key)
+        expected_total += expected_size
+        candidate = media_root / storage_key
+        if candidate.is_symlink():
+            result["invalid_entries"] += 1
+            continue
+        try:
+            resolved = candidate.resolve(strict=True)
+        except FileNotFoundError:
+            result["missing_assets"] += 1
+            continue
+        except OSError:
+            result["invalid_entries"] += 1
+            continue
+        if resolved.parent != resolved_root or not resolved.is_file():
+            result["invalid_entries"] += 1
+            continue
+        try:
+            actual_size = resolved.stat().st_size
+            if actual_size != expected_size:
+                result["size_mismatched_assets"] += 1
+                continue
+            if _sha256(resolved) != expected_hash:
+                result["hash_mismatched_assets"] += 1
+                continue
+        except OSError:
+            result["invalid_entries"] += 1
+            continue
+        result["verified_assets"] += 1
+
+    result["total_bytes"] = expected_total
+    if manifest["total_bytes"] != expected_total:
+        result["invalid_entries"] += 1
+    try:
+        for entry in media_root.iterdir():
+            if entry.name not in registered:
+                result["unregistered_entries"] += 1
+    except OSError:
+        result["invalid_entries"] += 1
+
+    try:
+        for entry in backup_path.iterdir():
+            if entry.name not in {"manifest.json", "content_assets"}:
+                result["unregistered_entries"] += 1
+    except OSError:
+        result["invalid_entries"] += 1
+
+    result["ok"] = all(
+        result[key] == 0
+        for key in (
+            "missing_assets",
+            "size_mismatched_assets",
+            "hash_mismatched_assets",
+            "invalid_entries",
+            "unregistered_entries",
+        )
+    ) and result["verified_assets"] == len(assets)
+    return result
+
+
+def restore_media_assets(
+    backup: str | Path,
+    destination: str | Path,
+    *,
+    max_total_bytes: int = DEFAULT_MEDIA_BACKUP_MAX_TOTAL_BYTES,
+) -> dict[str, Any]:
+    """Restore a verified media backup into a new directory without overwriting files."""
+    if (
+        isinstance(max_total_bytes, bool)
+        or not isinstance(max_total_bytes, int)
+        or not 1 <= max_total_bytes <= MAX_MEDIA_BACKUP_TOTAL_BYTES
+    ):
+        raise BackupError("Media restore size limit is outside the supported range")
+    verification = verify_media_backup(backup)
+    if verification.get("ok") is not True:
+        raise BackupError("Media backup failed integrity verification")
+    if verification["total_bytes"] > max_total_bytes:
+        raise BackupError("Media backup exceeds the requested restore size limit")
+    backup_path, manifest = _read_media_backup_manifest(backup)
+    destination_path = Path(destination).expanduser().absolute()
+    destination_resolved = destination_path.resolve(strict=False)
+    if (
+        destination_resolved == backup_path
+        or destination_resolved.is_relative_to(backup_path)
+    ):
+        raise BackupError("Media restore destination must be outside the backup directory")
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+    created_files: list[Path] = []
+    created_directories: list[Path] = []
+    try:
+        destination_path.mkdir(mode=0o700, exist_ok=False)
+        created_directories.append(destination_path)
+        source_root = backup_path / "content_assets"
+        resolved_root = source_root.resolve(strict=True)
+        for asset in manifest["assets"]:
+            storage_key = asset["storage_key"]
+            source = source_root / storage_key
+            if source.is_symlink():
+                raise BackupError("Media backup contains a symbolic link")
+            resolved_source = source.resolve(strict=True)
+            if resolved_source.parent != resolved_root or not resolved_source.is_file():
+                raise BackupError("Media backup file is outside its asset directory")
+            target = destination_path / storage_key
+            _copy_media_file(
+                resolved_source,
+                target,
+                asset["byte_size"],
+                asset["sha256"],
+                created_files,
+            )
+        return {
+            "restored": True,
+            "destination_name": destination_path.name,
+            "asset_count": verification["asset_count"],
+            "total_bytes": verification["total_bytes"],
+            "destination_overwritten": False,
+        }
+    except Exception as exc:
+        _cleanup_created_paths(created_files, created_directories)
+        if isinstance(exc, BackupError):
+            raise
+        if isinstance(exc, OSError):
+            raise BackupError("Media restore failed; existing files were not overwritten") from exc
+        raise
+
+
 def verify_backup(backup: str | Path) -> dict[str, Any]:
     """Verify a backup manifest, checksum, size, and SQLite integrity without writing files."""
     backup_path = Path(backup).expanduser().resolve(strict=True)
@@ -366,6 +743,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     media_parser.add_argument("database", type=Path, help="application SQLite database")
 
+    backup_media_parser = commands.add_parser(
+        "backup-media",
+        help="copy verified registered media into a new private recovery directory",
+    )
+    backup_media_parser.add_argument("database", type=Path, help="application SQLite database")
+    backup_media_parser.add_argument("destination", type=Path, help="new media backup directory")
+    backup_media_parser.add_argument(
+        "--max-total-bytes",
+        type=int,
+        default=DEFAULT_MEDIA_BACKUP_MAX_TOTAL_BYTES,
+        help="maximum total media bytes to copy (default: 5 GiB)",
+    )
+
+    verify_media_backup_parser = commands.add_parser(
+        "verify-media-backup",
+        help="verify a media recovery directory without writing files",
+    )
+    verify_media_backup_parser.add_argument("backup", type=Path, help="media backup directory")
+
+    restore_media_parser = commands.add_parser(
+        "restore-media",
+        help="restore verified media into a new directory without overwriting files",
+    )
+    restore_media_parser.add_argument("backup", type=Path, help="media backup directory")
+    restore_media_parser.add_argument("destination", type=Path, help="new media directory")
+    restore_media_parser.add_argument(
+        "--max-total-bytes",
+        type=int,
+        default=DEFAULT_MEDIA_BACKUP_MAX_TOTAL_BYTES,
+        help="maximum total media bytes to restore (default: 5 GiB)",
+    )
+
     args = parser.parse_args(argv)
     try:
         if args.command == "backup":
@@ -374,8 +783,22 @@ def main(argv: list[str] | None = None) -> int:
             result = restore_database(args.backup, args.destination)
         elif args.command == "verify-backup":
             result = verify_backup(args.backup)
-        else:
+        elif args.command == "verify-media":
             result = verify_media_assets(args.database)
+        elif args.command == "backup-media":
+            result = backup_media_assets(
+                args.database,
+                args.destination,
+                max_total_bytes=args.max_total_bytes,
+            )
+        elif args.command == "verify-media-backup":
+            result = verify_media_backup(args.backup)
+        else:
+            result = restore_media_assets(
+                args.backup,
+                args.destination,
+                max_total_bytes=args.max_total_bytes,
+            )
     except (BackupError, OSError) as exc:
         print(
             json.dumps(
@@ -388,7 +811,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    if args.command == "verify-media" and result.get("ok") is not True:
+    if args.command in {"verify-media", "verify-media-backup"} and result.get("ok") is not True:
         return 1
     return 0
 
