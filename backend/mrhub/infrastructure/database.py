@@ -102,26 +102,44 @@ class TaskRepository:
         ]
 
     def list_recent_for_telegram_client(
-        self, client_id: str, limit: int = 20
-    ) -> Iterable[TaskRecord]:
-        """Return only tasks submitted by this exact paired Telegram client."""
+        self,
+        client_id: str,
+        limit: int = 20,
+        *,
+        before: tuple[str, str] | None = None,
+    ) -> tuple[list[TaskRecord], bool]:
+        """Return one bounded, cursor-addressable page for the exact paired Telegram client."""
         bounded_limit = max(1, min(limit, 50))
+        parameters: list[object] = [client_id]
+        cursor_clause = ""
+        if before is not None:
+            cursor_clause = (
+                "AND (t.created_at < ? OR (t.created_at = ? AND t.task_id < ?))"
+            )
+            parameters.extend((before[0], before[0], before[1]))
+        parameters.append(bounded_limit + 1)
         with self._connection() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT t.*
                 FROM tasks AS t
-                INNER JOIN audit_events AS a
-                    ON a.subject_id = t.task_id
-                   AND a.event_type = 'task.submitted'
-                   AND a.subject_type = 'task'
-                   AND a.actor_type = 'telegram_client'
-                   AND a.actor_id = ?
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM audit_events AS a
+                    WHERE a.subject_id = t.task_id
+                      AND a.event_type = 'task.submitted'
+                      AND a.subject_type = 'task'
+                      AND a.actor_type = 'telegram_client'
+                      AND a.actor_id = ?
+                )
+                {cursor_clause}
                 ORDER BY t.created_at DESC, t.task_id DESC
                 LIMIT ?
                 """,
-                (client_id, bounded_limit),
+                parameters,
             ).fetchall()
+        has_more = len(rows) > bounded_limit
+        page = rows[:bounded_limit]
         return [
             TaskRecord(
                 task_id=UUID(row["task_id"]),
@@ -132,8 +150,8 @@ class TaskRepository:
                 updated_at=row["updated_at"],
                 description=row["description"],
             )
-            for row in rows
-        ]
+            for row in page
+        ], has_more
 
     def get_for_telegram_client(self, client_id: str, task_id: UUID) -> TaskRecord | None:
         """Return a task only when its submission audit belongs to this exact bot client."""
