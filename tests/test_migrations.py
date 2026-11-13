@@ -555,9 +555,10 @@ def test_v36_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
     assert SchemaMigrator(connection).migrate() == [36]
-    assert connection.execute(
+    preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
-    ).fetchone() == ("Legacy", "caption")
+    ).fetchone()
+    assert (preserved_draft["title"], preserved_draft["content_type"]) == ("Legacy", "caption")
     assert connection.execute(
         "SELECT version_id FROM content_draft_versions WHERE version_id = 'version-1'"
     ).fetchone()["version_id"] == "version-1"
