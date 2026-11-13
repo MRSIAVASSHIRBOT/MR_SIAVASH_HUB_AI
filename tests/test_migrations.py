@@ -575,6 +575,14 @@ def test_v36_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
                   '[]', 'draft', ?, 1, NULL, NULL, ?, ?, NULL)""",
         ("b" * 64, now, now),
     )
+    connection.execute(
+        """INSERT INTO content_draft_versions (
+            version_id, draft_id, owner_user_id, version_number, platform, content_type,
+            title, body, hashtags_json, content_hash, changed_by, created_at, media_asset_id
+        ) VALUES ('reel-version', 'reel-draft', 'owner-1', 1, 'instagram', 'reel',
+                  'Reel', 'Reel body', '[]', ?, 'owner-1', ?, NULL)""",
+        ("b" * 64, now),
+    )
     connection.commit()
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
