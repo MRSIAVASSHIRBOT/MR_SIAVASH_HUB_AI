@@ -12,9 +12,16 @@ mrhub-db backup <source.sqlite3> <new-backup.sqlite3>
 mrhub-db restore <backup.sqlite3> <new-destination.sqlite3>
 mrhub-db verify-backup <backup.sqlite3>
 mrhub-db verify-media <database.sqlite3>
+mrhub-db backup-media <database.sqlite3> <new-media-backup-dir> [--max-total-bytes BYTES]
+mrhub-db verify-media-backup <media-backup-dir>
+mrhub-db restore-media <media-backup-dir> <new-media-dir> [--max-total-bytes BYTES]
 ```
 
-Each command prints one JSON result for scripts and operator workflows. Backup and restore refuse to overwrite an existing destination. Media verification is read-only; it returns exit code `1` when integrity checks fail. Invalid input, missing manifests, checksum failures, and filesystem errors return exit code `2`. These commands never start the API/worker, alter a live database, copy media, or manage secret material automatically.
+Each command prints one JSON result for scripts and operator workflows. Database and media restore refuse to overwrite an existing destination. Media verification is read-only; it returns exit code `1` when integrity checks fail. Invalid input, missing manifests, checksum failures, and filesystem errors return exit code `2`. These commands never start the API/worker, alter a live database, or manage secret material automatically.
+
+### Media recovery
+
+After stopping API and worker writers, run `backup-media` to copy only registered media assets into a new private directory. The generated manifest records each storage key, byte size, and SHA-256 digest. The default total copy/restore limit is 5 GiB and can be raised explicitly with `--max-total-bytes` up to the verifier's 1 TiB hard bound. Run `verify-media-backup` before `restore-media`; restore writes only to a new directory and never merges into or overwrites the live `content_assets` directory. The database and media recovery points must be created while writers are stopped so they represent one consistent application state.
 
 
 ## Backup
