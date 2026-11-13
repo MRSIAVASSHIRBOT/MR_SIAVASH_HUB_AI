@@ -305,3 +305,50 @@ def test_deleting_linked_draft_cascades_campaign_link_without_orphaning_schedule
     assert client.get(f"/content/campaigns/{campaign_id}").status_code == 404
     with repository.tasks._connection() as connection:
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_campaign_drafts_cannot_be_reused_across_campaigns():
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    first = client.post(
+        "/content/campaigns",
+        json={
+            "title": "First campaign",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    another_telegram = _create_draft(client, platform="telegram")
+    approved = client.post(f"/content/drafts/{another_telegram['draft_id']}/approve")
+    assert approved.status_code == 200, approved.text
+    second = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Second campaign reusing Reel",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": another_telegram["draft_id"],
+        },
+    )
+    assert second.status_code == 409
+
+
+def test_campaign_rejects_drafts_with_existing_publish_schedule():
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    scheduled = client.post(
+        f"/content/drafts/{reel['draft_id']}/schedule",
+        json={"scheduled_at": (datetime.now(UTC) + timedelta(days=1)).isoformat()},
+    )
+    assert scheduled.status_code == 201, scheduled.text
+
+    created = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Must not mix standalone schedule",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert created.status_code == 409
