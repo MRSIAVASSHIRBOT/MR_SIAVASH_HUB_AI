@@ -7,6 +7,8 @@ updates:
       day: "sunday"
       time: "05:00"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
 
   - package-ecosystem: "github-actions"
@@ -16,4 +18,6 @@ updates:
       day: "sunday"
       time: "05:15"
       timezone: "Etc/UTC"
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
