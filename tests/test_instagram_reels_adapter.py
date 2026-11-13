@@ -164,8 +164,8 @@ def test_dispatcher_requires_verified_render_profile_for_reels(
     with repository.tasks._connection() as connection:
         connection.execute(
             "UPDATE content_assets SET processing_status = 'processed', "
-            "processing_profile = ? WHERE asset_id = ? AND owner_user_id = ?",
-            (processing_profile, asset_id, owner_id),
+            "processing_profile = 'video_render_cut_v1' WHERE asset_id = ? AND owner_user_id = ?",
+            (asset_id, owner_id),
         )
 
     created = client.post(
@@ -193,6 +193,12 @@ def test_dispatcher_requires_verified_render_profile_for_reels(
             "UPDATE content_publish_schedules SET scheduled_at = ? WHERE schedule_id = ?",
             ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(), schedule["schedule_id"]),
         )
+        if processing_profile != "video_render_cut_v1":
+            connection.execute(
+                "UPDATE content_assets SET processing_profile = ? "
+                "WHERE asset_id = ? AND owner_user_id = ?",
+                (processing_profile, asset_id, owner_id),
+            )
 
     class InspectingAdapter:
         def __init__(self):
