@@ -110,17 +110,18 @@ class TaskRepository:
     ) -> tuple[list[TaskRecord], bool, tuple[str, str] | None]:
         """Return one bounded, cursor-addressable page for the exact paired Telegram client."""
         bounded_limit = max(1, min(limit, 50))
-        parameters: list[object] = [client_id]
-        cursor_clause = ""
-        if before is not None:
-            cursor_clause = (
-                "AND (t.created_at < ? OR (t.created_at = ? AND t.task_id < ?))"
-            )
-            parameters.extend((before[0], before[0], before[1]))
-        parameters.append(bounded_limit + 1)
+        before_created_at, before_task_id = before if before is not None else (None, None)
+        parameters: list[object] = [
+            client_id,
+            before is None,
+            before_created_at,
+            before_created_at,
+            before_task_id,
+            bounded_limit + 1,
+        ]
         with self._connection() as connection:
             rows = connection.execute(
-                f"""
+                """
                 SELECT t.*
                 FROM tasks AS t
                 WHERE EXISTS (
@@ -132,7 +133,10 @@ class TaskRepository:
                       AND a.actor_type = 'telegram_client'
                       AND a.actor_id = ?
                 )
-                {cursor_clause}
+                  AND (
+                    ? OR t.created_at < ?
+                    OR (t.created_at = ? AND t.task_id < ?)
+                  )
                 ORDER BY t.created_at DESC, t.task_id DESC
                 LIMIT ?
                 """,
