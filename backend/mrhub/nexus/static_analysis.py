@@ -485,12 +485,17 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             ),
             None,
         )
+        resolved_client_module = (
+            client_module_at(lexical_scope(node), module_name, source_position(node))
+            if module_name is not None
+            else None
+        )
         client_modules = (
             {direct_client_module}
             if direct_client_module is not None
             else (
-                {client_module_at(lexical_scope(node), module_name, getattr(node, "lineno", 0))}
-                if client_module_at(lexical_scope(node), module_name, getattr(node, "lineno", 0)) is not None
+                {resolved_client_module}
+                if resolved_client_module is not None
                 else set()
             )
         )
