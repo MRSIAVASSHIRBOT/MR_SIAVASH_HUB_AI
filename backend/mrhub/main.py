@@ -16,6 +16,7 @@ from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.capabilities import router as capabilities_router
 from mrhub.api.routes.content import router as content_router
+from mrhub.api.routes.content_campaigns import router as content_campaigns_router
 from mrhub.api.routes.content_schedules import router as content_schedules_router
 from mrhub.api.routes.health import router as health_router
 from mrhub.api.routes.jobs import router as jobs_router
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(approvals_router)
     app.include_router(capabilities_router)
     app.include_router(content_router)
+    app.include_router(content_campaigns_router)
     app.include_router(content_schedules_router)
     app.include_router(tasks_router)
     app.include_router(telegram_integration_router)
