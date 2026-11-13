@@ -62,7 +62,7 @@ def _windows_display_adapters() -> list[dict[str, str]]:
     try:
         import winreg
 
-        key_path = r"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}"
+        key_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
         adapters: list[dict[str, str]] = []
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as root:
             index = 0

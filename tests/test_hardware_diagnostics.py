@@ -44,3 +44,50 @@ def test_report_handles_unavailable_memory_and_disk(monkeypatch):
 def test_windows_gpu_probe_is_empty_off_windows(monkeypatch):
     monkeypatch.setattr(hardware.sys, "platform", "linux")
     assert hardware._windows_display_adapters() == []
+
+def test_windows_gpu_probe_uses_canonical_registry_path(monkeypatch):
+    import sys
+
+    expected_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+    opened_paths = []
+
+    class FakeKey:
+        def __init__(self, name):
+            self.name = name
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def open_key(_parent, path):
+        opened_paths.append(path)
+        return FakeKey(path)
+
+    def enum_key(key, index):
+        if key.name == expected_path and index == 0:
+            return "0000"
+        raise OSError("no more registry keys")
+
+    def query_value(_key, name):
+        if name == "DriverDesc":
+            return "NVIDIA Display Adapter", 0
+        if name == "ProviderName":
+            return "NVIDIA", 0
+        raise OSError("missing registry value")
+
+    fake_winreg = SimpleNamespace(
+        HKEY_LOCAL_MACHINE=object(),
+        OpenKey=open_key,
+        EnumKey=enum_key,
+        QueryValueEx=query_value,
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
+    monkeypatch.setattr(hardware.sys, "platform", "win32")
+
+    assert hardware._windows_display_adapters() == [
+        {"name": "NVIDIA Display Adapter", "provider": "NVIDIA"}
+    ]
+    assert opened_paths[0] == expected_path
+
