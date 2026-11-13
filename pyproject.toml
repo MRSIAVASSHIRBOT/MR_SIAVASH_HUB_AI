@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 mrhub-hardware-diagnostics = "mrhub.diagnostics.hardware:main"
+mrhub-db = "mrhub.operations.backup:main"
 mrhub-mcp = "mrhub.mcp_service:main"
 
 [project.optional-dependencies]

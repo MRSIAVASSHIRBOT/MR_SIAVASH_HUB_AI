@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
 import re
 import sqlite3
+import sys
 import tempfile
 from contextlib import closing
 from datetime import UTC, datetime
@@ -263,17 +265,12 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
     return result
 
 
-def restore_database(backup: str | Path, destination: str | Path) -> dict[str, Any]:
-    """Verify the backup manifest and SQLite integrity before atomically restoring a new file."""
+def verify_backup(backup: str | Path) -> dict[str, Any]:
+    """Verify a backup manifest, checksum, size, and SQLite integrity without writing files."""
     backup_path = Path(backup).expanduser().resolve(strict=True)
-    destination_path = Path(destination).expanduser().absolute()
-    manifest_path = backup_path.with_suffix(backup_path.suffix + ".manifest.json")
     if not backup_path.is_file():
-        raise BackupError("Restore source must be a regular file")
-    if backup_path == destination_path:
-        raise BackupError("Restore destination must differ from backup")
-    if destination_path.exists():
-        raise BackupError("Restore destination already exists")
+        raise BackupError("Backup source must be a regular file")
+    manifest_path = backup_path.with_suffix(backup_path.suffix + ".manifest.json")
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -286,6 +283,27 @@ def restore_database(backup: str | Path, destination: str | Path) -> dict[str, A
     ):
         raise BackupError("Backup checksum or manifest validation failed")
     _quick_check(backup_path)
+    return {
+        "verified": True,
+        "backup_name": backup_path.name,
+        "byte_size": backup_path.stat().st_size,
+        "sha256": manifest["sha256"],
+        "sqlite_integrity": "ok",
+        "format_version": 1,
+    }
+
+
+def restore_database(backup: str | Path, destination: str | Path) -> dict[str, Any]:
+    """Verify the backup manifest and SQLite integrity before atomically restoring a new file."""
+    backup_path = Path(backup).expanduser().resolve(strict=True)
+    destination_path = Path(destination).expanduser().absolute()
+    if not backup_path.is_file():
+        raise BackupError("Restore source must be a regular file")
+    if backup_path == destination_path:
+        raise BackupError("Restore destination must differ from backup")
+    if destination_path.exists():
+        raise BackupError("Restore destination already exists")
+    verify_backup(backup_path)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
 
     temporary_path: Path | None = None
@@ -321,3 +339,59 @@ def restore_database(backup: str | Path, destination: str | Path) -> dict[str, A
                 temporary_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run explicit, no-overwrite database recovery operations from the command line."""
+    parser = argparse.ArgumentParser(
+        prog="mrhub-db",
+        description="Create, verify, and restore local Hub database recovery files.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    backup_parser = commands.add_parser("backup", help="create a verified SQLite backup and manifest")
+    backup_parser.add_argument("source", type=Path, help="source SQLite database")
+    backup_parser.add_argument("destination", type=Path, help="new backup path; must not exist")
+
+    restore_parser = commands.add_parser("restore", help="restore a verified backup to a new path")
+    restore_parser.add_argument("backup", type=Path, help="backup database with its manifest")
+    restore_parser.add_argument("destination", type=Path, help="new destination path; must not exist")
+
+    verify_parser = commands.add_parser("verify-backup", help="verify a backup without restoring it")
+    verify_parser.add_argument("backup", type=Path, help="backup database with its manifest")
+
+    media_parser = commands.add_parser(
+        "verify-media",
+        help="read-only check of registered media files against database size and SHA-256 metadata",
+    )
+    media_parser.add_argument("database", type=Path, help="application SQLite database")
+
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "backup":
+            result = backup_database(args.source, args.destination)
+        elif args.command == "restore":
+            result = restore_database(args.backup, args.destination)
+        elif args.command == "verify-backup":
+            result = verify_backup(args.backup)
+        else:
+            result = verify_media_assets(args.database)
+    except (BackupError, OSError) as exc:
+        print(
+            json.dumps(
+                {"ok": False, "error": str(exc)},
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    if args.command == "verify-media" and result.get("ok") is not True:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

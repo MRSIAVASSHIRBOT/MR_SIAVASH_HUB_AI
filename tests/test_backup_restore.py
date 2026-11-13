@@ -445,3 +445,82 @@ def test_verify_media_assets_marks_directory_scan_errors_as_truncated(
     assert result["ok"] is False
     assert result["invalid_entries"] == 1
     assert result["verification_truncated"] is True
+
+
+def test_backup_cli_creates_and_restores_a_verified_new_database(tmp_path, capsys):
+    from mrhub.operations.backup import main
+
+    source = tmp_path / "source.sqlite3"
+    backup = tmp_path / "backup.sqlite3"
+    restored = tmp_path / "restored.sqlite3"
+    make_database(source)
+
+    assert main(["backup", str(source), str(backup)]) == 0
+    backup_result = json.loads(capsys.readouterr().out)
+    assert backup_result["sqlite_integrity"] == "ok"
+    assert backup.exists()
+    assert backup.with_suffix(".sqlite3.manifest.json").exists()
+
+    assert main(["restore", str(backup), str(restored)]) == 0
+    restore_result = json.loads(capsys.readouterr().out)
+    assert restore_result["restored"] is True
+    assert restore_result["destination_overwritten"] is False
+    with sqlite3.connect(restored) as connection:
+        assert connection.execute("SELECT value FROM records").fetchone() == ("preserve me",)
+
+
+def test_backup_cli_refuses_to_overwrite_and_returns_machine_readable_error(tmp_path, capsys):
+    from mrhub.operations.backup import main
+
+    source = tmp_path / "source.sqlite3"
+    destination = tmp_path / "existing.sqlite3"
+    make_database(source)
+    destination.write_bytes(b"keep-existing")
+
+    assert main(["backup", str(source), str(destination)]) == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["ok"] is False
+    assert "already exists" in error["error"]
+    assert destination.read_bytes() == b"keep-existing"
+
+
+def test_media_verification_cli_returns_nonzero_for_inconsistent_registry(tmp_path, capsys):
+    from mrhub.operations.backup import main
+
+    database = tmp_path / "hub.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE content_assets (storage_key TEXT, file_size INTEGER, content_hash TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO content_assets VALUES (?, ?, ?)",
+            ("../outside.mp4", 1, "0" * 64),
+        )
+
+    assert main(["verify-media", str(database)]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["ok"] is False
+    assert result["invalid_entries"] == 1
+    assert "../outside.mp4" not in str(result)
+
+
+def test_verify_backup_cli_checks_integrity_without_creating_a_restore_file(tmp_path, capsys):
+    from mrhub.operations.backup import main
+
+    source = tmp_path / "source.sqlite3"
+    backup = tmp_path / "backup.sqlite3"
+    make_database(source)
+    backup_database(source, backup)
+
+    assert main(["verify-backup", str(backup)]) == 0
+    verified = json.loads(capsys.readouterr().out)
+    assert verified["verified"] is True
+    assert verified["sqlite_integrity"] == "ok"
+    assert not (tmp_path / "restored.sqlite3").exists()
+
+    with backup.open("ab") as stream:
+        stream.write(b"tampered")
+    assert main(["verify-backup", str(backup)]) == 2
+    failure = json.loads(capsys.readouterr().err)
+    assert failure["ok"] is False
+    assert "checksum" in failure["error"]

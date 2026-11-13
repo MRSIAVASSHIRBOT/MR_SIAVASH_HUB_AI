@@ -2,6 +2,21 @@
 
 The `mrhub.operations.backup` module provides explicit, local-only SQLite backup and restore helpers. It does not run automatically and never overwrites an existing destination.
 
+
+## Command-line recovery tools
+
+After installing the project, the same guarded operations are available through the `mrhub-db` command:
+
+```text
+mrhub-db backup <source.sqlite3> <new-backup.sqlite3>
+mrhub-db restore <backup.sqlite3> <new-destination.sqlite3>
+mrhub-db verify-backup <backup.sqlite3>
+mrhub-db verify-media <database.sqlite3>
+```
+
+Each command prints one JSON result for scripts and operator workflows. Backup and restore refuse to overwrite an existing destination. Media verification is read-only; it returns exit code `1` when integrity checks fail. Invalid input, missing manifests, checksum failures, and filesystem errors return exit code `2`. These commands never start the API/worker, alter a live database, copy media, or manage secret material automatically.
+
+
 ## Backup
 
 Call `backup_database(source_path, destination_path)`. The destination database and a `.manifest.json` sidecar are created. The manifest includes the SHA-256 digest, byte size, SQLite integrity result, and a list of data categories deliberately excluded.
