@@ -1031,10 +1031,10 @@ MIGRATIONS = (
                 campaign_id TEXT PRIMARY KEY,
                 owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
                 title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
-                instagram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE RESTRICT,
-                telegram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE RESTRICT,
+                instagram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE CASCADE,
+                telegram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE CASCADE,
                 status TEXT NOT NULL DEFAULT 'draft' CHECK (
-                    status IN ('draft', 'scheduled', 'published', 'partial', 'failed', 'cancelled')
+                    status IN ('draft', 'scheduled', 'published', 'partial', 'failed', 'cancelled', 'unknown_outcome')
                 ),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
