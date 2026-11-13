@@ -203,6 +203,42 @@ class ContentCampaignRepository:
             ).fetchone()
             return self._record(updated, connection)
 
+    def cancel(self, owner_user_id: str, campaign_id: UUID) -> dict[str, object] | None:
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            campaign = connection.execute(
+                "SELECT * FROM content_campaigns WHERE campaign_id = ? AND owner_user_id = ?",
+                (str(campaign_id), owner_user_id),
+            ).fetchone()
+            if campaign is None:
+                return None
+            if campaign["status"] != "scheduled":
+                raise CampaignConflict("Only a scheduled campaign can be cancelled")
+            schedules = connection.execute(
+                """SELECT schedule_id, status FROM content_publish_schedules
+                   WHERE owner_user_id = ? AND draft_id IN (?, ?)""",
+                (owner_user_id, campaign["instagram_draft_id"], campaign["telegram_draft_id"]),
+            ).fetchall()
+            if len(schedules) != 2 or any(item["status"] != "scheduled" for item in schedules):
+                raise CampaignConflict("Campaign delivery has started; it cannot be cancelled as a pair")
+            connection.execute(
+                """UPDATE content_publish_schedules
+                   SET status = 'cancelled', updated_at = ?
+                   WHERE owner_user_id = ? AND draft_id IN (?, ?) AND status = 'scheduled'""",
+                (now, owner_user_id, campaign["instagram_draft_id"], campaign["telegram_draft_id"]),
+            )
+            connection.execute(
+                "UPDATE content_campaigns SET status = 'cancelled', updated_at = ? "
+                "WHERE campaign_id = ? AND owner_user_id = ?",
+                (now, str(campaign_id), owner_user_id),
+            )
+            updated = connection.execute(
+                "SELECT * FROM content_campaigns WHERE campaign_id = ? AND owner_user_id = ?",
+                (str(campaign_id), owner_user_id),
+            ).fetchone()
+            return self._record(updated, connection)
+
     def get(self, owner_user_id: str, campaign_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
