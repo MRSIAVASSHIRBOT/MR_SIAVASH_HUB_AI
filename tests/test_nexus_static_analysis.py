@@ -311,6 +311,22 @@ def test_static_analysis_tracks_local_http_client_alias_chains_and_reassignments
     assert result["source_code_included"] is False
 
 
+def test_static_analysis_respects_same_line_assignment_order_for_tls_aliases():
+    result = analyze_python_source(
+        "import httpx as transport\\n"
+        "def before_reassignment():\\n"
+        "    client = transport.Client(); alias = client; alias.verify = False; client = object()\\n"
+        "def after_reassignment():\\n"
+        "    client = transport.Client(); client = object(); alias = client; alias.verify = False\\n",
+        path="src/http_client_same_line_order.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert [item["line"] for item in findings] == [3]
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
+
+
 def test_static_analysis_does_not_leak_http_client_aliases_between_scopes():
     result = analyze_python_source(
         "import requests\n"
