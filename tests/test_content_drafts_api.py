@@ -262,7 +262,7 @@ def test_telegram_draft_cannot_attach_another_owners_media_asset():
 
 def test_instagram_reel_draft_accepts_only_verified_render_output():
     client = authenticated_client()
-    video = b"\\x00\\x00\\x00\\x18ftypisom" + b"verified-render-fixture"
+    video = b"\x00\x00\x00\x18ftypisom" + b"verified-render-fixture"
     from mrhub.media.repository import MediaAssetRepository
 
     repository = MediaAssetRepository(get_settings().database_path)
