@@ -96,6 +96,29 @@ class ContentCampaignRepository:
                 raise CampaignConflict("Instagram campaign item must be an Instagram Reel draft")
             if telegram["platform"] != "telegram":
                 raise CampaignConflict("Companion lesson must be a Telegram draft")
+            linked = connection.execute(
+                """SELECT 1 FROM content_campaigns
+                   WHERE owner_user_id = ?
+                     AND (instagram_draft_id IN (?, ?) OR telegram_draft_id IN (?, ?))
+                   LIMIT 1""",
+                (
+                    owner_user_id,
+                    str(instagram_draft_id),
+                    str(telegram_draft_id),
+                    str(instagram_draft_id),
+                    str(telegram_draft_id),
+                ),
+            ).fetchone()
+            if linked is not None:
+                raise CampaignConflict("A campaign draft cannot be reused in another campaign")
+            prior_schedule = connection.execute(
+                """SELECT 1 FROM content_publish_schedules
+                   WHERE owner_user_id = ? AND draft_id IN (?, ?)
+                   LIMIT 1""",
+                (owner_user_id, str(instagram_draft_id), str(telegram_draft_id)),
+            ).fetchone()
+            if prior_schedule is not None:
+                raise CampaignConflict("Campaign drafts must not have prior publishing schedules")
             if instagram["status"] != "approved" or telegram["status"] != "approved":
                 raise CampaignConflict("Both campaign drafts must be approved before linking")
             if not instagram["media_asset_id"]:
