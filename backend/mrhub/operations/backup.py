@@ -270,6 +270,7 @@ def verify_media_assets(database: str | Path) -> dict[str, Any]:
 
 DEFAULT_MEDIA_BACKUP_MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
 MAX_MEDIA_BACKUP_TOTAL_BYTES = MAX_MEDIA_ASSETS_TO_VERIFY * MAX_MEDIA_ASSET_BYTES
+MAX_MEDIA_BACKUP_MANIFEST_BYTES = 4 * 1024 * 1024
 
 
 def _cleanup_created_paths(files: list[Path], directories: list[Path]) -> None:
@@ -451,12 +452,15 @@ def _read_media_backup_manifest(backup: str | Path) -> tuple[Path, dict[str, Any
     manifest_path = backup_path / "manifest.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise BackupError("Media backup manifest is missing or unsafe")
+    if manifest_path.stat().st_size > MAX_MEDIA_BACKUP_MANIFEST_BYTES:
+        raise BackupError("Media backup manifest exceeds the size limit")
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise BackupError("Media backup manifest is invalid") from exc
     if (
         not isinstance(manifest, dict)
+        or isinstance(manifest.get("format_version"), bool)
         or manifest.get("format_version") != 1
         or not isinstance(manifest.get("assets"), list)
         or len(manifest["assets"]) > MAX_MEDIA_ASSETS_TO_VERIFY
@@ -482,6 +486,7 @@ def verify_media_backup(backup: str | Path) -> dict[str, Any]:
         "hash_mismatched_assets": 0,
         "invalid_entries": 0,
         "unregistered_entries": 0,
+        "verification_truncated": False,
         "total_bytes": 0,
     }
     if manifest["asset_count"] != len(assets):
@@ -549,20 +554,28 @@ def verify_media_backup(backup: str | Path) -> dict[str, Any]:
     if manifest["total_bytes"] != expected_total:
         result["invalid_entries"] += 1
     try:
-        for entry in media_root.iterdir():
+        for index, entry in enumerate(media_root.iterdir()):
+            if index >= MAX_MEDIA_ASSETS_TO_VERIFY:
+                result["verification_truncated"] = True
+                break
             if entry.name not in registered:
                 result["unregistered_entries"] += 1
     except OSError:
         result["invalid_entries"] += 1
+        result["verification_truncated"] = True
 
     try:
-        for entry in backup_path.iterdir():
+        for index, entry in enumerate(backup_path.iterdir()):
+            if index >= MAX_MEDIA_ASSETS_TO_VERIFY:
+                result["verification_truncated"] = True
+                break
             if entry.name not in {"manifest.json", "content_assets"}:
                 result["unregistered_entries"] += 1
     except OSError:
         result["invalid_entries"] += 1
+        result["verification_truncated"] = True
 
-    result["ok"] = all(
+    result["ok"] = not result["verification_truncated"] and all(
         result[key] == 0
         for key in (
             "missing_assets",
