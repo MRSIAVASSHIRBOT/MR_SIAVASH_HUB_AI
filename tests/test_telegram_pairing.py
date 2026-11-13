@@ -339,3 +339,105 @@ def test_refresh_rotates_refresh_token_and_rejects_reuse(tmp_path, monkeypatch):
     assert second_rotation.status_code == 200
     assert second_rotation.json()["refresh_token"] != rotated["refresh_token"]
     get_settings.cache_clear()
+
+
+
+def test_telegram_task_history_paginates_with_client_scoped_cursors(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload_a, challenge_a = _create_pairing(
+        client,
+        telegram_user_id=123456789,
+        scopes=["tasks:create", "tasks:read"],
+    )
+    payload_b, challenge_b = _create_pairing(
+        client,
+        telegram_user_id=987654321,
+        scopes=["tasks:create", "tasks:read"],
+    )
+    tokens_a = _exchange(client, payload_a, challenge_a).json()
+    tokens_b = _exchange(client, payload_b, challenge_b).json()
+
+    task_b = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "older task for client B"},
+        headers={**_bot_headers(tokens_b, 987654321), "Idempotency-Key": "pagination-b-0001"},
+    )
+    assert task_b.status_code == 201
+
+    task_ids_a = []
+    for index in range(5):
+        response = client.post(
+            "/integrations/telegram/tasks",
+            json={"task_type": "demo.echo", "description": f"client A task {index}"},
+            headers={
+                **_bot_headers(tokens_a, 123456789),
+                "Idempotency-Key": f"pagination-a-{index:04d}",
+            },
+        )
+        assert response.status_code == 201
+        task_ids_a.append(response.json()["task_id"])
+
+    first = client.get(
+        "/integrations/telegram/tasks",
+        params={"limit": 2},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert first.status_code == 200
+    first_page = first.json()
+    assert len(first_page["tasks"]) == 2
+    assert first_page["has_more"] is True
+    assert first_page["next_cursor"]
+
+    second = client.get(
+        "/integrations/telegram/tasks",
+        params={"limit": 2, "cursor": first_page["next_cursor"]},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert second.status_code == 200
+    second_page = second.json()
+    assert len(second_page["tasks"]) == 2
+    assert second_page["has_more"] is True
+    assert second_page["next_cursor"]
+
+    third = client.get(
+        "/integrations/telegram/tasks",
+        params={"limit": 2, "cursor": second_page["next_cursor"]},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert third.status_code == 200
+    third_page = third.json()
+    assert len(third_page["tasks"]) == 1
+    assert third_page["has_more"] is False
+    assert third_page["next_cursor"] is None
+
+    paged_ids = [
+        item["task_id"]
+        for page in (first_page, second_page, third_page)
+        for item in page["tasks"]
+    ]
+    complete = client.get(
+        "/integrations/telegram/tasks",
+        params={"limit": 50},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert complete.status_code == 200
+    assert paged_ids == [item["task_id"] for item in complete.json()["tasks"]]
+    assert len(paged_ids) == len(set(paged_ids)) == len(task_ids_a)
+
+    client_b_page = client.get(
+        "/integrations/telegram/tasks",
+        params={"limit": 2, "cursor": first_page["next_cursor"]},
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert client_b_page.status_code == 200
+    assert [item["task_id"] for item in client_b_page.json()["tasks"]] == [
+        task_b.json()["task_id"]
+    ]
+
+    invalid_cursor = client.get(
+        "/integrations/telegram/tasks",
+        params={"cursor": "not-a-valid-cursor"},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert invalid_cursor.status_code == 422
+    get_settings.cache_clear()
