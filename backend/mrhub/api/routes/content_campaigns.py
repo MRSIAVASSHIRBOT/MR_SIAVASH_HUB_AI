@@ -104,3 +104,20 @@ def schedule_campaign(
     _audit(repository, user, "content.campaign_scheduled",
            str(campaign_id), "campaign_scheduled")
     return record
+
+
+@router.post("/{campaign_id}/cancel")
+def cancel_campaign(
+    campaign_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    repository = _repository()
+    try:
+        record = repository.cancel(user.user_id, campaign_id)
+    except CampaignConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    _audit(repository, user, "content.campaign_cancelled",
+           str(campaign_id), "campaign_cancelled")
+    return record
