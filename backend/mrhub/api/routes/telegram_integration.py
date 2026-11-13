@@ -88,7 +88,9 @@ def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
         padding = "=" * (-len(cursor) % 4)
         payload = base64.b64decode(cursor + padding, altchars=b"-_", validate=True).decode("utf-8")
         created_at, task_id = payload.split("\n", 1)
-        parsed_timestamp = datetime.fromisoformat(created_at)
+        if not created_at or len(created_at) > 64:
+            raise ValueError("Invalid task cursor")
+        datetime.fromisoformat(created_at)
         parsed_task_id = UUID(task_id)
         if str(parsed_task_id) != task_id.lower():
             raise ValueError("Invalid task cursor")
