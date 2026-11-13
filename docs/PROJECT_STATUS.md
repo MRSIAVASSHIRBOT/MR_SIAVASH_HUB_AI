@@ -4,15 +4,16 @@ Last reviewed: 2026-11-13 (UTC)
 
 ## Live status addendum — 2026-11-13
 
-This addendum supersedes older live-status and workflow snapshots below where they conflict. Historical merge records remain unchanged.
+This addendum supersedes older live-status and workflow snapshots below where they conflict. Historical merge records remain unchanged. The SHA below is the application-code baseline reviewed before this documentation-only refresh; the ledger commit itself is not intended to be a self-referential live SHA.
 
-- Current `main`: `0aa9e7643110ac96f5f36268da54864f05ea81f2`. It is 5 commits ahead of the prior recorded baseline `fcfde61efc504c4204eb6b7c3bb2ea76bf11ee9a`, with no commits behind.
-- Exact-head checks on the current main commit all succeeded: Backend CI, Python 3.11/3.12 CI, Defensive Python Scan, Windows Launcher Validation, and Linux/Windows Video Render Integration. The effective scheduled OpenCode default-deny policy validation also passed.
-- Hub PR #365 corrected the Windows display-class registry path and added a mocked `winreg` regression test. It was merged on 2026-11-13 as `0aa9e7643110ac96f5f36268da54864f05ea81f2`; all 12 exact-main check runs passed.
-- Latest scheduled Continuous Development run `43403189626` (2026-11-13) failed at the provider invocation with `API key expired.`. Checkout, CLI installation, and effective default-deny tool-policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
-- The provider credential was not read, copied, rotated, or changed. Owner-managed credential renewal remains required, and the independent credential-isolation decision in Issue #316 remains open; current tool restrictions reduce exposure but do not prove an OS-level credential broker or complete process isolation.
+- Reviewed `main` code baseline: `1b9e0cf4826f898d8042a6da87fd29ee95988ff5`. It is 7 commits ahead of the prior recorded baseline `fcfde61efc504c4204eb6b7c3bb2ea76bf11ee9a`, with no commits behind.
+- Hub PR #365 corrected the Windows display-class registry path and added a mocked `winreg` regression test. It was merged on 2026-11-13; all 12 exact-head checks and all 12 post-merge main checks passed.
+- Hub PR #367 removed HTTPX exception chaining from the OpenRouter and Kimi provider adapters, so failures no longer retain credential-bearing request context; regression tests cover timeout and transport failures. It was merged on 2026-11-13 after all 12 exact-head checks passed. Post-merge main CI was still running when this snapshot was prepared.
+- The effective scheduled OpenCode default-deny policy validation passed on the reviewed main baseline. The latest scheduled Continuous Development run `43403189626` (2026-11-13) failed at provider authentication with `API key expired.`. Checkout, CLI installation and policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
+- The provider credential was not read, copied, rotated or changed. Owner-managed credential renewal remains required. Issue #316 remains open: current no-shell/default-deny controls reduce tool exposure but do not prove an OS-level credential broker or complete process isolation; the provider-adapter exception fix does not resolve that separate workflow boundary.
+- GitHub branch metadata reports `main.protected=false`. The available connector has no branch-protection/ruleset write operation, so protection remains an owner action. Issue #304 tracks it.
 - Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issues #332 (expired provider credential) and #316 (provider credential isolation) remain open.
-- The scheduled workflow cadence and security controls were not changed during this review. No secrets, permissions, deployment settings, or production resources were modified.
+- The scheduled workflow cadence and security controls were not changed during this review. No secrets, permissions, deployment settings or production resources were modified.
 
 ## Previous status snapshot
 
