@@ -10,6 +10,7 @@ After installing the project, the same guarded operations are available through 
 ```text
 mrhub-db backup <source.sqlite3> <new-backup.sqlite3>
 mrhub-db restore <backup.sqlite3> <new-destination.sqlite3>
+mrhub-db verify-backup <backup.sqlite3>
 mrhub-db verify-media <database.sqlite3>
 ```
 
