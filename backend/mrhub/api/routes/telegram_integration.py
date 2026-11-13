@@ -212,6 +212,19 @@ def list_telegram_tasks(
     return {"tasks": [task.model_dump(mode="json") for task in tasks], "count": len(tasks)}
 
 
+@router.get("/tasks/{task_id}")
+def get_telegram_task(
+    task_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:read"))],
+) -> dict[str, object]:
+    """Return one task only to the exact paired client that submitted it."""
+    task = _tasks_repository().get_for_telegram_client(identity.client_id, task_id)
+    if task is None:
+        # Do not reveal whether another bot client or an owner created this task.
+        raise HTTPException(status_code=404, detail="Telegram task not found")
+    return task.model_dump(mode="json")
+
+
 @router.post("/tasks", status_code=201)
 def create_telegram_task(
     payload: TaskCreateRequest,
