@@ -234,6 +234,7 @@ def list_telegram_tasks(
     limit: int = 20,
     cursor: str | None = None,
 ) -> dict[str, object]:
+    """List this paired client's recent tasks; pass next_cursor unchanged for older pages."""
     if not 1 <= limit <= 50:
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 50")
     try:
