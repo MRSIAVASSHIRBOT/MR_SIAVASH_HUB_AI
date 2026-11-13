@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import time
 
 import httpx
 
@@ -17,6 +18,9 @@ from mrhub.content.providers import InstagramGraphImageAdapter
 
 class InstagramGraphPublishingAdapter(InstagramGraphImageAdapter):
     """Publish approved images and Reels; Reels use a confirmed container state."""
+
+    _CONTAINER_POLL_ATTEMPTS = 30
+    _CONTAINER_POLL_INTERVAL_SECONDS = 2.0
 
     def _get_container_status(self, container_id: str) -> str:
         try:
@@ -56,6 +60,41 @@ class InstagramGraphPublishingAdapter(InstagramGraphImageAdapter):
                 "Instagram Reel container status was not confirmed"
             )
         return status.upper()
+
+    def _wait_for_container_ready(self, container_id: str) -> None:
+        """Poll the original container; never create a replacement while it is processing."""
+        for attempt in range(self._CONTAINER_POLL_ATTEMPTS):
+            try:
+                status = self._get_container_status(container_id)
+            except TransientPublishError as exc:
+                if attempt + 1 >= self._CONTAINER_POLL_ATTEMPTS:
+                    raise UnknownPublishOutcome(
+                        "Instagram Reel container readiness could not be confirmed"
+                    ) from exc
+            else:
+                if status == "FINISHED":
+                    return
+                if status in {"ERROR", "EXPIRED"}:
+                    raise PermanentPublishError(
+                        "Instagram could not prepare the Reel container"
+                    )
+                if status == "PUBLISHED":
+                    raise UnknownPublishOutcome(
+                        "Instagram reports the Reel container was already published"
+                    )
+                if status != "IN_PROGRESS":
+                    raise UnknownPublishOutcome(
+                        "Instagram Reel container readiness is ambiguous"
+                    )
+                if attempt + 1 >= self._CONTAINER_POLL_ATTEMPTS:
+                    break
+
+            if attempt + 1 < self._CONTAINER_POLL_ATTEMPTS:
+                time.sleep(self._CONTAINER_POLL_INTERVAL_SECONDS)
+
+        raise UnknownPublishOutcome(
+            "Instagram Reel container did not reach FINISHED within the polling window"
+        )
 
     def publish(
         self, draft: dict[str, object], *, idempotency_key: str
@@ -101,23 +140,7 @@ class InstagramGraphPublishingAdapter(InstagramGraphImageAdapter):
                 "Instagram did not confirm Reel container creation"
             )
 
-        status = self._get_container_status(str(container_id))
-        if status == "IN_PROGRESS":
-            raise TransientPublishError(
-                "Instagram is still processing the Reel container"
-            )
-        if status in {"ERROR", "EXPIRED"}:
-            raise PermanentPublishError(
-                "Instagram could not prepare the Reel container"
-            )
-        if status == "PUBLISHED":
-            raise UnknownPublishOutcome(
-                "Instagram reports the Reel container was already published"
-            )
-        if status != "FINISHED":
-            raise UnknownPublishOutcome(
-                "Instagram Reel container readiness is ambiguous"
-            )
+        self._wait_for_container_ready(str(container_id))
 
         published = self._post(
             f"{self._user_id}/media_publish",
