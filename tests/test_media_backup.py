@@ -85,7 +85,7 @@ def test_media_backup_detects_tampering_and_restore_never_overwrites(tmp_path):
     backup_media_assets(database, backup)
 
     storage_key = next(iter(records))
-    (backup / "content_assets" / storage_key).write_bytes(b"tampered")
+    (backup / "content_assets" / storage_key).write_bytes(b"x" * len(records[storage_key]))
     verification = verify_media_backup(backup)
     assert verification["ok"] is False
     assert verification["hash_mismatched_assets"] == 1
