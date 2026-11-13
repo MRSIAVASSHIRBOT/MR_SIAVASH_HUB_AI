@@ -220,7 +220,13 @@ def test_dispatcher_requires_verified_render_profile_for_reels(
     )
     result = dispatcher.run_once()
 
-    assert result == {"schedule_id": schedule["schedule_id"], "status": expected_status}
+    expected_result = {
+        "schedule_id": schedule["schedule_id"],
+        "status": expected_status,
+    }
+    if expected_status == "failed":
+        expected_result["reason_code"] = "instagram_media_invalid"
+    assert result == expected_result
     if expected_status == "failed":
         assert adapter.draft is None
         get_settings.cache_clear()
