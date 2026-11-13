@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
+
 import httpx
 import pytest
 
