@@ -40,9 +40,9 @@ Schedule payload:
 }
 ```
 
-Campaign status values: `draft`, `scheduled`, `published`, `partial`, `failed`, `cancelled`.
+Campaign status values: `draft`, `scheduled`, `published`, `partial`, `failed`, `cancelled`, `unknown_outcome`.
 
-A campaign is considered published only when both platform schedules report `published`. If one publishes while the other fails or becomes ambiguous, the campaign reports `partial`. Provider delivery is not exactly-once; `unknown_outcome` must be reconciled rather than blindly retried.
+A campaign is considered published only when both platform schedules report `published`. If one publishes while the other fails, is cancelled, or becomes ambiguous, the campaign reports `partial`. If any delivery is ambiguous and none has completed, the campaign reports `unknown_outcome`. Provider delivery is not exactly-once; `unknown_outcome` must be reconciled rather than blindly retried.
 
 ## External activation checklist
 
