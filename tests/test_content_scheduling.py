@@ -3,14 +3,20 @@ from datetime import UTC, datetime, timedelta
 from client_helpers import authenticated_client
 
 
-def _create_draft(client, platform: str = "telegram") -> dict[str, object]:
+def _create_draft(
+    client,
+    platform: str = "telegram",
+    *,
+    title: str = "Scheduled learning post",
+    body: str = "A short educational post about DNS records and troubleshooting.",
+) -> dict[str, object]:
     response = client.post(
         "/content/drafts",
         json={
             "platform": platform,
             "content_type": "post_text" if platform == "telegram" else "caption",
-            "title": "Scheduled learning post",
-            "body": "A short educational post about DNS records and troubleshooting.",
+            "title": title,
+            "body": body,
             "hashtags": ["#DNS"],
         },
     )
@@ -320,7 +326,12 @@ def test_campaign_drafts_cannot_be_reused_across_campaigns():
     )
     assert first.status_code == 201, first.text
 
-    another_telegram = _create_draft(client, platform="telegram")
+    another_telegram = _create_draft(
+        client,
+        platform="telegram",
+        title="Second campaign lesson",
+        body="A distinct lesson about secure backups and account recovery.",
+    )
     approved = client.post(f"/content/drafts/{another_telegram['draft_id']}/approve")
     assert approved.status_code == 200, approved.text
     second = client.post(
