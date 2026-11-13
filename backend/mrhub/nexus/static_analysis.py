@@ -323,31 +323,48 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 return current
         return tree
 
-    client_aliases: dict[tuple[ast.AST, str], list[tuple[int, str | None]]] = {}
+    client_aliases: dict[tuple[ast.AST, str], list[tuple[tuple[int, int], str | None]]] = {}
     assignments = sorted(
         (
             item for item in ast.walk(tree)
             if isinstance(item, (ast.Assign, ast.AnnAssign))
         ),
-        key=lambda item: getattr(item, "lineno", 0),
+        key=lambda item: (
+            getattr(item, "lineno", 0),
+            getattr(item, "col_offset", 0),
+        ),
     )
+
+    def source_position(node: ast.AST) -> tuple[int, int]:
+        return (
+            getattr(node, "lineno", 0),
+            getattr(node, "col_offset", 0),
+        )
+
+    def client_module_at(
+        scope: ast.AST,
+        name: str,
+        position: tuple[int, int],
+    ) -> str | None:
+        history = client_aliases.get((scope, name), ())
+        for assigned_position, module in reversed(history):
+            if assigned_position <= position:
+                return module
+        return None
+
+    # Preserve simple local aliases (including alias chains), while recording
+    # non-client reassignments as None so stale client identities are dropped.
     for assignment in assignments:
         value = assignment.value
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
-        module = client_constructor_module(value) if value is not None else None
         scope = lexical_scope(assignment)
+        position = source_position(assignment)
+        module = client_constructor_module(value) if value is not None else None
+        if module is None and isinstance(value, ast.Name):
+            module = client_module_at(scope, value.id, position)
         for target in targets:
             for name in target_names(target):
-                client_aliases.setdefault((scope, name), []).append(
-                    (getattr(assignment, "lineno", 0), module)
-                )
-
-    def client_module_at(scope: ast.AST, name: str, line: int) -> str | None:
-        history = client_aliases.get((scope, name), ())
-        for assigned_line, module in reversed(history):
-            if assigned_line <= line:
-                return module
-        return None
+                client_aliases.setdefault((scope, name), []).append((position, module))
 
     for assignment in assignments:
         targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
@@ -363,7 +380,7 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
                 isinstance(target, ast.Attribute)
                 and target.attr == "verify"
                 and isinstance(target.value, ast.Name)
-                and client_module_at(scope, target.value.id, getattr(assignment, "lineno", 0)) in {"requests", "httpx"}
+                and client_module_at(scope, target.value.id, source_position(assignment)) in {"requests", "httpx"}
             ):
                 add(
                     "PY106",
@@ -468,12 +485,17 @@ def _check_tree(tree: ast.AST, relative: str) -> list[dict[str, Any]]:
             ),
             None,
         )
+        resolved_client_module = (
+            client_module_at(lexical_scope(node), module_name, source_position(node))
+            if module_name is not None
+            else None
+        )
         client_modules = (
             {direct_client_module}
             if direct_client_module is not None
             else (
-                {client_module_at(lexical_scope(node), module_name, getattr(node, "lineno", 0))}
-                if client_module_at(lexical_scope(node), module_name, getattr(node, "lineno", 0)) is not None
+                {resolved_client_module}
+                if resolved_client_module is not None
                 else set()
             )
         )

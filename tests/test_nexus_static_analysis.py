@@ -286,3 +286,61 @@ def test_static_analysis_tracks_http_clients_within_scope_and_drops_reassigned_a
     assert [item["line"] for item in findings] == [4]
     assert result["code_executed"] is False
     assert result["source_code_included"] is False
+
+
+
+def test_static_analysis_tracks_local_http_client_alias_chains_and_reassignments():
+    result = analyze_python_source(
+        "import httpx as transport\n"
+        "client = transport.Client()\n"
+        "session = client\n"
+        "alias = session\n"
+        "alias.verify = False\n"
+        "alias.get(url, verify=False)\n"
+        "session = object()\n"
+        "session.verify = False\n"
+        "other = object()\n"
+        "other.verify = False\n",
+        path="src/http_client_aliases.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert [item["line"] for item in findings] == [5, 6]
+    assert all(item["severity"] == "high" for item in findings)
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
+
+
+def test_static_analysis_respects_same_line_assignment_order_for_tls_aliases():
+    result = analyze_python_source(
+        "import httpx as transport\n"
+        "def before_reassignment():\n"
+        "    client = transport.Client(); alias = client; alias.verify = False; client = object()\n"
+        "def after_reassignment():\n"
+        "    client = transport.Client(); client = object(); alias = client; alias.verify = False\n",
+        path="src/http_client_same_line_order.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert [item["line"] for item in findings] == [3]
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
+
+
+def test_static_analysis_does_not_leak_http_client_aliases_between_scopes():
+    result = analyze_python_source(
+        "import requests\n"
+        "def configured_client():\n"
+        "    session = requests.Session()\n"
+        "    alias = session\n"
+        "    alias.verify = False\n"
+        "def unrelated_scope():\n"
+        "    alias = object()\n"
+        "    alias.verify = False\n",
+        path="src/http_client_alias_scopes.py",
+    )
+
+    findings = [item for item in result["findings"] if item["rule_id"] == "PY106"]
+    assert [item["line"] for item in findings] == [5]
+    assert result["code_executed"] is False
+    assert result["source_code_included"] is False
