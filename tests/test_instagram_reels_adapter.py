@@ -140,7 +140,13 @@ def test_reels_adapter_quarantines_already_published_container():
         client.close()
 
 
-def test_dispatcher_delivers_only_processed_mp4_as_signed_reel_media(monkeypatch):
+@pytest.mark.parametrize(
+    ("processing_profile", "expected_status"),
+    [("video_render_cut_v1", "published"), ("video_mp4_720p", "failed")],
+)
+def test_dispatcher_requires_verified_render_profile_for_reels(
+    monkeypatch, processing_profile, expected_status
+):
     monkeypatch.setenv("MRH_PUBLIC_MEDIA_BASE_URL", "https://media.example.com")
     monkeypatch.setenv(
         "MRH_PUBLIC_MEDIA_SIGNING_KEY",
@@ -161,8 +167,8 @@ def test_dispatcher_delivers_only_processed_mp4_as_signed_reel_media(monkeypatch
     with repository.tasks._connection() as connection:
         connection.execute(
             "UPDATE content_assets SET processing_status = 'processed', "
-            "processing_profile = 'video_render_cut_v1' WHERE asset_id = ? AND owner_user_id = ?",
-            (asset_id, owner_id),
+            "processing_profile = ? WHERE asset_id = ? AND owner_user_id = ?",
+            (processing_profile, asset_id, owner_id),
         )
 
     created = client.post(
@@ -207,7 +213,11 @@ def test_dispatcher_delivers_only_processed_mp4_as_signed_reel_media(monkeypatch
     )
     result = dispatcher.run_once()
 
-    assert result == {"schedule_id": schedule["schedule_id"], "status": "published"}
+    assert result == {"schedule_id": schedule["schedule_id"], "status": expected_status}
+    if expected_status == "failed":
+        assert adapter.draft is None
+        get_settings.cache_clear()
+        return
     assert adapter.draft is not None
     assert adapter.draft["content_type"] == "reel"
     assert adapter.draft["media_type"] == "video/mp4"
