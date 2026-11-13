@@ -343,7 +343,7 @@ def test_refresh_rotates_refresh_token_and_rejects_reuse(tmp_path, monkeypatch):
 
 
 def test_telegram_task_history_paginates_with_client_scoped_cursors(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
+    client, database_path = _owner_client(tmp_path, monkeypatch)
     payload_a, challenge_a = _create_pairing(
         client,
         telegram_user_id=123456789,
@@ -376,6 +376,14 @@ def test_telegram_task_history_paginates_with_client_scoped_cursors(tmp_path, mo
         )
         assert response.status_code == 201
         task_ids_a.append(response.json()["task_id"])
+
+    # Equal timestamps exercise the UUID tie-breaker used by keyset pagination.
+    fixed_timestamp = "2099-01-01T00:00:00+00:00"
+    with sqlite3.connect(database_path) as connection:
+        connection.executemany(
+            "UPDATE tasks SET created_at = ? WHERE task_id = ?",
+            [(fixed_timestamp, task_id) for task_id in task_ids_a],
+        )
 
     first = client.get(
         "/integrations/telegram/tasks",
