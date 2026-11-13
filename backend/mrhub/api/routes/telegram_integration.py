@@ -77,7 +77,7 @@ class MemorySearchRequest(BaseModel):
 
 
 def _encode_telegram_task_cursor(created_at: str, task_id: str) -> str:
-    payload = f"{created_at}\n{task_id}".encode("utf-8")
+    payload = f"{created_at}\n{task_id}".encode()
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
