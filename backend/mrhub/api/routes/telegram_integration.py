@@ -77,7 +77,7 @@ class MemorySearchRequest(BaseModel):
 
 
 def _encode_telegram_task_cursor(task: TaskRecord) -> str:
-    payload = f"{task.created_at.isoformat()}\\n{task.task_id}".encode("utf-8")
+    payload = f"{task.created_at.isoformat()}\n{task.task_id}".encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
@@ -87,7 +87,7 @@ def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
     try:
         padding = "=" * (-len(cursor) % 4)
         payload = base64.b64decode(cursor + padding, altchars=b"-_", validate=True).decode("utf-8")
-        created_at, task_id = payload.split("\\n", 1)
+        created_at, task_id = payload.split("\n", 1)
         parsed_timestamp = datetime.fromisoformat(created_at)
         parsed_task_id = UUID(task_id)
         if parsed_timestamp.tzinfo is None or str(parsed_task_id) != task_id.lower():
