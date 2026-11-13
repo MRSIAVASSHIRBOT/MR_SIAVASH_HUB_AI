@@ -110,3 +110,138 @@ def test_schedule_api_requires_authentication() -> None:
     client = TestClient(create_app())
     assert client.get("/content/schedules").status_code in (401, 403)
     get_settings.cache_clear()
+
+
+
+def _create_approved_campaign_drafts(client):
+    from mrhub.config import get_settings
+    from mrhub.media.repository import MediaAssetRepository
+
+    media = MediaAssetRepository(get_settings().database_path)
+    with media.tasks._connection() as connection:
+        owner_id = connection.execute(
+            "SELECT user_id FROM auth_users WHERE username = 'owner'"
+        ).fetchone()["user_id"]
+    asset = media.store_upload(
+        owner_id,
+        "campaign-reel.mp4",
+        "video/mp4",
+        b"\\x00\\x00\\x00\\x18ftypisom" + b"campaign-test-render",
+    )
+    with media.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE content_assets SET processing_status = 'processed', "
+            "processing_profile = 'video_render_cut_v1' WHERE asset_id = ? AND owner_user_id = ?",
+            (asset["asset_id"], owner_id),
+        )
+    reel_response = client.post(
+        "/content/drafts",
+        json={
+            "platform": "instagram",
+            "content_type": "reel",
+            "title": "Campaign Reel",
+            "body": "A useful short lesson about safe account security.",
+            "media_asset_id": asset["asset_id"],
+        },
+    )
+    assert reel_response.status_code == 201, reel_response.text
+    telegram = _create_draft(client, platform="telegram")
+    for draft in (reel_response.json(), telegram):
+        approved = client.post(f"/content/drafts/{draft['draft_id']}/approve")
+        assert approved.status_code == 200, approved.text
+    return reel_response.json(), telegram
+
+
+def test_campaign_links_approved_reel_and_telegram_lesson_and_schedules_atomically():
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    created = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Account security mini-campaign",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    campaign = created.json()
+    assert campaign["status"] == "draft"
+    assert campaign["schedules"] == []
+
+    scheduled = client.post(
+        f"/content/campaigns/{campaign['campaign_id']}/schedule",
+        json={"scheduled_at": (datetime.now(UTC) + timedelta(days=1)).isoformat()},
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    record = scheduled.json()
+    assert record["status"] == "scheduled"
+    assert len(record["schedules"]) == 2
+    assert {item["platform"] for item in record["schedules"]} == {"instagram", "telegram"}
+    assert {item["draft_id"] for item in record["schedules"]} == {
+        reel["draft_id"], telegram["draft_id"]
+    }
+
+    listed = client.get("/content/campaigns")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["campaigns"][0]["campaign_id"] == campaign["campaign_id"]
+
+
+def test_campaign_requires_verified_reel_asset_and_both_approvals():
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    # Editing the Reel revokes its approval and must block campaign creation.
+    changed = client.patch(
+        f"/content/drafts/{reel['draft_id']}",
+        json={"body": "Changed after approval"},
+    )
+    assert changed.status_code == 200
+    denied = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Must not link stale approval",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert denied.status_code == 409
+
+
+def test_campaign_cancellation_cancels_both_pending_schedules():
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    created = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Cancelable campaign",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    campaign_id = created.json()["campaign_id"]
+    scheduled = client.post(
+        f"/content/campaigns/{campaign_id}/schedule",
+        json={"scheduled_at": (datetime.now(UTC) + timedelta(days=1)).isoformat()},
+    )
+    assert scheduled.status_code == 200, scheduled.text
+
+    cancelled = client.post(f"/content/campaigns/{campaign_id}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    assert len(cancelled.json()["schedules"]) == 2
+    assert {item["status"] for item in cancelled.json()["schedules"]} == {"cancelled"}
+    repeated = client.post(f"/content/campaigns/{campaign_id}/cancel")
+    assert repeated.status_code == 409
+
+
+def test_campaign_routes_are_owner_scoped_and_require_authentication():
+    from fastapi.testclient import TestClient
+
+    from mrhub.config import get_settings
+    from mrhub.main import create_app
+
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    assert client.get("/content/campaigns").status_code in (401, 403)
+    get_settings.cache_clear()
