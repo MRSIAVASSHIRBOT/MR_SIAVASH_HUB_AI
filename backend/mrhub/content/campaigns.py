@@ -76,7 +76,7 @@ class ContentCampaignRepository:
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             drafts = connection.execute(
-                """SELECT draft_id, owner_user_id, platform, content_type, status
+                """SELECT draft_id, owner_user_id, platform, content_type, status, media_asset_id
                    FROM content_drafts
                    WHERE owner_user_id = ? AND draft_id IN (?, ?)""",
                 (owner_user_id, str(instagram_draft_id), str(telegram_draft_id)),
@@ -92,6 +92,19 @@ class ContentCampaignRepository:
                 raise CampaignConflict("Companion lesson must be a Telegram draft")
             if instagram["status"] != "approved" or telegram["status"] != "approved":
                 raise CampaignConflict("Both campaign drafts must be approved before linking")
+            if not instagram["media_asset_id"]:
+                raise CampaignConflict("Instagram Reel must have a verified rendered MP4 asset")
+            asset = connection.execute(
+                """SELECT media_type, processing_status, processing_profile
+                   FROM content_assets WHERE asset_id = ? AND owner_user_id = ?""",
+                (instagram["media_asset_id"], owner_user_id),
+            ).fetchone()
+            if (
+                asset is None or asset["media_type"] != "video/mp4"
+                or asset["processing_status"] != "processed"
+                or asset["processing_profile"] != "video_render_cut_v1"
+            ):
+                raise CampaignConflict("Instagram Reel requires a processed video_render_cut_v1 MP4")
             campaign_id = str(uuid4())
             now = self._now()
             try:
@@ -140,6 +153,20 @@ class ContentCampaignRepository:
             by_id = {item["draft_id"]: item for item in drafts}
             if len(by_id) != 2 or any(item["status"] != "approved" for item in drafts):
                 raise CampaignConflict("Both campaign drafts must remain approved")
+            instagram = by_id[campaign["instagram_draft_id"]]
+            if not instagram["media_asset_id"]:
+                raise CampaignConflict("Instagram Reel must have a verified rendered MP4 asset")
+            asset = connection.execute(
+                """SELECT media_type, processing_status, processing_profile
+                   FROM content_assets WHERE asset_id = ? AND owner_user_id = ?""",
+                (instagram["media_asset_id"], owner_user_id),
+            ).fetchone()
+            if (
+                asset is None or asset["media_type"] != "video/mp4"
+                or asset["processing_status"] != "processed"
+                or asset["processing_profile"] != "video_render_cut_v1"
+            ):
+                raise CampaignConflict("Instagram Reel render is no longer publishable")
             for draft_id in draft_ids:
                 draft = by_id[draft_id]
                 existing = connection.execute(
