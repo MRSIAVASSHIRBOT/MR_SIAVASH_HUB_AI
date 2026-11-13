@@ -22,10 +22,8 @@ class InstagramGraphPublishingAdapter(InstagramGraphImageAdapter):
         try:
             response = self._client.get(
                 f"{self._base_url}/{container_id}",
-                params={
-                    "fields": "status_code,status",
-                    "access_token": self._access_token,
-                },
+                params={"fields": "status_code,status"},
+                headers={"Authorization": f"Bearer {self._access_token}"},
             )
         except httpx.HTTPError as exc:
             # No publish request has been made yet, so this read can be retried safely.
