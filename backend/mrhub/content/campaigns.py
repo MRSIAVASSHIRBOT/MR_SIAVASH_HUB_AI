@@ -38,10 +38,16 @@ class ContentCampaignRepository:
             value in {"failed", "unknown_outcome", "cancelled"} for value in statuses
         ):
             return "partial"
-        if all(value == "failed" for value in statuses):
+        if "unknown_outcome" in statuses:
+            return "unknown_outcome"
+        if all(value == "cancelled" for value in statuses):
+            return "cancelled"
+        if all(value in {"failed", "cancelled"} for value in statuses):
             return "failed"
-        if any(value in {"scheduled", "publishing", "unknown_outcome"} for value in statuses):
+        if any(value in {"scheduled", "publishing"} for value in statuses):
             return "scheduled"
+        if "failed" in statuses:
+            return "failed"
         return row["status"]
 
     def _record(self, row, connection) -> dict[str, object]:
