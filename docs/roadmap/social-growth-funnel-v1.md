@@ -26,7 +26,7 @@ No follow-gating, forced follows, unsolicited bulk DMs, scraping private data, o
 - Instagram publishing requires a professional account, Graph API credentials, and a publicly reachable signed HTTPS media origin.
 - Provider delivery is not exactly-once. Ambiguous outcomes enter unknown_outcome and must be reconciled before retry.
 - Video intelligence/generation/render modules and FFmpeg processing exist; their output-to-social publishing handoff needs an integration audit.
-- PostZen currently has one connected Instagram account in the Default profile and no comment automations. The API key is valid. Do not activate any live comment/DM automation until copy, resource URL, scope, and behavior are explicitly approved.
+- PostZen Default profile has connected Instagram and Telegram accounts. The comment-automation inventory is empty. The API key is valid. Do not activate any live comment/DM automation until copy, resource URL, scope, and behavior are explicitly approved.
 - Current external account credentials, Meta scopes, public media reachability, and real-account publishing have not been verified by this repository audit.
 
 ## Current implementation status (feature branch)
