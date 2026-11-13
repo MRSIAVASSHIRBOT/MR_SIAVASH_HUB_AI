@@ -1,0 +1,53 @@
+# Cross-platform social campaigns
+
+The campaign API links one approved Instagram Reel draft to one approved Telegram lesson draft. It reuses the existing content-draft repository, durable publish schedules, and worker dispatcher.
+
+## Lifecycle
+
+1. Create the Instagram draft with `content_type=reel` and an owner-owned MP4 asset that has passed the `video_render_cut_v1` processing profile.
+2. Create the Telegram companion lesson as a Telegram draft.
+3. Approve both drafts. Editing either draft revokes its approval through the existing draft lifecycle.
+4. Create a campaign by supplying the two draft IDs.
+5. Schedule the campaign once. Both platform schedules are inserted in one SQLite transaction with a shared scheduled time and independent idempotency keys.
+6. The existing worker dispatches each schedule through its configured provider adapter. Campaign status is derived from both schedule outcomes; it does not claim cross-provider atomic delivery.
+7. A campaign can be cancelled only while both schedules are still pending. Once either delivery starts, paired cancellation is rejected.
+
+## API
+
+All endpoints require the existing authenticated user session.
+
+- `GET /content/campaigns?limit=50`
+- `POST /content/campaigns`
+- `GET /content/campaigns/{campaign_id}`
+- `POST /content/campaigns/{campaign_id}/schedule`
+- `POST /content/campaigns/{campaign_id}/cancel`
+
+Create payload:
+
+```json
+{
+  "title": "Account security mini-campaign",
+  "instagram_draft_id": "UUID",
+  "telegram_draft_id": "UUID"
+}
+```
+
+Schedule payload:
+
+```json
+{
+  "scheduled_at": "2026-12-01T17:00:00+00:00"
+}
+```
+
+Campaign status values: `draft`, `scheduled`, `published`, `partial`, `failed`, `cancelled`.
+
+A campaign is considered published only when both platform schedules report `published`. If one publishes while the other fails or becomes ambiguous, the campaign reports `partial`. Provider delivery is not exactly-once; `unknown_outcome` must be reconciled rather than blindly retried.
+
+## External activation checklist
+
+- Verify the Instagram professional account, current Graph API version, scopes, public HTTPS media origin, and real-account Reel acceptance.
+- Rotate any Telegram bot token that may have appeared in diagnostic URLs. Store the replacement only in the deployment secret store and confirm the target channel ID.
+- PostZen comment automation inventory was empty at the last review. Create an inactive review configuration only after the exact per-post keyword, user-approved DM copy, and public educational resource URL are known. Never enable follow-gating or unsolicited bulk DMs.
+- Record real-provider post IDs and provider analytics separately from mocked CI. Missing provider metrics must be labelled unavailable, not estimated.
+- Do not enable unattended publishing until CI is green, credentials and scopes are verified, and one controlled test campaign has explicit approval.
