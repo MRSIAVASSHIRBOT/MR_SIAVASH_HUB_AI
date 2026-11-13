@@ -1,6 +1,6 @@
 # Local SQLite Backup and Restore
 
-The `mrhub.operations.backup` module provides explicit, local-only SQLite backup and restore helpers. It does not run automatically and never overwrites an existing destination.
+The `mrhub.operations.backup` module provides explicit, local-only SQLite and registered-media backup, verification, and restore helpers. They do not run automatically and never overwrite an existing destination.
 
 
 ## Command-line recovery tools
