@@ -21,7 +21,7 @@ Each command prints one JSON result for scripts and operator workflows. Database
 
 ### Media recovery
 
-After stopping API and worker writers, run `backup-media` to copy only registered media assets into a new private directory. The generated manifest records each storage key, byte size, and SHA-256 digest. The default total copy/restore limit is 5 GiB and can be raised explicitly with `--max-total-bytes` up to the verifier's 1 TiB hard bound. Run `verify-media-backup` before `restore-media`; restore writes only to a new directory and never merges into or overwrites the live `content_assets` directory. The database and media recovery points must be created while writers are stopped so they represent one consistent application state.
+After stopping API and worker writers, run `backup-media` to copy only registered media assets into a new private directory. The generated manifest records each storage key, byte size, and SHA-256 digest. The default total copy/restore limit is 5 GiB and can be raised explicitly with `--max-total-bytes` up to the verifier's 1 TB hard bound. Run `verify-media-backup` before `restore-media`; restore writes only to a new directory and never merges into or overwrites the live `content_assets` directory. The database and media recovery points must be created while writers are stopped so they represent one consistent application state.
 
 
 ## Backup
