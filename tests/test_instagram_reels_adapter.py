@@ -1,12 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
-from uuid import UUID
-
 import httpx
 import pytest
 
 from client_helpers import authenticated_client
-from mrhub.api.routes import public_media
 from mrhub.config import get_settings
 from mrhub.content.dispatcher import (
     ContentScheduleDispatcher,
