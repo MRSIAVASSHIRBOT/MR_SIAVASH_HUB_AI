@@ -76,8 +76,8 @@ class MemorySearchRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
-def _encode_telegram_task_cursor(task: TaskRecord) -> str:
-    payload = f"{task.created_at.isoformat()}\n{task.task_id}".encode("utf-8")
+def _encode_telegram_task_cursor(created_at: str, task_id: str) -> str:
+    payload = f"{created_at}\n{task_id}".encode("utf-8")
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
@@ -90,7 +90,7 @@ def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
         created_at, task_id = payload.split("\n", 1)
         parsed_timestamp = datetime.fromisoformat(created_at)
         parsed_task_id = UUID(task_id)
-        if parsed_timestamp.tzinfo is None or str(parsed_task_id) != task_id.lower():
+        if str(parsed_task_id) != task_id.lower():
             raise ValueError("Invalid task cursor")
     except (binascii.Error, UnicodeDecodeError, ValueError):
         raise ValueError("Invalid task cursor") from None
@@ -238,12 +238,12 @@ def list_telegram_tasks(
         before = _decode_telegram_task_cursor(cursor) if cursor is not None else None
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid task cursor") from None
-    tasks, has_more = _tasks_repository().list_recent_for_telegram_client(
+    tasks, has_more, cursor_after = _tasks_repository().list_recent_for_telegram_client(
         identity.client_id,
         limit,
         before=before,
     )
-    next_cursor = _encode_telegram_task_cursor(tasks[-1]) if has_more and tasks else None
+    next_cursor = _encode_telegram_task_cursor(*cursor_after) if cursor_after else None
     return {
         "tasks": [task.model_dump(mode="json") for task in tasks],
         "count": len(tasks),
