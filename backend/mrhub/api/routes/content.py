@@ -16,7 +16,7 @@ from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/content/drafts", tags=["content"], dependencies=[Depends(require_user)])
 Platform = Literal["instagram", "telegram", "generic"]
-ContentType = Literal["caption", "script", "reel_script", "post_text", "video_brief"]
+ContentType = Literal["caption", "script", "reel_script", "reel", "post_text", "video_brief"]
 DraftStatus = Literal["draft", "approved", "archived"]
 
 
