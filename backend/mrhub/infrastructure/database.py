@@ -107,7 +107,7 @@ class TaskRepository:
         limit: int = 20,
         *,
         before: tuple[str, str] | None = None,
-    ) -> tuple[list[TaskRecord], bool]:
+    ) -> tuple[list[TaskRecord], bool, tuple[str, str] | None]:
         """Return one bounded, cursor-addressable page for the exact paired Telegram client."""
         bounded_limit = max(1, min(limit, 50))
         parameters: list[object] = [client_id]
@@ -140,6 +140,11 @@ class TaskRepository:
             ).fetchall()
         has_more = len(rows) > bounded_limit
         page = rows[:bounded_limit]
+        cursor_after = (
+            (str(page[-1]["created_at"]), str(page[-1]["task_id"]))
+            if has_more and page
+            else None
+        )
         return [
             TaskRecord(
                 task_id=UUID(row["task_id"]),
@@ -151,7 +156,7 @@ class TaskRepository:
                 description=row["description"],
             )
             for row in page
-        ], has_more
+        ], has_more, cursor_after
 
     def get_for_telegram_client(self, client_id: str, task_id: UUID) -> TaskRecord | None:
         """Return a task only when its submission audit belongs to this exact bot client."""
