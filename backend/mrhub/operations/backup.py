@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
 import re
 import sqlite3
+import sys
 import tempfile
 from contextlib import closing
 from datetime import UTC, datetime
@@ -321,3 +323,54 @@ def restore_database(backup: str | Path, destination: str | Path) -> dict[str, A
                 temporary_path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run explicit, no-overwrite database recovery operations from the command line."""
+    parser = argparse.ArgumentParser(
+        prog="mrhub-db",
+        description="Create, verify, and restore local Hub database recovery files.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    backup_parser = commands.add_parser("backup", help="create a verified SQLite backup and manifest")
+    backup_parser.add_argument("source", type=Path, help="source SQLite database")
+    backup_parser.add_argument("destination", type=Path, help="new backup path; must not exist")
+
+    restore_parser = commands.add_parser("restore", help="restore a verified backup to a new path")
+    restore_parser.add_argument("backup", type=Path, help="backup database with its manifest")
+    restore_parser.add_argument("destination", type=Path, help="new destination path; must not exist")
+
+    media_parser = commands.add_parser(
+        "verify-media",
+        help="read-only check of registered media files against database size and SHA-256 metadata",
+    )
+    media_parser.add_argument("database", type=Path, help="application SQLite database")
+
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "backup":
+            result = backup_database(args.source, args.destination)
+        elif args.command == "restore":
+            result = restore_database(args.backup, args.destination)
+        else:
+            result = verify_media_assets(args.database)
+    except (BackupError, OSError) as exc:
+        print(
+            json.dumps(
+                {"ok": False, "error": str(exc)},
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    if args.command == "verify-media" and result.get("ok") is not True:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
