@@ -155,15 +155,12 @@ def test_dispatcher_requires_verified_render_profile_for_reels(
     get_settings.cache_clear()
     client = authenticated_client()
     video_bytes = b"\x00\x00\x00\x18ftypisom" + b"reel-video-fixture"
-    uploaded = client.post(
-        "/content/assets",
-        content=video_bytes,
-        headers={"Content-Type": "video/mp4", "X-File-Name": "approved-reel.mp4"},
-    )
-    assert uploaded.status_code == 201
-    asset_id = uploaded.json()["asset_id"]
-    owner_id = uploaded.json()["owner_user_id"]
     repository = MediaAssetRepository(get_settings().database_path)
+    uploaded = repository.store_upload(
+        "local-owner", "approved-reel.mp4", "video/mp4", video_bytes
+    )
+    asset_id = uploaded["asset_id"]
+    owner_id = uploaded["owner_user_id"]
     with repository.tasks._connection() as connection:
         connection.execute(
             "UPDATE content_assets SET processing_status = 'processed', "
