@@ -245,3 +245,63 @@ def test_campaign_routes_are_owner_scoped_and_require_authentication():
     client = TestClient(create_app())
     assert client.get("/content/campaigns").status_code in (401, 403)
     get_settings.cache_clear()
+
+
+
+def test_campaign_reports_unknown_outcome_without_blind_retry():
+    from mrhub.config import get_settings
+    from mrhub.content.scheduling import ContentScheduleRepository
+
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    created = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Ambiguous delivery campaign",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    campaign_id = created.json()["campaign_id"]
+    scheduled = client.post(
+        f"/content/campaigns/{campaign_id}/schedule",
+        json={"scheduled_at": (datetime.now(UTC) + timedelta(days=1)).isoformat()},
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    schedules = scheduled.json()["schedules"]
+    repository = ContentScheduleRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE content_publish_schedules SET status = 'unknown_outcome' "
+            "WHERE schedule_id = ?",
+            (schedules[0]["schedule_id"],),
+        )
+    current = client.get(f"/content/campaigns/{campaign_id}")
+    assert current.status_code == 200
+    assert current.json()["status"] == "unknown_outcome"
+
+
+def test_deleting_linked_draft_cascades_campaign_link_without_orphaning_schedule():
+    from mrhub.config import get_settings
+    from mrhub.content.scheduling import ContentScheduleRepository
+
+    client = authenticated_client()
+    reel, telegram = _create_approved_campaign_drafts(client)
+    created = client.post(
+        "/content/campaigns",
+        json={
+            "title": "Deletion cleanup campaign",
+            "instagram_draft_id": reel["draft_id"],
+            "telegram_draft_id": telegram["draft_id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    campaign_id = created.json()["campaign_id"]
+    repository = ContentScheduleRepository(get_settings().database_path)
+    # Campaigns are intentionally unscheduled here; draft deletion should remove the link.
+    deleted = client.delete(f"/content/drafts/{reel['draft_id']}")
+    assert deleted.status_code == 204
+    assert client.get(f"/content/campaigns/{campaign_id}").status_code == 404
+    with repository.tasks._connection() as connection:
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
