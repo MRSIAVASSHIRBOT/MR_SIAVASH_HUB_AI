@@ -313,11 +313,11 @@ def test_static_analysis_tracks_local_http_client_alias_chains_and_reassignments
 
 def test_static_analysis_respects_same_line_assignment_order_for_tls_aliases():
     result = analyze_python_source(
-        "import httpx as transport\\n"
-        "def before_reassignment():\\n"
-        "    client = transport.Client(); alias = client; alias.verify = False; client = object()\\n"
-        "def after_reassignment():\\n"
-        "    client = transport.Client(); client = object(); alias = client; alias.verify = False\\n",
+        "import httpx as transport\n"
+        "def before_reassignment():\n"
+        "    client = transport.Client(); alias = client; alias.verify = False; client = object()\n"
+        "def after_reassignment():\n"
+        "    client = transport.Client(); client = object(); alias = client; alias.verify = False\n",
         path="src/http_client_same_line_order.py",
     )
 
