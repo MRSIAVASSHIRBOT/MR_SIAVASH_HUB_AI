@@ -124,3 +124,24 @@ def test_media_backup_cli_exposes_machine_readable_recovery_commands(tmp_path, c
     restored_result = json.loads(capsys.readouterr().out)
     assert restored_result["restored"] is True
     assert all((restored / key).is_file() for key in records)
+
+
+
+def test_media_backup_refuses_existing_destination_and_reports_orphan_files(tmp_path):
+    database, _ = make_media_database(tmp_path)
+    existing = tmp_path / "existing-backup"
+    existing.mkdir()
+    sentinel = existing / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+
+    with pytest.raises(BackupError):
+        backup_media_assets(database, existing)
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+    backup = tmp_path / "verified-backup"
+    backup_media_assets(database, backup)
+    orphan = backup / "content_assets" / "orphan.bin"
+    orphan.write_bytes(b"unregistered")
+    result = verify_media_backup(backup)
+    assert result["ok"] is False
+    assert result["unregistered_entries"] == 1
