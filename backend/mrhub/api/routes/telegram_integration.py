@@ -237,6 +237,7 @@ def list_telegram_tasks(
     identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:read"))],
     limit: int = 20,
     cursor: str | None = None,
+    status: TaskStatus | None = None,
 ) -> dict[str, object]:
     """List this paired client's recent tasks; pass next_cursor unchanged for older pages."""
     if not 1 <= limit <= 50:
@@ -249,6 +250,7 @@ def list_telegram_tasks(
         identity.client_id,
         limit,
         before=before,
+        status=status,
     )
     next_cursor = _encode_telegram_task_cursor(*cursor_after) if cursor_after else None
     return {
@@ -270,6 +272,22 @@ def get_telegram_task(
         # Do not reveal whether another bot client or an owner created this task.
         raise HTTPException(status_code=404, detail="Telegram task not found")
     return task.model_dump(mode="json")
+
+
+@router.get("/tasks/{task_id}/events")
+def get_telegram_task_events(
+    task_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:read"))],
+    limit: int = 20,
+) -> dict[str, object]:
+    """Return the audit timeline only to the paired client that submitted this task."""
+    if not 1 <= limit <= 50:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 50")
+    repository = _tasks_repository()
+    if repository.get_for_telegram_client(identity.client_id, task_id) is None:
+        raise HTTPException(status_code=404, detail="Telegram task not found")
+    events = repository.list_task_audit_events(task_id, limit)
+    return {"task_id": str(task_id), "events": events, "count": len(events)}
 
 
 @router.get("/tasks/{task_id}/result")

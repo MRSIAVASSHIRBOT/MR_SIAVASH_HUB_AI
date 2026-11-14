@@ -1185,6 +1185,13 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX idx_resource_reply_configs_updated ON resource_reply_configs(updated_at DESC)",
         ),
+    ),
+    Migration.build(
+        43,
+        "task_lifecycle_timeline_lookup_index",
+        (
+            "CREATE INDEX IF NOT EXISTS idx_audit_task_timeline ON audit_events(subject_type, subject_id, created_at DESC, event_id DESC)",
+        ),
     )
 )
 

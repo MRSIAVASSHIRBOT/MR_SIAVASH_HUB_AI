@@ -56,6 +56,10 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "SELECT 1 FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_kimi_request_events_owner_time'"
     ).fetchone() is not None
+    assert connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_audit_task_timeline'"
+    ).fetchone() is not None
     source_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
     }
@@ -601,7 +605,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()

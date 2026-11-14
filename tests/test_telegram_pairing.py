@@ -1,8 +1,12 @@
 import hashlib
 import sqlite3
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+
+from mrhub.domain.tasks import TaskStatus
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import JobEngine
 
 from mrhub.config import get_settings
 from mrhub.main import create_app
@@ -584,4 +588,110 @@ def test_telegram_task_cancellation_requires_scope_ownership_and_pending_state(t
         headers=_bot_headers(tokens_b, 987654321),
     )
     assert running.status_code == 409
+    get_settings.cache_clear()
+
+
+def test_telegram_task_list_can_filter_by_status_without_leaking_other_clients(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload_a, challenge_a = _create_pairing(
+        client, telegram_user_id=123456789, scopes=["tasks:create", "tasks:read"]
+    )
+    payload_b, challenge_b = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["tasks:create", "tasks:read"]
+    )
+    tokens_a = _exchange(client, payload_a, challenge_a).json()
+    tokens_b = _exchange(client, payload_b, challenge_b).json()
+
+    queued = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "keep queued"},
+        headers={**_bot_headers(tokens_a, 123456789), "Idempotency-Key": "status-filter-queued"},
+    )
+    running = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "move to running"},
+        headers={**_bot_headers(tokens_a, 123456789), "Idempotency-Key": "status-filter-running"},
+    )
+    other = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "other client"},
+        headers={**_bot_headers(tokens_b, 987654321), "Idempotency-Key": "status-filter-other"},
+    )
+    assert queued.status_code == running.status_code == other.status_code == 201
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    JobEngine(repository).transition(UUID(running.json()["task_id"]), TaskStatus.RUNNING)
+
+    queued_page = client.get(
+        "/integrations/telegram/tasks",
+        params={"status": "queued"},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    running_page = client.get(
+        "/integrations/telegram/tasks",
+        params={"status": "running"},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert queued_page.status_code == running_page.status_code == 200
+    assert [item["task_id"] for item in queued_page.json()["tasks"]] == [queued.json()["task_id"]]
+    assert [item["task_id"] for item in running_page.json()["tasks"]] == [running.json()["task_id"]]
+    assert other.json()["task_id"] not in {
+        item["task_id"] for item in queued_page.json()["tasks"] + running_page.json()["tasks"]
+    }
+    assert client.get(
+        "/integrations/telegram/tasks",
+        params={"status": "unknown"},
+        headers=_bot_headers(tokens_a, 123456789),
+    ).status_code == 422
+    get_settings.cache_clear()
+
+
+def test_telegram_task_event_timeline_is_bounded_and_pairing_scoped(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload_a, challenge_a = _create_pairing(
+        client, telegram_user_id=123456789, scopes=["tasks:create", "tasks:read"]
+    )
+    payload_b, challenge_b = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["tasks:create", "tasks:read"]
+    )
+    tokens_a = _exchange(client, payload_a, challenge_a).json()
+    tokens_b = _exchange(client, payload_b, challenge_b).json()
+    created = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "timeline test"},
+        headers={**_bot_headers(tokens_a, 123456789), "Idempotency-Key": "timeline-task-0001"},
+    )
+    assert created.status_code == 201
+    task_id = UUID(created.json()["task_id"])
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    engine = JobEngine(repository)
+    engine.transition(task_id, TaskStatus.RUNNING)
+    engine.transition(task_id, TaskStatus.SUCCEEDED)
+
+    timeline = client.get(
+        f"/integrations/telegram/tasks/{task_id}/events",
+        params={"limit": 50},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert timeline.status_code == 200
+    payload = timeline.json()
+    assert payload["task_id"] == str(task_id)
+    assert payload["count"] == 3
+    assert {event["event_type"] for event in payload["events"]} == {
+        "task.submitted", "task.status_changed"
+    }
+    assert all("metadata" in event and "actor_id" not in event for event in payload["events"])
+
+    limited = client.get(
+        f"/integrations/telegram/tasks/{task_id}/events",
+        params={"limit": 0},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    cross_client = client.get(
+        f"/integrations/telegram/tasks/{task_id}/events",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert limited.status_code == 422
+    assert cross_client.status_code == 404
     get_settings.cache_clear()
