@@ -499,7 +499,7 @@ class ResearchRepository:
             with self._connection() as connection:
                 evidence = connection.execute(
                     """SELECT e.canonical_url, e.source_type, e.published_at,
-                              s.publisher_group
+                              s.hostname, s.publisher_group
                        FROM research_evidence e
                        INNER JOIN research_sources s
                            ON s.source_id = e.source_id AND s.owner_user_id = e.owner_user_id
@@ -512,13 +512,14 @@ class ResearchRepository:
             ]
             source_count = len({row["canonical_url"] for row in current_evidence})
             type_count = len({row["source_type"] for row in current_evidence})
+            host_count = len({row["hostname"] for row in current_evidence})
             publisher_count = len({
                 str(row["publisher_group"]).casefold() for row in current_evidence
             })
-            if source_count < 2 or type_count < 2 or publisher_count < 2:
+            if source_count < 2 or type_count < 2 or host_count < 2 or publisher_count < 2:
                 raise ResearchConflictError(
-                    "Validation requires two current, dated public URLs from different "
-                    "source types and publisher groups; stale or undated evidence does not count"
+                    "Validation requires two current, dated public URLs, two source types, "
+                    "two hostnames, and two publisher groups; stale or undated evidence does not count"
                 )
         if next_status == "prioritized" and any(score is None for score in effective_scores):
             raise ResearchConflictError(
