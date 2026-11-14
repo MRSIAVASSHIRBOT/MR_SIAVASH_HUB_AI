@@ -916,6 +916,128 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_audit_telegram_task_owner ON audit_events(actor_type, actor_id, event_type, subject_type, subject_id)",
         ),
     ),
+    Migration.build(
+        36,
+        "owner_scoped_people_needs_research",
+        (
+            """CREATE TABLE IF NOT EXISTS research_opportunities (
+                opportunity_id TEXT PRIMARY KEY CHECK (length(opportunity_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                domain_id TEXT NOT NULL CHECK (domain_id IN (
+                    'content', 'web', 'automation', 'customer_support', 'business_ops',
+                    'security', 'learning', 'documents', 'productivity', 'multilingual'
+                )),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 160),
+                problem_statement TEXT NOT NULL CHECK (length(problem_statement) BETWEEN 1 AND 4000),
+                audience TEXT NOT NULL CHECK (length(audience) BETWEEN 1 AND 240),
+                solution_hypothesis TEXT NOT NULL DEFAULT '' CHECK (length(solution_hypothesis) <= 2000),
+                status TEXT NOT NULL CHECK (status IN (
+                    'new', 'validating', 'validated', 'prioritized', 'in_progress', 'deferred', 'rejected'
+                )),
+                impact_score INTEGER CHECK (impact_score IS NULL OR impact_score BETWEEN 1 AND 5),
+                frequency_score INTEGER CHECK (frequency_score IS NULL OR frequency_score BETWEEN 1 AND 5),
+                feasibility_score INTEGER CHECK (feasibility_score IS NULL OR feasibility_score BETWEEN 1 AND 5),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(opportunity_id, owner_user_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_opportunities_owner_updated ON research_opportunities(owner_user_id, updated_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_research_opportunities_owner_domain_status ON research_opportunities(owner_user_id, domain_id, status)",
+            """CREATE TABLE IF NOT EXISTS research_evidence (
+                evidence_id TEXT PRIMARY KEY CHECK (length(evidence_id) = 36),
+                opportunity_id TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                source_type TEXT NOT NULL CHECK (source_type IN (
+                    'public_discussion', 'community_forum', 'app_review',
+                    'research_report', 'support_request', 'other'
+                )),
+                canonical_url TEXT NOT NULL CHECK (length(canonical_url) BETWEEN 1 AND 2048),
+                source_label TEXT NOT NULL CHECK (length(source_label) BETWEEN 1 AND 120),
+                observation_summary TEXT NOT NULL CHECK (length(observation_summary) BETWEEN 1 AND 2000),
+                signal_strength TEXT NOT NULL CHECK (signal_strength IN ('low', 'medium', 'high')),
+                captured_at TEXT NOT NULL,
+                published_at TEXT,
+                UNIQUE(opportunity_id, canonical_url),
+                FOREIGN KEY(opportunity_id, owner_user_id)
+                    REFERENCES research_opportunities(opportunity_id, owner_user_id)
+                    ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_evidence_owner_opportunity_captured ON research_evidence(owner_user_id, opportunity_id, captured_at DESC)",
+        ),
+    ),
+    Migration.build(
+        37,
+        "consented_owner_scoped_research_feedback",
+        (
+            """CREATE TABLE IF NOT EXISTS research_feedback (
+                feedback_id TEXT PRIMARY KEY CHECK (length(feedback_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                domain_id TEXT NOT NULL CHECK (domain_id IN (
+                    'content', 'web', 'automation', 'customer_support', 'business_ops',
+                    'security', 'learning', 'documents', 'productivity', 'multilingual'
+                )),
+                audience_segment TEXT NOT NULL CHECK (length(audience_segment) BETWEEN 1 AND 120),
+                need_summary TEXT NOT NULL CHECK (length(need_summary) BETWEEN 1 AND 2000),
+                current_workaround TEXT NOT NULL DEFAULT '' CHECK (length(current_workaround) <= 1200),
+                impact_score INTEGER CHECK (impact_score IS NULL OR impact_score BETWEEN 1 AND 5),
+                frequency_score INTEGER CHECK (frequency_score IS NULL OR frequency_score BETWEEN 1 AND 5),
+                consent_to_research INTEGER NOT NULL CHECK (consent_to_research = 1),
+                consent_version TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('new', 'reviewed', 'converted', 'dismissed')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_feedback_owner_status_created ON research_feedback(owner_user_id, status, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_research_feedback_owner_domain_created ON research_feedback(owner_user_id, domain_id, created_at DESC)",
+        ),
+    ),
+    Migration.build(
+        38,
+        "owner_scoped_opportunity_outcome_measurements",
+        (
+            """CREATE TABLE IF NOT EXISTS research_outcome_measurements (
+                measurement_id TEXT PRIMARY KEY CHECK (length(measurement_id) = 36),
+                opportunity_id TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                metric_name TEXT NOT NULL CHECK (metric_name IN (
+                    'task_time_saved_minutes', 'task_completion_rate_percent',
+                    'user_satisfaction_score', 'error_rate_percent',
+                    'active_users', 'operating_cost'
+                )),
+                baseline_value REAL NOT NULL CHECK (baseline_value >= 0),
+                observed_value REAL NOT NULL CHECK (observed_value >= 0),
+                unit TEXT NOT NULL CHECK (length(unit) BETWEEN 1 AND 40),
+                sample_size INTEGER NOT NULL CHECK (sample_size BETWEEN 1 AND 1000000),
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT '' CHECK (length(notes) <= 1200),
+                recorded_at TEXT NOT NULL,
+                FOREIGN KEY(opportunity_id, owner_user_id)
+                    REFERENCES research_opportunities(opportunity_id, owner_user_id)
+                    ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_outcomes_owner_opportunity_recorded ON research_outcome_measurements(owner_user_id, opportunity_id, recorded_at DESC)",
+        ),
+    ),
+    Migration.build(
+        39,
+        "shared_owner_scoped_research_discovery_rate_limits",
+        (
+            """CREATE TABLE IF NOT EXISTS research_discovery_requests (
+                request_id TEXT PRIMARY KEY CHECK (length(request_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                query_key TEXT NOT NULL CHECK (length(query_key) BETWEEN 1 AND 256),
+                requested_at REAL NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_discovery_owner_time ON research_discovery_requests(owner_user_id, requested_at)",
+            "CREATE INDEX IF NOT EXISTS idx_research_discovery_owner_query_time ON research_discovery_requests(owner_user_id, query_key, requested_at)",
+            """CREATE TABLE IF NOT EXISTS research_discovery_provider_backoff (
+                provider_key TEXT PRIMARY KEY CHECK (provider_key IN ('hacker_news', 'stack_exchange')),
+                retry_after REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )""",
+        ),
+    ),
 )
 
 

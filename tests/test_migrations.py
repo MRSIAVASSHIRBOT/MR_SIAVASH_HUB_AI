@@ -38,7 +38,8 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "video_render_runs", "video_render_timeline_snapshots", "video_generation_reconciliation_limits",
         "tool_permission_grants",
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
-        "telegram_access_tokens",
+        "telegram_access_tokens", "research_opportunities", "research_evidence",
+        "research_discovery_requests", "research_discovery_provider_backoff",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -507,5 +508,51 @@ def test_telegram_client_task_ownership_query_uses_composite_audit_index(tmp_pat
         ).fetchall()
         details = [row["detail"] for row in plan]
         assert any("idx_audit_telegram_task_owner" in detail for detail in details), details
+    finally:
+        connection.close()
+
+
+def test_research_feedback_and_outcome_schema_constraints(tmp_path):
+    connection = connect(tmp_path / "research-outcomes-schema.sqlite3")
+    try:
+        applied = SchemaMigrator(connection).migrate()
+        assert 37 in applied
+        assert 38 in applied
+        assert 39 in applied
+        tables = {
+            row["name"] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert {"research_feedback", "research_outcome_measurements"} <= tables
+        assert {"research_discovery_requests", "research_discovery_provider_backoff"} <= tables
+        discovery_indexes = {
+            row["name"] for row in connection.execute(
+                "PRAGMA index_list(research_discovery_requests)"
+            )
+        }
+        assert {
+            "idx_research_discovery_owner_time",
+            "idx_research_discovery_owner_query_time",
+        } <= discovery_indexes
+
+        feedback_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(research_feedback)")
+        }
+        assert {
+            "owner_user_id", "domain_id", "audience_segment", "need_summary",
+            "consent_to_research", "consent_version", "status",
+        } <= feedback_columns
+        feedback_indexes = {
+            row["name"] for row in connection.execute("PRAGMA index_list(research_feedback)")
+        }
+        assert "idx_research_feedback_owner_status_created" in feedback_indexes
+
+        outcome_foreign_keys = connection.execute(
+            "PRAGMA foreign_key_list(research_outcome_measurements)"
+        ).fetchall()
+        assert len(outcome_foreign_keys) == 2
+        assert {row["table"] for row in outcome_foreign_keys} == {"research_opportunities"}
+        assert {row["on_delete"] for row in outcome_foreign_keys} == {"CASCADE"}
     finally:
         connection.close()
