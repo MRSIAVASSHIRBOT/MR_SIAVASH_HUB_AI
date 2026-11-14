@@ -129,7 +129,7 @@ class ToolRegistry:
         handler_failed = False
         try:
             raw_result = tool.handler(validated_input)
-        except Exception:
+        except Exception:  # noqa: BLE001 - sanitize arbitrary untrusted tool failures
             # Leave the exception handler before raising so the original error
             # (which may retain credentials or private request data) is not kept
             # as this public boundary's __context__ or __cause__.
