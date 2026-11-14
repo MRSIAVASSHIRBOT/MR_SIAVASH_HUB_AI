@@ -7,6 +7,7 @@ const MAX_LIST_ITEMS = MAX_PAGES * PAGE_SIZE;
 const ACCOUNT_ID_PATTERN = /^[a-f0-9]{32}$/;
 const RESOURCE_NAME_PATTERN = /^[a-z0-9_][a-z0-9_-]{0,62}$/;
 const JSON_CONTENT_TYPE = /^application\/(?:json|[a-z0-9.+-]+\+json)(?:\s*;|$)/i;
+const CORRELATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class GatewayFault extends Error {
   constructor(code, status) {
@@ -296,6 +297,7 @@ export async function handleRequest(request, env) {
   const startedAt = Date.now();
   let operation = "unknown";
   let status = 500;
+  let correlationId = null;
 
   try {
     if (request.method !== "GET") throw new GatewayFault("method_not_allowed", 405);
@@ -307,6 +309,10 @@ export async function handleRequest(request, env) {
     if (!(await verifyGatewayToken(request, env.GATEWAY_AUTH_TOKEN))) {
       throw new GatewayFault("unauthorized", 401);
     }
+    const suppliedCorrelationId = request.headers.get("x-correlation-id") || "";
+    correlationId = CORRELATION_ID_PATTERN.test(suppliedCorrelationId)
+      ? suppliedCorrelationId.toLowerCase()
+      : null;
 
     const route = resolveOperation(url.pathname);
     if (!route) throw new GatewayFault("not_found", 404);
@@ -342,6 +348,7 @@ export async function handleRequest(request, env) {
     console.log({
       event: "cloudflare_gateway_request",
       request_id: requestId,
+      correlation_id: correlationId,
       operation,
       status,
       duration_ms: Date.now() - startedAt,
