@@ -1202,7 +1202,7 @@ MIGRATIONS = (
                 owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
                 canonical_url TEXT NOT NULL CHECK (length(canonical_url) BETWEEN 1 AND 2048),
                 hostname TEXT NOT NULL CHECK (length(hostname) BETWEEN 1 AND 253),
-                publisher_group TEXT NOT NULL CHECK (length(publisher_group) BETWEEN 1 AND 120),
+                publisher_group TEXT NOT NULL CHECK (length(publisher_group) BETWEEN 1 AND 253),
                 first_captured_at TEXT NOT NULL,
                 last_captured_at TEXT NOT NULL,
                 UNIQUE(owner_user_id, canonical_url),
