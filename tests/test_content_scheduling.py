@@ -119,7 +119,7 @@ def test_schedule_api_requires_authentication() -> None:
 
 
 
-def _create_approved_campaign_drafts(client):
+def _create_approved_campaign_drafts(client, *, suffix=""):
     from mrhub.config import get_settings
     from mrhub.media.repository import MediaAssetRepository
 
@@ -145,13 +145,24 @@ def _create_approved_campaign_drafts(client):
         json={
             "platform": "instagram",
             "content_type": "reel",
-            "title": "Campaign Reel",
-            "body": "A useful short lesson about safe account security.",
+            "title": f"Campaign Reel {suffix}" if suffix else "Campaign Reel",
+            "body": (
+                "A useful short lesson about safe account security. "
+                + suffix
+            ).strip(),
             "media_asset_id": asset["asset_id"],
         },
     )
     assert reel_response.status_code == 201, reel_response.text
-    telegram = _create_draft(client, platform="telegram")
+    telegram = _create_draft(
+        client,
+        platform="telegram",
+        title=f"Campaign lesson {suffix}" if suffix else "Scheduled learning post",
+        body=(
+            "A distinct campaign lesson about account security. "
+            + suffix
+        ).strip(),
+    )
     for draft in (reel_response.json(), telegram):
         approved = client.post(f"/content/drafts/{draft['draft_id']}/approve")
         assert approved.status_code == 200, approved.text
@@ -372,7 +383,7 @@ def test_campaign_schedule_rejects_any_prior_standalone_publish_history():
     client = authenticated_client()
     repository = ContentScheduleRepository(get_settings().database_path)
     for terminal_status in ("published", "failed", "cancelled"):
-        reel, telegram = _create_approved_campaign_drafts(client)
+        reel, telegram = _create_approved_campaign_drafts(client, suffix=terminal_status)
         created = client.post(
             "/content/campaigns",
             json={

@@ -30,8 +30,8 @@ from mrhub.api.routes.platform import router as platform_router
 from mrhub.api.routes.policy import router as policy_router
 from mrhub.api.routes.projects import router as projects_router
 from mrhub.api.routes.public_media import router as public_media_router
-from mrhub.api.routes.resource_reply import router as resource_reply_router
 from mrhub.api.routes.research import router as research_router
+from mrhub.api.routes.resource_reply import router as resource_reply_router
 from mrhub.api.routes.security_lab import router as security_lab_router
 from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.telegram_integration import router as telegram_integration_router

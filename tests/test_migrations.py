@@ -564,7 +564,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection = connect(tmp_path / "reel-migration.sqlite3")
     all_migrations = migrations_module.MIGRATIONS
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:39])
-    assert SchemaMigrator(connection).migrate() == [item.version for item in all_migrations[:35]]
+    assert SchemaMigrator(connection).migrate() == [item.version for item in all_migrations[:39]]
 
     now = "2026-11-14T00:00:00+00:00"
     connection.execute(
