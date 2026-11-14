@@ -915,7 +915,56 @@ MIGRATIONS = (
         (
             "CREATE INDEX IF NOT EXISTS idx_audit_telegram_task_owner ON audit_events(actor_type, actor_id, event_type, subject_type, subject_id)",
         ),
-    ),
+    ),,
+    Migration.build(
+        36,
+        "owner_scoped_people_needs_research",
+        (
+            """CREATE TABLE IF NOT EXISTS research_opportunities (
+                opportunity_id TEXT PRIMARY KEY CHECK (length(opportunity_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                domain_id TEXT NOT NULL CHECK (domain_id IN (
+                    'content', 'web', 'automation', 'customer_support', 'business_ops',
+                    'security', 'learning', 'documents', 'productivity', 'multilingual'
+                )),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 160),
+                problem_statement TEXT NOT NULL CHECK (length(problem_statement) BETWEEN 1 AND 4000),
+                audience TEXT NOT NULL CHECK (length(audience) BETWEEN 1 AND 240),
+                solution_hypothesis TEXT NOT NULL DEFAULT '' CHECK (length(solution_hypothesis) <= 2000),
+                status TEXT NOT NULL CHECK (status IN (
+                    'new', 'validating', 'validated', 'prioritized', 'in_progress', 'deferred', 'rejected'
+                )),
+                impact_score INTEGER CHECK (impact_score IS NULL OR impact_score BETWEEN 1 AND 5),
+                frequency_score INTEGER CHECK (frequency_score IS NULL OR frequency_score BETWEEN 1 AND 5),
+                feasibility_score INTEGER CHECK (feasibility_score IS NULL OR feasibility_score BETWEEN 1 AND 5),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(opportunity_id, owner_user_id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_opportunities_owner_updated ON research_opportunities(owner_user_id, updated_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_research_opportunities_owner_domain_status ON research_opportunities(owner_user_id, domain_id, status)",
+            """CREATE TABLE IF NOT EXISTS research_evidence (
+                evidence_id TEXT PRIMARY KEY CHECK (length(evidence_id) = 36),
+                opportunity_id TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                source_type TEXT NOT NULL CHECK (source_type IN (
+                    'public_discussion', 'community_forum', 'app_review',
+                    'research_report', 'support_request', 'other'
+                )),
+                canonical_url TEXT NOT NULL CHECK (length(canonical_url) BETWEEN 1 AND 2048),
+                source_label TEXT NOT NULL CHECK (length(source_label) BETWEEN 1 AND 120),
+                observation_summary TEXT NOT NULL CHECK (length(observation_summary) BETWEEN 1 AND 2000),
+                signal_strength TEXT NOT NULL CHECK (signal_strength IN ('low', 'medium', 'high')),
+                captured_at TEXT NOT NULL,
+                published_at TEXT,
+                UNIQUE(opportunity_id, canonical_url),
+                FOREIGN KEY(opportunity_id, owner_user_id)
+                    REFERENCES research_opportunities(opportunity_id, owner_user_id)
+                    ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_evidence_owner_opportunity_captured ON research_evidence(owner_user_id, opportunity_id, captured_at DESC)",
+        ),
+    )
 )
 
 
