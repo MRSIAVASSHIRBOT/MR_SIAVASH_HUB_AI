@@ -298,3 +298,25 @@ def test_public_discovery_only_returns_expected_stack_exchange_hosts(tmp_path, m
         assert items[0]["tags"] == ["workflow", "automation"]
     finally:
         get_settings.cache_clear()
+
+
+
+def test_discovery_rate_limit_is_shared_across_limiter_instances(tmp_path):
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.research.discovery import _DiscoveryLimiter, ResearchDiscoveryError
+
+    database_path = tmp_path / "shared-discovery-limit.sqlite3"
+    TaskRepository(database_path).initialize()
+
+    first_worker = _DiscoveryLimiter()
+    second_worker = _DiscoveryLimiter()
+    first_worker.check(database_path, "owner-a", "hacker_news:automation")
+    try:
+        second_worker.check(database_path, "owner-a", "hacker_news:automation")
+    except ResearchDiscoveryError as exc:
+        assert exc.status_code == 429
+    else:
+        raise AssertionError("A second worker must observe the shared query cooldown")
+
+    # Limits are owner-scoped; another authenticated owner has an independent budget.
+    second_worker.check(database_path, "owner-b", "hacker_news:automation")
