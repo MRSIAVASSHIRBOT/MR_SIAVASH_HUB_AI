@@ -223,3 +223,78 @@ def test_outcome_measurements_are_owner_scoped_and_time_bounded(tmp_path, monkey
         assert listed.json()["count"] == 1
     finally:
         get_settings.cache_clear()
+
+
+def test_public_discovery_returns_review_only_hacker_news_candidates(tmp_path, monkeypatch):
+    from mrhub.research import discovery
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-discovery-hn.sqlite3"))
+    monkeypatch.setattr(discovery, "_bounded_json", lambda _url, _params: {
+        "hits": [{
+            "objectID": "123456",
+            "title": "How do you manage repetitive admin work?",
+            "created_at": "2026-11-14T10:00:00Z",
+            "points": 42,
+            "num_comments": 18,
+            "author": "must-not-be-exposed",
+        }]
+    })
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        response = client.get(
+            "/research/discovery/search",
+            params={"query": "repetitive admin work", "source": "hacker_news", "limit": 5},
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert result["review_required"] is True
+        assert result["automatically_saved_as_evidence"] is False
+        assert result["count"] == 1
+        item = result["items"][0]
+        assert item["source_url"] == "https://news.ycombinator.com/item?id=123456"
+        assert "author" not in item
+        repeated = client.get(
+            "/research/discovery/search",
+            params={"query": "repetitive admin work", "source": "hacker_news", "limit": 5},
+        )
+        assert repeated.status_code == 429
+    finally:
+        get_settings.cache_clear()
+
+
+def test_public_discovery_only_returns_expected_stack_exchange_hosts(tmp_path, monkeypatch):
+    from mrhub.research import discovery
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-discovery-se.sqlite3"))
+    monkeypatch.setattr(discovery, "_bounded_json", lambda _url, _params: {
+        "items": [
+            {
+                "title": "A relevant public question",
+                "link": "https://superuser.com/questions/123/example",
+                "creation_date": 1794650400,
+                "score": 9,
+                "answer_count": 2,
+                "tags": ["workflow", "automation"],
+            },
+            {
+                "title": "Unexpected host must be filtered",
+                "link": "https://example.org/questions/456",
+                "creation_date": 1794650400,
+            },
+        ]
+    })
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        response = client.get(
+            "/research/discovery/search",
+            params={"query": "workflow automation", "source": "stack_exchange", "site": "superuser"},
+        )
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["source_url"].startswith("https://superuser.com/")
+        assert items[0]["tags"] == ["workflow", "automation"]
+    finally:
+        get_settings.cache_clear()
