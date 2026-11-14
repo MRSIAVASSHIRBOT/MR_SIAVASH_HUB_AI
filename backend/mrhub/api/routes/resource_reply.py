@@ -66,7 +66,10 @@ def _normalized(payload: ResourceReplyConfig, *, require_url: bool) -> dict[str,
     if values["include_share"] and not values["share_cta_text"]:
         raise HTTPException(status_code=422, detail="Share text is required when enabled")
     if require_url and not values["resource_url"]:
-        raise HTTPException(status_code=422, detail="An absolute HTTPS resource URL with a public hostname is required for preview")
+        raise HTTPException(
+            status_code=422,
+            detail="An absolute HTTPS resource URL with a public hostname is required for preview",
+        )
     if values["resource_url"]:
         try:
             values["resource_url"] = validate_resource_url(values["resource_url"])
