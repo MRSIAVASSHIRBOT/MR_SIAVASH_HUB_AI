@@ -281,7 +281,7 @@ class ResearchRepository:
         if published_at is not None:
             published_at = _text(published_at, "Published timestamp", 40)
             try:
-                datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                datetime.fromisoformat(published_at)
             except ValueError as exc:
                 raise ResearchValidationError("Published timestamp must be ISO 8601") from exc
         evidence_id = str(uuid4())
