@@ -697,6 +697,11 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
         )
         assert blank_review.status_code == 422
 
+        validating = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validating"}
+        )
+        assert validating.status_code == 200
+
         blocked = client.patch(
             f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
         )
