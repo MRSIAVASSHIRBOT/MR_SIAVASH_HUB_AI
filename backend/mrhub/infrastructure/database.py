@@ -107,12 +107,15 @@ class TaskRepository:
         limit: int = 20,
         *,
         before: tuple[str, str] | None = None,
+        status: TaskStatus | None = None,
     ) -> tuple[list[TaskRecord], bool, tuple[str, str] | None]:
         """Return one bounded, cursor-addressable page for the exact paired Telegram client."""
         bounded_limit = max(1, min(limit, 50))
         before_created_at, before_task_id = before if before is not None else (None, None)
         parameters: list[object] = [
             client_id,
+            status is None,
+            status.value if status is not None else None,
             before is None,
             before_created_at,
             before_created_at,
@@ -133,6 +136,7 @@ class TaskRepository:
                       AND a.actor_type = 'telegram_client'
                       AND a.actor_id = ?
                 )
+                  AND (? OR t.status = ?)
                   AND (
                     ? OR t.created_at < ?
                     OR (t.created_at = ? AND t.task_id < ?)
@@ -191,6 +195,33 @@ class TaskRepository:
             updated_at=row["updated_at"],
             description=row["description"],
         )
+
+    def list_task_audit_events(
+        self, task_id: UUID, limit: int = 20
+    ) -> list[dict[str, object]]:
+        """Return a bounded, sanitized task lifecycle timeline."""
+        bounded_limit = max(1, min(limit, 50))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id, event_type, outcome, created_at, metadata_json
+                FROM audit_events
+                WHERE subject_type = 'task' AND subject_id = ?
+                ORDER BY created_at DESC, event_id DESC
+                LIMIT ?
+                """,
+                (str(task_id), bounded_limit),
+            ).fetchall()
+        return [
+            {
+                "event_id": row["event_id"],
+                "event_type": row["event_type"],
+                "outcome": row["outcome"],
+                "created_at": row["created_at"],
+                "metadata": json.loads(row["metadata_json"]),
+            }
+            for row in rows
+        ]
 
     def update_status(
         self,
