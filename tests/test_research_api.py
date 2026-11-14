@@ -34,6 +34,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
             "signal_strength": "high",
             "publisher_group": "Example Research Network",
             "published_at": published_at,
+            "independence_basis": "A public discussion hosted by an independently operated community; ownership checked separately.",
         })
         assert evidence.status_code == 201
         assert evidence.json()["canonical_url"] == "https://example.com/community/thread-1"
@@ -60,6 +61,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
                 "signal_strength": "medium",
                 "publisher_group": "Example Research Network",
                 "published_at": published_at,
+                "independence_basis": "A review platform with distinct editorial ownership, checked separately.",
             },
         )
         assert same_host_evidence.status_code == 201
@@ -76,6 +78,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
             "signal_strength": "medium",
             "publisher_group": "Independent App Reviews",
             "published_at": published_at,
+            "independence_basis": "A separate app-review publisher; editorial ownership and publication origin checked.",
         })
         assert second_evidence.status_code == 201
 
@@ -645,5 +648,56 @@ def test_research_source_default_publisher_group_accepts_long_valid_hostnames(tm
         assert response.status_code == 201
         assert response.json()["hostname"] == hostname
         assert response.json()["publisher_group"] == hostname
+    finally:
+        get_settings.cache_clear()
+
+
+def test_research_validation_requires_recorded_independence_rationale(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-independence.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post("/research/opportunities", json={
+            "domain_id": "web",
+            "title": "Independent source review",
+            "problem_statement": "Small teams struggle to validate customer needs.",
+            "audience": "Small teams",
+        }).json()
+        opportunity_id = created["opportunity_id"]
+        published_at = datetime.now(UTC).isoformat()
+        base = {
+            "source_type": "public_discussion",
+            "source_label": "Public source",
+            "observation_summary": "The source reports a recurring workflow problem.",
+            "signal_strength": "medium",
+            "published_at": published_at,
+        }
+        for host, group in (("one.example", "Publisher One"), ("two.example", "Publisher Two")):
+            response = client.post(
+                f"/research/opportunities/{opportunity_id}/evidence",
+                json={**base, "source_url": f"https://{host}/discussion", "publisher_group": group},
+            )
+            assert response.status_code == 201
+        blocked = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert blocked.status_code == 409
+
+        for host, group in (("one.example", "Publisher One"), ("two.example", "Publisher Two")):
+            response = client.post(
+                f"/research/opportunities/{opportunity_id}/evidence",
+                json={
+                    **base,
+                    "source_type": "app_review",
+                    "source_url": f"https://{host}/review",
+                    "publisher_group": group,
+                    "independence_basis": "Ownership and editorial origin reviewed against the other source.",
+                },
+            )
+            assert response.status_code == 201
+        validated = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert validated.status_code == 200
     finally:
         get_settings.cache_clear()
