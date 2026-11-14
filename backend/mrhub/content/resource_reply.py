@@ -1,6 +1,7 @@
 """Compose an optional support CTA followed by an unconditional resource link."""
 from __future__ import annotations
 
+from ipaddress import ip_address
 from urllib.parse import urlsplit
 
 
@@ -22,6 +23,19 @@ def validate_resource_url(resource_url: str) -> str:
         or parsed.password is not None
     ):
         raise ValueError("Resource URL must be an absolute HTTPS URL")
+    normalized_host = hostname.rstrip(".").lower()
+    try:
+        address = ip_address(normalized_host)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError("Resource URL must not point to a private or local IP address")
+    if address is None and (
+        normalized_host == "localhost"
+        or normalized_host.endswith((".localhost", ".local", ".internal"))
+        or "." not in normalized_host
+    ):
+        raise ValueError("Resource URL must use a public hostname")
     return candidate
 
 
