@@ -6,7 +6,6 @@ from pathlib import Path
 
 from mrhub.content.repository import ContentDraftRepository
 
-
 DEFAULT_RESOURCE_REPLY_CONFIG: dict[str, object] = {
     "keyword": "راهنما",
     "resource_url": "",
