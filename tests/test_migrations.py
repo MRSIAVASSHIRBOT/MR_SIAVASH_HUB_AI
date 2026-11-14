@@ -40,7 +40,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
-        "resource_reply_configs",
+        "resource_reply_configs", "research_sources",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -605,7 +605,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -656,4 +656,130 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     ).fetchone()["campaign_id"] == "campaign-1"
     connection.commit()
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
+
+
+def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
+    tmp_path, monkeypatch
+):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "research-source-provenance.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:43])
+    assert SchemaMigrator(connection).migrate() == [
+        item.version for item in all_migrations[:43]
+    ]
+
+    now = "2026-11-14T00:00:00+00:00"
+    later = "2026-11-14T01:00:00+00:00"
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
+        (now,),
+    )
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-2', 'owner-2', '00', '00', ?)",
+        (now,),
+    )
+    for opportunity_id in (
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    ):
+        connection.execute(
+            """INSERT INTO research_opportunities (
+                opportunity_id, owner_user_id, domain_id, title, problem_statement,
+                audience, solution_hypothesis, status, created_at, updated_at
+            ) VALUES (?, 'owner-1', 'web', 'Research', 'Problem', 'Audience', '',
+                      'new', ?, ?)""",
+            (opportunity_id, now, now),
+        )
+    connection.execute(
+        """INSERT INTO research_opportunities (
+            opportunity_id, owner_user_id, domain_id, title, problem_statement,
+            audience, solution_hypothesis, status, created_at, updated_at
+        ) VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'owner-2', 'web',
+                  'Research', 'Problem', 'Audience', '', 'new', ?, ?)""",
+        (now, now),
+    )
+    for evidence_id, opportunity_id, captured_at in (
+        (
+            "11111111-1111-4111-8111-111111111111",
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            now,
+        ),
+        (
+            "22222222-2222-4222-8222-222222222222",
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            later,
+        ),
+    ):
+        connection.execute(
+            """INSERT INTO research_evidence (
+                evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
+                source_label, observation_summary, signal_strength, captured_at, published_at
+            ) VALUES (?, ?, 'owner-1', 'public_discussion', 'https://example.com/shared',
+                      'Example', 'Shared source', 'medium', ?, NULL)""",
+            (evidence_id, opportunity_id, captured_at),
+        )
+    connection.execute(
+        """INSERT INTO research_evidence (
+            evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
+            source_label, observation_summary, signal_strength, captured_at, published_at
+        ) VALUES ('33333333-3333-4333-8333-333333333333',
+                  'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'owner-2',
+                  'public_discussion', 'https://example.com/shared', 'Example',
+                  'Same URL in another owner scope', 'medium', ?, NULL)""",
+        (later,),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [44]
+    evidence = connection.execute(
+        "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
+    ).fetchall()
+    assert len(evidence) == 3
+    owner_one_sources = {row["source_id"] for row in evidence if row["owner_user_id"] == "owner-1"}
+    owner_two_sources = {row["source_id"] for row in evidence if row["owner_user_id"] == "owner-2"}
+    assert len(owner_one_sources) == 1
+    assert len(owner_two_sources) == 1
+    assert owner_one_sources.isdisjoint(owner_two_sources)
+
+    source = connection.execute(
+        "SELECT * FROM research_sources WHERE owner_user_id = 'owner-1'"
+    ).fetchone()
+    assert source["hostname"] == "example.com"
+    assert source["publisher_group"] == "example.com"
+    assert source["first_captured_at"] == now
+    assert source["last_captured_at"] == later
+    assert connection.execute(
+        "SELECT COUNT(*) FROM research_sources WHERE owner_user_id = 'owner-1'"
+    ).fetchone()[0] == 1
+    assert connection.execute(
+        "SELECT COUNT(*) FROM research_sources WHERE owner_user_id = 'owner-2'"
+    ).fetchone()[0] == 1
+
+    with pytest.raises(sqlite3.IntegrityError, match="provenance mismatch"):
+        connection.execute(
+            """INSERT INTO research_evidence (
+                evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
+                source_label, observation_summary, signal_strength, captured_at,
+                published_at, source_id
+            ) VALUES ('44444444-4444-4444-8444-444444444444',
+                      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'owner-1',
+                      'app_review', 'https://other.example/review', 'Other',
+                      'Mismatched provenance', 'low', ?, NULL, ?)""",
+            (later, source["source_id"]),
+        )
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.execute("DELETE FROM auth_users WHERE user_id = 'owner-1'")
+    assert connection.execute("SELECT COUNT(*) FROM research_sources").fetchone()[0] == 1
+    assert connection.execute("SELECT COUNT(*) FROM research_evidence").fetchone()[0] == 1
+    assert connection.execute("SELECT COUNT(*) FROM research_opportunities").fetchone()[0] == 1
+    connection.execute("DELETE FROM auth_users WHERE user_id = 'owner-2'")
+    assert connection.execute("SELECT COUNT(*) FROM research_sources").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM research_evidence").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM research_opportunities").fetchone()[0] == 0
     connection.close()

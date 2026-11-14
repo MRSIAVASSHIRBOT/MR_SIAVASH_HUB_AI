@@ -12,7 +12,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
@@ -41,6 +41,15 @@ OUTCOME_METRICS = frozenset({
     "user_satisfaction_score", "error_rate_percent", "active_users", "operating_cost",
 })
 FEEDBACK_CONSENT_VERSION = "research-feedback-v1"
+FRESHNESS_WINDOWS_DAYS = {
+    "public_discussion": 180,
+    "community_forum": 180,
+    "app_review": 180,
+    "support_request": 180,
+    "research_report": 730,
+    "other": 365,
+}
+PUBLISHED_AT_FUTURE_TOLERANCE = timedelta(minutes=5)
 
 
 class ResearchError(RuntimeError):
@@ -99,25 +108,43 @@ class ResearchOpportunity:
 class ResearchEvidence:
     evidence_id: str
     opportunity_id: str
+    source_id: str
     source_type: str
     canonical_url: str
+    hostname: str
+    publisher_group: str
+    source_first_captured_at: str
+    source_last_captured_at: str
     source_label: str
     observation_summary: str
     signal_strength: str
     captured_at: str
     published_at: str | None
+    source_usage_count: int
+    freshness_status: str
+    freshness_window_days: int
+    age_days: int | None
 
     def as_dict(self) -> dict[str, object]:
         return {
             "evidence_id": self.evidence_id,
             "opportunity_id": self.opportunity_id,
+            "source_id": self.source_id,
             "source_type": self.source_type,
             "canonical_url": self.canonical_url,
+            "hostname": self.hostname,
+            "publisher_group": self.publisher_group,
+            "source_first_captured_at": self.source_first_captured_at,
+            "source_last_captured_at": self.source_last_captured_at,
             "source_label": self.source_label,
             "observation_summary": self.observation_summary,
             "signal_strength": self.signal_strength,
             "captured_at": self.captured_at,
             "published_at": self.published_at,
+            "source_usage_count": self.source_usage_count,
+            "freshness_status": self.freshness_status,
+            "freshness_window_days": self.freshness_window_days,
+            "age_days": self.age_days,
         }
 
 
@@ -128,6 +155,40 @@ def _text(value: str, field: str, limit: int, *, allow_empty: bool = False) -> s
     if (not normalized and not allow_empty) or len(normalized) > limit:
         raise ResearchValidationError(f"{field} must contain 1 to {limit} characters")
     return normalized
+
+
+def _parse_published_at(value: str) -> datetime:
+    normalized = _text(value, "Published timestamp", 40)
+    try:
+        published = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ResearchValidationError("Published timestamp must be ISO 8601") from exc
+    if published.tzinfo is None or published.utcoffset() is None:
+        raise ResearchValidationError("Published timestamp must include a timezone")
+    published_utc = published.astimezone(UTC)
+    if published_utc > datetime.now(UTC) + PUBLISHED_AT_FUTURE_TOLERANCE:
+        raise ResearchValidationError("Published timestamp must not be in the future")
+    return published_utc
+
+
+def _freshness_details(
+    source_type: str, published_at: str | None, *, now: datetime | None = None,
+) -> tuple[str, int, int | None]:
+    window_days = FRESHNESS_WINDOWS_DAYS[source_type]
+    if not published_at:
+        return "unknown", window_days, None
+    try:
+        published = datetime.fromisoformat(published_at)
+    except ValueError:
+        return "unknown", window_days, None
+    if published.tzinfo is None or published.utcoffset() is None:
+        return "unknown", window_days, None
+    age_seconds = ((now or datetime.now(UTC)) - published.astimezone(UTC)).total_seconds()
+    if age_seconds < -PUBLISHED_AT_FUTURE_TOLERANCE.total_seconds():
+        return "future", window_days, None
+    age_days = max(0, int(age_seconds // 86_400))
+    status = "current" if age_seconds <= window_days * 86_400 else "stale"
+    return status, window_days, age_days
 
 
 def _reject_feedback_identifiers(value: str, field: str) -> str:
@@ -293,21 +354,58 @@ class ResearchRepository:
             raise ResearchNotFound("Research opportunity not found")
         return self._from_row(row)
 
+    @staticmethod
+    def _evidence_from_row(row: sqlite3.Row) -> ResearchEvidence:
+        freshness, freshness_window, age_days = _freshness_details(
+            row["source_type"], row["published_at"]
+        )
+        return ResearchEvidence(
+            evidence_id=row["evidence_id"],
+            opportunity_id=row["opportunity_id"],
+            source_id=row["source_id"],
+            source_type=row["source_type"],
+            canonical_url=row["canonical_url"],
+            hostname=row["hostname"],
+            publisher_group=row["publisher_group"],
+            source_first_captured_at=row["source_first_captured_at"],
+            source_last_captured_at=row["source_last_captured_at"],
+            source_label=row["source_label"],
+            observation_summary=row["observation_summary"],
+            signal_strength=row["signal_strength"],
+            captured_at=row["captured_at"],
+            published_at=row["published_at"],
+            source_usage_count=row["source_usage_count"],
+            freshness_status=freshness,
+            freshness_window_days=freshness_window,
+            age_days=age_days,
+        )
+
     def list_evidence(self, *, owner_user_id: str, opportunity_id: str) -> list[ResearchEvidence]:
         self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT evidence_id, opportunity_id, source_type, canonical_url, source_label, "
-                "observation_summary, signal_strength, captured_at, published_at "
-                "FROM research_evidence WHERE owner_user_id = ? AND opportunity_id = ? "
-                "ORDER BY captured_at DESC LIMIT 100", (owner_user_id, opportunity_id),
+                """SELECT e.evidence_id, e.opportunity_id, e.source_type, e.canonical_url,
+                          e.source_label, e.observation_summary, e.signal_strength,
+                          e.captured_at, e.published_at, s.source_id, s.hostname,
+                          s.publisher_group, s.first_captured_at AS source_first_captured_at,
+                          s.last_captured_at AS source_last_captured_at,
+                          (SELECT COUNT(*) FROM research_evidence linked
+                           WHERE linked.owner_user_id = e.owner_user_id
+                             AND linked.source_id = s.source_id) AS source_usage_count
+                   FROM research_evidence e
+                   INNER JOIN research_sources s
+                       ON s.source_id = e.source_id AND s.owner_user_id = e.owner_user_id
+                   WHERE e.owner_user_id = ? AND e.opportunity_id = ?
+                   ORDER BY e.captured_at DESC LIMIT 100""",
+                (owner_user_id, opportunity_id),
             ).fetchall()
-        return [ResearchEvidence(**dict(row)) for row in rows]
+        return [self._evidence_from_row(row) for row in rows]
 
     def add_evidence(
         self, *, owner_user_id: str, opportunity_id: str, source_type: str,
         source_url: str, source_label: str, observation_summary: str,
         signal_strength: str = "medium", published_at: str | None = None,
+        publisher_group: str | None = None,
     ) -> ResearchEvidence:
         self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
         if source_type not in SOURCE_TYPES:
@@ -315,37 +413,73 @@ class ResearchRepository:
         if signal_strength not in SIGNAL_STRENGTHS:
             raise ResearchValidationError("Unsupported signal strength")
         canonical_url = canonicalize_evidence_url(source_url)
+        hostname = urlsplit(canonical_url).netloc.lower()
+        if not hostname:
+            raise ResearchValidationError("Evidence URL must include a valid public hostname")
         source_label = _text(source_label, "Source label", 120)
         observation_summary = _text(observation_summary, "Observation summary", 2000)
         if published_at is not None:
-            published_at = _text(published_at, "Published timestamp", 40)
-            try:
-                datetime.fromisoformat(published_at)
-            except ValueError as exc:
-                raise ResearchValidationError("Published timestamp must be ISO 8601") from exc
+            published_at = _parse_published_at(published_at).isoformat()
+        requested_group = None
+        if publisher_group is not None:
+            group_value = _text(publisher_group, "Publisher group", 120, allow_empty=True)
+            if group_value:
+                requested_group = " ".join(group_value.split())
         evidence_id = str(uuid4())
         captured_at = self._now()
         try:
             with self._connection() as connection:
                 connection.execute(
-                    """INSERT INTO research_evidence (
-                        evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
-                        source_label, observation_summary, signal_strength, captured_at, published_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
-                     source_label, observation_summary, signal_strength, captured_at, published_at),
+                    """INSERT OR IGNORE INTO research_sources (
+                        source_id, owner_user_id, canonical_url, hostname, publisher_group,
+                        first_captured_at, last_captured_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (str(uuid4()), owner_user_id, canonical_url, hostname,
+                     requested_group or hostname, captured_at, captured_at),
+                )
+                source = connection.execute(
+                    """SELECT source_id, publisher_group FROM research_sources
+                       WHERE owner_user_id = ? AND canonical_url = ?""",
+                    (owner_user_id, canonical_url),
+                ).fetchone()
+                if source is None:
+                    raise ResearchConflictError("Source provenance could not be registered")
+                stored_group = str(source["publisher_group"])
+                if requested_group is not None and requested_group.casefold() != stored_group.casefold():
+                    raise ResearchConflictError(
+                        "This canonical source is already registered under a different publisher group"
+                    )
+                source_id = str(source["source_id"])
+                connection.execute(
+                    """UPDATE research_sources
+                       SET last_captured_at = CASE
+                           WHEN last_captured_at < ? THEN ? ELSE last_captured_at END
+                       WHERE source_id = ? AND owner_user_id = ?""",
+                    (captured_at, captured_at, source_id, owner_user_id),
                 )
                 connection.execute(
-                    "UPDATE research_opportunities SET updated_at = ? WHERE opportunity_id = ? AND owner_user_id = ?",
+                    """INSERT INTO research_evidence (
+                        evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
+                        source_label, observation_summary, signal_strength, captured_at,
+                        published_at, source_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
+                     source_label, observation_summary, signal_strength, captured_at,
+                     published_at, source_id),
+                )
+                connection.execute(
+                    """UPDATE research_opportunities SET updated_at = ?
+                       WHERE opportunity_id = ? AND owner_user_id = ?""",
                     (captured_at, opportunity_id, owner_user_id),
                 )
         except sqlite3.IntegrityError as exc:
-            raise ResearchConflictError("This source URL is already attached to the opportunity") from exc
-        return ResearchEvidence(
-            evidence_id=evidence_id, opportunity_id=opportunity_id, source_type=source_type,
-            canonical_url=canonical_url, source_label=source_label,
-            observation_summary=observation_summary, signal_strength=signal_strength,
-            captured_at=captured_at, published_at=published_at,
+            raise ResearchConflictError(
+                "This source URL is already attached to the opportunity"
+            ) from exc
+        return next(
+            item for item in self.list_evidence(
+                owner_user_id=owner_user_id, opportunity_id=opportunity_id
+            ) if item.evidence_id == evidence_id
         )
 
     def update_assessment(
@@ -371,20 +505,28 @@ class ResearchRepository:
         if next_status == "validated":
             with self._connection() as connection:
                 evidence = connection.execute(
-                    "SELECT canonical_url, source_type FROM research_evidence "
-                    "WHERE owner_user_id = ? AND opportunity_id = ?",
+                    """SELECT e.canonical_url, e.source_type, e.published_at,
+                              s.hostname, s.publisher_group
+                       FROM research_evidence e
+                       INNER JOIN research_sources s
+                           ON s.source_id = e.source_id AND s.owner_user_id = e.owner_user_id
+                       WHERE e.owner_user_id = ? AND e.opportunity_id = ?""",
                     (owner_user_id, opportunity_id),
                 ).fetchall()
-            source_count = len({row["canonical_url"] for row in evidence})
-            type_count = len({row["source_type"] for row in evidence})
-            host_count = len({
-                urlsplit(row["canonical_url"]).hostname
-                for row in evidence
-                if urlsplit(row["canonical_url"]).hostname
+            current_evidence = [
+                row for row in evidence
+                if _freshness_details(row["source_type"], row["published_at"])[0] == "current"
+            ]
+            source_count = len({row["canonical_url"] for row in current_evidence})
+            type_count = len({row["source_type"] for row in current_evidence})
+            host_count = len({row["hostname"] for row in current_evidence})
+            publisher_count = len({
+                str(row["publisher_group"]).casefold() for row in current_evidence
             })
-            if source_count < 2 or type_count < 2 or host_count < 2:
+            if source_count < 2 or type_count < 2 or host_count < 2 or publisher_count < 2:
                 raise ResearchConflictError(
-                    "Validation requires two distinct public URLs, two source types, and two distinct hostnames"
+                    "Validation requires two current, dated public URLs, two source types, "
+                    "two hostnames, and two publisher groups; stale or undated evidence does not count"
                 )
         if next_status == "prioritized" and any(score is None for score in effective_scores):
             raise ResearchConflictError(
