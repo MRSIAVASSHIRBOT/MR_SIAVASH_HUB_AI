@@ -281,4 +281,11 @@ def discover_research_candidates(
             database_path=get_settings().database_path, site=site, limit=limit
         )
     except ResearchDiscoveryError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        headers = (
+            {"Retry-After": str(exc.retry_after_seconds)}
+            if exc.retry_after_seconds is not None
+            else None
+        )
+        raise HTTPException(
+            status_code=exc.status_code, detail=str(exc), headers=headers
+        ) from exc
