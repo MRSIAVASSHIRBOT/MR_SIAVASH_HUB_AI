@@ -1894,7 +1894,7 @@
         "وضعیت اتوماسیون زنده: " + (result.automation_active ? "فعال" : "غیرفعال"),
         "",
         result.reply,
-      ].join("\\n");
+      ].join("\n");
       message("#resource-reply-message", "پیش‌نمایش ساخته شد؛ هیچ پیامی ارسال نشده است.", "success");
     } catch (error) {
       output.textContent = error.message;
