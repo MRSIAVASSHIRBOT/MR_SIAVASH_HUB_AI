@@ -1816,6 +1816,91 @@
     }
   }
 
+  function readResourceReplyConfigForm() {
+    const form = $("#resource-reply-config-form");
+    const values = new FormData(form);
+    return {
+      keyword: String(values.get("keyword") || "").trim(),
+      resource_url: String(values.get("resource_url") || "").trim(),
+      resource_label: String(values.get("resource_label") || "").trim(),
+      intro_text: String(values.get("intro_text") || "").trim(),
+      include_follow: form.elements.include_follow.checked,
+      follow_cta_text: String(values.get("follow_cta_text") || "").trim(),
+      include_share: form.elements.include_share.checked,
+      share_cta_text: String(values.get("share_cta_text") || "").trim(),
+    };
+  }
+
+  function applyResourceReplyConfig(config) {
+    const form = $("#resource-reply-config-form");
+    for (const name of [
+      "keyword", "resource_url", "resource_label", "intro_text",
+      "follow_cta_text", "share_cta_text",
+    ]) {
+      form.elements[name].value = config[name] || "";
+    }
+    form.elements.include_follow.checked = Boolean(config.include_follow);
+    form.elements.include_share.checked = Boolean(config.include_share);
+  }
+
+  async function loadResourceReplyConfig() {
+    const config = await api("/content/resource-reply/config");
+    applyResourceReplyConfig(config);
+    return config;
+  }
+
+  async function saveResourceReplyConfig(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const button = $("#resource-reply-save");
+    button.disabled = true;
+    try {
+      const saved = await api("/content/resource-reply/config", {
+        method: "PUT",
+        body: readResourceReplyConfigForm(),
+      });
+      applyResourceReplyConfig(saved);
+      message(
+        "#resource-reply-message",
+        "تنظیمات اختصاصی این حساب ذخیره شد؛ هنوز هیچ اتوماسیون یا پیامی فعال نشده است.",
+        "success"
+      );
+    } catch (error) {
+      message("#resource-reply-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function previewResourceReplyConfig() {
+    const form = $("#resource-reply-config-form");
+    if (!form.reportValidity()) return;
+    const output = $("#resource-reply-preview");
+    const button = $("#resource-reply-preview-button");
+    button.disabled = true;
+    output.textContent = "در حال ساخت پیش‌نمایش…";
+    try {
+      const result = await api("/content/resource-reply/preview", {
+        method: "POST",
+        body: readResourceReplyConfigForm(),
+      });
+      output.textContent = [
+        "کلیدواژهٔ پیشنهادی برای Trigger: " + result.keyword,
+        "ارسال لینک بدون شرط تعامل: " + (result.resource_delivery_unconditional ? "بله" : "خیر"),
+        "وضعیت اتوماسیون زنده: " + (result.automation_active ? "فعال" : "غیرفعال"),
+        "",
+        result.reply,
+      ].join("\\n");
+      message("#resource-reply-message", "پیش‌نمایش ساخته شد؛ هیچ پیامی ارسال نشده است.", "success");
+    } catch (error) {
+      output.textContent = error.message;
+      message("#resource-reply-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function loadContentDrafts() {
     const response = await api("/content/drafts?limit=100");
     renderRecords("#content-draft-list", response.drafts, (draft) => {
@@ -1890,6 +1975,7 @@
       await Promise.all([
         loadOverview(),
         loadContentDrafts(),
+        loadResourceReplyConfig(),
         loadMediaAssets(),
         loadMemory(),
         loadKnowledge(),
@@ -2005,6 +2091,13 @@
     loadMediaAssets().catch((error) => message("#media-message", error.message, "error"))
   );
   $("#content-draft-form").elements.platform.addEventListener("change", updateMediaSelectAvailability);
+  $("#resource-reply-config-form").addEventListener("submit", saveResourceReplyConfig);
+  $("#resource-reply-preview-button").addEventListener("click", previewResourceReplyConfig);
+  $("#resource-reply-reload-button").addEventListener("click", () => {
+    loadResourceReplyConfig()
+      .then(() => message("#resource-reply-message", "تنظیمات ذخیره‌شده بارگذاری شد.", "success"))
+      .catch((error) => message("#resource-reply-message", error.message, "error"));
+  });
 
   $("#content-draft-form").addEventListener("submit", async (event) => {
     event.preventDefault();
