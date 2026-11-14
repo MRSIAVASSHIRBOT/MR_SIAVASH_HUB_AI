@@ -26,7 +26,7 @@ Opportunity lifecycle:
 
 `new -> validating -> validated -> prioritized -> in_progress`
 
-Alternative transitions allow deferral or rejection and later re-validation. Every transition is validated. Evidence is unique by canonical URL within an opportunity and links to one owner-scoped source record across opportunities. Validation requires at least two current, dated URLs, two source types, and two publisher groups. Publisher groups are researcher-supplied provenance labels (defaulting to the exact hostname); they reduce obvious syndication/subdomain double-counting but are not independent verification or proof of common ownership.
+Alternative transitions allow deferral or rejection and later re-validation. Every transition is validated. Evidence is unique by canonical URL within an opportunity and links to one owner-scoped source record across opportunities. Validation requires at least two current, dated URLs, two source types, two distinct hostnames, and two publisher groups. Publisher groups are researcher-supplied provenance labels (defaulting to the exact hostname); they reduce obvious syndication/subdomain double-counting but are not independent verification or proof of common ownership.
 
 ## Priority heuristic
 
