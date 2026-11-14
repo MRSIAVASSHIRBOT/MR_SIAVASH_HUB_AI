@@ -277,7 +277,8 @@ def discover_research_candidates(
     """Search allow-listed public APIs; results remain review-only candidates."""
     try:
         return discover_public_needs(
-            owner_user_id=user.user_id, source=source, query=query, site=site, limit=limit
+            owner_user_id=user.user_id, source=source, query=query,
+            database_path=get_settings().database_path, site=site, limit=limit
         )
     except ResearchDiscoveryError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
