@@ -688,6 +688,9 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
             assert response.status_code == 201
             evidence_ids.append(response.json()["evidence_id"])
 
+        before_review = client.get(
+            f"/research/opportunities/{opportunity_id}"
+        ).json()["updated_at"]
         blank_review = client.patch(
             f"/research/opportunities/{opportunity_id}/evidence/{evidence_ids[0]}/independence",
             json={"independence_basis": "   "},
@@ -708,6 +711,11 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
             )
             assert reviewed.status_code == 200
             assert reviewed.json()["independence_basis"]
+
+        after_review = client.get(
+            f"/research/opportunities/{opportunity_id}"
+        ).json()["updated_at"]
+        assert after_review > before_review
 
         validated = client.patch(
             f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
