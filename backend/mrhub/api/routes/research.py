@@ -49,6 +49,34 @@ class AssessmentRequest(BaseModel):
     solution_hypothesis: str | None = Field(default=None, max_length=2000)
 
 
+class FeedbackRequest(BaseModel):
+    domain_id: str = Field(min_length=1, max_length=80)
+    audience_segment: str = Field(min_length=1, max_length=120)
+    need_summary: str = Field(min_length=1, max_length=2000)
+    current_workaround: str = Field(default="", max_length=1200)
+    impact_score: int | None = Field(default=None, ge=1, le=5)
+    frequency_score: int | None = Field(default=None, ge=1, le=5)
+    consent_to_research: Literal[True]
+
+
+class FeedbackStatusRequest(BaseModel):
+    status: Literal["new", "reviewed", "converted", "dismissed"]
+
+
+class OutcomeMeasurementRequest(BaseModel):
+    metric_name: Literal[
+        "task_time_saved_minutes", "task_completion_rate_percent",
+        "user_satisfaction_score", "error_rate_percent", "active_users", "operating_cost",
+    ]
+    baseline_value: float = Field(ge=0, allow_inf_nan=False)
+    observed_value: float = Field(ge=0, allow_inf_nan=False)
+    unit: str = Field(min_length=1, max_length=40)
+    sample_size: int = Field(ge=1, le=1_000_000)
+    period_start: str = Field(min_length=1, max_length=40)
+    period_end: str = Field(min_length=1, max_length=40)
+    notes: str = Field(default="", max_length=1200)
+
+
 def get_research_repository() -> ResearchRepository:
     return ResearchRepository(get_settings().database_path)
 
@@ -141,3 +169,97 @@ def update_assessment(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ResearchValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/feedback", status_code=status.HTTP_201_CREATED)
+def create_feedback(
+    payload: FeedbackRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Record consented, minimized user feedback without collecting contact details."""
+    try:
+        return get_research_repository().create_feedback(
+            owner_user_id=user.user_id, **payload.model_dump()
+        )
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/feedback")
+def list_feedback(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    feedback_status: Literal["new", "reviewed", "converted", "dismissed"] | None = Query(
+        default=None, alias="status"
+    ),
+    domain_id: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict[str, object]:
+    try:
+        items = get_research_repository().list_feedback(
+            owner_user_id=user.user_id, status=feedback_status, domain_id=domain_id, limit=limit
+        )
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"items": items, "count": len(items)}
+
+
+@router.patch("/feedback/{feedback_id}")
+def update_feedback_status(
+    feedback_id: str,
+    payload: FeedbackStatusRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    repository = get_research_repository()
+    try:
+        return repository.update_feedback_status(
+            owner_user_id=user.user_id, feedback_id=feedback_id, status=payload.status
+        )
+    except ResearchNotFound as exc:
+        raise HTTPException(status_code=404, detail="Research feedback not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/feedback/{feedback_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_feedback(
+    feedback_id: str,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> None:
+    repository = get_research_repository()
+    with repository._connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM research_feedback WHERE feedback_id = ? AND owner_user_id = ?",
+            (feedback_id, user.user_id),
+        )
+    if cursor.rowcount != 1:
+        raise HTTPException(status_code=404, detail="Research feedback not found")
+
+
+@router.post("/{opportunity_id}/outcomes", status_code=status.HTTP_201_CREATED)
+def create_outcome_measurement(
+    opportunity_id: str,
+    payload: OutcomeMeasurementRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    try:
+        return get_research_repository().create_outcome_measurement(
+            owner_user_id=user.user_id, opportunity_id=opportunity_id, **payload.model_dump()
+        )
+    except ResearchNotFound as exc:
+        raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/{opportunity_id}/outcomes")
+def list_outcome_measurements(
+    opportunity_id: str,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    try:
+        items = get_research_repository().list_outcome_measurements(
+            owner_user_id=user.user_id, opportunity_id=opportunity_id
+        )
+    except ResearchNotFound as exc:
+        raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
+    return {"items": items, "count": len(items)}
