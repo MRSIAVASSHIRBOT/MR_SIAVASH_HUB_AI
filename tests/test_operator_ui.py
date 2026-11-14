@@ -393,3 +393,11 @@ def test_operator_ui_exposes_research_source_provenance_and_freshness_controls()
     assert "source_usage_count" in script.text
     assert "تازه" in script.text
     assert "قدیمی" in script.text
+
+
+def test_operator_ui_exposes_source_capture_history_fields():
+    script = files("mrhub").joinpath("web/app.js").read_text(encoding="utf-8")
+    assert "source_first_captured_at" in script
+    assert "source_last_captured_at" in script
+    assert "اولین ثبت" in script
+    assert "آخرین ثبت" in script
