@@ -405,7 +405,7 @@ class ResearchRepository:
         if signal_strength not in SIGNAL_STRENGTHS:
             raise ResearchValidationError("Unsupported signal strength")
         canonical_url = canonicalize_evidence_url(source_url)
-        hostname = urlsplit(canonical_url).hostname
+        hostname = urlsplit(canonical_url).netloc.lower()
         if not hostname:
             raise ResearchValidationError("Evidence URL must include a valid public hostname")
         source_label = _text(source_label, "Source label", 120)
