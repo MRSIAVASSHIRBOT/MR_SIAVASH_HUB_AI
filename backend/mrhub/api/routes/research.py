@@ -225,13 +225,10 @@ def delete_feedback(
     feedback_id: str,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> None:
-    repository = get_research_repository()
-    with repository._connection() as connection:
-        cursor = connection.execute(
-            "DELETE FROM research_feedback WHERE feedback_id = ? AND owner_user_id = ?",
-            (feedback_id, user.user_id),
-        )
-    if cursor.rowcount != 1:
+    deleted = get_research_repository().delete_feedback(
+        owner_user_id=user.user_id, feedback_id=feedback_id
+    )
+    if not deleted:
         raise HTTPException(status_code=404, detail="Research feedback not found")
 
 
