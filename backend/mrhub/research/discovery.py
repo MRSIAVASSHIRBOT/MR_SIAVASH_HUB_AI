@@ -136,39 +136,38 @@ def _bounded_json(url: str, params: dict[str, str | int]) -> dict[str, object]:
             follow_redirects=False,
             trust_env=False,
             headers={"Accept": "application/json", "User-Agent": "MR-SIAVASH-HUB-AI-Research/1.0"},
-        ) as client:
-            with client.stream("GET", url, params=params) as response:
-                if response.status_code == 429:
-                    retry_after = 60
-                    header = response.headers.get("Retry-After", "").strip()
-                    if header:
+        ) as client, client.stream("GET", url, params=params) as response:
+            if response.status_code == 429:
+                retry_after = 60
+                header = response.headers.get("Retry-After", "").strip()
+                if header:
+                    try:
+                        retry_after = int(header)
+                    except ValueError:
                         try:
-                            retry_after = int(header)
-                        except ValueError:
-                            try:
-                                retry_at = parsedate_to_datetime(header)
-                                if retry_at.tzinfo is None:
-                                    retry_at = retry_at.replace(tzinfo=UTC)
-                                retry_after = int((retry_at - datetime.now(UTC)).total_seconds())
-                            except (TypeError, ValueError, OverflowError):
-                                retry_after = 60
-                    raise ResearchDiscoveryError(
-                        "The public source rate limit was reached.",
-                        429,
-                        max(1, min(retry_after, 3600)),
-                    )
-                if response.status_code != 200:
-                    raise ResearchDiscoveryError("The public source returned an unavailable response.", 502)
-                declared_size = response.headers.get("content-length")
-                if declared_size and int(declared_size) > _MAX_RESPONSE_BYTES:
+                            retry_at = parsedate_to_datetime(header)
+                            if retry_at.tzinfo is None:
+                                retry_at = retry_at.replace(tzinfo=UTC)
+                            retry_after = int((retry_at - datetime.now(UTC)).total_seconds())
+                        except (TypeError, ValueError, OverflowError):
+                            retry_after = 60
+                raise ResearchDiscoveryError(
+                    "The public source rate limit was reached.",
+                    429,
+                    max(1, min(retry_after, 3600)),
+                )
+            if response.status_code != 200:
+                raise ResearchDiscoveryError("The public source returned an unavailable response.", 502)
+            declared_size = response.headers.get("content-length")
+            if declared_size and int(declared_size) > _MAX_RESPONSE_BYTES:
+                raise ResearchDiscoveryError("The public source response exceeded the size limit.", 502)
+            chunks: list[bytes] = []
+            size = 0
+            for chunk in response.iter_bytes():
+                size += len(chunk)
+                if size > _MAX_RESPONSE_BYTES:
                     raise ResearchDiscoveryError("The public source response exceeded the size limit.", 502)
-                chunks: list[bytes] = []
-                size = 0
-                for chunk in response.iter_bytes():
-                    size += len(chunk)
-                    if size > _MAX_RESPONSE_BYTES:
-                        raise ResearchDiscoveryError("The public source response exceeded the size limit.", 502)
-                    chunks.append(chunk)
+                chunks.append(chunk)
         import json
 
         payload = json.loads(b"".join(chunks))
