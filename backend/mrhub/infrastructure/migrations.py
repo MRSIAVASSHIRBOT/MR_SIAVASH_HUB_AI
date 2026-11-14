@@ -1018,7 +1018,21 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_research_outcomes_owner_opportunity_recorded ON research_outcome_measurements(owner_user_id, opportunity_id, recorded_at DESC)",
         ),
-    )
+    ),
+    Migration.build(
+        39,
+        "shared_owner_scoped_research_discovery_rate_limits",
+        (
+            """CREATE TABLE IF NOT EXISTS research_discovery_requests (
+                request_id TEXT PRIMARY KEY CHECK (length(request_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                query_key TEXT NOT NULL CHECK (length(query_key) BETWEEN 1 AND 256),
+                requested_at REAL NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_discovery_owner_time ON research_discovery_requests(owner_user_id, requested_at)",
+            "CREATE INDEX IF NOT EXISTS idx_research_discovery_owner_query_time ON research_discovery_requests(owner_user_id, query_key, requested_at)",
+        ),
+    ),
 )
 
 
