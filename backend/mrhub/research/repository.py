@@ -156,7 +156,7 @@ def _text(value: str, field: str, limit: int, *, allow_empty: bool = False) -> s
 def _parse_published_at(value: str) -> datetime:
     normalized = _text(value, "Published timestamp", 40)
     try:
-        published = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        published = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise ResearchValidationError("Published timestamp must be ISO 8601") from exc
     if published.tzinfo is None or published.utcoffset() is None:
@@ -174,7 +174,7 @@ def _freshness_details(
     if not published_at:
         return "unknown", window_days, None
     try:
-        published = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+        published = datetime.fromisoformat(published_at)
     except ValueError:
         return "unknown", window_days, None
     if published.tzinfo is None or published.utcoffset() is None:
