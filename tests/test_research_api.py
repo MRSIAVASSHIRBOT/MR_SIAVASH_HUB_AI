@@ -386,6 +386,12 @@ def test_research_source_provenance_is_deduplicated_across_opportunities(tmp_pat
             "problem_statement": "Creators struggle to publish consistently.",
             "audience": "Independent creators",
         }).json()
+        third = client.post("/research/opportunities", json={
+            "domain_id": "automation",
+            "title": "Workflow onboarding",
+            "problem_statement": "People struggle to coordinate repetitive work.",
+            "audience": "Independent workers",
+        }).json()
         published_at = datetime.now(UTC).isoformat()
         common = {
             "source_type": "public_discussion",
@@ -418,14 +424,14 @@ def test_research_source_provenance_is_deduplicated_across_opportunities(tmp_pat
         assert first_item["age_days"] == 0
 
         conflicting_group = client.post(
-            f"/research/opportunities/{second['opportunity_id']}/evidence",
+            f"/research/opportunities/{third['opportunity_id']}/evidence",
             json={
                 **common,
                 "publisher_group": "Different Publisher",
-                "source_url": "https://example.com/research/thread?duplicate=1",
+                "source_url": "https://example.com/research/thread",
             },
         )
-        assert conflicting_group.status_code == 422
+        assert conflicting_group.status_code == 409
     finally:
         get_settings.cache_clear()
 
