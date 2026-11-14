@@ -964,6 +964,60 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_research_evidence_owner_opportunity_captured ON research_evidence(owner_user_id, opportunity_id, captured_at DESC)",
         ),
+    ),
+    Migration.build(
+        37,
+        "consented_owner_scoped_research_feedback",
+        (
+            """CREATE TABLE IF NOT EXISTS research_feedback (
+                feedback_id TEXT PRIMARY KEY CHECK (length(feedback_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                domain_id TEXT NOT NULL CHECK (domain_id IN (
+                    'content', 'web', 'automation', 'customer_support', 'business_ops',
+                    'security', 'learning', 'documents', 'productivity', 'multilingual'
+                )),
+                audience_segment TEXT NOT NULL CHECK (length(audience_segment) BETWEEN 1 AND 120),
+                need_summary TEXT NOT NULL CHECK (length(need_summary) BETWEEN 1 AND 2000),
+                current_workaround TEXT NOT NULL DEFAULT '' CHECK (length(current_workaround) <= 1200),
+                impact_score INTEGER CHECK (impact_score IS NULL OR impact_score BETWEEN 1 AND 5),
+                frequency_score INTEGER CHECK (frequency_score IS NULL OR frequency_score BETWEEN 1 AND 5),
+                consent_to_research INTEGER NOT NULL CHECK (consent_to_research = 1),
+                consent_version TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('new', 'reviewed', 'converted', 'dismissed')),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_feedback_owner_status_created ON research_feedback(owner_user_id, status, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_research_feedback_owner_domain_created ON research_feedback(owner_user_id, domain_id, created_at DESC)",
+        ),
+    ),
+    Migration.build(
+        38,
+        "owner_scoped_opportunity_outcome_measurements",
+        (
+            """CREATE TABLE IF NOT EXISTS research_outcome_measurements (
+                measurement_id TEXT PRIMARY KEY CHECK (length(measurement_id) = 36),
+                opportunity_id TEXT NOT NULL,
+                owner_user_id TEXT NOT NULL,
+                metric_name TEXT NOT NULL CHECK (metric_name IN (
+                    'task_time_saved_minutes', 'task_completion_rate_percent',
+                    'user_satisfaction_score', 'error_rate_percent',
+                    'active_users', 'operating_cost'
+                )),
+                baseline_value REAL NOT NULL CHECK (baseline_value >= 0),
+                observed_value REAL NOT NULL CHECK (observed_value >= 0),
+                unit TEXT NOT NULL CHECK (length(unit) BETWEEN 1 AND 40),
+                sample_size INTEGER NOT NULL CHECK (sample_size BETWEEN 1 AND 1000000),
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT '' CHECK (length(notes) <= 1200),
+                recorded_at TEXT NOT NULL,
+                FOREIGN KEY(opportunity_id, owner_user_id)
+                    REFERENCES research_opportunities(opportunity_id, owner_user_id)
+                    ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_research_outcomes_owner_opportunity_recorded ON research_outcome_measurements(owner_user_id, opportunity_id, recorded_at DESC)",
+        ),
     )
 )
 
