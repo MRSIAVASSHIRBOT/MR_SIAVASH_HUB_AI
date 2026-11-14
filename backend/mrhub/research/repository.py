@@ -6,6 +6,7 @@ identities, or treat an unverified claim as validated market demand.
 from __future__ import annotations
 
 import ipaddress
+import math
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,6 +34,12 @@ SOURCE_TYPES = frozenset({
     "public_discussion", "community_forum", "app_review", "research_report", "support_request", "other"
 })
 SIGNAL_STRENGTHS = frozenset({"low", "medium", "high"})
+FEEDBACK_STATUSES = frozenset({"new", "reviewed", "converted", "dismissed"})
+OUTCOME_METRICS = frozenset({
+    "task_time_saved_minutes", "task_completion_rate_percent",
+    "user_satisfaction_score", "error_rate_percent", "active_users", "operating_cost",
+})
+FEEDBACK_CONSENT_VERSION = "research-feedback-v1"
 
 
 class ResearchError(RuntimeError):
@@ -363,3 +370,155 @@ class ResearchRepository:
             if cursor.rowcount != 1:
                 raise ResearchConflictError("Opportunity changed concurrently; reload before retrying")
         return self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
+
+
+    def create_feedback(
+        self, *, owner_user_id: str, domain_id: str, audience_segment: str,
+        need_summary: str, current_workaround: str = "", impact_score: int | None = None,
+        frequency_score: int | None = None, consent_to_research: bool = False,
+    ) -> dict[str, object]:
+        owner = _text(owner_user_id, "Owner ID", 200)
+        if get_domain(domain_id) is None:
+            raise ResearchValidationError("Unknown capability domain")
+        if consent_to_research is not True:
+            raise ResearchValidationError("Explicit consent to use this feedback for product research is required")
+        for name, value in (("impact_score", impact_score), ("frequency_score", frequency_score)):
+            if value is not None and (isinstance(value, bool) or not 1 <= value <= 5):
+                raise ResearchValidationError(f"{name} must be an integer from 1 to 5")
+        audience_segment = _text(audience_segment, "Audience segment", 120)
+        need_summary = _text(need_summary, "Need summary", 2000)
+        current_workaround = _text(current_workaround, "Current workaround", 1200, allow_empty=True)
+        feedback_id = str(uuid4())
+        now = self._now()
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO research_feedback (
+                    feedback_id, owner_user_id, domain_id, audience_segment, need_summary,
+                    current_workaround, impact_score, frequency_score, consent_to_research,
+                    consent_version, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 'new', ?, ?)""",
+                (feedback_id, owner, domain_id, audience_segment, need_summary, current_workaround,
+                 impact_score, frequency_score, FEEDBACK_CONSENT_VERSION, now, now),
+            )
+        return self.get_feedback(owner_user_id=owner, feedback_id=feedback_id)
+
+    def get_feedback(self, *, owner_user_id: str, feedback_id: str) -> dict[str, object]:
+        with self._connection() as connection:
+            row = connection.execute(
+                """SELECT feedback_id, domain_id, audience_segment, need_summary,
+                          current_workaround, impact_score, frequency_score, consent_version,
+                          status, created_at, updated_at
+                   FROM research_feedback WHERE feedback_id = ? AND owner_user_id = ?""",
+                (feedback_id, owner_user_id),
+            ).fetchone()
+        if row is None:
+            raise ResearchNotFound("Research feedback not found")
+        return dict(row)
+
+    def list_feedback(
+        self, *, owner_user_id: str, status: str | None = None,
+        domain_id: str | None = None, limit: int = 50,
+    ) -> list[dict[str, object]]:
+        owner = _text(owner_user_id, "Owner ID", 200)
+        if status is not None and status not in FEEDBACK_STATUSES:
+            raise ResearchValidationError("Unsupported feedback status")
+        if domain_id is not None and get_domain(domain_id) is None:
+            raise ResearchValidationError("Unknown capability domain")
+        bounded_limit = max(1, min(int(limit), 100))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT feedback_id, domain_id, audience_segment, need_summary,
+                          current_workaround, impact_score, frequency_score, consent_version,
+                          status, created_at, updated_at
+                   FROM research_feedback
+                   WHERE owner_user_id = ?
+                     AND (? IS NULL OR status = ?)
+                     AND (? IS NULL OR domain_id = ?)
+                   ORDER BY created_at DESC LIMIT ?""",
+                (owner, status, status, domain_id, domain_id, bounded_limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_feedback_status(
+        self, *, owner_user_id: str, feedback_id: str, status: str,
+    ) -> dict[str, object]:
+        if status not in FEEDBACK_STATUSES:
+            raise ResearchValidationError("Unsupported feedback status")
+        now = self._now()
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """UPDATE research_feedback SET status = ?, updated_at = ?
+                   WHERE feedback_id = ? AND owner_user_id = ?""",
+                (status, now, feedback_id, owner_user_id),
+            )
+        if cursor.rowcount != 1:
+            raise ResearchNotFound("Research feedback not found")
+        return self.get_feedback(owner_user_id=owner_user_id, feedback_id=feedback_id)
+
+    def create_outcome_measurement(
+        self, *, owner_user_id: str, opportunity_id: str, metric_name: str,
+        baseline_value: float, observed_value: float, unit: str, sample_size: int,
+        period_start: str, period_end: str, notes: str = "",
+    ) -> dict[str, object]:
+        owner = _text(owner_user_id, "Owner ID", 200)
+        self.get_opportunity(owner_user_id=owner, opportunity_id=opportunity_id)
+        if metric_name not in OUTCOME_METRICS:
+            raise ResearchValidationError("Unsupported outcome metric")
+        for name, value in (("baseline_value", baseline_value), ("observed_value", observed_value)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ResearchValidationError(f"{name} must be a finite non-negative number")
+        if isinstance(sample_size, bool) or not isinstance(sample_size, int) or not 1 <= sample_size <= 1_000_000:
+            raise ResearchValidationError("sample_size must be an integer from 1 to 1000000")
+        unit = _text(unit, "Unit", 40)
+        notes = _text(notes, "Notes", 1200, allow_empty=True)
+        try:
+            start = datetime.fromisoformat(_text(period_start, "Period start", 40))
+            end = datetime.fromisoformat(_text(period_end, "Period end", 40))
+        except ValueError as exc:
+            raise ResearchValidationError("Measurement period must use ISO 8601 timestamps") from exc
+        if end < start:
+            raise ResearchValidationError("Measurement period end must not precede its start")
+        measurement_id = str(uuid4())
+        recorded_at = self._now()
+        with self._connection() as connection:
+            connection.execute(
+                """INSERT INTO research_outcome_measurements (
+                    measurement_id, opportunity_id, owner_user_id, metric_name,
+                    baseline_value, observed_value, unit, sample_size,
+                    period_start, period_end, notes, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (measurement_id, opportunity_id, owner, metric_name, float(baseline_value),
+                 float(observed_value), unit, sample_size, start.isoformat(), end.isoformat(),
+                 notes, recorded_at),
+            )
+        return self.get_outcome_measurement(owner_user_id=owner, measurement_id=measurement_id)
+
+    def get_outcome_measurement(
+        self, *, owner_user_id: str, measurement_id: str,
+    ) -> dict[str, object]:
+        with self._connection() as connection:
+            row = connection.execute(
+                """SELECT measurement_id, opportunity_id, metric_name, baseline_value,
+                          observed_value, unit, sample_size, period_start, period_end, notes, recorded_at
+                   FROM research_outcome_measurements
+                   WHERE measurement_id = ? AND owner_user_id = ?""",
+                (measurement_id, owner_user_id),
+            ).fetchone()
+        if row is None:
+            raise ResearchNotFound("Outcome measurement not found")
+        return dict(row)
+
+    def list_outcome_measurements(
+        self, *, owner_user_id: str, opportunity_id: str,
+    ) -> list[dict[str, object]]:
+        self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT measurement_id, opportunity_id, metric_name, baseline_value,
+                          observed_value, unit, sample_size, period_start, period_end, notes, recorded_at
+                   FROM research_outcome_measurements
+                   WHERE owner_user_id = ? AND opportunity_id = ?
+                   ORDER BY recorded_at DESC LIMIT 100""",
+                (owner_user_id, opportunity_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
