@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import math
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -127,6 +128,16 @@ def _text(value: str, field: str, limit: int, *, allow_empty: bool = False) -> s
     if (not normalized and not allow_empty) or len(normalized) > limit:
         raise ResearchValidationError(f"{field} must contain 1 to {limit} characters")
     return normalized
+
+
+def _reject_feedback_identifiers(value: str, field: str) -> str:
+    """Avoid collecting obvious direct identifiers in free-text feedback."""
+    email_pattern = r"(?i)\\b[\\w.+-]+@[\\w.-]+\\.[A-Z]{2,}\\b"
+    phone_pattern = r"(?<!\\w)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\w)"
+    secret_pattern = r"(?i)\\b(?:password|passwd|api[_ -]?key|access[_ -]?token|secret)\\s*[:=]\\s*\\S+"
+    if re.search(email_pattern, value) or re.search(phone_pattern, value) or re.search(secret_pattern, value):
+        raise ResearchValidationError(f"{field} must not contain contact details or credentials")
+    return value
 
 
 def canonicalize_evidence_url(value: str) -> str:
@@ -385,9 +396,12 @@ class ResearchRepository:
         for name, value in (("impact_score", impact_score), ("frequency_score", frequency_score)):
             if value is not None and (isinstance(value, bool) or not 1 <= value <= 5):
                 raise ResearchValidationError(f"{name} must be an integer from 1 to 5")
-        audience_segment = _text(audience_segment, "Audience segment", 120)
-        need_summary = _text(need_summary, "Need summary", 2000)
-        current_workaround = _text(current_workaround, "Current workaround", 1200, allow_empty=True)
+        audience_segment = _reject_feedback_identifiers(_text(audience_segment, "Audience segment", 120), "Audience segment")
+        need_summary = _reject_feedback_identifiers(_text(need_summary, "Need summary", 2000), "Need summary")
+        current_workaround = _reject_feedback_identifiers(
+            _text(current_workaround, "Current workaround", 1200, allow_empty=True),
+            "Current workaround",
+        )
         feedback_id = str(uuid4())
         now = self._now()
         with self._connection() as connection:
