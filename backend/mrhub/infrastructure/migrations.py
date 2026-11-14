@@ -1194,6 +1194,15 @@ MIGRATIONS = (
         ),
     ),
     Migration.build(
+        45,
+        "record_research_evidence_independence_rationale",
+        (
+            """ALTER TABLE research_evidence
+               ADD COLUMN independence_basis TEXT NOT NULL DEFAULT ''
+               CHECK (length(independence_basis) <= 1000)""",
+        ),
+    ),
+    Migration.build(
         44,
         "owner_scoped_research_source_provenance",
         (
