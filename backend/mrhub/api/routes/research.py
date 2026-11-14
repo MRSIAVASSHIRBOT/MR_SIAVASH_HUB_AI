@@ -42,6 +42,10 @@ class EvidenceRequest(BaseModel):
     independence_basis: str | None = Field(default=None, max_length=1000)
 
 
+class EvidenceIndependenceRequest(BaseModel):
+    independence_basis: str = Field(min_length=1, max_length=1000)
+
+
 class AssessmentRequest(BaseModel):
     status: Literal[
         "new", "validating", "validated", "prioritized", "in_progress", "deferred", "rejected"
@@ -150,6 +154,26 @@ def add_evidence(
         raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
     except ResearchConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.patch("/opportunities/{opportunity_id}/evidence/{evidence_id}/independence")
+def update_evidence_independence(
+    opportunity_id: str,
+    evidence_id: str,
+    payload: EvidenceIndependenceRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    try:
+        return get_research_repository().update_evidence_independence_basis(
+            owner_user_id=user.user_id,
+            opportunity_id=opportunity_id,
+            evidence_id=evidence_id,
+            independence_basis=payload.independence_basis,
+        ).as_dict()
+    except ResearchNotFound as exc:
+        raise HTTPException(status_code=404, detail="Research evidence not found") from exc
     except ResearchValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
