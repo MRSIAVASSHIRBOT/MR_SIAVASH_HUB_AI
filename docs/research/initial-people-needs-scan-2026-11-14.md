@@ -62,7 +62,8 @@ These are hypotheses for validation, not confirmed product-market fit.
 ## Validation rules before implementation
 
 - Do not call a need validated from one post, one vendor survey, or an AI-generated summary.
-- Seek at least two independent source URLs from at least two source types for each opportunity before moving it to validated.
+- Seek at least two current, dated source URLs from at least two source types and publisher groups before moving an opportunity to validated. Currentness windows are 180 days for discussions/forums/app reviews/support requests, 365 days for other sources, and 730 days for research reports.
+- Treat publisher groups as researcher-supplied provenance labels, not proof of independent ownership or independence; disclose syndication and shared ownership where known.
 - Record geography, population, sample size, date, source limitations, and direct evidence URL.
 - Separate observed user statements from our interpretation and proposed solution.
 - Prefer reversible prototypes and user interviews before expensive integrations.
