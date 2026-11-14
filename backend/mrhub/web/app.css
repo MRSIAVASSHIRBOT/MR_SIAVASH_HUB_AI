@@ -310,3 +310,26 @@ summary { color: var(--green); cursor: pointer; }
 .agent-proposal-tool-copy small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
 .agent-proposal-card-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: .35rem; }
 .agent-proposal-card-actions .button { justify-self: start; }
+
+
+.research-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+}
+.research-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: .85rem;
+  background: #091712;
+  padding: 1rem;
+}
+.research-card h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
+.research-card .checkbox-row { display: flex; align-items: flex-start; gap: .6rem; }
+.research-card .checkbox-row input { width: auto; margin-top: .25rem; }
+#people-needs-panel > .section-heading:not(:first-child) { margin-top: 1.5rem; }
+#research-outcome-form { margin-top: 1.5rem; }
+@media (max-width: 760px) {
+  .research-grid { grid-template-columns: 1fr; }
+}
