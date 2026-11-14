@@ -365,3 +365,13 @@ def test_operator_ui_exposes_owner_controlled_telegram_pairing_and_revocation():
     assert "/pairinfo" in page.text
     assert "generateTelegramClientId" not in script.text
     assert "telegram-client-id-generate" not in page.text
+
+
+
+def test_operator_ui_exposes_separate_telegram_task_result_and_cancel_scopes():
+    client = TestClient(create_app())
+    response = client.get("/ui/")
+    assert response.status_code == 200
+    assert 'value="tasks:result"' in response.text
+    assert 'value="tasks:cancel"' in response.text
+    assert 'value="tasks:read"' in response.text

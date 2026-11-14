@@ -24,7 +24,9 @@ from mrhub.integrations.telegram_pairing import (
     TelegramPairingError,
     TelegramPairingRepository,
 )
+from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.idempotency import IdempotencyConflict, IdempotencyError, IdempotencyRepository
+from mrhub.jobs.worker import WorkerEngine
 from mrhub.memory.repository import MemoryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
@@ -35,7 +37,9 @@ router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"
 TelegramScope = Literal[
     "status:read",
     "tasks:read",
+    "tasks:result",
     "tasks:create",
+    "tasks:cancel",
     "memory:search",
 ]
 DEFAULT_SCOPES = ["status:read"]
@@ -45,7 +49,7 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=4)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=6)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -266,6 +270,60 @@ def get_telegram_task(
         # Do not reveal whether another bot client or an owner created this task.
         raise HTTPException(status_code=404, detail="Telegram task not found")
     return task.model_dump(mode="json")
+
+
+@router.get("/tasks/{task_id}/result")
+def get_telegram_task_result(
+    task_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:result"))],
+) -> dict[str, object]:
+    """Return a bounded terminal result only to the paired client that submitted the task."""
+    repository = _tasks_repository()
+    task = repository.get_for_telegram_client(identity.client_id, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Telegram task not found")
+    if task.status not in {
+        TaskStatus.SUCCEEDED,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+        TaskStatus.REJECTED,
+    }:
+        raise HTTPException(status_code=409, detail="Telegram task result is not ready")
+    result = WorkerEngine(repository).get_result(task_id)
+    if result is None:
+        raise HTTPException(status_code=409, detail="Telegram task result is not ready")
+    encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(encoded) > 32_768:
+        raise HTTPException(status_code=413, detail="Telegram task result exceeds the response limit")
+    return result
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_telegram_task(
+    task_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:cancel"))],
+) -> dict[str, object]:
+    """Cancel a task only while it is queued or waiting for owner approval."""
+    repository = _tasks_repository()
+    task = repository.get_for_telegram_client(identity.client_id, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Telegram task not found")
+    try:
+        cancelled = JobEngine(repository).cancel_pending(task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Telegram task not found") from exc
+    except (InvalidTaskTransition, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail="Telegram task is no longer cancellable") from exc
+    AuditLogger(repository).record(
+        event_type="telegram.task_cancelled",
+        outcome="success",
+        subject_type="task",
+        subject_id=str(task_id),
+        actor_type="telegram_client",
+        actor_id=identity.client_id,
+        metadata={"client_id": identity.client_id, "previous_status": task.status.value},
+    )
+    return cancelled.model_dump(mode="json")
 
 
 @router.post("/tasks", status_code=201)
