@@ -88,3 +88,8 @@ Official provider references:
 - Stack Exchange advanced search: https://api.stackexchange.com/docs/advanced-search
 
 These connectors are discovery aids, not representative market research. A researcher must inspect the source, record an independent observation, consider its date and context, and seek corroboration before validating an opportunity.
+
+
+## Evidence independence rationale
+
+Evidence records may include an optional researcher-entered independence rationale (up to 1,000 characters). The rationale is shown in the operator form and retained with the evidence record. It is an explicit research attestation, not an automated ownership verification. When transitioning an opportunity to validated, only current, dated evidence with a non-empty rationale counts toward the existing diversity gates (distinct URL, source type, hostname, and publisher group). Operators must substantiate the rationale from public information; the system does not claim to prove editorial independence.
