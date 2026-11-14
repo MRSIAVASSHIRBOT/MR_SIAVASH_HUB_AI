@@ -62,6 +62,65 @@
         <p class="muted">فهرست مدل‌ها بدون اجرای inference یا بررسی شبکه بارگذاری می‌شود.</p>
       </div>
       <div id="system-cards" class="status-grid"></div>
+      <section class="panel" id="people-needs-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">PEOPLE NEEDS RESEARCH</p><h2>مرکز کشف نیازهای مردم</h2></div>
+          <button id="research-refresh" class="button button-quiet" type="button">به‌روزرسانی تحقیق</button>
+        </div>
+        <p class="muted">بازخوردها فقط با رضایت پژوهشی ثبت می‌شوند. اطلاعات شناسایی‌کننده، رمزها، شماره تماس یا داده حساس را وارد نکنید. این بخش در نسخه فعلی فقط برای اپراتور احراز هویت‌شده است.</p>
+        <div class="research-grid">
+          <form id="research-opportunity-form" class="stack-form research-card">
+            <h3>ثبت یک نیاز یا فرصت</h3>
+            <label>حوزه خدمت<select name="domain_id" required></select></label>
+            <label>عنوان<input name="title" required maxlength="160"></label>
+            <label>شرح مشکل<textarea name="problem_statement" rows="3" required maxlength="4000"></textarea></label>
+            <label>مخاطب اصلی<input name="audience" required maxlength="240"></label>
+            <label>فرضیه راه‌حل<textarea name="solution_hypothesis" rows="2" maxlength="2000"></textarea></label>
+            <button class="button button-primary" type="submit">ثبت فرصت</button>
+          </form>
+          <form id="research-feedback-form" class="stack-form research-card">
+            <h3>ثبت بازخورد کاربر با رضایت</h3>
+            <label>حوزه خدمت<select name="domain_id" required></select></label>
+            <label>گروه مخاطب<input name="audience_segment" required maxlength="120" placeholder="مثلاً صاحبان کسب‌وکار کوچک"></label>
+            <label>نیاز یا مشکل<textarea name="need_summary" rows="3" required maxlength="2000"></textarea></label>
+            <label>راهکار فعلی<textarea name="current_workaround" rows="2" maxlength="1200"></textarea></label>
+            <div class="form-grid">
+              <label>شدت اثر (۱ تا ۵)<input name="impact_score" type="number" min="1" max="5"></label>
+              <label>تکرار مشکل (۱ تا ۵)<input name="frequency_score" type="number" min="1" max="5"></label>
+            </div>
+            <label class="checkbox-row"><input name="consent_to_research" type="checkbox" required> اجازه می‌دهم این بازخورد بدون اطلاعات هویتی برای تحقیق و بهبود محصول استفاده شود.</label>
+            <button class="button button-primary" type="submit">ثبت بازخورد رضایت‌مندانه</button>
+          </form>
+        </div>
+        <div class="section-heading"><h3>فرصت‌های ثبت‌شده</h3></div>
+        <div id="research-opportunity-list" class="record-list"></div>
+        <div class="section-heading"><h3>بازخوردهای کاربران</h3></div>
+        <div id="research-feedback-list" class="record-list"></div>
+        <form id="research-outcome-form" class="stack-form research-card">
+          <h3>اندازه‌گیری نتیجه یک قابلیت</h3>
+          <label>فرصت مرتبط<select name="opportunity_id" required><option value="">ابتدا یک فرصت انتخاب کنید</option></select></label>
+          <label>شاخص<select name="metric_name" required>
+            <option value="task_time_saved_minutes">زمان صرفه‌جویی‌شده</option>
+            <option value="task_completion_rate_percent">نرخ تکمیل کار</option>
+            <option value="user_satisfaction_score">رضایت کاربر</option>
+            <option value="error_rate_percent">نرخ خطا</option>
+            <option value="active_users">کاربران فعال</option>
+            <option value="operating_cost">هزینه عملیاتی</option>
+          </select></label>
+          <div class="form-grid">
+            <label>مقدار مبنا<input name="baseline_value" type="number" min="0" step="any" required></label>
+            <label>مقدار مشاهده‌شده<input name="observed_value" type="number" min="0" step="any" required></label>
+            <label>واحد<input name="unit" maxlength="40" required placeholder="دقیقه، درصد، نفر…"></label>
+            <label>حجم نمونه<input name="sample_size" type="number" min="1" max="1000000" required></label>
+            <label>شروع بازه<input name="period_start" type="date" required></label>
+            <label>پایان بازه<input name="period_end" type="date" required></label>
+          </div>
+          <label>یادداشت و محدودیت‌های اندازه‌گیری<textarea name="notes" rows="2" maxlength="1200"></textarea></label>
+          <button class="button button-secondary" type="submit">ثبت اندازه‌گیری</button>
+          <div id="research-outcome-list" class="record-list"></div>
+        </form>
+        <p id="research-message" class="message" role="status" aria-live="polite"></p>
+      </section>
       <section class="panel project-portfolio">
         <div class="section-heading">
           <div><p class="eyebrow">PROJECT PORTFOLIO</p><h2>مرکز فرماندهی پروژه‌ها</h2></div>
