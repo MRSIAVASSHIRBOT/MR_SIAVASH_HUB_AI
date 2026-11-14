@@ -16,7 +16,7 @@ Build a compliant, low-cost content funnel for MR_SIAVASH_IR_BOT:
 
 The resource CTA may politely invite the recipient to follow the page and share the post before presenting the educational link. Both actions are optional: the resource link must be delivered in the same reply regardless of whether the recipient follows or shares. Never check, infer, or claim that either action occurred. No follow-gating, share-gating, forced follows, unsolicited bulk DMs, scraping private data, or engagement manipulation. A comment-triggered private reply must comply with Meta's messaging rules and PostZen's documented limits.
 
-## Verified repository baseline (main, 2026-11-14)
+## Verified repository baseline (main code commit `342adddf`, documentation refresh in progress 2026-11-15)
 
 - FastAPI/SQLite owner-scoped content drafts, revision history, deduplication, explicit approval/revocation, and audit events exist.
 - Durable schedules capture approved revision/hash and support cancellation.
@@ -46,19 +46,17 @@ The resource CTA may politely invite the recipient to follow the page and share 
 
 ## Workstreams
 
-### A. Reels publishing
-- Extend the Instagram adapter with the official Graph API Reels container/publish flow.
-- Extend signed public media delivery to approved MP4 assets, with strict MIME, size, signature-expiry, ownership, and content-hash checks.
-- Verify Graph API version and current Meta requirements before implementation.
-- Keep image publishing unchanged and preserve existing safety/error classifications.
-- Add mocked unit tests for request shape, validation, transient rejection, permanent rejection, and ambiguous outcomes.
-- Real account acceptance remains a separately approved manual test.
+### A. Reels publishing — repository implementation merged
+- Official Graph API Reels container creation, bounded status polling, and publish flow are implemented; publishing proceeds only after the container reports `FINISHED`.
+- Signed public media supports approved MP4 assets with owner-scoped processed-render checks, content-hash and signature validation, and the existing image path remains intact.
+- Mocked adapter tests and real FFmpeg render integration tests are part of CI.
+- Remaining: verify live Meta app/account permissions, scopes, Graph API version compatibility, public media reachability, and one controlled real-account acceptance test.
 
-### B. Campaign orchestration
-- Link one Instagram draft, one Telegram lesson, media assets, campaign metadata, and a shared campaign ID.
-- Require both content items to be reviewed; edits revoke approval.
-- Preserve idempotency, stale approval checks, emergency stop, audit records, and owner isolation.
-- Avoid adding a second scheduler or duplicate content repository.
+### B. Campaign orchestration — repository implementation merged
+- Owner-scoped campaign repository and authenticated API link one approved Instagram Reel draft to one approved Telegram lesson.
+- Paired scheduling is inserted atomically with independent idempotency keys; paired cancellation is allowed only while both schedules remain pending.
+- The existing scheduler/worker is reused; no second scheduler or duplicate content repository was added.
+- Cross-provider delivery is not atomic or exactly-once; partial and unknown outcomes require reconciliation.
 
 ### C. Comment-to-resource DM
 - Prefer the existing connected PostZen account and supported Comment Automation API; do not build unofficial Instagram automation.
@@ -85,14 +83,13 @@ The resource CTA may politely invite the recipient to follow the page and share 
 
 ## Delivery sequence
 
-1. Complete integration audit and verify current tests/configuration.
-2. Implement and test MP4 signed-media delivery and Instagram Reels adapter.
-3. Implement campaign linkage and cross-platform publishing acceptance tests. (merged; mocked CI passed on current main)
-4. Implement owner-scoped customizable keyword/resource reply settings, UI, and preview. (merged; mocked CI passed; provider integration remains pending)
-5. Configure one inactive PostZen comment automation for review only after keyword, DM copy, resource URL, account, and scope are approved.
-6. Run a controlled test with one harmless campaign after explicit approval.
-7. Enable scheduled operation only after successful acceptance and quota checks.
-8. Add weekly reporting and tune topics based on observed outcomes.
+1. Integration audit, Reels adapter, signed MP4 media, campaign linkage, and Hub-side reply configuration: merged into `main` and covered by mocked CI.
+2. Re-run and verify CI on the latest documentation commit before considering the documentation refresh complete.
+3. Resolve the expired OpenRouter credential for the scheduled development workflow through repository secret rotation by an authorized maintainer.
+4. Verify Meta/Instagram and Telegram provider credentials, scopes, channel/account identifiers, and public media reachability without exposing secrets.
+5. Review the exact per-post keyword, final reply copy, public resource URL, target account, and provider scopes before any PostZen automation is created.
+6. Perform one controlled real-account campaign only after explicit approval; reconcile provider delivery outcomes.
+7. Build weekly analytics/reporting for metrics the providers actually expose; label unavailable metrics rather than estimating them.
 
 ## Acceptance criteria
 
