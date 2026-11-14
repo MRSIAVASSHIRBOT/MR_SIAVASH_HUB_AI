@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
+        with:
+          persist-credentials: false
       - name: Validate PowerShell launcher syntax
         shell: pwsh
         run: |
@@ -44,6 +46,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
+        with:
+          persist-credentials: false
       - name: Install project into a clean Python 3.11 environment
         shell: pwsh
         run: |
@@ -81,6 +85,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
+        with:
+          persist-credentials: false
       - name: Install project into a clean Python 3.11 environment
         shell: pwsh
         run: |
