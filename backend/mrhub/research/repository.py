@@ -113,6 +113,8 @@ class ResearchEvidence:
     canonical_url: str
     hostname: str
     publisher_group: str
+    source_first_captured_at: str
+    source_last_captured_at: str
     source_label: str
     observation_summary: str
     signal_strength: str
@@ -132,6 +134,8 @@ class ResearchEvidence:
             "canonical_url": self.canonical_url,
             "hostname": self.hostname,
             "publisher_group": self.publisher_group,
+            "source_first_captured_at": self.source_first_captured_at,
+            "source_last_captured_at": self.source_last_captured_at,
             "source_label": self.source_label,
             "observation_summary": self.observation_summary,
             "signal_strength": self.signal_strength,
@@ -363,6 +367,8 @@ class ResearchRepository:
             canonical_url=row["canonical_url"],
             hostname=row["hostname"],
             publisher_group=row["publisher_group"],
+            source_first_captured_at=row["source_first_captured_at"],
+            source_last_captured_at=row["source_last_captured_at"],
             source_label=row["source_label"],
             observation_summary=row["observation_summary"],
             signal_strength=row["signal_strength"],
@@ -381,7 +387,8 @@ class ResearchRepository:
                 """SELECT e.evidence_id, e.opportunity_id, e.source_type, e.canonical_url,
                           e.source_label, e.observation_summary, e.signal_strength,
                           e.captured_at, e.published_at, s.source_id, s.hostname,
-                          s.publisher_group,
+                          s.publisher_group, s.first_captured_at AS source_first_captured_at,
+                          s.last_captured_at AS source_last_captured_at,
                           (SELECT COUNT(*) FROM research_evidence linked
                            WHERE linked.owner_user_id = e.owner_user_id
                              AND linked.source_id = s.source_id) AS source_usage_count
