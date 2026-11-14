@@ -132,9 +132,9 @@ def _text(value: str, field: str, limit: int, *, allow_empty: bool = False) -> s
 
 def _reject_feedback_identifiers(value: str, field: str) -> str:
     """Avoid collecting obvious direct identifiers in free-text feedback."""
-    email_pattern = r"(?i)\\b[\\w.+-]+@[\\w.-]+\\.[A-Z]{2,}\\b"
-    phone_pattern = r"(?<!\\w)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\w)"
-    secret_pattern = r"(?i)\\b(?:password|passwd|api[_ -]?key|access[_ -]?token|secret)\\s*[:=]\\s*\\S+"
+    email_pattern = r"(?i)\b[\w.+-]+@[\w.-]+\.[A-Z]{2,}\b"
+    phone_pattern = r"(?<!\w)(?:\+?\d[\d\s().-]{7,}\d)(?!\w)"
+    secret_pattern = r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|secret)\s*[:=]\s*\S+"
     if re.search(email_pattern, value) or re.search(phone_pattern, value) or re.search(secret_pattern, value):
         raise ResearchValidationError(f"{field} must not contain contact details or credentials")
     return value
