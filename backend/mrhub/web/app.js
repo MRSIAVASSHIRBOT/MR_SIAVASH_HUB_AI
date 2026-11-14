@@ -2051,6 +2051,8 @@
     }
     const sourceUrl = researchField("نشانی HTTPS منبع", "input", "source_url", { required: true, maxlength: 2048, type: "url" });
     const sourceLabel = researchField("نام منبع", "input", "source_label", { required: true, maxlength: 120 });
+    const publisherGroup = researchField("گروه ناشر/شبکه (اختیاری؛ پیش‌فرض hostname)", "input", "publisher_group", { maxlength: 120 });
+    const publishedAt = researchField("تاریخ انتشار منبع (برای اعتبارسنجی لازم است)", "input", "published_at", { type: "datetime-local" });
     const summary = researchField("خلاصه مشاهده (بدون اطلاعات هویتی)", "textarea", "observation_summary", { required: true, maxlength: 2000, rows: 2 });
     const signal = researchField("قدرت سیگنال", "select", "signal_strength");
     for (const [value, label] of [["low", "کم"], ["medium", "متوسط"], ["high", "زیاد"]]) {
@@ -2058,7 +2060,7 @@
       option.value = value;
       signal.control.append(option);
     }
-    evidenceForm.append(sourceType.label, sourceUrl.label, sourceLabel.label, summary.label, signal.label);
+    evidenceForm.append(sourceType.label, sourceUrl.label, sourceLabel.label, publisherGroup.label, publishedAt.label, summary.label, signal.label);
     const evidenceSubmit = element("button", "ثبت شاهد", "button button-secondary");
     evidenceSubmit.type = "submit";
     evidenceForm.append(evidenceSubmit);
@@ -2072,6 +2074,8 @@
             source_type: values.get("source_type"),
             source_url: values.get("source_url"),
             source_label: values.get("source_label"),
+            publisher_group: values.get("publisher_group") || null,
+            published_at: values.get("published_at") ? new Date(values.get("published_at")).toISOString() : null,
             observation_summary: values.get("observation_summary"),
             signal_strength: values.get("signal_strength"),
           },
@@ -2084,10 +2088,41 @@
     });
     card.append(evidenceForm);
 
+    const evidenceDetails = element("div", undefined, "record-list");
+    const evidenceDetailsButton = actionButton("نمایش جزئیات، تازگی و استفادهٔ مجدد شواهد", async () => {
+      try {
+        const detail = await api("/research/opportunities/" + encodeURIComponent(item.opportunity_id));
+        const freshnessLabels = {
+          current: "تازه",
+          stale: "قدیمی",
+          unknown: "تاریخ انتشار نامشخص",
+          future: "تاریخ انتشار نامعتبر",
+        };
+        evidenceDetails.replaceChildren();
+        for (const evidence of detail.evidence || []) {
+          const age = evidence.age_days === null ? "سن نامشخص" : evidence.age_days + " روز";
+          const reuse = evidence.source_usage_count > 1
+            ? "استفاده در " + evidence.source_usage_count + " فرصت"
+            : "فقط در همین فرصت";
+          evidenceDetails.append(recordCard(
+            evidence.source_label + " · " + evidence.publisher_group,
+            evidence.observation_summary,
+            evidence.hostname + " · " + (freshnessLabels[evidence.freshness_status] || evidence.freshness_status) + " · " + age + " · " + reuse
+          ));
+        }
+        if (!evidenceDetails.childElementCount) {
+          renderEmpty(evidenceDetails, "هنوز شاهدی برای این فرصت ثبت نشده است.");
+        }
+      } catch (error) {
+        message("#research-message", error.message, "error");
+      }
+    });
+    card.append(evidenceDetailsButton, evidenceDetails);
+
     if (item.status === "new" || item.status === "validating") {
       const next = item.status === "new" ? "validating" : "validated";
       card.append(actionButton(
-        item.status === "new" ? "شروع اعتبارسنجی" : "تأیید نیاز (حداقل دو نوع منبع)",
+        item.status === "new" ? "شروع اعتبارسنجی" : "تأیید نیاز (دو منبع تازه و با ناشر مستقل)",
         () => transitionResearchOpportunity(item, next)
       ));
     } else if (item.status === "validated") {
