@@ -222,21 +222,19 @@ class ResearchRepository:
         if domain_id is not None and get_domain(domain_id) is None:
             raise ResearchValidationError("Unknown capability domain")
         bounded_limit = max(1, min(int(limit), 100))
-        clauses = ["o.owner_user_id = ?"]
-        values: list[object] = [owner]
-        if status is not None:
-            clauses.append("o.status = ?")
-            values.append(status)
-        if domain_id is not None:
-            clauses.append("o.domain_id = ?")
-            values.append(domain_id)
-        values.append(bounded_limit)
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT o.*, (SELECT COUNT(*) FROM research_evidence e "
-                "WHERE e.opportunity_id = o.opportunity_id AND e.owner_user_id = o.owner_user_id) AS evidence_count "
-                f"FROM research_opportunities o WHERE {' AND '.join(clauses)} "
-                "ORDER BY o.updated_at DESC LIMIT ?", values,
+                """SELECT o.*,
+                    (SELECT COUNT(*) FROM research_evidence e
+                     WHERE e.opportunity_id = o.opportunity_id
+                       AND e.owner_user_id = o.owner_user_id) AS evidence_count
+                   FROM research_opportunities o
+                   WHERE o.owner_user_id = ?
+                     AND (? IS NULL OR o.status = ?)
+                     AND (? IS NULL OR o.domain_id = ?)
+                   ORDER BY o.updated_at DESC
+                   LIMIT ?""",
+                (owner, status, status, domain_id, domain_id, bounded_limit),
             ).fetchall()
         return [self._from_row(row) for row in rows]
 
