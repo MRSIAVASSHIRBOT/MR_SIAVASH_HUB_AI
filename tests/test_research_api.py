@@ -683,12 +683,15 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
         )
         assert blocked.status_code == 409
 
-        for host, group in (("one.example", "Publisher One"), ("two.example", "Publisher Two")):
+        for host, group, source_type in (
+            ("one.example", "Publisher One", "public_discussion"),
+            ("two.example", "Publisher Two", "app_review"),
+        ):
             response = client.post(
                 f"/research/opportunities/{opportunity_id}/evidence",
                 json={
                     **base,
-                    "source_type": "app_review",
+                    "source_type": source_type,
                     "source_url": f"https://{host}/review",
                     "publisher_group": group,
                     "independence_basis": "Ownership and editorial origin reviewed against the other source.",
