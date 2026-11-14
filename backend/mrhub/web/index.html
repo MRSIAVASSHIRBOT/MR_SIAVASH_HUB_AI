@@ -92,6 +92,29 @@
             <button class="button button-primary" type="submit">ثبت بازخورد رضایت‌مندانه</button>
           </form>
         </div>
+        <form id="research-discovery-form" class="research-card stack-form">
+          <h3>جست‌وجوی اولیه در منابع عمومی</h3>
+          <p class="muted">این جست‌وجو فقط از APIهای عمومی و مجاز استفاده می‌کند. نتیجه‌ها سرنخ تحقیق هستند، نه اثبات نیاز؛ هیچ نتیجه‌ای خودکار ذخیره نمی‌شود.</p>
+          <div class="form-grid">
+            <label>منبع<select name="source">
+              <option value="hacker_news">گفت‌وگوهای Hacker News</option>
+              <option value="stack_exchange">پرسش‌های Stack Exchange</option>
+            </select></label>
+            <label id="research-discovery-site-wrap">انجمن<select name="site">
+              <option value="superuser">Super User</option>
+              <option value="stackoverflow">Stack Overflow</option>
+              <option value="webapps">Web Applications</option>
+              <option value="askubuntu">Ask Ubuntu</option>
+              <option value="serverfault">Server Fault</option>
+              <option value="workplace">Workplace</option>
+              <option value="academia">Academia</option>
+              <option value="writers">Writers</option>
+            </select></label>
+          </div>
+          <label>موضوع جست‌وجو<input name="query" required maxlength="160" placeholder="مثلاً: مشکل مدیریت اسناد و کارهای تکراری"></label>
+          <button class="button button-secondary" type="submit">جست‌وجوی منابع عمومی</button>
+          <div id="research-discovery-results" class="record-list"></div>
+        </form>
         <div class="section-heading"><h3>فرصت‌های ثبت‌شده</h3></div>
         <div id="research-opportunity-list" class="record-list"></div>
         <div class="section-heading"><h3>بازخوردهای کاربران</h3></div>
