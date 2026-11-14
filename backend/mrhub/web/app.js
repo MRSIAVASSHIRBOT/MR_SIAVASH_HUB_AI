@@ -2106,11 +2106,42 @@
           const reuse = evidence.source_usage_count > 1
             ? "استفاده در " + evidence.source_usage_count + " فرصت"
             : "فقط در همین فرصت";
-          evidenceDetails.append(recordCard(
+          const evidenceCard = recordCard(
             evidence.source_label + " · " + evidence.publisher_group,
             evidence.observation_summary + (evidence.independence_basis ? " · Independence rationale: " + evidence.independence_basis : ""),
             evidence.hostname + " · " + (freshnessLabels[evidence.freshness_status] || evidence.freshness_status) + " · " + age + " · " + reuse + " · اولین ثبت " + evidence.source_first_captured_at + " · آخرین ثبت " + evidence.source_last_captured_at
-          ));
+          );
+          evidenceDetails.append(evidenceCard);
+          const independenceForm = element("form", undefined, "research-card stack-form");
+          const independenceField = researchField(
+            "دلیل استقلال منبع از سایر شواهد",
+            "textarea",
+            "independence_basis",
+            { required: true, maxlength: 1000, rows: 2 }
+          );
+          independenceField.control.value = evidence.independence_basis || "";
+          independenceForm.append(independenceField.label);
+          const independenceSubmit = element("button", "ثبت/به‌روزرسانی دلیل استقلال", "button button-secondary");
+          independenceSubmit.type = "submit";
+          independenceForm.append(independenceSubmit);
+          independenceForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+              await api(
+                "/research/opportunities/" + encodeURIComponent(item.opportunity_id)
+                  + "/evidence/" + encodeURIComponent(evidence.evidence_id) + "/independence",
+                {
+                  method: "PATCH",
+                  body: { independence_basis: independenceField.control.value },
+                }
+              );
+              await loadResearch();
+              message("#research-message", "دلیل استقلال منبع ذخیره شد.", "success");
+            } catch (error) {
+              message("#research-message", error.message, "error");
+            }
+          });
+          evidenceDetails.append(independenceForm);
         }
         if (!evidenceDetails.childElementCount) {
           renderEmpty(evidenceDetails, "هنوز شاهدی برای این فرصت ثبت نشده است.");
