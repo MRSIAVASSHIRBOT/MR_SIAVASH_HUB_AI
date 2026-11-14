@@ -310,16 +310,16 @@ def test_discovery_rate_limit_is_shared_across_limiter_instances(tmp_path):
 
     first_worker = _DiscoveryLimiter()
     second_worker = _DiscoveryLimiter()
-    first_worker.check(database_path, "owner-a", "hacker_news:automation")
+    first_worker.check(database_path, "owner-a", "hacker_news:automation", "hacker_news")
     try:
-        second_worker.check(database_path, "owner-a", "hacker_news:automation")
+        second_worker.check(database_path, "owner-a", "hacker_news:automation", "hacker_news")
     except ResearchDiscoveryError as exc:
         assert exc.status_code == 429
     else:
         raise AssertionError("A second worker must observe the shared query cooldown")
 
     # Limits are owner-scoped; another authenticated owner has an independent budget.
-    second_worker.check(database_path, "owner-b", "hacker_news:automation")
+    second_worker.check(database_path, "owner-b", "hacker_news:automation", "hacker_news")
 
 
 def test_discovery_provider_backoff_is_shared_across_owners(tmp_path):
