@@ -18,13 +18,15 @@ The authenticated `GET /platform/domains` catalog records ten stable domains: co
 
 ## Needs and opportunity evidence
 
-The authenticated `/research/opportunities` API stores owner-scoped opportunity records and curated public-source evidence. Evidence records contain a canonical HTTPS URL, source category, short observation summary, signal strength, and timestamps. The system stores summaries rather than unnecessary personal identifiers or raw personal content. It does not crawl a URL, scrape a community, infer a person's identity, or claim a source has been independently verified.
+The authenticated `/research/opportunities` API stores owner-scoped opportunity records and curated public-source evidence. Evidence records contain a canonical HTTPS URL, source category, short observation summary, signal strength, publication timestamp, and capture timestamp. An owner-scoped source registry deduplicates canonical URLs across opportunities while preserving a separate observation for each opportunity. The registry records the normalized hostname, an explicit publisher group, and first/last capture timestamps. Reusing a source does not duplicate its provenance record; each opportunity still retains its own contextual observation.
+
+Publication timestamps must include a timezone and cannot be in the future. Freshness is reported, not inferred from the capture date: public discussions, forums, app reviews, and support requests use a 180-day window; other sources use 365 days; research reports use 730 days. Missing publication dates are marked unknown and stale evidence remains visible, but neither can satisfy the validation gate.
 
 Opportunity lifecycle:
 
 `new -> validating -> validated -> prioritized -> in_progress`
 
-Alternative transitions allow deferral or rejection and later re-validation. Every transition is validated. Evidence is attached to an opportunity and unique by canonical source URL within that opportunity. Validation also requires two distinct source types and hostnames; hostname diversity reduces obvious same-site duplication but does not prove source independence.
+Alternative transitions allow deferral or rejection and later re-validation. Every transition is validated. Evidence is unique by canonical URL within an opportunity and links to one owner-scoped source record across opportunities. Validation requires at least two current, dated URLs, two source types, and two publisher groups. Publisher groups are researcher-supplied provenance labels (defaulting to the exact hostname); they reduce obvious syndication/subdomain double-counting but are not independent verification or proof of common ownership.
 
 ## Priority heuristic
 
@@ -45,12 +47,11 @@ Each input is an owner/researcher assessment from 1 to 5. The score is a triage 
 
 ## Next development slices
 
-1. Add approved read-only research connectors with per-source rate limits, provenance, freshness, and source terms review.
-2. Add evidence deduplication across opportunities and confidence calibration based on independent sources.
-3. Add user interviews and feedback intake with consent and data minimization.
-4. Map each validated opportunity to existing modules or a bounded new capability proposal.
-5. Add a capability-to-workflow template catalog and approved integration onboarding.
-6. Add outcome measurement: adoption, task completion, user satisfaction, reliability, and operating cost.
+1. Review source terms and add publisher-specific provenance guidance before broadening read-only discovery providers.
+2. Calibrate confidence using representative pilot evidence and outcome measurements; hostname/publisher labels remain researcher assertions.
+3. Map each validated opportunity to existing modules or a bounded new capability proposal.
+4. Add a capability-to-workflow template catalog and approved integration onboarding.
+5. Add representative pilot studies with adoption, task completion, user satisfaction, reliability, and operating-cost measurements.
 
 ## Explicit non-goals for this foundation
 
