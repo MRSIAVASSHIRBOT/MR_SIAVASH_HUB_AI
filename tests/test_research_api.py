@@ -665,24 +665,7 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
         }).json()
         opportunity_id = created["opportunity_id"]
         published_at = datetime.now(UTC).isoformat()
-        base = {
-            "source_type": "public_discussion",
-            "source_label": "Public source",
-            "observation_summary": "The source reports a recurring workflow problem.",
-            "signal_strength": "medium",
-            "published_at": published_at,
-        }
-        for host, group in (("one.example", "Publisher One"), ("two.example", "Publisher Two")):
-            response = client.post(
-                f"/research/opportunities/{opportunity_id}/evidence",
-                json={**base, "source_url": f"https://{host}/discussion", "publisher_group": group},
-            )
-            assert response.status_code == 201
-        blocked = client.patch(
-            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
-        )
-        assert blocked.status_code == 409
-
+        evidence_ids = []
         for host, group, source_type in (
             ("one.example", "Publisher One", "public_discussion"),
             ("two.example", "Publisher Two", "app_review"),
@@ -690,14 +673,33 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
             response = client.post(
                 f"/research/opportunities/{opportunity_id}/evidence",
                 json={
-                    **base,
                     "source_type": source_type,
-                    "source_url": f"https://{host}/review",
+                    "source_url": f"https://{host}/discussion",
+                    "source_label": "Public source",
+                    "observation_summary": "The source reports a recurring workflow problem.",
+                    "signal_strength": "medium",
+                    "published_at": published_at,
                     "publisher_group": group,
-                    "independence_basis": "Ownership and editorial origin reviewed against the other source.",
                 },
             )
             assert response.status_code == 201
+            evidence_ids.append(response.json()["evidence_id"])
+
+        blocked = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert blocked.status_code == 409
+
+        for evidence_id in evidence_ids:
+            reviewed = client.patch(
+                f"/research/opportunities/{opportunity_id}/evidence/{evidence_id}/independence",
+                json={
+                    "independence_basis": "Ownership and editorial origin reviewed against the other source."
+                },
+            )
+            assert reviewed.status_code == 200
+            assert reviewed.json()["independence_basis"]
+
         validated = client.patch(
             f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
         )
