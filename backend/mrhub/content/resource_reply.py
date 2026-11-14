@@ -67,6 +67,11 @@ def build_optional_support_resource_reply(
         parts.append(follow_text)
     if include_share:
         parts.append(share_text)
+    if include_follow or include_share:
+        parts.append(
+            "این حمایت کاملاً اختیاریه؛ برای دریافت محتوا نیازی به فالو یا "
+            "اشتراک‌گذاری نیست."
+        )
     # The educational link is always appended, including when both CTAs are disabled.
     parts.append(f"📚 لینک دریافت {label}:\n{candidate}")
     return "\n\n".join(parts)
