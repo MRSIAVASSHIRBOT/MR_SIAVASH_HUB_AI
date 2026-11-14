@@ -157,15 +157,36 @@ def canonicalize_evidence_url(value: str) -> str:
     if parsed.query or parsed.fragment or port not in (None, 443):
         raise ResearchValidationError("Evidence URL must not contain a query, fragment, or non-standard port")
     normalized_host = host.lower().rstrip(".")
+    if not normalized_host:
+        raise ResearchValidationError("Evidence URL must include a valid public hostname")
     if normalized_host in {"localhost", "localhost.localdomain"} or normalized_host.endswith(".local"):
         raise ResearchValidationError("Evidence URL must point to a public hostname")
     try:
         address = ipaddress.ip_address(normalized_host)
     except ValueError:
         address = None
-    if address is not None and not address.is_global:
-        raise ResearchValidationError("Evidence URL must not point to a private or non-global IP address")
-    return urlunsplit(("https", normalized_host, parsed.path.rstrip("/"), "", ""))
+    if address is not None:
+        if not address.is_global:
+            raise ResearchValidationError("Evidence URL must not point to a private or non-global IP address")
+        normalized_host = address.compressed
+        netloc = f"[{normalized_host}]" if address.version == 6 else normalized_host
+    else:
+        try:
+            ascii_host = normalized_host.encode("idna").decode("ascii").lower()
+        except UnicodeError as exc:
+            raise ResearchValidationError("Evidence URL hostname is malformed") from exc
+        labels = ascii_host.split(".")
+        if (
+            len(ascii_host) > 253
+            or len(labels) < 2
+            or any(
+                not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+                for label in labels
+            )
+        ):
+            raise ResearchValidationError("Evidence URL hostname is malformed")
+        netloc = ascii_host
+    return urlunsplit(("https", netloc, parsed.path.rstrip("/"), "", ""))
 
 
 class ResearchRepository:
