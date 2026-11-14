@@ -484,6 +484,11 @@ class ResearchRepository:
             end = datetime.fromisoformat(_text(period_end, "Period end", 40))
         except ValueError as exc:
             raise ResearchValidationError("Measurement period must use ISO 8601 timestamps") from exc
+        if (
+            start.tzinfo is None or start.utcoffset() is None
+            or end.tzinfo is None or end.utcoffset() is None
+        ):
+            raise ResearchValidationError("Measurement period timestamps must include a timezone")
         if end < start:
             raise ResearchValidationError("Measurement period end must not precede its start")
         measurement_id = str(uuid4())
