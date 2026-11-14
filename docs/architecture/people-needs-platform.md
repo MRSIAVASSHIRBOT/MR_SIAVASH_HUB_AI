@@ -24,7 +24,7 @@ Opportunity lifecycle:
 
 `new -> validating -> validated -> prioritized -> in_progress`
 
-Alternative transitions allow deferral or rejection and later re-validation. Every transition is validated. Evidence is attached to an opportunity and unique by canonical source URL within that opportunity.
+Alternative transitions allow deferral or rejection and later re-validation. Every transition is validated. Evidence is attached to an opportunity and unique by canonical source URL within that opportunity. Validation also requires two distinct source types and hostnames; hostname diversity reduces obvious same-site duplication but does not prove source independence.
 
 ## Priority heuristic
 
