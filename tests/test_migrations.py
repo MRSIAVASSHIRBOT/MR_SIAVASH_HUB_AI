@@ -736,7 +736,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44]
+    assert SchemaMigrator(connection).migrate() == [44, 45]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -750,6 +750,8 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     source = connection.execute(
         "SELECT * FROM research_sources WHERE owner_user_id = 'owner-1'"
     ).fetchone()
+    evidence_columns = {row["name"] for row in connection.execute("PRAGMA table_info(research_evidence)")}
+    assert "independence_basis" in evidence_columns
     assert source["hostname"] == "example.com"
     assert source["publisher_group"] == "example.com"
     assert source["first_captured_at"] == now
