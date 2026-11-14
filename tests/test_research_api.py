@@ -178,6 +178,20 @@ def test_outcome_measurements_are_owner_scoped_and_time_bounded(tmp_path, monkey
         )
         assert invalid_period.status_code == 422
 
+        naive_period = client.post(
+            f"/research/opportunities/{opportunity_id}/outcomes",
+            json={
+                "metric_name": "task_time_saved_minutes",
+                "baseline_value": 20,
+                "observed_value": 12,
+                "unit": "minutes",
+                "sample_size": 8,
+                "period_start": "2026-11-01T00:00:00",
+                "period_end": "2026-11-14T00:00:00",
+            },
+        )
+        assert naive_period.status_code == 422
+
         measured = client.post(
             f"/research/opportunities/{opportunity_id}/outcomes",
             json={
