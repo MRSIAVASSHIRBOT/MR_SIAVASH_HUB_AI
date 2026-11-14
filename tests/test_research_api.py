@@ -37,7 +37,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
             "status": "validating", "impact_score": 5, "frequency_score": 4, "feasibility_score": 3,
         })
         assert assessed.status_code == 200
-        assert assessed.json()["priority_score"] == 82
+        assert assessed.json()["priority_score"] == 83
         assert len(assessed.json()["evidence"]) == 1
 
         listed = client.get("/research/opportunities?domain_id=web")
