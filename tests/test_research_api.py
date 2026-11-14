@@ -505,6 +505,9 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
             "audience": "Independent workers",
         }).json()
         opportunity_id = created["opportunity_id"]
+        assert client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validating"}
+        ).status_code == 200
         published_at = datetime.now(UTC).isoformat()
 
         first = {
