@@ -183,7 +183,8 @@ def _freshness_details(
     if age_seconds < -PUBLISHED_AT_FUTURE_TOLERANCE.total_seconds():
         return "future", window_days, None
     age_days = max(0, int(age_seconds // 86_400))
-    return ("current" if age_days <= window_days else "stale"), window_days, age_days
+    status = "current" if age_seconds <= window_days * 86_400 else "stale"
+    return status, window_days, age_days
 
 
 def _reject_feedback_identifiers(value: str, field: str) -> str:
