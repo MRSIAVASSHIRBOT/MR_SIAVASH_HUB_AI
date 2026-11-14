@@ -62,7 +62,7 @@ def test_cloudflare_tools_register_only_with_gateway_and_require_owner_grant(mon
     monkeypatch.setattr(
         builtins,
         "build_cloudflare_gateway_client",
-        lambda _settings: gateway,
+        lambda _settings, **_kwargs: gateway,
     )
 
     registry = builtins.build_tool_registry()
@@ -91,10 +91,16 @@ def test_cloudflare_tools_register_only_with_gateway_and_require_owner_grant(mon
 
 def test_cloudflare_api_invocation_is_owner_grant_gated_and_audited(monkeypatch):
     gateway = FakeCloudflareGateway()
+    correlation_ids = []
+
+    def build_gateway(_settings, *, correlation_id=None):
+        correlation_ids.append(correlation_id)
+        return gateway
+
     monkeypatch.setattr(
         builtins,
         "build_cloudflare_gateway_client",
-        lambda _settings: gateway,
+        build_gateway,
     )
     client = authenticated_client()
 
@@ -111,6 +117,8 @@ def test_cloudflare_api_invocation_is_owner_grant_gated_and_audited(monkeypatch)
     listed = client.post("/tools/cloudflare.workers.list/invoke", json={"payload": {}})
     assert listed.status_code == 200
     assert listed.headers["cache-control"] == "no-store"
+    assert correlation_ids[-1] == listed.json()["correlation_id"]
+    assert correlation_ids[-1] is not None
     assert listed.json()["result"]["workers"] == [
         {"id": "hub-gateway", "etag": "etag-1", "created_on": None, "modified_on": None}
     ]
@@ -148,7 +156,7 @@ def test_cloudflare_tool_outputs_exclude_gateway_credentials(monkeypatch):
     monkeypatch.setattr(
         builtins,
         "build_cloudflare_gateway_client",
-        lambda _settings: gateway,
+        lambda _settings, **_kwargs: gateway,
     )
     client = authenticated_client()
     assert client.put("/tools/grants/cloudflare.read", json={}).status_code == 200
