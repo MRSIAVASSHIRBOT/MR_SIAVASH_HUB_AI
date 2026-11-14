@@ -1208,7 +1208,7 @@ MIGRATIONS = (
                 UNIQUE(owner_user_id, canonical_url),
                 UNIQUE(source_id, owner_user_id)
             )""",
-            "ALTER TABLE research_evidence ADD COLUMN source_id TEXT REFERENCES research_sources(source_id) ON DELETE RESTRICT",
+            "ALTER TABLE research_evidence ADD COLUMN source_id TEXT REFERENCES research_sources(source_id) ON DELETE CASCADE",
             """INSERT INTO research_sources (
                 source_id, owner_user_id, canonical_url, hostname, publisher_group,
                 first_captured_at, last_captured_at
