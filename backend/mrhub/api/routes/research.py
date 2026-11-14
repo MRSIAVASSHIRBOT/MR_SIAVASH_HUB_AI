@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.research.repository import (
-    OPPORTUNITY_STATUSES, ResearchNotFound, ResearchRepository, ResearchValidationError,
+    OPPORTUNITY_STATUSES,
+    ResearchConflictError,
+    ResearchNotFound,
+    ResearchRepository,
+    ResearchValidationError,
 )
 from mrhub.security.auth import AuthenticatedUser
 
@@ -113,8 +117,10 @@ def add_evidence(
         return evidence.as_dict()
     except ResearchNotFound as exc:
         raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
+    except ResearchConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ResearchValidationError as exc:
-        raise HTTPException(status_code=409 if "already attached" in str(exc) else 422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.patch("/{opportunity_id}")
@@ -131,5 +137,7 @@ def update_assessment(
         return _opportunity_payload(repository, user.user_id, opportunity_id)
     except ResearchNotFound as exc:
         raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
+    except ResearchConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ResearchValidationError as exc:
-        raise HTTPException(status_code=409 if "transition" in str(exc) else 422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
