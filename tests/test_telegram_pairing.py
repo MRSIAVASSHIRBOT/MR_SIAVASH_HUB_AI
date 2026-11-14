@@ -4,11 +4,10 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
+from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
-
-from mrhub.config import get_settings
 from mrhub.main import create_app
 
 
