@@ -2061,7 +2061,7 @@
     await loadResearchDomains();
     const [opportunities, feedback] = await Promise.all([
       api("/research/opportunities?limit=100"),
-      api("/research/feedback?limit=100"),
+      api("/research/feedback/entries?limit=100"),
     ]);
     const opportunitySelect = $("#research-outcome-form").elements.opportunity_id;
     const selectedOpportunity = opportunitySelect.value;
