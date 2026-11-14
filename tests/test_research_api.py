@@ -424,6 +424,8 @@ def test_research_source_provenance_is_deduplicated_across_opportunities(tmp_pat
             f"/research/opportunities/{first['opportunity_id']}"
         ).json()["evidence"][0]
         assert first_details["source_usage_count"] == 2
+        assert first_item["source_first_captured_at"] == second_item["source_first_captured_at"]
+        assert first_details["source_last_captured_at"] == second_item["source_last_captured_at"]
         assert first_item["freshness_status"] == "current"
         assert first_item["age_days"] == 0
 
