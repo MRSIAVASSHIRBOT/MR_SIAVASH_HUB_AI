@@ -375,3 +375,21 @@ def test_operator_ui_exposes_separate_telegram_task_result_and_cancel_scopes():
     assert 'value="tasks:result"' in response.text
     assert 'value="tasks:cancel"' in response.text
     assert 'value="tasks:read"' in response.text
+
+
+
+def test_operator_ui_exposes_research_source_provenance_and_freshness_controls():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert "گروه ناشر/شبکه" in script.text
+    assert "تاریخ انتشار منبع" in script.text
+    assert "publisher_group" in script.text
+    assert "published_at" in script.text
+    assert "freshness_status" in script.text
+    assert "source_usage_count" in script.text
+    assert "تازه" in script.text
+    assert "قدیمی" in script.text
