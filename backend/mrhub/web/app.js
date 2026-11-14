@@ -2052,6 +2052,7 @@
     const sourceUrl = researchField("نشانی HTTPS منبع", "input", "source_url", { required: true, maxlength: 2048, type: "url" });
     const sourceLabel = researchField("نام منبع", "input", "source_label", { required: true, maxlength: 120 });
     const publisherGroup = researchField("گروه ناشر/شبکه (اختیاری؛ پیش‌فرض hostname)", "input", "publisher_group", { maxlength: 120 });
+    const independenceBasis = researchField("دلیل مستقل‌بودن این منبع از سایر شواهد (برای اعتبارسنجی الزامی)", "textarea", "independence_basis", { maxlength: 1000, rows: 2 });
     const publishedAt = researchField("تاریخ انتشار منبع (برای اعتبارسنجی لازم است)", "input", "published_at", { type: "datetime-local" });
     const summary = researchField("خلاصه مشاهده (بدون اطلاعات هویتی)", "textarea", "observation_summary", { required: true, maxlength: 2000, rows: 2 });
     const signal = researchField("قدرت سیگنال", "select", "signal_strength");
@@ -2060,7 +2061,7 @@
       option.value = value;
       signal.control.append(option);
     }
-    evidenceForm.append(sourceType.label, sourceUrl.label, sourceLabel.label, publisherGroup.label, publishedAt.label, summary.label, signal.label);
+    evidenceForm.append(sourceType.label, sourceUrl.label, sourceLabel.label, publisherGroup.label, publishedAt.label, independenceBasis.label, summary.label, signal.label);
     const evidenceSubmit = element("button", "ثبت شاهد", "button button-secondary");
     evidenceSubmit.type = "submit";
     evidenceForm.append(evidenceSubmit);
@@ -2075,6 +2076,7 @@
             source_url: values.get("source_url"),
             source_label: values.get("source_label"),
             publisher_group: values.get("publisher_group") || null,
+            independence_basis: values.get("independence_basis") || null,
             published_at: values.get("published_at") ? new Date(values.get("published_at")).toISOString() : null,
             observation_summary: values.get("observation_summary"),
             signal_strength: values.get("signal_strength"),
