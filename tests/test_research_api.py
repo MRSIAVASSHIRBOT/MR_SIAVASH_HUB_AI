@@ -418,8 +418,12 @@ def test_research_source_provenance_is_deduplicated_across_opportunities(tmp_pat
         assert first_item["source_id"] == second_item["source_id"]
         assert first_item["hostname"] == "example.com"
         assert first_item["publisher_group"] == "Example Media Group"
-        assert first_item["source_usage_count"] == 2
+        assert first_item["source_usage_count"] == 1
         assert second_item["source_usage_count"] == 2
+        first_details = client.get(
+            f"/research/opportunities/{first['opportunity_id']}"
+        ).json()["evidence"][0]
+        assert first_details["source_usage_count"] == 2
         assert first_item["freshness_status"] == "current"
         assert first_item["age_days"] == 0
 
