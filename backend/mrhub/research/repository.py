@@ -256,7 +256,9 @@ class ResearchRepository:
         self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM research_evidence WHERE owner_user_id = ? AND opportunity_id = ? "
+                "SELECT evidence_id, opportunity_id, source_type, canonical_url, source_label, "
+                "observation_summary, signal_strength, captured_at, published_at "
+                "FROM research_evidence WHERE owner_user_id = ? AND opportunity_id = ? "
                 "ORDER BY captured_at DESC LIMIT 100", (owner_user_id, opportunity_id),
             ).fetchall()
         return [ResearchEvidence(**dict(row)) for row in rows]
