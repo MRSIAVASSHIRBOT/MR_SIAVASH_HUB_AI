@@ -1,32 +1,18 @@
-"""Compose an optional support CTA followed by an unconditional resource link.
-
-This helper deliberately has no follower/share-state inputs: access to the resource
-must never depend on either interaction.
-"""
+"""Compose an optional support CTA followed by an unconditional resource link."""
 from __future__ import annotations
 
 from urllib.parse import urlsplit
 
 
-def build_optional_support_resource_reply(
-    resource_url: str,
-    *,
-    resource_label: str = "محتوای آموزشی",
-) -> str:
-    """Return a Persian reply that invites support, then always includes the resource.
-
-    Only absolute HTTPS URLs with a hostname and valid optional port are accepted.
-    Public reachability is an external activation check, not inferred by this helper.
-    No follow/share verification or gating is performed here.
-    """
+def validate_resource_url(resource_url: str) -> str:
+    """Validate an absolute HTTPS resource URL without making network requests."""
     candidate = resource_url.strip()
-    parsed = urlsplit(candidate)
     try:
-        hostname = parsed.hostname
-        parsed.port  # Validate port syntax and range.
+        hostname = urlsplit(candidate).hostname
+        urlsplit(candidate).port
     except ValueError as exc:
         raise ValueError("Resource URL must be an absolute HTTPS URL") from exc
-
+    parsed = urlsplit(candidate)
     if (
         not candidate
         or any(character.isspace() for character in candidate)
@@ -36,17 +22,51 @@ def build_optional_support_resource_reply(
         or parsed.password is not None
     ):
         raise ValueError("Resource URL must be an absolute HTTPS URL")
+    return candidate
 
+
+def build_optional_support_resource_reply(
+    resource_url: str,
+    *,
+    resource_label: str = "محتوای آموزشی",
+    intro_text: str = "سلام! ✨",
+    include_follow: bool = True,
+    follow_cta_text: str = (
+        "اگر این آموزش برات مفیده، خوشحال می‌شیم صفحه‌مون رو دنبال کنی. 💚"
+    ),
+    include_share: bool = True,
+    share_cta_text: str = (
+        "این پست رو هم برای دوستانت بفرست تا افراد بیشتری از آموزش رایگان استفاده کنن. 📢"
+    ),
+) -> str:
+    """Build a configurable reply; resource delivery never depends on engagement."""
+    candidate = validate_resource_url(resource_url)
     label = resource_label.strip()
+    intro = intro_text.strip()
+    follow_text = follow_cta_text.strip()
+    share_text = share_cta_text.strip()
+
     if not label or "\n" in label or "\r" in label:
         raise ValueError("Resource label must be a non-empty single line")
+    for value, field_name in (
+        (intro, "Intro text"),
+        (follow_text, "Follow CTA"),
+        (share_text, "Share CTA"),
+    ):
+        if len(value) > 500 or "\x00" in value:
+            raise ValueError(f"{field_name} is invalid or too long")
+    if include_follow and not follow_text:
+        raise ValueError("Follow CTA text is required when Follow invitation is enabled")
+    if include_share and not share_text:
+        raise ValueError("Share CTA text is required when Share invitation is enabled")
 
-    return (
-        "سلام! ✨\n\n"
-        "اگر این آموزش برات مفیده، خوشحال می‌شیم صفحه‌مون رو دنبال کنی و "
-        "این پست رو برای دوستانت هم بفرستی. 💚\n\n"
-        "این حمایت کاملاً اختیاریه؛ برای دریافت محتوا نیازی به فالو یا "
-        "اشتراک‌گذاری نیست.\n\n"
-        f"📚 لینک دریافت {label}:\n"
-        f"{candidate}"
-    )
+    parts = []
+    if intro:
+        parts.append(intro)
+    if include_follow:
+        parts.append(follow_text)
+    if include_share:
+        parts.append(share_text)
+    # The educational link is always appended, including when both CTAs are disabled.
+    parts.append(f"📚 لینک دریافت {label}:\n{candidate}")
+    return "\n\n".join(parts)
