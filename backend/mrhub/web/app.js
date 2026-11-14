@@ -1885,6 +1885,290 @@
     }, "هنوز سندی ثبت نشده است.");
   }
 
+
+  const researchDomainLabels = Object.create(null);
+
+  function researchField(labelText, tagName, name, attributes = {}) {
+    const label = element("label", labelText);
+    const control = element(tagName);
+    control.name = name;
+    for (const [key, value] of Object.entries(attributes)) {
+      if (key === "text") control.textContent = value;
+      else if (key === "value") control.value = value;
+      else control.setAttribute(key, String(value));
+    }
+    label.append(control);
+    return { label, control };
+  }
+
+  async function loadResearchDomains() {
+    const result = await api("/platform/domains");
+    const selects = document.querySelectorAll(
+      "#research-opportunity-form select[name='domain_id'], #research-feedback-form select[name='domain_id']"
+    );
+    for (const domain of result.domains || []) {
+      researchDomainLabels[domain.domain_id] = domain.name;
+    }
+    for (const select of selects) {
+      const previous = select.value;
+      select.replaceChildren();
+      for (const domain of result.domains || []) {
+        const option = element("option", domain.name);
+        option.value = domain.domain_id;
+        select.append(option);
+      }
+      if (previous) select.value = previous;
+    }
+  }
+
+  async function transitionResearchOpportunity(item, nextStatus, scores = {}) {
+    try {
+      await api("/research/opportunities/" + encodeURIComponent(item.opportunity_id), {
+        method: "PATCH",
+        body: { status: nextStatus, ...scores },
+      });
+      await loadResearch();
+      message("#research-message", "وضعیت فرصت به‌روزرسانی شد.", "success");
+    } catch (error) {
+      message("#research-message", error.message, "error");
+    }
+  }
+
+  function renderResearchOpportunity(item) {
+    const card = recordCard(
+      item.title,
+      item.problem_statement,
+      [
+        researchDomainLabels[item.domain_id] || item.domain_id,
+        "وضعیت: " + item.status,
+        "شواهد: " + item.evidence_count,
+        "امتیاز: " + (item.priority_score === null ? "ثبت نشده" : item.priority_score + "/100"),
+      ].join(" · ")
+    );
+
+    const evidenceForm = element("form", undefined, "stack-form research-card");
+    evidenceForm.append(element("strong", "افزودن شاهد عمومی"));
+    const sourceType = researchField("نوع منبع", "select", "source_type");
+    for (const [value, label] of [
+      ["public_discussion", "گفت‌وگوی عمومی"],
+      ["community_forum", "انجمن عمومی"],
+      ["app_review", "نظر/بررسی اپلیکیشن"],
+      ["research_report", "گزارش پژوهشی"],
+      ["support_request", "درخواست پشتیبانی"],
+      ["other", "سایر"],
+    ]) {
+      const option = element("option", label);
+      option.value = value;
+      sourceType.control.append(option);
+    }
+    const sourceUrl = researchField("نشانی HTTPS منبع", "input", "source_url", { required: true, maxlength: 2048, type: "url" });
+    const sourceLabel = researchField("نام منبع", "input", "source_label", { required: true, maxlength: 120 });
+    const summary = researchField("خلاصه مشاهده (بدون اطلاعات هویتی)", "textarea", "observation_summary", { required: true, maxlength: 2000, rows: 2 });
+    const signal = researchField("قدرت سیگنال", "select", "signal_strength");
+    for (const [value, label] of [["low", "کم"], ["medium", "متوسط"], ["high", "زیاد"]]) {
+      const option = element("option", label);
+      option.value = value;
+      signal.control.append(option);
+    }
+    evidenceForm.append(sourceType.label, sourceUrl.label, sourceLabel.label, summary.label, signal.label);
+    const evidenceSubmit = element("button", "ثبت شاهد", "button button-secondary");
+    evidenceSubmit.type = "submit";
+    evidenceForm.append(evidenceSubmit);
+    evidenceForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = new FormData(evidenceForm);
+      try {
+        await api("/research/opportunities/" + encodeURIComponent(item.opportunity_id) + "/evidence", {
+          method: "POST",
+          body: {
+            source_type: values.get("source_type"),
+            source_url: values.get("source_url"),
+            source_label: values.get("source_label"),
+            observation_summary: values.get("observation_summary"),
+            signal_strength: values.get("signal_strength"),
+          },
+        });
+        await loadResearch();
+        message("#research-message", "شاهد ثبت شد؛ هنوز باید استقلال و کیفیت منبع بررسی شود.", "success");
+      } catch (error) {
+        message("#research-message", error.message, "error");
+      }
+    });
+    card.append(evidenceForm);
+
+    if (item.status === "new" || item.status === "validating") {
+      const next = item.status === "new" ? "validating" : "validated";
+      card.append(actionButton(
+        item.status === "new" ? "شروع اعتبارسنجی" : "تأیید نیاز (حداقل دو نوع منبع)",
+        () => transitionResearchOpportunity(item, next)
+      ));
+    } else if (item.status === "validated") {
+      const scoreForm = element("form", undefined, "research-card stack-form");
+      scoreForm.append(element("strong", "امتیازدهی اولویت"));
+      const fields = {};
+      for (const [name, labelText] of [
+        ["impact_score", "تأثیر"], ["frequency_score", "فراوانی"], ["feasibility_score", "امکان‌پذیری"],
+      ]) {
+        const field = researchField(labelText + " (۱ تا ۵)", "input", name, {
+          type: "number", min: 1, max: 5, required: true,
+        });
+        fields[name] = field.control;
+        scoreForm.append(field.label);
+      }
+      const submit = element("button", "ثبت امتیاز و اولویت‌بندی", "button button-secondary");
+      submit.type = "submit";
+      scoreForm.append(submit);
+      scoreForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        transitionResearchOpportunity(item, "prioritized", {
+          impact_score: Number(fields.impact_score.value),
+          frequency_score: Number(fields.frequency_score.value),
+          feasibility_score: Number(fields.feasibility_score.value),
+        });
+      });
+      card.append(scoreForm);
+    } else if (item.status === "prioritized") {
+      card.append(actionButton("شروع اجرای راه‌حل", () => transitionResearchOpportunity(item, "in_progress")));
+    }
+    const outcomeButton = actionButton("انتخاب برای سنجش نتیجه", () => {
+      const select = $("#research-outcome-form").elements.opportunity_id;
+      select.value = item.opportunity_id;
+      loadResearchOutcomes(item.opportunity_id);
+      $("#research-outcome-form").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    card.append(outcomeButton);
+    return card;
+  }
+
+  async function loadResearchOutcomes(opportunityId) {
+    if (!opportunityId) {
+      renderEmpty($("#research-outcome-list"), "فرصتی برای سنجش انتخاب نشده است.");
+      return;
+    }
+    try {
+      const result = await api("/research/opportunities/" + encodeURIComponent(opportunityId) + "/outcomes");
+      renderRecords("#research-outcome-list", result.items, (item) => recordCard(
+        item.metric_name,
+        String(item.baseline_value) + " → " + String(item.observed_value) + " " + item.unit,
+        "نمونه: " + item.sample_size + " · " + item.period_start + " تا " + item.period_end
+      ), "هنوز نتیجه‌ای برای این فرصت ثبت نشده است.");
+    } catch (error) {
+      message("#research-message", error.message, "error");
+    }
+  }
+
+  async function loadResearch() {
+    await loadResearchDomains();
+    const [opportunities, feedback] = await Promise.all([
+      api("/research/opportunities?limit=100"),
+      api("/research/feedback?limit=100"),
+    ]);
+    const opportunitySelect = $("#research-outcome-form").elements.opportunity_id;
+    const selectedOpportunity = opportunitySelect.value;
+    opportunitySelect.replaceChildren(element("option", "انتخاب فرصت"));
+    for (const item of opportunities.items || []) {
+      const option = element("option", item.title);
+      option.value = item.opportunity_id;
+      opportunitySelect.append(option);
+    }
+    if (selectedOpportunity) opportunitySelect.value = selectedOpportunity;
+    renderRecords("#research-opportunity-list", opportunities.items, renderResearchOpportunity, "هنوز فرصتی ثبت نشده است.");
+
+    renderRecords("#research-feedback-list", feedback.items, (item) => {
+      const card = recordCard(
+        item.audience_segment + " · " + (researchDomainLabels[item.domain_id] || item.domain_id),
+        item.need_summary,
+        "وضعیت: " + item.status + " · " + (item.current_workaround || "راهکار فعلی ثبت نشده")
+      );
+      if (item.status === "new") {
+        card.append(actionButton("علامت‌گذاری به‌عنوان بررسی‌شده", async () => {
+          try {
+            await api("/research/feedback/" + encodeURIComponent(item.feedback_id), {
+              method: "PATCH", body: { status: "reviewed" },
+            });
+            await loadResearch();
+          } catch (error) { message("#research-message", error.message, "error"); }
+        }));
+      }
+      card.append(deleteButton("حذف بازخورد", async () => {
+        if (!window.confirm("این بازخورد حذف شود؟")) return;
+        try {
+          await api("/research/feedback/" + encodeURIComponent(item.feedback_id), { method: "DELETE" });
+          await loadResearch();
+        } catch (error) { message("#research-message", error.message, "error"); }
+      }));
+      return card;
+    }, "هنوز بازخوردی ثبت نشده است.");
+    if (selectedOpportunity) await loadResearchOutcomes(selectedOpportunity);
+  }
+
+  async function submitResearchOpportunity(event) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    try {
+      await api("/research/opportunities", {
+        method: "POST",
+        body: {
+          domain_id: values.get("domain_id"),
+          title: values.get("title"),
+          problem_statement: values.get("problem_statement"),
+          audience: values.get("audience"),
+          solution_hypothesis: values.get("solution_hypothesis") || "",
+        },
+      });
+      event.currentTarget.reset();
+      await loadResearch();
+      message("#research-message", "فرصت ثبت شد و در وضعیت «جدید» قرار گرفت.", "success");
+    } catch (error) { message("#research-message", error.message, "error"); }
+  }
+
+  async function submitResearchFeedback(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    try {
+      await api("/research/feedback", {
+        method: "POST",
+        body: {
+          domain_id: values.get("domain_id"),
+          audience_segment: values.get("audience_segment"),
+          need_summary: values.get("need_summary"),
+          current_workaround: values.get("current_workaround") || "",
+          impact_score: values.get("impact_score") ? Number(values.get("impact_score")) : null,
+          frequency_score: values.get("frequency_score") ? Number(values.get("frequency_score")) : null,
+          consent_to_research: form.elements.consent_to_research.checked,
+        },
+      });
+      form.reset();
+      await loadResearch();
+      message("#research-message", "بازخورد با رضایت ثبت شد.", "success");
+    } catch (error) { message("#research-message", error.message, "error"); }
+  }
+
+  async function submitResearchOutcome(event) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const start = String(values.get("period_start") || "");
+    const end = String(values.get("period_end") || "");
+    try {
+      await api("/research/opportunities/" + encodeURIComponent(values.get("opportunity_id")) + "/outcomes", {
+        method: "POST",
+        body: {
+          metric_name: values.get("metric_name"),
+          baseline_value: Number(values.get("baseline_value")),
+          observed_value: Number(values.get("observed_value")),
+          unit: values.get("unit"),
+          sample_size: Number(values.get("sample_size")),
+          period_start: start + "T00:00:00+00:00",
+          period_end: end + "T23:59:59+00:00",
+          notes: values.get("notes") || "",
+        },
+      });
+      await loadResearchOutcomes(String(values.get("opportunity_id")));
+      message("#research-message", "اندازه‌گیری ثبت شد؛ این داده به‌تنهایی اثبات رابطه علّی نیست.", "success");
+    } catch (error) { message("#research-message", error.message, "error"); }
+  }
+
   async function refreshAll() {
     try {
       await Promise.all([
@@ -1896,6 +2180,7 @@
         loadTelegramClients(),
         loadAgentProposalTools(),
         loadAgentProposals(),
+        loadResearch(),
       ]);
       if (activeVideoAnalysisId) {
         $("#video-analysis-refresh").disabled = false;
@@ -2053,6 +2338,16 @@
     } catch (error) { message("#workspace-message", error.message, "error"); }
   });
   $("#memory-list-button").addEventListener("click", () => loadMemory().catch((error) => message("#workspace-message", error.message, "error")));
+
+  $("#research-opportunity-form").addEventListener("submit", submitResearchOpportunity);
+  $("#research-feedback-form").addEventListener("submit", submitResearchFeedback);
+  $("#research-outcome-form").addEventListener("submit", submitResearchOutcome);
+  $("#research-outcome-form").elements.opportunity_id.addEventListener("change", (event) => {
+    loadResearchOutcomes(event.currentTarget.value);
+  });
+  $("#research-refresh").addEventListener("click", () => {
+    loadResearch().catch((error) => message("#research-message", error.message, "error"));
+  });
 
   $("#knowledge-form").addEventListener("submit", async (event) => {
     event.preventDefault();
