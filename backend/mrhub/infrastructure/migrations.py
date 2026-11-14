@@ -1031,6 +1031,11 @@ MIGRATIONS = (
             )""",
             "CREATE INDEX IF NOT EXISTS idx_research_discovery_owner_time ON research_discovery_requests(owner_user_id, requested_at)",
             "CREATE INDEX IF NOT EXISTS idx_research_discovery_owner_query_time ON research_discovery_requests(owner_user_id, query_key, requested_at)",
+            """CREATE TABLE IF NOT EXISTS research_discovery_provider_backoff (
+                provider_key TEXT PRIMARY KEY CHECK (provider_key IN ('hacker_news', 'stack_exchange')),
+                retry_after REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )""",
         ),
     ),
 )
