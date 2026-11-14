@@ -79,7 +79,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
         )
         assert prioritized.status_code == 200
         assert prioritized.json()["status"] == "prioritized"
-        assert len(prioritized.json()["evidence"]) == 2
+        assert len(prioritized.json()["evidence"]) == 3
 
         listed = client.get("/research/opportunities?domain_id=web")
         assert listed.status_code == 200
