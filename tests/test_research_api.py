@@ -143,7 +143,7 @@ def test_consent_feedback_lifecycle_and_deletion(tmp_path, monkeypatch):
         assert "email" not in feedback
         assert "contact" not in feedback
 
-        listed = client.get("/research/feedback?domain_id=productivity")
+        listed = client.get("/research/feedback/entries?domain_id=productivity")
         assert listed.status_code == 200
         assert listed.json()["count"] == 1
 
@@ -155,7 +155,7 @@ def test_consent_feedback_lifecycle_and_deletion(tmp_path, monkeypatch):
 
         deleted = client.delete(f"/research/feedback/{feedback['feedback_id']}")
         assert deleted.status_code == 204
-        assert client.get("/research/feedback").json()["count"] == 0
+        assert client.get("/research/feedback/entries").json()["count"] == 0
     finally:
         get_settings.cache_clear()
 
