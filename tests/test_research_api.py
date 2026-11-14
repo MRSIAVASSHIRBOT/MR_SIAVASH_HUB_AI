@@ -614,3 +614,31 @@ def test_research_validation_still_requires_distinct_hostnames(tmp_path, monkeyp
         assert blocked.status_code == 409
     finally:
         get_settings.cache_clear()
+
+
+def test_research_source_default_publisher_group_accepts_long_valid_hostnames(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-long-host.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post("/research/opportunities", json={
+            "domain_id": "web",
+            "title": "Long host provenance",
+            "problem_statement": "A source can use a long but valid public hostname.",
+            "audience": "Website operators",
+        }).json()
+        hostname = ".".join(("a" * 60, "b" * 60, "c" * 60, "example"))
+        response = client.post(
+            f"/research/opportunities/{created['opportunity_id']}/evidence",
+            json={
+                "source_type": "other",
+                "source_url": f"https://{hostname}/source",
+                "source_label": "Long-host source",
+                "observation_summary": "The source uses a valid long hostname.",
+            },
+        )
+        assert response.status_code == 201
+        assert response.json()["hostname"] == hostname
+        assert response.json()["publisher_group"] == hostname
+    finally:
+        get_settings.cache_clear()
