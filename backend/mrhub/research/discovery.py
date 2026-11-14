@@ -5,9 +5,10 @@ Only fixed provider endpoints are contacted; user-supplied URLs are never fetche
 """
 from __future__ import annotations
 
-import threading
+import sqlite3
 import time
-from collections import defaultdict, deque
+from pathlib import Path
+from uuid import uuid4
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -23,33 +24,55 @@ class ResearchDiscoveryError(RuntimeError):
 
 
 class _DiscoveryLimiter:
-    """Small in-process per-owner request budget and identical-query cooldown."""
+    """SQLite-backed per-owner request budget shared by workers using one database."""
 
     def __init__(self, max_requests: int = 6, window_seconds: int = 60) -> None:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._requests: dict[str, deque[float]] = defaultdict(deque)
-        self._last_query: dict[tuple[str, str], float] = {}
-        self._lock = threading.Lock()
 
-    def check(self, owner_id: str, query_key: str) -> None:
-        now = time.monotonic()
-        with self._lock:
-            requests = self._requests[owner_id]
-            cutoff = now - self.window_seconds
-            while requests and requests[0] <= cutoff:
-                requests.popleft()
-            last = self._last_query.get((owner_id, query_key))
-            if last is not None and now - last < self.window_seconds:
+    def check(self, database_path: Path, owner_id: str, query_key: str) -> None:
+        now = time.time()
+        cutoff = now - self.window_seconds
+        connection = sqlite3.connect(database_path, timeout=5.0)
+        try:
+            connection.execute("PRAGMA busy_timeout = 5000")
+            # Serialize the count/check/insert sequence across API worker processes.
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "DELETE FROM research_discovery_requests WHERE requested_at <= ?",
+                (cutoff,),
+            )
+            repeated = connection.execute(
+                """SELECT 1 FROM research_discovery_requests
+                   WHERE owner_user_id = ? AND query_key = ? AND requested_at > ?
+                   LIMIT 1""",
+                (owner_id, query_key, cutoff),
+            ).fetchone()
+            if repeated is not None:
                 raise ResearchDiscoveryError(
                     "The same source query can be repeated once per minute.", 429
                 )
-            if len(requests) >= self.max_requests:
+            count = connection.execute(
+                """SELECT COUNT(*) FROM research_discovery_requests
+                   WHERE owner_user_id = ? AND requested_at > ?""",
+                (owner_id, cutoff),
+            ).fetchone()[0]
+            if count >= self.max_requests:
                 raise ResearchDiscoveryError(
                     "Research discovery request limit reached; retry in a minute.", 429
                 )
-            requests.append(now)
-            self._last_query[(owner_id, query_key)] = now
+            connection.execute(
+                """INSERT INTO research_discovery_requests
+                   (request_id, owner_user_id, query_key, requested_at)
+                   VALUES (?, ?, ?, ?)""",
+                (str(uuid4()), owner_id, query_key, now),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
 
 _LIMITER = _DiscoveryLimiter()
@@ -102,7 +125,7 @@ def _bounded_json(url: str, params: dict[str, str | int]) -> dict[str, object]:
 
 
 def discover_public_needs(
-    *, owner_user_id: str, source: str, query: str, limit: int = 10, site: str = "superuser"
+    *, owner_user_id: str, source: str, query: str, database_path: Path, limit: int = 10, site: str = "superuser"
 ) -> dict[str, object]:
     """Search Hacker News or a fixed Stack Exchange site; never fetch result URLs."""
     normalized_query = " ".join(query.split())
@@ -115,7 +138,7 @@ def discover_public_needs(
         raise ResearchDiscoveryError("Unsupported Stack Exchange site.", 422)
 
     query_key = f"{source}:{site if source == 'stack_exchange' else ''}:{normalized_query.casefold()}"
-    _LIMITER.check(owner_user_id, query_key)
+    _LIMITER.check(database_path, owner_user_id, query_key)
 
     captured_at = datetime.now(UTC).isoformat()
     if source == "hacker_news":
