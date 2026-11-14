@@ -11,6 +11,7 @@ def validate_resource_url(resource_url: str) -> str:
     try:
         parsed = urlsplit(candidate)
         hostname = parsed.hostname
+        # Access .port here so malformed ports raise inside this validation boundary.
         port = parsed.port
     except ValueError as exc:
         raise ValueError("Resource URL must be an absolute HTTPS URL") from exc
