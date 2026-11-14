@@ -39,7 +39,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "tool_permission_grants",
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
-        "research_discovery_requests",
+        "research_discovery_requests", "research_discovery_provider_backoff",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -525,7 +525,7 @@ def test_research_feedback_and_outcome_schema_constraints(tmp_path):
             )
         }
         assert {"research_feedback", "research_outcome_measurements"} <= tables
-        assert "research_discovery_requests" in tables
+        assert {"research_discovery_requests", "research_discovery_provider_backoff"} <= tables
         discovery_indexes = {
             row["name"] for row in connection.execute(
                 "PRAGMA index_list(research_discovery_requests)"
