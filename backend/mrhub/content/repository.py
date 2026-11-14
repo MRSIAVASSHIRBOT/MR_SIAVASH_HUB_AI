@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.media.repository import MAX_UPLOAD_BYTES, MediaAssetRepository
+from mrhub.media.repository import MAX_OUTPUT_BYTES, MAX_UPLOAD_BYTES, MediaAssetRepository
 
 
 class MediaAttachmentError(ValueError):
@@ -74,6 +74,7 @@ class ContentDraftRepository:
         self,
         owner_user_id: str,
         platform: str,
+        content_type: str,
         media_asset_id: str | UUID | None,
     ) -> str | None:
         if media_asset_id is None:
@@ -87,17 +88,32 @@ class ContentDraftRepository:
         asset = MediaAssetRepository(self.database_path).get(owner_user_id, asset_uuid)
         if asset is None:
             raise MediaAttachmentError("Media asset is missing or belongs to another owner")
-        allowed_types = (
-            {"image/jpeg", "image/png"}
-            if platform == "instagram"
-            else {"image/jpeg", "image/png", "video/mp4"}
-        )
-        if asset["media_type"] not in allowed_types:
-            supported = "JPEG and PNG" if platform == "instagram" else "JPEG, PNG, and MP4"
-            raise MediaAttachmentError(
-                f"{platform.title()} media attachments support {supported} only"
-            )
-        if int(asset["file_size"]) < 1 or int(asset["file_size"]) > MAX_UPLOAD_BYTES:
+        media_type = str(asset["media_type"])
+        if platform == "instagram" and content_type == "reel":
+            if (
+                media_type != "video/mp4"
+                or asset["processing_status"] != "processed"
+                or asset["processing_profile"] != "video_render_cut_v1"
+            ):
+                raise MediaAttachmentError(
+                    "Instagram Reels require a processed MP4 render output"
+                )
+            size_limit = MAX_OUTPUT_BYTES
+        elif platform == "instagram":
+            if media_type not in {"image/jpeg", "image/png"}:
+                raise MediaAttachmentError(
+                    "Instagram image drafts support JPEG and PNG only"
+                )
+            size_limit = MAX_UPLOAD_BYTES
+        else:
+            if content_type == "reel" or media_type not in {
+                "image/jpeg", "image/png", "video/mp4"
+            }:
+                raise MediaAttachmentError(
+                    "Telegram drafts support JPEG, PNG, and MP4 media only"
+                )
+            size_limit = MAX_UPLOAD_BYTES
+        if int(asset["file_size"]) < 1 or int(asset["file_size"]) > size_limit:
             raise MediaAttachmentError("Media asset size is outside the publishing limit")
         return str(asset["asset_id"])
 
@@ -153,7 +169,9 @@ class ContentDraftRepository:
         title = title.strip()
         body = body.strip()
         hashtags = [tag.strip() for tag in hashtags]
-        media_asset_id = self._validate_media_asset(owner_user_id, platform, media_asset_id)
+        media_asset_id = self._validate_media_asset(
+            owner_user_id, platform, content_type, media_asset_id
+        )
         content_hash = self._hash(platform, content_type, body, hashtags, media_asset_id)
         draft_id = str(uuid4())
         now = self._now()
@@ -251,6 +269,7 @@ class ContentDraftRepository:
             current["media_asset_id"] = self._validate_media_asset(
                 owner_user_id,
                 str(current["platform"]),
+                str(current["content_type"]),
                 current.get("media_asset_id"),
             )
             current["content_hash"] = self._hash(

@@ -1,7 +1,7 @@
-"""Short-lived, signed public delivery for approved Instagram image assets.
+"""Short-lived, signed public delivery for approved Instagram media assets.
 
 This route is intentionally separate from authenticated media management. It serves only
-known image assets, requires a valid HMAC and expiry, and never accepts a filesystem path.
+known image/video assets, requires a valid HMAC and expiry, and never accepts a filesystem path.
 """
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from mrhub.config import get_settings
-from mrhub.media.repository import MediaAssetRepository
+from mrhub.media.repository import MAX_OUTPUT_BYTES, MAX_UPLOAD_BYTES, MediaAssetRepository
 
 router = APIRouter(tags=["public-media"])
-_ALLOWED_TYPES = {"image/jpeg", "image/png"}
-_IMAGE_SIGNATURES = {
+_ALLOWED_TYPES = {"image/jpeg", "image/png", "video/mp4"}
+_MEDIA_SIGNATURES = {
     "image/jpeg": (b"\xff\xd8\xff",),
     "image/png": (b"\x89PNG\r\n\x1a\n",),
 }
@@ -53,7 +53,6 @@ def sign_asset_url(asset_id: str, *, now: int | None = None) -> str:
     try:
         address = ipaddress.ip_address(host) if host else None
     except ValueError:
-        # A DNS hostname is expected here; only parseable IP literals need IP checks.
         address = None
     if (
         parsed.scheme != "https" or not host or parsed.username or parsed.password
@@ -75,7 +74,7 @@ def serve_signed_media(
     expires: int = Query(..., ge=1),
     signature: str = Query(..., min_length=64, max_length=64, pattern="^[0-9a-f]{64}$"),
 ):
-    """Serve only signed, unexpired JPEG/PNG assets; no cookies or session are accepted."""
+    """Serve signed, unexpired JPEG/PNG/MP4 assets; no cookies or session are accepted."""
     now = int(time.time())
     if expires <= now or expires > now + _MAX_TTL_SECONDS:
         raise HTTPException(status_code=403, detail="media_url_expired")
@@ -93,17 +92,24 @@ def serve_signed_media(
     if row is None or row["media_type"] not in _ALLOWED_TYPES:
         raise HTTPException(status_code=404, detail="media_asset_not_found")
     record = repository._record(row)
+    media_type = str(record["media_type"])
     path = repository.file_path(str(record["storage_key"]))
     size = path.stat().st_size if path.is_file() else 0
-    if size != int(record["file_size"]) or not 1 <= size <= 25_000_000:
+    max_size = MAX_OUTPUT_BYTES if media_type == "video/mp4" else MAX_UPLOAD_BYTES
+    if size != int(record["file_size"]) or not 1 <= size <= max_size:
         raise HTTPException(status_code=404, detail="media_asset_unavailable")
-    with path.open("rb") as image_file:
-        header = image_file.read(8)
-    if not any(header.startswith(prefix) for prefix in _IMAGE_SIGNATURES[str(record["media_type"])]):
+    with path.open("rb") as media_file:
+        header = media_file.read(12)
+    valid_signature = (
+        header.startswith(_MEDIA_SIGNATURES[media_type])
+        if media_type in _MEDIA_SIGNATURES
+        else len(header) >= 8 and header[4:8] == b"ftyp"
+    )
+    if not valid_signature:
         raise HTTPException(status_code=404, detail="media_asset_type_mismatch")
     return FileResponse(
         path,
-        media_type=str(record["media_type"]),
+        media_type=media_type,
         headers={
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, no-store",

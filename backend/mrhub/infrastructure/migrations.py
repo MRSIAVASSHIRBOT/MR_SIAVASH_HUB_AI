@@ -1038,6 +1038,154 @@ MIGRATIONS = (
             )""",
         ),
     ),
+    Migration.build(
+        40,
+        "allow_reel_content_type_without_losing_content_history",
+        (
+            """CREATE TABLE content_drafts_new (
+                draft_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                platform TEXT NOT NULL CHECK (platform IN ('instagram', 'telegram', 'generic')),
+                content_type TEXT NOT NULL CHECK (
+                    content_type IN ('caption', 'script', 'reel_script', 'reel', 'post_text', 'video_brief')
+                ),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 20000),
+                hashtags_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK (
+                    status IN ('draft', 'approved', 'archived')
+                ),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+                approved_by TEXT REFERENCES auth_users(user_id) ON DELETE SET NULL,
+                approved_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                media_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE RESTRICT,
+                CHECK (
+                    (status = 'approved' AND approved_by IS NOT NULL AND approved_at IS NOT NULL)
+                    OR (status <> 'approved' AND approved_by IS NULL AND approved_at IS NULL)
+                )
+            )""",
+            """CREATE TABLE content_draft_versions_new (
+                version_id TEXT PRIMARY KEY,
+                draft_id TEXT NOT NULL REFERENCES content_drafts_new(draft_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                version_number INTEGER NOT NULL CHECK (version_number > 0),
+                platform TEXT NOT NULL CHECK (platform IN ('instagram', 'telegram', 'generic')),
+                content_type TEXT NOT NULL CHECK (
+                    content_type IN ('caption', 'script', 'reel_script', 'reel', 'post_text', 'video_brief')
+                ),
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 20000),
+                hashtags_json TEXT NOT NULL,
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                changed_by TEXT NOT NULL REFERENCES auth_users(user_id),
+                created_at TEXT NOT NULL,
+                media_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE RESTRICT,
+                UNIQUE(draft_id, version_number)
+            )""",
+            """CREATE TABLE content_publish_schedules_new (
+                schedule_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                draft_id TEXT NOT NULL REFERENCES content_drafts_new(draft_id) ON DELETE CASCADE,
+                platform TEXT NOT NULL CHECK (platform IN ('instagram', 'telegram', 'generic')),
+                scheduled_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'scheduled' CHECK (
+                    status IN ('scheduled', 'publishing', 'published', 'cancelled', 'failed', 'unknown_outcome')
+                ),
+                draft_version INTEGER NOT NULL CHECK (draft_version > 0),
+                content_hash TEXT NOT NULL CHECK (length(content_hash) = 64),
+                idempotency_key TEXT NOT NULL UNIQUE,
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                last_error_code TEXT,
+                provider_post_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                published_at TEXT,
+                next_attempt_at TEXT
+            )""",
+            """INSERT INTO content_drafts_new (
+                draft_id, owner_user_id, platform, content_type, title, body, hashtags_json,
+                status, content_hash, version, approved_by, approved_at, created_at, updated_at,
+                media_asset_id
+            ) SELECT
+                draft_id, owner_user_id, platform, content_type, title, body, hashtags_json,
+                status, content_hash, version, approved_by, approved_at, created_at, updated_at,
+                media_asset_id
+            FROM content_drafts""",
+            """INSERT INTO content_draft_versions_new (
+                version_id, draft_id, owner_user_id, version_number, platform, content_type,
+                title, body, hashtags_json, content_hash, changed_by, created_at, media_asset_id
+            ) SELECT
+                version_id, draft_id, owner_user_id, version_number, platform, content_type,
+                title, body, hashtags_json, content_hash, changed_by, created_at, media_asset_id
+            FROM content_draft_versions""",
+            """INSERT INTO content_publish_schedules_new (
+                schedule_id, owner_user_id, draft_id, platform, scheduled_at, status,
+                draft_version, content_hash, idempotency_key, attempt_count, last_error_code,
+                provider_post_id, created_at, updated_at, published_at, next_attempt_at
+            ) SELECT
+                schedule_id, owner_user_id, draft_id, platform, scheduled_at, status,
+                draft_version, content_hash, idempotency_key, attempt_count, last_error_code,
+                provider_post_id, created_at, updated_at, published_at, next_attempt_at
+            FROM content_publish_schedules""",
+            "DROP TABLE content_draft_versions",
+            "DROP TABLE content_publish_schedules",
+            "DROP TABLE content_drafts",
+            "ALTER TABLE content_drafts_new RENAME TO content_drafts",
+            "ALTER TABLE content_draft_versions_new RENAME TO content_draft_versions",
+            "ALTER TABLE content_publish_schedules_new RENAME TO content_publish_schedules",
+            "CREATE UNIQUE INDEX uq_content_drafts_owner_hash ON content_drafts(owner_user_id, content_hash)",
+            "CREATE INDEX idx_content_drafts_owner_updated ON content_drafts(owner_user_id, updated_at)",
+            "CREATE INDEX idx_content_draft_versions_owner_draft ON content_draft_versions(owner_user_id, draft_id, version_number)",
+            "CREATE INDEX idx_content_publish_schedules_due ON content_publish_schedules(status, scheduled_at)",
+            "CREATE INDEX idx_content_publish_schedules_owner ON content_publish_schedules(owner_user_id, scheduled_at)",
+            "CREATE INDEX idx_content_publish_schedules_retry_due ON content_publish_schedules(status, next_attempt_at, scheduled_at)",
+            "CREATE UNIQUE INDEX uq_content_publish_schedules_active_draft ON content_publish_schedules(owner_user_id, draft_id) WHERE status IN ('scheduled', 'publishing', 'unknown_outcome')",
+        ),
+    ),
+    Migration.build(
+        41,
+        "owner_scoped_cross_platform_content_campaigns",
+        (
+            """CREATE TABLE content_campaigns (
+                campaign_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                instagram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE CASCADE,
+                telegram_draft_id TEXT NOT NULL REFERENCES content_drafts(draft_id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'draft' CHECK (
+                    status IN ('draft', 'scheduled', 'published', 'partial', 'failed', 'cancelled', 'unknown_outcome')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (instagram_draft_id <> telegram_draft_id),
+                UNIQUE(owner_user_id, instagram_draft_id, telegram_draft_id)
+            )""",
+            "CREATE INDEX idx_content_campaigns_owner_updated ON content_campaigns(owner_user_id, updated_at DESC)",
+            "CREATE INDEX idx_content_campaigns_status_updated ON content_campaigns(status, updated_at)",
+        ),
+    ),
+    Migration.build(
+        42,
+        "owner_scoped_customizable_resource_reply_config",
+        (
+            """CREATE TABLE resource_reply_configs (
+                owner_user_id TEXT PRIMARY KEY REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                keyword TEXT NOT NULL CHECK (length(keyword) BETWEEN 1 AND 80),
+                resource_url TEXT NOT NULL DEFAULT '' CHECK (length(resource_url) <= 2048),
+                resource_label TEXT NOT NULL CHECK (length(resource_label) BETWEEN 1 AND 120),
+                intro_text TEXT NOT NULL DEFAULT '' CHECK (length(intro_text) <= 500),
+                include_follow INTEGER NOT NULL DEFAULT 1 CHECK (include_follow IN (0, 1)),
+                follow_cta_text TEXT NOT NULL DEFAULT '' CHECK (length(follow_cta_text) <= 300),
+                include_share INTEGER NOT NULL DEFAULT 1 CHECK (include_share IN (0, 1)),
+                share_cta_text TEXT NOT NULL DEFAULT '' CHECK (length(share_cta_text) <= 300),
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_resource_reply_configs_updated ON resource_reply_configs(updated_at DESC)",
+        ),
+    )
 )
 
 

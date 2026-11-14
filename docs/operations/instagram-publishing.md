@@ -2,7 +2,7 @@
 
 ## Implemented integration path
 
-The opt-in `InstagramGraphImageAdapter` is registered through the shared content publishing adapter factory when all required Instagram credentials are configured. The pull-driven `ContentScheduleDispatcher` supports the Instagram platform and, for approved owner-scoped JPEG/PNG assets, obtains a short-lived signed HTTPS media URL from the public-media route before calling the adapter.
+The opt-in `InstagramGraphPublishingAdapter` is registered through the shared content publishing adapter factory when all required Instagram credentials are configured. It preserves the existing image flow and routes approved `content_type=reel` drafts through the official Reels container flow. The pull-driven `ContentScheduleDispatcher` supports the Instagram platform and, for approved owner-scoped JPEG/PNG assets, obtains a short-lived signed HTTPS media URL from the public-media route before calling the adapter.
 
 The adapter performs the Graph API two-step container creation and publish flow. It validates HTTPS media URLs, rejects obvious private/local targets, bounds caption length, classifies rate limits separately from ambiguous outcomes, and does not expose provider diagnostics or credentials in errors.
 
@@ -34,6 +34,6 @@ The public media host must actually be reachable by Meta's servers. A syntactica
 - The adapter does not provide exactly-once delivery. The two-step Graph API flow has no general idempotency guarantee.
 - A transport failure or ambiguous provider response is quarantined as `unknown_outcome`; do not blindly retry it. Reconcile the provider account first.
 - The dispatcher rechecks draft approval, version, content hash, and the durable emergency-stop flag before the provider side effect.
-- Only JPEG/PNG images are currently accepted for Instagram. Video/Reels publishing is not implemented by this adapter.
+- Instagram image drafts accept JPEG/PNG. Reel drafts require an owner-owned, processed MP4 render output, a signed public HTTPS media URL, and the official Reels container readiness check before publication. The current local output ceiling is 100 MB; this is stricter than Meta's documented maximum.
 - The application does not create an Instagram account, grant Meta permissions, or verify account eligibility.
 - Telegram and Instagram publishing adapters remain opt-in; missing configuration fails closed.

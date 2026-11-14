@@ -40,6 +40,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
+        "resource_reply_configs",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -556,3 +557,99 @@ def test_research_feedback_and_outcome_schema_constraints(tmp_path):
         assert {row["on_delete"] for row in outcome_foreign_keys} == {"CASCADE"}
     finally:
         connection.close()
+
+def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "reel-migration.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:39])
+    assert SchemaMigrator(connection).migrate() == [item.version for item in all_migrations[:35]]
+
+    now = "2026-11-14T00:00:00+00:00"
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
+        (now,),
+    )
+    connection.execute(
+        """INSERT INTO content_drafts (
+            draft_id, owner_user_id, platform, content_type, title, body, hashtags_json,
+            status, content_hash, version, approved_by, approved_at, created_at, updated_at,
+            media_asset_id
+        ) VALUES ('draft-1', 'owner-1', 'instagram', 'caption', 'Legacy', 'Legacy body',
+                  '[]', 'draft', ?, 1, NULL, NULL, ?, ?, NULL)""",
+        ("a" * 64, now, now),
+    )
+    connection.execute(
+        """INSERT INTO content_draft_versions (
+            version_id, draft_id, owner_user_id, version_number, platform, content_type,
+            title, body, hashtags_json, content_hash, changed_by, created_at, media_asset_id
+        ) VALUES ('version-1', 'draft-1', 'owner-1', 1, 'instagram', 'caption',
+                  'Legacy', 'Legacy body', '[]', ?, 'owner-1', ?, NULL)""",
+        ("a" * 64, now),
+    )
+    connection.execute(
+        """INSERT INTO content_publish_schedules (
+            schedule_id, owner_user_id, draft_id, platform, scheduled_at, status,
+            draft_version, content_hash, idempotency_key, attempt_count, last_error_code,
+            provider_post_id, created_at, updated_at, published_at, next_attempt_at
+        ) VALUES ('schedule-1', 'owner-1', 'draft-1', 'instagram', ?, 'scheduled',
+                  1, ?, 'idem-1', 0, NULL, NULL, ?, ?, NULL, NULL)""",
+        (now, "a" * 64, now, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42]
+    preserved_draft = connection.execute(
+        "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
+    ).fetchone()
+    assert (preserved_draft["title"], preserved_draft["content_type"]) == ("Legacy", "caption")
+    assert connection.execute(
+        "SELECT version_id FROM content_draft_versions WHERE version_id = 'version-1'"
+    ).fetchone()["version_id"] == "version-1"
+    assert connection.execute(
+        "SELECT schedule_id FROM content_publish_schedules WHERE schedule_id = 'schedule-1'"
+    ).fetchone()["schedule_id"] == "schedule-1"
+
+    connection.execute(
+        """INSERT INTO content_drafts (
+            draft_id, owner_user_id, platform, content_type, title, body, hashtags_json,
+            status, content_hash, version, approved_by, approved_at, created_at, updated_at,
+            media_asset_id
+        ) VALUES ('reel-draft', 'owner-1', 'instagram', 'reel', 'Reel', 'Reel body',
+                  '[]', 'draft', ?, 1, NULL, NULL, ?, ?, NULL)""",
+        ("b" * 64, now, now),
+    )
+    connection.execute(
+        """INSERT INTO content_draft_versions (
+            version_id, draft_id, owner_user_id, version_number, platform, content_type,
+            title, body, hashtags_json, content_hash, changed_by, created_at, media_asset_id
+        ) VALUES ('reel-version', 'reel-draft', 'owner-1', 1, 'instagram', 'reel',
+                  'Reel', 'Reel body', '[]', ?, 'owner-1', ?, NULL)""",
+        ("b" * 64, now),
+    )
+    connection.execute(
+        """INSERT INTO content_drafts (
+            draft_id, owner_user_id, platform, content_type, title, body, hashtags_json,
+            status, content_hash, version, approved_by, approved_at, created_at, updated_at,
+            media_asset_id
+        ) VALUES ('telegram-draft', 'owner-1', 'telegram', 'post_text', 'Lesson',
+                  'Companion lesson', '[]', 'draft', ?, 1, NULL, NULL, ?, ?, NULL)""",
+        ("c" * 64, now, now),
+    )
+    connection.execute(
+        """INSERT INTO content_campaigns (
+            campaign_id, owner_user_id, title, instagram_draft_id, telegram_draft_id,
+            status, created_at, updated_at
+        ) VALUES ('campaign-1', 'owner-1', 'Campaign', 'reel-draft',
+                  'telegram-draft', 'draft', ?, ?)""",
+        (now, now),
+    )
+    assert connection.execute(
+        "SELECT campaign_id FROM content_campaigns WHERE campaign_id = 'campaign-1'"
+    ).fetchone()["campaign_id"] == "campaign-1"
+    connection.commit()
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
