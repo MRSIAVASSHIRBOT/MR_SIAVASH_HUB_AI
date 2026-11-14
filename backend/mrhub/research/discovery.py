@@ -165,15 +165,25 @@ def discover_public_needs(
                 title, link = hit.get("title"), hit.get("link")
                 if not isinstance(title, str) or not isinstance(link, str):
                     continue
-                parsed = urlsplit(link)
-                if parsed.scheme != "https" or parsed.hostname != expected_host:
+                try:
+                    parsed = urlsplit(link)
+                    if (
+                        parsed.scheme != "https"
+                        or parsed.hostname != expected_host
+                        or parsed.username is not None
+                        or parsed.password is not None
+                        or parsed.port not in (None, 443)
+                    ):
+                        continue
+                except ValueError:
                     continue
                 created = hit.get("creation_date")
-                published_at = (
-                    datetime.fromtimestamp(created, UTC).isoformat()
-                    if isinstance(created, int) and not isinstance(created, bool)
-                    else None
-                )
+                published_at = None
+                if isinstance(created, int) and not isinstance(created, bool) and created >= 0:
+                    try:
+                        published_at = datetime.fromtimestamp(created, UTC).isoformat()
+                    except (OverflowError, OSError, ValueError):
+                        published_at = None
                 tags = hit.get("tags", [])
                 items.append({
                     "source_type": "community_forum",
