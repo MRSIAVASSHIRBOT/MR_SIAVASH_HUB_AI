@@ -39,6 +39,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "tool_permission_grants",
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
+        "research_discovery_requests",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -517,12 +518,23 @@ def test_research_feedback_and_outcome_schema_constraints(tmp_path):
         applied = SchemaMigrator(connection).migrate()
         assert 37 in applied
         assert 38 in applied
+        assert 39 in applied
         tables = {
             row["name"] for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
         assert {"research_feedback", "research_outcome_measurements"} <= tables
+        assert "research_discovery_requests" in tables
+        discovery_indexes = {
+            row["name"] for row in connection.execute(
+                "PRAGMA index_list(research_discovery_requests)"
+            )
+        }
+        assert {
+            "idx_research_discovery_owner_time",
+            "idx_research_discovery_owner_query_time",
+        } <= discovery_indexes
 
         feedback_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(research_feedback)")
