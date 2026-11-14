@@ -126,12 +126,23 @@ class ToolRegistry:
         if decision.decision is not PolicyDecision.ALLOW:
             raise ToolPolicyError(decision.decision, decision.reason)
 
+        handler_failed = False
         try:
             raw_result = tool.handler(validated_input)
-        except Exception as exc:
-            raise ToolExecutionError("Tool handler failed") from exc
+        except Exception:
+            # Leave the exception handler before raising so the original error
+            # (which may retain credentials or private request data) is not kept
+            # as this public boundary's __context__ or __cause__.
+            handler_failed = True
+        if handler_failed:
+            raise ToolExecutionError("Tool handler failed")
+
+        output_invalid = False
         try:
             validated_output = tool.output_model.model_validate(raw_result)
-        except ValidationError as exc:
-            raise ToolExecutionError("Tool output validation failed") from exc
+        except ValidationError:
+            # ValidationError can include the rejected output value. Do not retain it.
+            output_invalid = True
+        if output_invalid:
+            raise ToolExecutionError("Tool output validation failed")
         return validated_output.model_dump(mode="json")
