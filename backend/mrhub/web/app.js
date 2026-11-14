@@ -2108,7 +2108,7 @@
             : "فقط در همین فرصت";
           const evidenceCard = recordCard(
             evidence.source_label + " · " + evidence.publisher_group,
-            evidence.observation_summary + (evidence.independence_basis ? " · Independence rationale: " + evidence.independence_basis : ""),
+            evidence.observation_summary + (evidence.independence_basis ? " · دلیل استقلال: " + evidence.independence_basis : ""),
             evidence.hostname + " · " + (freshnessLabels[evidence.freshness_status] || evidence.freshness_status) + " · " + age + " · " + reuse + " · اولین ثبت " + evidence.source_first_captured_at + " · آخرین ثبت " + evidence.source_last_captured_at
           );
           evidenceDetails.append(evidenceCard);
