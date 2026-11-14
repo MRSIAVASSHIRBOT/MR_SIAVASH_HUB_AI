@@ -13,6 +13,7 @@ import time
 from collections.abc import Mapping
 from typing import Any, TypeVar
 from urllib.parse import urlsplit
+from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
@@ -141,6 +142,7 @@ class CloudflareGatewayClient:
         gateway_token: SecretStr,
         timeout_seconds: float = REQUEST_TIMEOUT_SECONDS,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
+        correlation_id: str | None = None,
     ) -> None:
         if not isinstance(gateway_token, SecretStr):
             raise TypeError("Cloudflare gateway token must be SecretStr")
@@ -165,10 +167,21 @@ class CloudflareGatewayClient:
         ):
             raise ValueError("Invalid Cloudflare gateway response limit")
 
+        if correlation_id is not None:
+            if not isinstance(correlation_id, str):
+                raise ValueError("Invalid Cloudflare gateway correlation ID")
+            try:
+                parsed_correlation_id = UUID(correlation_id)
+            except (TypeError, ValueError):
+                raise ValueError("Invalid Cloudflare gateway correlation ID") from None
+            if parsed_correlation_id.version != 4 or str(parsed_correlation_id) != correlation_id:
+                raise ValueError("Invalid Cloudflare gateway correlation ID")
+
         self._base_url = _validate_gateway_url(gateway_url)
         self._token = token
         self._timeout = float(timeout_seconds)
         self._max_response_bytes = max_response_bytes
+        self._correlation_id = correlation_id
 
     def _get_data(self, path: str) -> Any:
         # Callers pass only module-owned, fixed route templates.
@@ -186,6 +199,11 @@ class CloudflareGatewayClient:
                 headers={
                     "Authorization": f"Bearer {self._token}",
                     "Accept": "application/json",
+                    **(
+                        {"X-Correlation-ID": self._correlation_id}
+                        if self._correlation_id is not None
+                        else {}
+                    ),
                 },
             ) as response:
                 if response.is_redirect:
@@ -281,7 +299,9 @@ class CloudflareGatewayClient:
         return self._validate_model(WorkerSettingsSummary, data)
 
 
-def build_cloudflare_gateway_client(settings: Settings) -> CloudflareGatewayClient | None:
+def build_cloudflare_gateway_client(
+    settings: Settings, *, correlation_id: str | None = None
+) -> CloudflareGatewayClient | None:
     """Return None when disabled; fail closed for incomplete enabled configuration."""
     if not settings.cloudflare_gateway_enabled:
         return None
@@ -292,4 +312,5 @@ def build_cloudflare_gateway_client(settings: Settings) -> CloudflareGatewayClie
         gateway_token=settings.cloudflare_gateway_token,
         timeout_seconds=settings.cloudflare_gateway_timeout_seconds,
         max_response_bytes=settings.cloudflare_gateway_max_response_bytes,
+        correlation_id=correlation_id,
     )
