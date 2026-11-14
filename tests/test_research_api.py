@@ -522,6 +522,7 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
             "observation_summary": "People describe the repeated task.",
             "publisher_group": "Shared Media Group",
             "published_at": published_at,
+            "independence_basis": "Public forum ownership and publication origin reviewed.",
         }
         second = {
             "source_type": "app_review",
@@ -530,6 +531,7 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
             "observation_summary": "Users report the same workflow friction.",
             "publisher_group": "Shared Media Group",
             "published_at": published_at,
+            "independence_basis": "App-review publisher ownership and publication origin reviewed.",
         }
         assert client.post(
             f"/research/opportunities/{opportunity_id}/evidence", json=first
@@ -570,6 +572,7 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
                 "observation_summary": "A current independent report corroborates the problem.",
                 "publisher_group": "Independent Research Institute",
                 "published_at": published_at,
+                "independence_basis": "Research institute publication and editorial governance checked independently.",
             },
         )
         assert fresh_independent.status_code == 201
