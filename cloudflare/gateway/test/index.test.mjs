@@ -335,3 +335,30 @@ test("D1 pagination rejects zero pages when the provider also returns items", as
     assert.equal((await json(response)).error.code, "provider_invalid_pagination");
   });
 });
+
+
+
+test("gateway logs only authenticated canonical UUIDv4 correlation IDs", async () => {
+  const events = [];
+  const originalLog = console.log;
+  console.log = event => events.push(event);
+  try {
+    const correlationId = "11111111-1111-4111-8111-111111111111";
+    const valid = await worker.fetch(request("/health", {
+      headers: { "x-correlation-id": correlationId },
+    }), ENV);
+    assert.equal(valid.status, 200);
+    const validBody = await json(valid);
+    assert.equal(events[0].correlation_id, correlationId);
+    assert.equal(events[0].request_id, validBody.request_id);
+
+    const invalid = await worker.fetch(request("/health", {
+      headers: { "x-correlation-id": "not-a-correlation-id" },
+    }), ENV);
+    assert.equal(invalid.status, 200);
+    assert.equal(events[1].correlation_id, null);
+    assert.notEqual(events[1].request_id, events[0].request_id);
+  } finally {
+    console.log = originalLog;
+  }
+});
