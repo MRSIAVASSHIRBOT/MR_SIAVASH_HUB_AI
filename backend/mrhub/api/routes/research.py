@@ -17,7 +17,7 @@ from mrhub.research.repository import (
 )
 from mrhub.security.auth import AuthenticatedUser
 
-router = APIRouter(prefix="/research/opportunities", tags=["research"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/research", tags=["research"], dependencies=[Depends(require_user)])
 
 
 class OpportunityRequest(BaseModel):
@@ -88,7 +88,7 @@ def _opportunity_payload(repository: ResearchRepository, owner_id: str, opportun
     )]}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/opportunities", status_code=status.HTTP_201_CREATED)
 def create_opportunity(
     payload: OpportunityRequest,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
@@ -102,7 +102,7 @@ def create_opportunity(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("")
+@router.get("/opportunities")
 def list_opportunities(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     opportunity_status: Literal[
@@ -120,7 +120,7 @@ def list_opportunities(
     return {"items": [item.as_dict() for item in items], "count": len(items), "allowed_statuses": sorted(OPPORTUNITY_STATUSES)}
 
 
-@router.get("/{opportunity_id}")
+@router.get("/opportunities/{opportunity_id}")
 def get_opportunity(
     opportunity_id: str,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
@@ -131,7 +131,7 @@ def get_opportunity(
         raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
 
 
-@router.post("/{opportunity_id}/evidence", status_code=status.HTTP_201_CREATED)
+@router.post("/opportunities/{opportunity_id}/evidence", status_code=status.HTTP_201_CREATED)
 def add_evidence(
     opportunity_id: str,
     payload: EvidenceRequest,
@@ -151,7 +151,7 @@ def add_evidence(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.patch("/{opportunity_id}")
+@router.patch("/opportunities/{opportunity_id}")
 def update_assessment(
     opportunity_id: str,
     payload: AssessmentRequest,
@@ -232,7 +232,7 @@ def delete_feedback(
         raise HTTPException(status_code=404, detail="Research feedback not found")
 
 
-@router.post("/{opportunity_id}/outcomes", status_code=status.HTTP_201_CREATED)
+@router.post("/opportunities/{opportunity_id}/outcomes", status_code=status.HTTP_201_CREATED)
 def create_outcome_measurement(
     opportunity_id: str,
     payload: OutcomeMeasurementRequest,
@@ -248,7 +248,7 @@ def create_outcome_measurement(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/{opportunity_id}/outcomes")
+@router.get("/opportunities/{opportunity_id}/outcomes")
 def list_outcome_measurements(
     opportunity_id: str,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
