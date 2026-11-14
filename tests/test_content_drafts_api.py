@@ -258,3 +258,34 @@ def test_telegram_draft_cannot_attach_another_owners_media_asset():
         },
     )
     assert response.status_code == 422
+
+
+def test_instagram_reel_draft_accepts_only_verified_render_output():
+    client = authenticated_client()
+    video = b"\x00\x00\x00\x18ftypisom" + b"verified-render-fixture"
+    from mrhub.media.repository import MediaAssetRepository
+
+    repository = MediaAssetRepository(get_settings().database_path)
+    asset = repository.store_upload("local-owner", "render.mp4", "video/mp4", video)
+    asset_id = asset["asset_id"]
+    owner_id = asset["owner_user_id"]
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE content_assets SET processing_status = 'processed', "
+            "processing_profile = 'video_render_cut_v1' WHERE asset_id = ? AND owner_user_id = ?",
+            (asset_id, owner_id),
+        )
+
+    created = client.post(
+        "/content/drafts",
+        json={
+            "platform": "instagram",
+            "content_type": "reel",
+            "title": "Verified Reel",
+            "body": "An approved educational Reel.",
+            "media_asset_id": asset_id,
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["content_type"] == "reel"
+    assert created.json()["media_asset_id"] == asset_id

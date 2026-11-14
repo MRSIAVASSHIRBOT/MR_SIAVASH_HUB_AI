@@ -1068,7 +1068,27 @@ def test_snapshot_backed_worker_renders_frozen_draft_timeline(
     assert result["status"] == "completed"
     assert observed["timeline"].video_track[0].source_start_seconds == 1.0
     assert jobs.get("owner-a", render_id)["status"] == "completed"
-    assert media.get("owner-a", UUID(result["output_asset_id"])) is not None
+    rendered_asset = media.get("owner-a", UUID(result["output_asset_id"]))
+    assert rendered_asset is not None
+    assert rendered_asset["media_type"] == "video/mp4"
+    assert rendered_asset["processing_status"] == "processed"
+    assert rendered_asset["processing_profile"] == "video_render_cut_v1"
+
+    # The real render-worker output must be directly attachable to an Instagram Reel draft.
+    from mrhub.content.repository import ContentDraftRepository
+
+    reel_draft = ContentDraftRepository(database).create(
+        "owner-a",
+        "owner-a",
+        platform="instagram",
+        content_type="reel",
+        title="Rendered campaign Reel",
+        body="An educational Reel produced by the video render worker.",
+        hashtags=["#Education"],
+        media_asset_id=UUID(result["output_asset_id"]),
+    )
+    assert reel_draft["media_asset_id"] == result["output_asset_id"]
+    assert reel_draft["content_type"] == "reel"
 
 def test_snapshot_and_render_submission_roll_back_together_on_idempotency_conflict(
     tmp_path, monkeypatch

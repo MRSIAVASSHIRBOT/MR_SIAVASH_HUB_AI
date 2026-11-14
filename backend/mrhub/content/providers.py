@@ -268,7 +268,11 @@ def configured_publish_adapters(settings: Settings | None = None) -> dict[str, A
         and config.instagram_user_id
         and config.instagram_graph_api_version
     ):
-        adapters["instagram"] = InstagramGraphImageAdapter(
+        # Import lazily to avoid a module cycle: the publishing adapter extends
+        # the image adapter defined in this module.
+        from mrhub.content.instagram_reels import InstagramGraphPublishingAdapter
+
+        adapters["instagram"] = InstagramGraphPublishingAdapter(
             config.instagram_access_token.get_secret_value(),
             config.instagram_user_id,
             config.instagram_graph_api_version,

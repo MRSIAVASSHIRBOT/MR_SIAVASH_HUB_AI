@@ -367,6 +367,47 @@
           <div><p class="eyebrow">CONTENT WORKSPACE</p><h2>پیش‌نویس‌های محتوا</h2></div>
           <span class="status-pill status-muted">بدون انتشار خودکار</span>
         </div>
+        <section class="video-analysis-workspace" id="resource-reply-config-panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">CUSTOM RESOURCE REPLY</p><h3>تنظیمات پیام دریافت محتوا</h3></div>
+            <span class="status-pill status-muted">قابل‌سفارشی‌سازی · غیرفعال تا اتصال</span>
+          </div>
+          <p class="muted">کلیدواژه، لینک و متن پیام را خودت تعیین کن. تنظیمات برای حساب فعلی ذخیره می‌شوند. کلیدواژه هنوز به PostZen متصل نیست؛ پیش‌نمایش فقط متن را می‌سازد و هیچ کامنت یا پیامی ارسال نمی‌کند.</p>
+          <form id="resource-reply-config-form" class="stack-form">
+            <div class="form-grid">
+              <label>کلیدواژهٔ Trigger (برای اتصال بعدی)
+                <input name="keyword" required minlength="1" maxlength="80" value="راهنما" placeholder="مثلاً راهنما">
+              </label>
+              <label>عنوان محتوا
+                <input name="resource_label" required minlength="1" maxlength="120" value="محتوای آموزشی" placeholder="مثلاً راهنمای امنیت حساب">
+              </label>
+              <label class="field-wide">لینک عمومی HTTPS محتوا
+                <input name="resource_url" type="url" maxlength="2048" placeholder="https://example.org/learning-resource">
+              </label>
+              <label class="field-wide">متن آغاز پیام
+                <textarea name="intro_text" rows="2" maxlength="500">سلام! ✨</textarea>
+              </label>
+            </div>
+            <div class="checkbox-grid">
+              <label class="checkbox-row"><input name="include_follow" type="checkbox" checked> نمایش دعوت اختیاری به فالو</label>
+              <label class="checkbox-row"><input name="include_share" type="checkbox" checked> نمایش دعوت اختیاری به Share</label>
+            </div>
+            <label>متن دعوت به فالو
+              <textarea name="follow_cta_text" rows="2" maxlength="300">اگر این آموزش برات مفیده، خوشحال می‌شیم صفحه‌مون رو دنبال کنی. 💚</textarea>
+            </label>
+            <label>متن دعوت به Share
+              <textarea name="share_cta_text" rows="2" maxlength="300">این پست رو هم برای دوستانت بفرست تا افراد بیشتری از آموزش رایگان استفاده کنن. 📢</textarea>
+            </label>
+            <div class="button-row">
+              <button id="resource-reply-save" class="button button-primary" type="submit">ذخیرهٔ تنظیمات</button>
+              <button id="resource-reply-preview-button" class="button button-secondary" type="button">ساخت پیش‌نمایش</button>
+              <button id="resource-reply-reload-button" class="button button-quiet" type="button">بارگذاری تنظیمات ذخیره‌شده</button>
+            </div>
+          </form>
+          <p id="resource-reply-message" class="message" role="status" aria-live="polite"></p>
+          <pre id="resource-reply-preview" class="output-box" aria-live="polite">پس از واردکردن لینک عمومی محتوا، پیش‌نمایش پیام اینجا نمایش داده می‌شود.</pre>
+        </section>
+
         <div class="media-library">
           <div class="section-heading">
             <h3>کتابخانهٔ رسانه</h3>

@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from mrhub.api.routes.public_media import sign_asset_url
 from mrhub.content.scheduling import ContentScheduleRepository
 from mrhub.jobs.worker_control import WorkerControlRepository
-from mrhub.media.repository import MAX_UPLOAD_BYTES, MediaAssetRepository
+from mrhub.media.repository import MAX_OUTPUT_BYTES, MAX_UPLOAD_BYTES, MediaAssetRepository
 from mrhub.security.audit import AuditLogger
 
 
@@ -174,21 +174,42 @@ class ContentScheduleDispatcher:
                 asset = media_repository.get(
                     str(claimed["owner_user_id"]), UUID(str(media_asset_id))
                 )
+                media_type = str(asset["media_type"]) if asset is not None else ""
+                media_size = int(asset["file_size"]) if asset is not None else 0
+                media_limit = (
+                    MAX_OUTPUT_BYTES
+                    if media_type == "video/mp4" and asset is not None
+                    and asset["processing_status"] == "processed"
+                    else MAX_UPLOAD_BYTES
+                )
                 if (
                     asset is None
-                    or asset["media_type"] not in {"image/jpeg", "image/png", "video/mp4"}
-                    or not 1 <= int(asset["file_size"]) <= MAX_UPLOAD_BYTES
+                    or media_type not in {"image/jpeg", "image/png", "video/mp4"}
+                    or not 1 <= media_size <= media_limit
                 ):
                     raise ValueError("Media asset is not publishable")
                 media_path = media_repository.file_path(str(asset["storage_key"]))
                 if (
                     not media_path.is_file()
-                    or media_path.stat().st_size != int(asset["file_size"])
+                    or media_path.stat().st_size != media_size
                 ):
                     raise ValueError("Media asset file is missing or inconsistent")
                 if platform == "instagram":
-                    if asset["media_type"] not in {"image/jpeg", "image/png"}:
-                        raise ValueError("Instagram publishing requires JPEG or PNG media")
+                    is_reel = draft.get("content_type") == "reel"
+                    if is_reel:
+                        if (
+                            media_type != "video/mp4"
+                            or asset["processing_status"] != "processed"
+                            or asset["processing_profile"] != "video_render_cut_v1"
+                        ):
+                            raise ValueError(
+                                "Instagram Reels require a verified video_render_cut_v1 MP4 render"
+                            )
+                        draft["media_type"] = media_type
+                    elif media_type not in {"image/jpeg", "image/png"}:
+                        raise ValueError(
+                            "Instagram image publishing requires JPEG or PNG media"
+                        )
                     # The Graph API fetches the media itself; never pass a local path.
                     draft["media_url"] = sign_asset_url(str(asset["asset_id"]))
                 else:
