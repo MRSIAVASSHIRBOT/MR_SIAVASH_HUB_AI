@@ -572,3 +572,45 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
         assert validated.json()["status"] == "validated"
     finally:
         get_settings.cache_clear()
+
+
+def test_research_validation_still_requires_distinct_hostnames(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-host-diversity.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post("/research/opportunities", json={
+            "domain_id": "business_ops",
+            "title": "Operations coordination",
+            "problem_statement": "Small teams struggle to coordinate routine work.",
+            "audience": "Small teams",
+        }).json()
+        opportunity_id = created["opportunity_id"]
+        published_at = datetime.now(UTC).isoformat()
+
+        for source_type, path_part, publisher_group in (
+            ("public_discussion", "discussion", "Publisher One"),
+            ("app_review", "review", "Publisher Two"),
+        ):
+            response = client.post(
+                f"/research/opportunities/{opportunity_id}/evidence",
+                json={
+                    "source_type": source_type,
+                    "source_url": f"https://same.example.com/{path_part}/item",
+                    "source_label": publisher_group,
+                    "observation_summary": "The source describes the same operational problem.",
+                    "publisher_group": publisher_group,
+                    "published_at": published_at,
+                },
+            )
+            assert response.status_code == 201
+
+        assert client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validating"}
+        ).status_code == 200
+        blocked = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert blocked.status_code == 409
+    finally:
+        get_settings.cache_clear()
