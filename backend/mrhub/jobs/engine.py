@@ -40,11 +40,18 @@ class JobEngine:
         return self.repository.get(task_id)
 
     def transition(
-        self, task_id: UUID, target: TaskStatus, *, lease: WorkerLease | None = None
+        self,
+        task_id: UUID,
+        target: TaskStatus,
+        *,
+        lease: WorkerLease | None = None,
+        allowed_from: set[TaskStatus] | None = None,
     ) -> TaskRecord:
         current = self.repository.get(task_id)
         if current is None:
             raise KeyError("Task not found")
+        if allowed_from is not None and current.status not in allowed_from:
+            raise InvalidTaskTransition(f"Cannot transition {current.status} -> {target}")
         if target not in self.ALLOWED[current.status]:
             raise InvalidTaskTransition(f"Cannot transition {current.status} -> {target}")
         updated = current.model_copy(update={
@@ -79,3 +86,11 @@ class JobEngine:
 
     def cancel(self, task_id: UUID) -> TaskRecord:
         return self.transition(task_id, TaskStatus.CANCELLED)
+
+    def cancel_pending(self, task_id: UUID) -> TaskRecord:
+        """Cancel only queued or approval-waiting work, with a compare-and-set race fence."""
+        return self.transition(
+            task_id,
+            TaskStatus.CANCELLED,
+            allowed_from={TaskStatus.QUEUED, TaskStatus.WAITING_APPROVAL},
+        )

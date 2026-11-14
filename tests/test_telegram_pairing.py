@@ -449,3 +449,129 @@ def test_telegram_task_history_paginates_with_client_scoped_cursors(tmp_path, mo
     )
     assert invalid_cursor.status_code == 422
     get_settings.cache_clear()
+
+
+
+def test_telegram_task_result_is_terminal_bounded_and_client_scoped(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload_a, challenge_a = _create_pairing(
+        client, telegram_user_id=123456789, scopes=["tasks:create", "tasks:read"]
+    )
+    payload_b, challenge_b = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["tasks:create", "tasks:read"]
+    )
+    tokens_a = _exchange(client, payload_a, challenge_a).json()
+    tokens_b = _exchange(client, payload_b, challenge_b).json()
+
+    created = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "result owner"},
+        headers={**_bot_headers(tokens_a, 123456789), "Idempotency-Key": "result-owner-0001"},
+    )
+    assert created.status_code == 201
+    task_id = created.json()["task_id"]
+    pending = client.get(
+        f"/integrations/telegram/tasks/{task_id}/result",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert pending.status_code == 409
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("UPDATE tasks SET status='succeeded' WHERE task_id=?", (task_id,))
+
+    results = {
+        task_id: {"result": {"message": "completed"}, "error_code": None, "attempt_count": 1},
+    }
+    monkeypatch.setattr(
+        "mrhub.api.routes.telegram_integration.WorkerEngine.get_result",
+        lambda _worker, requested_id: results.get(str(requested_id)),
+    )
+    completed = client.get(
+        f"/integrations/telegram/tasks/{task_id}/result",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert completed.status_code == 200
+    assert completed.json()["result"]["message"] == "completed"
+
+    cross_client = client.get(
+        f"/integrations/telegram/tasks/{task_id}/result",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert cross_client.status_code == 404
+
+    results[task_id] = {"result": "x" * 33_000}
+    oversized = client.get(
+        f"/integrations/telegram/tasks/{task_id}/result",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert oversized.status_code == 413
+    get_settings.cache_clear()
+
+
+def test_telegram_task_cancellation_requires_scope_ownership_and_pending_state(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload_a, challenge_a = _create_pairing(
+        client,
+        telegram_user_id=123456789,
+        scopes=["tasks:create", "tasks:read", "tasks:cancel"],
+    )
+    payload_b, challenge_b = _create_pairing(
+        client,
+        telegram_user_id=987654321,
+        scopes=["tasks:create", "tasks:read", "tasks:cancel"],
+    )
+    payload_read_only, challenge_read_only = _create_pairing(
+        client,
+        telegram_user_id=555555555,
+        scopes=["tasks:create", "tasks:read"],
+    )
+    tokens_a = _exchange(client, payload_a, challenge_a).json()
+    tokens_b = _exchange(client, payload_b, challenge_b).json()
+    tokens_read_only = _exchange(client, payload_read_only, challenge_read_only).json()
+
+    def create_task(tokens, user_id, key):
+        return client.post(
+            "/integrations/telegram/tasks",
+            json={"task_type": "demo.echo", "description": key},
+            headers={**_bot_headers(tokens, user_id), "Idempotency-Key": key},
+        )
+
+    task_a = create_task(tokens_a, 123456789, "cancel-owner-a-0001")
+    task_b = create_task(tokens_b, 987654321, "cancel-owner-b-0001")
+    assert task_a.status_code == task_b.status_code == 201
+    task_a_id = task_a.json()["task_id"]
+    task_b_id = task_b.json()["task_id"]
+
+    cancelled = client.post(
+        f"/integrations/telegram/tasks/{task_a_id}/cancel",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    repeated = client.post(
+        f"/integrations/telegram/tasks/{task_a_id}/cancel",
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert repeated.status_code == 409
+
+    cross_client = client.post(
+        f"/integrations/telegram/tasks/{task_a_id}/cancel",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert cross_client.status_code == 404
+
+    denied = client.post(
+        f"/integrations/telegram/tasks/{task_b_id}/cancel",
+        headers=_bot_headers(tokens_read_only, 555555555),
+    )
+    assert denied.status_code == 403
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("UPDATE tasks SET status='running' WHERE task_id=?", (task_b_id,))
+    running = client.post(
+        f"/integrations/telegram/tasks/{task_b_id}/cancel",
+        headers=_bot_headers(tokens_b, 987654321),
+    )
+    assert running.status_code == 409
+    get_settings.cache_clear()
