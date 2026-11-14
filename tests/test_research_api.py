@@ -40,6 +40,31 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
         assert assessed.json()["priority_score"] == 83
         assert len(assessed.json()["evidence"]) == 1
 
+        blocked_validation = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert blocked_validation.status_code == 409
+
+        second_evidence = client.post(f"/research/opportunities/{opportunity_id}/evidence", json={
+            "source_type": "app_review",
+            "source_url": "https://example.org/reviews/website-builder",
+            "source_label": "Public app review",
+            "observation_summary": "A separate user review describes difficulty maintaining a small-business website.",
+            "signal_strength": "medium",
+        })
+        assert second_evidence.status_code == 201
+
+        validated = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert validated.status_code == 200
+        prioritized = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "prioritized"}
+        )
+        assert prioritized.status_code == 200
+        assert prioritized.json()["status"] == "prioritized"
+        assert len(prioritized.json()["evidence"]) == 2
+
         listed = client.get("/research/opportunities?domain_id=web")
         assert listed.status_code == 200
         assert listed.json()["count"] == 1
