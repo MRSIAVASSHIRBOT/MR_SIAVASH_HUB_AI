@@ -455,6 +455,14 @@ class ResearchRepository:
             raise ResearchNotFound("Research feedback not found")
         return self.get_feedback(owner_user_id=owner_user_id, feedback_id=feedback_id)
 
+    def delete_feedback(self, *, owner_user_id: str, feedback_id: str) -> bool:
+        with self._connection() as connection:
+            cursor = connection.execute(
+                "DELETE FROM research_feedback WHERE feedback_id = ? AND owner_user_id = ?",
+                (feedback_id, owner_user_id),
+            )
+        return cursor.rowcount == 1
+
     def create_outcome_measurement(
         self, *, owner_user_id: str, opportunity_id: str, metric_name: str,
         baseline_value: float, observed_value: float, unit: str, sample_size: int,
