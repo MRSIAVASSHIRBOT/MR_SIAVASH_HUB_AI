@@ -2169,6 +2169,54 @@
     } catch (error) { message("#research-message", error.message, "error"); }
   }
 
+
+  async function submitResearchDiscovery(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const query = String(values.get("query") || "").trim();
+    const source = String(values.get("source") || "hacker_news");
+    const site = String(values.get("site") || "superuser");
+    const params = new URLSearchParams({ query, source, site, limit: "10" });
+    const container = $("#research-discovery-results");
+    renderEmpty(container, "در حال جست‌وجو در منبع عمومی…");
+    try {
+      const result = await api("/research/discovery/search?" + params.toString());
+      renderRecords("#research-discovery-results", result.items, (item) => {
+        const card = recordCard(
+          item.title,
+          item.summary,
+          [
+            item.source_label,
+            item.published_at || "تاریخ نامشخص",
+            item.score === null ? "" : "امتیاز: " + item.score,
+            item.discussion_count === null ? "" : "پاسخ/نظر: " + item.discussion_count,
+          ].filter(Boolean).join(" · ")
+        );
+        const link = element("a", "بازکردن منبع اصلی");
+        link.href = item.source_url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        card.append(link);
+        card.append(element("small", "برای افزودن به شواهد، منبع را بررسی کنید و خلاصه مشاهده مستقل خودتان را در فرم فرصت ثبت کنید."));
+        return card;
+      }, "برای این عبارت نتیجه‌ای پیدا نشد.");
+      message(
+        "#research-message",
+        "تعداد " + result.count + " سرنخ پیدا شد؛ نتیجه‌ها هنوز شاهد تأییدشده نیستند.",
+        "success"
+      );
+    } catch (error) {
+      renderEmpty(container, "جست‌وجو ناموفق بود: " + error.message);
+      message("#research-message", error.message, "error");
+    }
+  }
+
+  function updateResearchDiscoverySource() {
+    const isStack = $("#research-discovery-form").elements.source.value === "stack_exchange";
+    $("#research-discovery-site-wrap").hidden = !isStack;
+  }
+
   async function refreshAll() {
     try {
       await Promise.all([
@@ -2339,6 +2387,9 @@
   });
   $("#memory-list-button").addEventListener("click", () => loadMemory().catch((error) => message("#workspace-message", error.message, "error")));
 
+  $("#research-discovery-form").addEventListener("submit", submitResearchDiscovery);
+  $("#research-discovery-form").elements.source.addEventListener("change", updateResearchDiscoverySource);
+  updateResearchDiscoverySource();
   $("#research-opportunity-form").addEventListener("submit", submitResearchOpportunity);
   $("#research-feedback-form").addEventListener("submit", submitResearchFeedback);
   $("#research-outcome-form").addEventListener("submit", submitResearchOutcome);
