@@ -2122,7 +2122,7 @@
     if (item.status === "new" || item.status === "validating") {
       const next = item.status === "new" ? "validating" : "validated";
       card.append(actionButton(
-        item.status === "new" ? "شروع اعتبارسنجی" : "تأیید نیاز (دو منبع تازه از گروه‌های ناشر متفاوت)",
+        item.status === "new" ? "شروع اعتبارسنجی" : "تأیید نیاز (منابع تازه از میزبان‌ها و گروه‌های ناشر متفاوت)",
         () => transitionResearchOpportunity(item, next)
       ));
     } else if (item.status === "validated") {
