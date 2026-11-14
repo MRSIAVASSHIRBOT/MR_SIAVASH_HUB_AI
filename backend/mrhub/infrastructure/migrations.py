@@ -1192,6 +1192,67 @@ MIGRATIONS = (
         (
             "CREATE INDEX IF NOT EXISTS idx_audit_task_timeline ON audit_events(subject_type, subject_id, created_at DESC, event_id DESC)",
         ),
+    ),
+    Migration.build(
+        44,
+        "owner_scoped_research_source_provenance",
+        (
+            """CREATE TABLE research_sources (
+                source_id TEXT PRIMARY KEY CHECK (length(source_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                canonical_url TEXT NOT NULL CHECK (length(canonical_url) BETWEEN 1 AND 2048),
+                hostname TEXT NOT NULL CHECK (length(hostname) BETWEEN 1 AND 253),
+                publisher_group TEXT NOT NULL CHECK (length(publisher_group) BETWEEN 1 AND 120),
+                first_captured_at TEXT NOT NULL,
+                last_captured_at TEXT NOT NULL,
+                UNIQUE(owner_user_id, canonical_url),
+                UNIQUE(source_id, owner_user_id)
+            )""",
+            "ALTER TABLE research_evidence ADD COLUMN source_id TEXT REFERENCES research_sources(source_id) ON DELETE RESTRICT",
+            """INSERT INTO research_sources (
+                source_id, owner_user_id, canonical_url, hostname, publisher_group,
+                first_captured_at, last_captured_at
+            )
+            SELECT MIN(e.evidence_id), e.owner_user_id, e.canonical_url,
+                   lower(substr(e.canonical_url, 9,
+                       instr(substr(e.canonical_url, 9) || '/', '/') - 1)),
+                   lower(substr(e.canonical_url, 9,
+                       instr(substr(e.canonical_url, 9) || '/', '/') - 1)),
+                   MIN(e.captured_at), MAX(e.captured_at)
+            FROM research_evidence e
+            GROUP BY e.owner_user_id, e.canonical_url""",
+            """UPDATE research_evidence
+               SET source_id = (
+                   SELECT s.source_id FROM research_sources s
+                   WHERE s.owner_user_id = research_evidence.owner_user_id
+                     AND s.canonical_url = research_evidence.canonical_url
+               )
+               WHERE source_id IS NULL""",
+            "CREATE INDEX idx_research_sources_owner_group ON research_sources(owner_user_id, publisher_group)",
+            "CREATE INDEX idx_research_evidence_owner_source ON research_evidence(owner_user_id, source_id)",
+            """CREATE TRIGGER trg_research_evidence_source_owner_insert
+               BEFORE INSERT ON research_evidence
+               WHEN NEW.source_id IS NULL OR NOT EXISTS (
+                   SELECT 1 FROM research_sources s
+                   WHERE s.source_id = NEW.source_id
+                     AND s.owner_user_id = NEW.owner_user_id
+                     AND s.canonical_url = NEW.canonical_url
+               )
+               BEGIN
+                   SELECT RAISE(ABORT, 'research evidence source provenance mismatch');
+               END""",
+            """CREATE TRIGGER trg_research_evidence_source_owner_update
+               BEFORE UPDATE OF source_id, owner_user_id, canonical_url ON research_evidence
+               WHEN NEW.source_id IS NULL OR NOT EXISTS (
+                   SELECT 1 FROM research_sources s
+                   WHERE s.source_id = NEW.source_id
+                     AND s.owner_user_id = NEW.owner_user_id
+                     AND s.canonical_url = NEW.canonical_url
+               )
+               BEGIN
+                   SELECT RAISE(ABORT, 'research evidence source provenance mismatch');
+               END""",
+        ),
     )
 )
 
