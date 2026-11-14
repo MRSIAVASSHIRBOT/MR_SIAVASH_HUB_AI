@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from pathlib import Path
-from uuid import uuid4
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from pathlib import Path
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import httpx
 
@@ -18,9 +19,12 @@ import httpx
 class ResearchDiscoveryError(RuntimeError):
     """A bounded public-source discovery request could not be completed."""
 
-    def __init__(self, message: str, status_code: int = 502) -> None:
+    def __init__(
+        self, message: str, status_code: int = 502, retry_after_seconds: int | None = None
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
 
 
 class _DiscoveryLimiter:
@@ -30,7 +34,9 @@ class _DiscoveryLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
 
-    def check(self, database_path: Path, owner_id: str, query_key: str) -> None:
+    def check(
+        self, database_path: Path, owner_id: str, query_key: str, provider_key: str
+    ) -> None:
         now = time.time()
         cutoff = now - self.window_seconds
         connection = sqlite3.connect(database_path, timeout=5.0)
@@ -38,6 +44,16 @@ class _DiscoveryLimiter:
             connection.execute("PRAGMA busy_timeout = 5000")
             # Serialize the count/check/insert sequence across API worker processes.
             connection.execute("BEGIN IMMEDIATE")
+            provider_state = connection.execute(
+                """SELECT retry_after FROM research_discovery_provider_backoff
+                   WHERE provider_key = ?""",
+                (provider_key,),
+            ).fetchone()
+            if provider_state is not None and provider_state[0] > now:
+                retry_after = max(1, int(provider_state[0] - now + 0.999))
+                raise ResearchDiscoveryError(
+                    "The public provider requested a cooldown; retry later.", 429, retry_after
+                )
             connection.execute(
                 "DELETE FROM research_discovery_requests WHERE requested_at <= ?",
                 (cutoff,),
@@ -74,6 +90,30 @@ class _DiscoveryLimiter:
         finally:
             connection.close()
 
+    def set_provider_backoff(
+        self, database_path: Path, provider_key: str, seconds: int
+    ) -> None:
+        bounded_seconds = max(1, min(int(seconds), 3600))
+        now = time.time()
+        connection = sqlite3.connect(database_path, timeout=5.0)
+        try:
+            connection.execute("PRAGMA busy_timeout = 5000")
+            connection.execute(
+                """INSERT INTO research_discovery_provider_backoff
+                   (provider_key, retry_after, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(provider_key) DO UPDATE SET
+                       retry_after = MAX(retry_after, excluded.retry_after),
+                       updated_at = excluded.updated_at""",
+                (provider_key, now + bounded_seconds, now),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
 
 _LIMITER = _DiscoveryLimiter()
 _MAX_RESPONSE_BYTES = 1_000_000
@@ -99,7 +139,24 @@ def _bounded_json(url: str, params: dict[str, str | int]) -> dict[str, object]:
         ) as client:
             with client.stream("GET", url, params=params) as response:
                 if response.status_code == 429:
-                    raise ResearchDiscoveryError("The public source rate limit was reached.", 429)
+                    retry_after = 60
+                    header = response.headers.get("Retry-After", "").strip()
+                    if header:
+                        try:
+                            retry_after = int(header)
+                        except ValueError:
+                            try:
+                                retry_at = parsedate_to_datetime(header)
+                                if retry_at.tzinfo is None:
+                                    retry_at = retry_at.replace(tzinfo=UTC)
+                                retry_after = int((retry_at - datetime.now(UTC)).total_seconds())
+                            except (TypeError, ValueError, OverflowError):
+                                retry_after = 60
+                    raise ResearchDiscoveryError(
+                        "The public source rate limit was reached.",
+                        429,
+                        max(1, min(retry_after, 3600)),
+                    )
                 if response.status_code != 200:
                     raise ResearchDiscoveryError("The public source returned an unavailable response.", 502)
                 declared_size = response.headers.get("content-length")
@@ -138,14 +195,20 @@ def discover_public_needs(
         raise ResearchDiscoveryError("Unsupported Stack Exchange site.", 422)
 
     query_key = f"{source}:{site if source == 'stack_exchange' else ''}:{normalized_query.casefold()}"
-    _LIMITER.check(database_path, owner_user_id, query_key)
+    provider_key = source
+    _LIMITER.check(database_path, owner_user_id, query_key, provider_key)
 
     captured_at = datetime.now(UTC).isoformat()
     if source == "hacker_news":
-        payload = _bounded_json(
-            "https://hn.algolia.com/api/v1/search",
-            {"query": normalized_query, "tags": "story", "hitsPerPage": bounded_limit},
-        )
+        try:
+            payload = _bounded_json(
+                "https://hn.algolia.com/api/v1/search",
+                {"query": normalized_query, "tags": "story", "hitsPerPage": bounded_limit},
+            )
+        except ResearchDiscoveryError as exc:
+            if exc.status_code == 429 and exc.retry_after_seconds is not None:
+                _LIMITER.set_provider_backoff(database_path, provider_key, exc.retry_after_seconds)
+            raise
         raw_items = payload.get("hits", [])
         items: list[dict[str, object]] = []
         if isinstance(raw_items, list):
@@ -168,16 +231,24 @@ def discover_public_needs(
                 })
         source_label = "Hacker News (Algolia public search API)"
     else:
-        payload = _bounded_json(
-            "https://api.stackexchange.com/2.3/search/advanced",
-            {
-                "order": "desc",
-                "sort": "relevance",
-                "site": site,
-                "q": normalized_query,
-                "pagesize": bounded_limit,
-            },
-        )
+        try:
+            payload = _bounded_json(
+                "https://api.stackexchange.com/2.3/search/advanced",
+                {
+                    "order": "desc",
+                    "sort": "relevance",
+                    "site": site,
+                    "q": normalized_query,
+                    "pagesize": bounded_limit,
+                },
+            )
+        except ResearchDiscoveryError as exc:
+            if exc.status_code == 429 and exc.retry_after_seconds is not None:
+                _LIMITER.set_provider_backoff(database_path, provider_key, exc.retry_after_seconds)
+            raise
+        provider_backoff = payload.get("backoff")
+        if isinstance(provider_backoff, int) and not isinstance(provider_backoff, bool) and provider_backoff > 0:
+            _LIMITER.set_provider_backoff(database_path, provider_key, provider_backoff)
         raw_items = payload.get("items", [])
         expected_host = _STACK_SITES[site]
         items = []
