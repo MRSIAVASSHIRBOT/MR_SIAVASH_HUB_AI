@@ -55,3 +55,14 @@ Each input is an owner/researcher assessment from 1 to 5. The score is a triage 
 ## Explicit non-goals for this foundation
 
 No public web crawler, automated account creation, private-community scraping, personal-data profiling, autonomous public publishing, paid provider activation, or arbitrary code execution is introduced.
+
+
+## Consent-based feedback intake
+
+The authenticated /research/feedback endpoints support structured feedback capture. Submission requires explicit consent_to_research=true; the server records a versioned consent marker. The schema deliberately has no name, email, phone, account handle, or free-form contact field. The intake stores only a domain, broad audience segment, concise need summary, current workaround, and optional impact/frequency scores. The UI/API contract should tell contributors not to include identifying or sensitive personal information.
+
+Feedback is owner-scoped, can be triaged as new/reviewed/converted/dismissed, and can be deleted by its owner. This first slice is an authenticated operator intake, not a public anonymous survey service or a direct third-party inbox integration. Consent is required for research use; it does not imply permission to publish quotations or identify contributors.
+
+## Outcome measurement
+
+Each opportunity can store owner-scoped outcome measurements through /research/opportunities/{id}/outcomes. Supported metrics include time saved, task completion rate, satisfaction, error rate, active users, and operating cost. Every record includes a baseline, observed value, unit, sample size, and measurement period. Values are observations, not causal proof: pilots should report their population, method, limitations, and whether the sample is representative. Measurements are deleted with their parent opportunity.
