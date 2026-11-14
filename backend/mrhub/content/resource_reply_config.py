@@ -1,7 +1,7 @@
 """Owner-scoped settings for comment-triggered educational resource replies."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, UTC
 from pathlib import Path
 
 from mrhub.content.repository import ContentDraftRepository
