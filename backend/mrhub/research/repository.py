@@ -322,6 +322,27 @@ class ResearchRepository:
         for name, value in scores.items():
             if value is not None and (isinstance(value, bool) or not 1 <= value <= 5):
                 raise ResearchValidationError(f"{name} must be an integer from 1 to 5")
+        effective_scores = (
+            current.impact_score if impact_score is None else impact_score,
+            current.frequency_score if frequency_score is None else frequency_score,
+            current.feasibility_score if feasibility_score is None else feasibility_score,
+        )
+        if next_status == "validated":
+            with self._connection() as connection:
+                evidence = connection.execute(
+                    "SELECT COUNT(DISTINCT canonical_url) AS source_count, "
+                    "COUNT(DISTINCT source_type) AS type_count FROM research_evidence "
+                    "WHERE owner_user_id = ? AND opportunity_id = ?",
+                    (owner_user_id, opportunity_id),
+                ).fetchone()
+            if evidence["source_count"] < 2 or evidence["type_count"] < 2:
+                raise ResearchValidationError(
+                    "Validation requires at least two distinct public sources from two source types"
+                )
+        if next_status == "prioritized" and any(score is None for score in effective_scores):
+            raise ResearchValidationError(
+                "Prioritization requires impact, frequency, and feasibility scores"
+            )
         hypothesis = current.solution_hypothesis if solution_hypothesis is None else _text(
             solution_hypothesis, "Solution hypothesis", 2000, allow_empty=True
         )
