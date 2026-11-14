@@ -123,6 +123,16 @@ def test_consent_feedback_lifecycle_and_deletion(tmp_path, monkeypatch):
         missing_consent = client.post("/research/feedback", json=payload)
         assert missing_consent.status_code == 422
 
+        identifying_text = client.post(
+            "/research/feedback",
+            json={
+                **payload,
+                "need_summary": "Please contact user@example.com about this request.",
+                "consent_to_research": True,
+            },
+        )
+        assert identifying_text.status_code == 422
+
         created = client.post(
             "/research/feedback", json={**payload, "consent_to_research": True}
         )
