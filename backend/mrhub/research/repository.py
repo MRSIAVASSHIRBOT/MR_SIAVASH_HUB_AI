@@ -492,6 +492,7 @@ class ResearchRepository:
     ) -> ResearchEvidence:
         self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
         basis = _text(independence_basis, "Source independence basis", 1000)
+        now = self._now()
         with self._connection() as connection:
             cursor = connection.execute(
                 """UPDATE research_evidence
@@ -501,6 +502,12 @@ class ResearchRepository:
             )
             if cursor.rowcount != 1:
                 raise ResearchNotFound("Research evidence not found")
+            connection.execute(
+                """UPDATE research_opportunities
+                   SET updated_at = ?
+                   WHERE opportunity_id = ? AND owner_user_id = ?""",
+                (now, opportunity_id, owner_user_id),
+            )
         return next(
             item for item in self.list_evidence(
                 owner_user_id=owner_user_id, opportunity_id=opportunity_id
