@@ -757,6 +757,11 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     ).fetchall()
     assert len(legacy_rationales) == 3
     assert all(row["independence_basis"] == "" for row in legacy_rationales)
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE research_evidence SET independence_basis = ? WHERE evidence_id = ?",
+            ("x" * 1001, "11111111-1111-4111-8111-111111111111"),
+        )
     assert source["hostname"] == "example.com"
     assert source["publisher_group"] == "example.com"
     assert source["first_captured_at"] == now
