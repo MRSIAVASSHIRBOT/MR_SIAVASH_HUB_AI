@@ -1,8 +1,8 @@
 # Social Growth Funnel v1 — Engineering Plan
 
-Status: implementation in progress; campaign linkage is implemented on the feature branch, CI for the previous feature head is green, and external account acceptance remains pending.
-Base commit: b1c66a36074b8bb0df3ccd1d9658632925303dc5
-Branch: feat/social-growth-funnel-v1
+Status: repository implementation merged into `main` on 2026-11-14; mocked CI is green on `342adddf6a25a1c17495d5235d893fdd97011fd5`. External account acceptance, provider credentials/scopes, and live publishing remain unverified and disabled.
+Implementation PRs: #372 (social growth), #379 (people-needs research), #382 (research source provenance), #383 (tool/gateway security). No active PR remains for this workstream.
+Current schema: research migrations 36–39, social publishing/campaign/reply migrations 40–42, Telegram task timeline migration 43, research source provenance migration 44.
 
 ## Product outcome
 
@@ -22,23 +22,25 @@ The resource CTA may politely invite the recipient to follow the page and share 
 - Durable schedules capture approved revision/hash and support cancellation.
 - ContentScheduleDispatcher is integrated with WorkerEngine; worker_service runs a pull loop. Dispatch is fail-closed when provider credentials are missing.
 - Telegram Bot API adapter supports text and approved JPEG/PNG/MP4 assets.
-- InstagramGraphImageAdapter supports only image containers (JPEG/PNG), not Reels/video.
+- Instagram Graph API Reels publishing is implemented alongside the existing image adapter; real-account acceptance remains unverified.
 - Instagram publishing requires a professional account, Graph API credentials, and a publicly reachable signed HTTPS media origin.
 - Provider delivery is not exactly-once. Ambiguous outcomes enter unknown_outcome and must be reconciled before retry.
 - Video generation and the lease-fenced FFmpeg render worker register owner-scoped MP4 assets with the `video_render_cut_v1` profile. A new integration assertion verifies that the actual render-worker asset can be attached to an Instagram Reel draft; campaign creation and dispatch revalidate the same profile.
 - PostZen Default profile has connected Instagram and Telegram accounts. The comment-automation inventory is empty.
-- The in-repository video-generation provider registry is empty by default and currently has no configured provider. Existing local FFmpeg timeline rendering can process source footage, but prompt-to-video generation is not enabled; this remains a separate provider/local-template workstream and must not be described as operational. The API key is valid. Do not activate any live comment/DM automation until copy, resource URL, scope, and behavior are explicitly approved.
+- The in-repository video-generation provider registry is empty by default and currently has no configured provider. Existing local FFmpeg timeline rendering can process source footage, but prompt-to-video generation is not enabled; this remains a separate provider/local-template workstream and must not be described as operational.
+- The scheduled OpenCode development workflow's latest run failed because OpenRouter returned `API key expired` for repository secret `MR_SIAVASH_HUB_AI`. The secret was not read or changed; maintainer rotation is required before scheduled AI development can resume. This failure is separate from application CI.
 - Current external account credentials, Meta scopes, public media reachability, and real-account publishing have not been verified by this repository audit.
 
-## Current implementation status (feature branch)
+## Current implementation status (`main`, inspected 2026-11-15)
 
 - Instagram Reels adapter: implemented with bounded polling of the same container; only a confirmed FINISHED container is published.
 - Signed public media: JPEG/PNG/MP4 path and owner-scoped processed-render checks are implemented.
-- Reel draft type: database migration 36 rebuilds the draft/version/schedule tables to allow `reel` while preserving existing records.
-- Cross-platform campaign linkage: migration 37, owner-scoped repository, authenticated API, atomic paired scheduling, paired cancellation, and API tests are implemented.
+- Reel draft type: database migration 40 rebuilds the draft/version/schedule tables to allow `reel` while preserving existing records.
+- Cross-platform campaign linkage: migration 41, owner-scoped repository, authenticated API, atomic paired scheduling, paired cancellation, and API tests are implemented.
 - Existing content scheduler and worker are reused; no parallel scheduler was added.
-- CI for commit `c720bba493360242c4f875afa771f0ed9c17824b` passed all five reported workflows. The resource-reply changes added after that commit require a fresh CI run; do not treat the new head as verified until those checks pass.
-- PostZen Instagram comment automation inventory currently returns zero automations. The Hub now has owner-scoped, persistent user settings for trigger keyword, resource URL/label, intro copy, Follow/Share copy, and independent CTA toggles (migration 38), plus authenticated GET/PUT configuration and POST preview endpoints and a local UI form. Preview always includes the resource URL regardless of CTA toggles. These settings are not yet connected to PostZen and do not activate or send DMs.
+- Resource-reply configuration: migration 42, owner-scoped persistence, authenticated GET/PUT configuration, POST preview, and operator UI are merged. Preview always includes the resource URL regardless of CTA toggles. These settings are not connected to PostZen and do not activate or send DMs.
+- PostZen Instagram comment automation inventory was empty at the last external review. Hub-side settings are implemented in migration 42, but provider-side trigger creation/dispatch is not integrated; no DM is sent by this configuration.
+- Main-branch CI on `342adddf6a25a1c17495d5235d893fdd97011fd5` passed Backend CI (dependency audit, lint, coverage tests), Python 3.11/3.12 CI, Windows wheel smoke, Windows launcher validation, FFmpeg render integration, defensive scan, workflow security audit, and OpenSSF Scorecard. This verifies repository code, not external account delivery.
 - Live activation remains blocked until the exact keyword, final reply copy, public resource URL, target post/account, and required scopes are reviewed and explicitly approved.
 - A previous Telegram diagnostic exposed a bot-token-bearing URL in stored error details. Rotate the bot token through BotFather and update the connected secret before enabling Telegram publishing. Do not copy tokens into chat or source control.
 
@@ -85,8 +87,8 @@ The resource CTA may politely invite the recipient to follow the page and share 
 
 1. Complete integration audit and verify current tests/configuration.
 2. Implement and test MP4 signed-media delivery and Instagram Reels adapter.
-3. Implement campaign linkage and cross-platform publishing acceptance tests. (feature-branch implementation completed; CI verification is checked per commit)
-4. Implement owner-scoped customizable keyword/resource reply settings, UI, and preview. (implemented; provider integration and fresh CI remain pending)
+3. Implement campaign linkage and cross-platform publishing acceptance tests. (merged; mocked CI passed on current main)
+4. Implement owner-scoped customizable keyword/resource reply settings, UI, and preview. (merged; mocked CI passed; provider integration remains pending)
 5. Configure one inactive PostZen comment automation for review only after keyword, DM copy, resource URL, account, and scope are approved.
 6. Run a controlled test with one harmless campaign after explicit approval.
 7. Enable scheduled operation only after successful acceptance and quota checks.
