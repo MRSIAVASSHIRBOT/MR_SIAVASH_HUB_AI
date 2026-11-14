@@ -38,8 +38,8 @@ The resource CTA may politely invite the recipient to follow the page and share 
 - Cross-platform campaign linkage: migration 37, owner-scoped repository, authenticated API, atomic paired scheduling, paired cancellation, and API tests are implemented.
 - Existing content scheduler and worker are reused; no parallel scheduler was added.
 - CI for commit `c720bba493360242c4f875afa771f0ed9c17824b` passed all five reported workflows. The resource-reply changes added after that commit require a fresh CI run; do not treat the new head as verified until those checks pass.
-- PostZen Instagram comment automation inventory currently returns zero automations. The new `build_optional_support_resource_reply` helper composes an optional Follow/Share request followed by the resource URL, validates that URL as public HTTPS, and intentionally has no follow/share-state inputs. It is a tested copy helper only; it is not wired to PostZen and does not activate or send DMs.
-- Do not create or activate a live automation until the exact keyword, approved DM copy, public resource URL, and account/scope are supplied and reviewed.
+- PostZen Instagram comment automation inventory currently returns zero automations. The Hub now has owner-scoped, persistent user settings for trigger keyword, resource URL/label, intro copy, Follow/Share copy, and independent CTA toggles (migration 38), plus authenticated GET/PUT configuration and POST preview endpoints and a local UI form. Preview always includes the resource URL regardless of CTA toggles. These settings are not yet connected to PostZen and do not activate or send DMs.
+- Live activation remains blocked until the exact keyword, final reply copy, public resource URL, target post/account, and required scopes are reviewed and explicitly approved.
 - A previous Telegram diagnostic exposed a bot-token-bearing URL in stored error details. Rotate the bot token through BotFather and update the connected secret before enabling Telegram publishing. Do not copy tokens into chat or source control.
 
 ## Workstreams
@@ -68,7 +68,7 @@ The resource CTA may politely invite the recipient to follow the page and share 
 - Confirm the account has required comment and messaging scopes before activation.
 - Respect one private reply per comment and platform time windows; deduplicate and cap sends.
 - Create inactive/draft configuration first. Activation requires explicit review of the exact keywords, final DM copy, destination URL, account, and scope.
-- The current helper only composes and validates copy; a provider-specific PostZen integration and external acceptance test remain future work.
+- User-configurable settings and preview are implemented; provider-specific PostZen trigger creation/dispatch and external acceptance tests remain future work.
 
 ### D. Telegram education engine
 - Reuse Telegram adapter and bot integration; distinguish the public channel publisher from the private Hub pairing bot.
@@ -86,7 +86,7 @@ The resource CTA may politely invite the recipient to follow the page and share 
 1. Complete integration audit and verify current tests/configuration.
 2. Implement and test MP4 signed-media delivery and Instagram Reels adapter.
 3. Implement campaign linkage and cross-platform publishing acceptance tests. (feature-branch implementation completed; CI verification is checked per commit)
-4. Implement the optional, ungated resource-reply copy helper. (implemented; provider integration and fresh CI remain pending)
+4. Implement owner-scoped customizable keyword/resource reply settings, UI, and preview. (implemented; provider integration and fresh CI remain pending)
 5. Configure one inactive PostZen comment automation for review only after keyword, DM copy, resource URL, account, and scope are approved.
 6. Run a controlled test with one harmless campaign after explicit approval.
 7. Enable scheduled operation only after successful acceptance and quota checks.
