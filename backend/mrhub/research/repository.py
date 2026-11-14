@@ -486,6 +486,27 @@ class ResearchRepository:
             ) if item.evidence_id == evidence_id
         )
 
+    def update_evidence_independence_basis(
+        self, *, owner_user_id: str, opportunity_id: str, evidence_id: str,
+        independence_basis: str,
+    ) -> ResearchEvidence:
+        self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
+        basis = _text(independence_basis, "Source independence basis", 1000)
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """UPDATE research_evidence
+                   SET independence_basis = ?
+                   WHERE evidence_id = ? AND opportunity_id = ? AND owner_user_id = ?""",
+                (basis, evidence_id, opportunity_id, owner_user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ResearchNotFound("Research evidence not found")
+        return next(
+            item for item in self.list_evidence(
+                owner_user_id=owner_user_id, opportunity_id=opportunity_id
+            ) if item.evidence_id == evidence_id
+        )
+
     def update_assessment(
         self, *, owner_user_id: str, opportunity_id: str, status: str | None = None,
         impact_score: int | None = None, frequency_score: int | None = None,
