@@ -9,11 +9,11 @@ def validate_resource_url(resource_url: str) -> str:
     """Validate an absolute HTTPS resource URL without making network requests."""
     candidate = resource_url.strip()
     try:
-        hostname = urlsplit(candidate).hostname
-        urlsplit(candidate).port
+        parsed = urlsplit(candidate)
+        hostname = parsed.hostname
+        port = parsed.port
     except ValueError as exc:
         raise ValueError("Resource URL must be an absolute HTTPS URL") from exc
-    parsed = urlsplit(candidate)
     if (
         not candidate
         or any(character.isspace() for character in candidate)
@@ -28,6 +28,8 @@ def validate_resource_url(resource_url: str) -> str:
         address = ip_address(normalized_host)
     except ValueError:
         address = None
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("Resource URL port is invalid")
     if address is not None and not address.is_global:
         raise ValueError("Resource URL must not point to a private or local IP address")
     if address is None and (
