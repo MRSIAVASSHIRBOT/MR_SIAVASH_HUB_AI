@@ -752,6 +752,11 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     ).fetchone()
     evidence_columns = {row["name"] for row in connection.execute("PRAGMA table_info(research_evidence)")}
     assert "independence_basis" in evidence_columns
+    legacy_rationales = connection.execute(
+        "SELECT independence_basis FROM research_evidence"
+    ).fetchall()
+    assert len(legacy_rationales) == 3
+    assert all(row["independence_basis"] == "" for row in legacy_rationales)
     assert source["hostname"] == "example.com"
     assert source["publisher_group"] == "example.com"
     assert source["first_captured_at"] == now
