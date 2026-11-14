@@ -1044,6 +1044,25 @@ MIGRATIONS = (
             "CREATE INDEX idx_content_campaigns_owner_updated ON content_campaigns(owner_user_id, updated_at DESC)",
             "CREATE INDEX idx_content_campaigns_status_updated ON content_campaigns(status, updated_at)",
         ),
+    ),
+    Migration.build(
+        38,
+        "owner_scoped_customizable_resource_reply_config",
+        (
+            """CREATE TABLE resource_reply_configs (
+                owner_user_id TEXT PRIMARY KEY REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                keyword TEXT NOT NULL CHECK (length(keyword) BETWEEN 1 AND 80),
+                resource_url TEXT NOT NULL DEFAULT '' CHECK (length(resource_url) <= 2048),
+                resource_label TEXT NOT NULL CHECK (length(resource_label) BETWEEN 1 AND 120),
+                intro_text TEXT NOT NULL DEFAULT '' CHECK (length(intro_text) <= 500),
+                include_follow INTEGER NOT NULL DEFAULT 1 CHECK (include_follow IN (0, 1)),
+                follow_cta_text TEXT NOT NULL DEFAULT '' CHECK (length(follow_cta_text) <= 300),
+                include_share INTEGER NOT NULL DEFAULT 1 CHECK (include_share IN (0, 1)),
+                share_cta_text TEXT NOT NULL DEFAULT '' CHECK (length(share_cta_text) <= 300),
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_resource_reply_configs_updated ON resource_reply_configs(updated_at DESC)",
+        ),
     )
 )
 
