@@ -185,7 +185,7 @@ def create_feedback(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/feedback")
+@router.get("/feedback/entries")
 def list_feedback(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     feedback_status: Literal["new", "reviewed", "converted", "dismissed"] | None = Query(
