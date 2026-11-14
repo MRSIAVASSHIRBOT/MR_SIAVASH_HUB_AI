@@ -105,3 +105,97 @@ def test_platform_and_research_routes_require_authentication(tmp_path, monkeypat
         assert client.get("/research/opportunities").status_code in (401, 403)
     finally:
         get_settings.cache_clear()
+
+
+def test_consent_feedback_lifecycle_and_deletion(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-feedback.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        payload = {
+            "domain_id": "productivity",
+            "audience_segment": "Independent creators",
+            "need_summary": "Creators need one place to plan and review content work.",
+            "current_workaround": "They switch between several unrelated tools.",
+            "impact_score": 4,
+            "frequency_score": 5,
+        }
+        missing_consent = client.post("/research/feedback", json=payload)
+        assert missing_consent.status_code == 422
+
+        created = client.post(
+            "/research/feedback", json={**payload, "consent_to_research": True}
+        )
+        assert created.status_code == 201
+        feedback = created.json()
+        assert feedback["status"] == "new"
+        assert feedback["consent_version"] == "research-feedback-v1"
+        assert "email" not in feedback
+        assert "contact" not in feedback
+
+        listed = client.get("/research/feedback?domain_id=productivity")
+        assert listed.status_code == 200
+        assert listed.json()["count"] == 1
+
+        reviewed = client.patch(
+            f"/research/feedback/{feedback['feedback_id']}", json={"status": "reviewed"}
+        )
+        assert reviewed.status_code == 200
+        assert reviewed.json()["status"] == "reviewed"
+
+        deleted = client.delete(f"/research/feedback/{feedback['feedback_id']}")
+        assert deleted.status_code == 204
+        assert client.get("/research/feedback").json()["count"] == 0
+    finally:
+        get_settings.cache_clear()
+
+
+def test_outcome_measurements_are_owner_scoped_and_time_bounded(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-outcomes.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post("/research/opportunities", json={
+            "domain_id": "automation",
+            "title": "Reduce repetitive admin work",
+            "problem_statement": "Independent workers spend time on repetitive follow-ups.",
+            "audience": "Independent workers",
+        })
+        assert created.status_code == 201
+        opportunity_id = created.json()["opportunity_id"]
+
+        invalid_period = client.post(
+            f"/research/opportunities/{opportunity_id}/outcomes",
+            json={
+                "metric_name": "task_time_saved_minutes",
+                "baseline_value": 20,
+                "observed_value": 12,
+                "unit": "minutes",
+                "sample_size": 8,
+                "period_start": "2026-11-15T00:00:00+00:00",
+                "period_end": "2026-11-14T00:00:00+00:00",
+            },
+        )
+        assert invalid_period.status_code == 422
+
+        measured = client.post(
+            f"/research/opportunities/{opportunity_id}/outcomes",
+            json={
+                "metric_name": "task_time_saved_minutes",
+                "baseline_value": 20,
+                "observed_value": 12,
+                "unit": "minutes",
+                "sample_size": 8,
+                "period_start": "2026-11-01T00:00:00+00:00",
+                "period_end": "2026-11-14T00:00:00+00:00",
+                "notes": "Small pilot; results are directional only.",
+            },
+        )
+        assert measured.status_code == 201
+        assert measured.json()["baseline_value"] == 20
+        assert measured.json()["observed_value"] == 12
+        listed = client.get(f"/research/opportunities/{opportunity_id}/outcomes")
+        assert listed.status_code == 200
+        assert listed.json()["count"] == 1
+    finally:
+        get_settings.cache_clear()
