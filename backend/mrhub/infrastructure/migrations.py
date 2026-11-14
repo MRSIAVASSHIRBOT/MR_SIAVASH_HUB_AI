@@ -915,7 +915,7 @@ MIGRATIONS = (
         (
             "CREATE INDEX IF NOT EXISTS idx_audit_telegram_task_owner ON audit_events(actor_type, actor_id, event_type, subject_type, subject_id)",
         ),
-    ),,
+    ),
     Migration.build(
         36,
         "owner_scoped_people_needs_research",
