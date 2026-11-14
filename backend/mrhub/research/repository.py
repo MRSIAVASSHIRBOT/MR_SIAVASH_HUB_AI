@@ -350,14 +350,20 @@ class ResearchRepository:
         if next_status == "validated":
             with self._connection() as connection:
                 evidence = connection.execute(
-                    "SELECT COUNT(DISTINCT canonical_url) AS source_count, "
-                    "COUNT(DISTINCT source_type) AS type_count FROM research_evidence "
+                    "SELECT canonical_url, source_type FROM research_evidence "
                     "WHERE owner_user_id = ? AND opportunity_id = ?",
                     (owner_user_id, opportunity_id),
-                ).fetchone()
-            if evidence["source_count"] < 2 or evidence["type_count"] < 2:
+                ).fetchall()
+            source_count = len({row["canonical_url"] for row in evidence})
+            type_count = len({row["source_type"] for row in evidence})
+            host_count = len({
+                urlsplit(row["canonical_url"]).hostname
+                for row in evidence
+                if urlsplit(row["canonical_url"]).hostname
+            })
+            if source_count < 2 or type_count < 2 or host_count < 2:
                 raise ResearchConflictError(
-                    "Validation requires at least two distinct public sources from two source types"
+                    "Validation requires two distinct public URLs, two source types, and two distinct hostnames"
                 )
         if next_status == "prioritized" and any(score is None for score in effective_scores):
             raise ResearchConflictError(
