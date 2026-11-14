@@ -55,7 +55,12 @@ Required behavior:
 - Never query follower/share state, branch on those states, or claim either action was verified.
 - Use respectful language; do not imply that access, eligibility, or delivery depends on engagement.
 
-The backend helper `mrhub.content.resource_reply.build_optional_support_resource_reply` composes this copy and rejects non-HTTPS or malformed resource URLs. It intentionally has no Follow/Share state parameters. This helper is not a PostZen transport and does not send messages.
+The authenticated Hub UI now exposes owner-scoped settings for the trigger keyword, HTTPS resource URL, resource label, intro text, Follow/Share copy, and independent Follow/Share toggles. Settings are persisted per Hub user through schema migration 38. API:
+- `GET /content/resource-reply/config`
+- `PUT /content/resource-reply/config`
+- `POST /content/resource-reply/preview`
+
+The preview uses only the submitted or saved user fields. It always appends the resource URL, even when both CTA toggles are off. The builder has no Follow/Share state inputs. Saving settings and generating previews do not create or activate a PostZen automation and do not send messages. The trigger keyword is stored as configuration only; actual provider-side trigger setup remains a separate reviewed integration step.
 
 ## External activation checklist
 
