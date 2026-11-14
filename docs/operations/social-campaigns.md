@@ -55,7 +55,7 @@ Required behavior:
 - Never query follower/share state, branch on those states, or claim either action was verified.
 - Use respectful language; do not imply that access, eligibility, or delivery depends on engagement.
 
-The authenticated Hub UI now exposes owner-scoped settings for the trigger keyword, HTTPS resource URL, resource label, intro text, Follow/Share copy, and independent Follow/Share toggles. Settings are persisted per Hub user through schema migration 38. API:
+The authenticated Hub UI now exposes owner-scoped settings for the trigger keyword, HTTPS resource URL, resource label, intro text, Follow/Share copy, and independent Follow/Share toggles. Settings are persisted per Hub user through schema migration 42. API:
 - `GET /content/resource-reply/config`
 - `PUT /content/resource-reply/config`
 - `POST /content/resource-reply/preview`
