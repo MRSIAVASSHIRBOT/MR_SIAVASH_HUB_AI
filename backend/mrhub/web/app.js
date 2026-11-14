@@ -150,6 +150,9 @@
     $("#video-copy-prompt").disabled = true;
     $("#telegram-pairing-code").value = "";
     $("#telegram-pairing-code-panel").hidden = true;
+    $("#resource-reply-config-form").reset();
+    $("#resource-reply-preview").textContent = "پس از واردکردن لینک عمومی محتوا، پیش‌نمایش پیام اینجا نمایش داده می‌شود.";
+    message("#resource-reply-message", "");
     setAuthenticated(false);
   }
 
