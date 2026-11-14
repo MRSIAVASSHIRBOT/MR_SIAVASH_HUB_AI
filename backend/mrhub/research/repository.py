@@ -43,6 +43,10 @@ class ResearchValidationError(ResearchError, ValueError):
     """An opportunity or evidence record violates its contract."""
 
 
+class ResearchConflictError(ResearchValidationError):
+    """A valid request conflicts with the current opportunity or evidence state."""
+
+
 class ResearchNotFound(ResearchError, LookupError):
     """The requested owner-scoped opportunity does not exist."""
 
@@ -297,7 +301,7 @@ class ResearchRepository:
                     (captured_at, opportunity_id, owner_user_id),
                 )
         except sqlite3.IntegrityError as exc:
-            raise ResearchValidationError("This source URL is already attached to the opportunity") from exc
+            raise ResearchConflictError("This source URL is already attached to the opportunity") from exc
         return ResearchEvidence(
             evidence_id=evidence_id, opportunity_id=opportunity_id, source_type=source_type,
             canonical_url=canonical_url, source_label=source_label,
@@ -315,7 +319,7 @@ class ResearchRepository:
         if next_status not in OPPORTUNITY_STATUSES:
             raise ResearchValidationError("Unsupported opportunity status")
         if next_status != current.status and next_status not in STATUS_TRANSITIONS[current.status]:
-            raise ResearchValidationError(f"Invalid opportunity transition: {current.status} -> {next_status}")
+            raise ResearchConflictError(f"Invalid opportunity transition: {current.status} -> {next_status}")
         scores = {"impact_score": impact_score, "frequency_score": frequency_score, "feasibility_score": feasibility_score}
         for name, value in scores.items():
             if value is not None and (isinstance(value, bool) or not 1 <= value <= 5):
@@ -334,11 +338,11 @@ class ResearchRepository:
                     (owner_user_id, opportunity_id),
                 ).fetchone()
             if evidence["source_count"] < 2 or evidence["type_count"] < 2:
-                raise ResearchValidationError(
+                raise ResearchConflictError(
                     "Validation requires at least two distinct public sources from two source types"
                 )
         if next_status == "prioritized" and any(score is None for score in effective_scores):
-            raise ResearchValidationError(
+            raise ResearchConflictError(
                 "Prioritization requires impact, frequency, and feasibility scores"
             )
         hypothesis = current.solution_hypothesis if solution_hypothesis is None else _text(
@@ -357,5 +361,5 @@ class ResearchRepository:
                  now, opportunity_id, owner_user_id, current.status),
             )
             if cursor.rowcount != 1:
-                raise ResearchError("Opportunity changed concurrently; reload before retrying")
+                raise ResearchConflictError("Opportunity changed concurrently; reload before retrying")
         return self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
