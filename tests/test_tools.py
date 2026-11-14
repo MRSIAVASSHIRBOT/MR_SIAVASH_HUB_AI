@@ -115,3 +115,51 @@ def test_registry_sanitizes_invalid_handler_output():
     )
     with pytest.raises(ToolExecutionError, match="Tool output validation failed"):
         registry.invoke("custom.invalid_output", {"value": "x"})
+
+
+
+def test_registry_does_not_retain_handler_exception_context():
+    registry = ToolRegistry()
+
+    def fail_with_private_details(_payload):
+        raise RuntimeError("private credential-bearing request detail")
+
+    registry.register(
+        ToolDefinition(
+            name="custom.private_failure",
+            description="A handler failure must be sanitized",
+            input_model=InputValue,
+            output_model=OutputValue,
+            handler=fail_with_private_details,
+        )
+    )
+
+    with pytest.raises(ToolExecutionError) as error:
+        registry.invoke("custom.private_failure", {"value": "safe"})
+
+    assert str(error.value) == "Tool handler failed"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert "credential-bearing" not in repr(error.value)
+
+
+def test_registry_does_not_retain_invalid_output_values_in_exception_context():
+    registry = ToolRegistry()
+
+    registry.register(
+        ToolDefinition(
+            name="custom.private_output",
+            description="An invalid output must not be retained",
+            input_model=InputValue,
+            output_model=OutputValue,
+            handler=lambda _payload: {"private": "credential-bearing-output"},
+        )
+    )
+
+    with pytest.raises(ToolExecutionError) as error:
+        registry.invoke("custom.private_output", {"value": "safe"})
+
+    assert str(error.value) == "Tool output validation failed"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
+    assert "credential-bearing-output" not in repr(error.value)

@@ -139,7 +139,7 @@ def _register_cloudflare_tools(
     )
 
 
-def build_tool_registry() -> ToolRegistry:
+def build_tool_registry(*, correlation_id: str | None = None) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
         ToolDefinition(
@@ -153,7 +153,12 @@ def build_tool_registry() -> ToolRegistry:
 
     # Disabled or incomplete configuration never creates a partially usable tool.
     # The gateway factory fails closed when enabled configuration is invalid.
-    client = build_cloudflare_gateway_client(get_settings())
+    settings = get_settings()
+    client = (
+        build_cloudflare_gateway_client(settings)
+        if correlation_id is None
+        else build_cloudflare_gateway_client(settings, correlation_id=correlation_id)
+    )
     if client is not None:
         _register_cloudflare_tools(registry, client)
     return registry

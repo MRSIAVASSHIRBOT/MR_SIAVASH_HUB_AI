@@ -106,10 +106,10 @@ def invoke_tool(
     repository: PermissionRepository,
 ) -> dict[str, object]:
     response.headers["Cache-Control"] = "no-store"
-    registry = build_tool_registry()
+    correlation_id = str(uuid4())
+    registry = build_tool_registry(correlation_id=correlation_id)
     audit = AuditLogger(repository)
     permissions = _permission_service(repository).active_permissions(user.user_id)
-    correlation_id = str(uuid4())
 
     try:
         result = registry.invoke(

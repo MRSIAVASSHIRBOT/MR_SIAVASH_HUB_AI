@@ -286,3 +286,30 @@ def test_gateway_item_count_and_schema_are_bounded(monkeypatch):
     client = _client(monkeypatch, invalid_schema)
     with pytest.raises(CloudflareGatewayError, match="gateway_invalid_result"):
         client.list_workers()
+
+
+
+def test_gateway_forwards_valid_correlation_id_without_exposing_it_in_results(monkeypatch):
+    correlation_id = "11111111-1111-4111-8111-111111111111"
+
+    def handler(request):
+        assert request.headers["X-Correlation-ID"] == correlation_id
+        return _envelope([])
+
+    client = _client(monkeypatch, handler, correlation_id=correlation_id)
+    assert client.list_workers() == []
+
+
+def test_gateway_rejects_non_uuidv4_correlation_ids_before_network():
+    for correlation_id in (
+        "not-a-uuid",
+        "11111111-1111-1111-8111-111111111111",
+        "11111111-1111-4111-8111-11111111111",
+        "11111111-1111-4111-8111-111111111111\\r\\nX-Evil: true",
+    ):
+        with pytest.raises(ValueError, match="correlation ID"):
+            CloudflareGatewayClient(
+                gateway_url="https://gateway.example.workers.dev",
+                gateway_token=TOKEN,
+                correlation_id=correlation_id,
+            )

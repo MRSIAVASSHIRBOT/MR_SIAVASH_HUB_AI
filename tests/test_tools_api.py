@@ -106,7 +106,7 @@ def test_owner_grant_controls_protected_tool_invocation_and_is_audited(monkeypat
             required_permissions=frozenset({"cloudflare.read"}),
         )
     )
-    monkeypatch.setattr(tools_api, "build_tool_registry", lambda: registry)
+    monkeypatch.setattr(tools_api, "build_tool_registry", lambda **_kwargs: registry)
 
     payload = {"payload": {"text": "private-input-must-not-enter-audit"}}
     denied = client.post("/tools/cloudflare.inventory/invoke", json=payload)
@@ -174,7 +174,7 @@ def test_failed_tool_execution_is_sanitized_and_audited(monkeypatch):
             required_permissions=frozenset({"cloudflare.read"}),
         )
     )
-    monkeypatch.setattr(tools_api, "build_tool_registry", lambda: registry)
+    monkeypatch.setattr(tools_api, "build_tool_registry", lambda **_kwargs: registry)
     assert client.put("/tools/grants/cloudflare.read", json={}).status_code == 200
 
     response = client.post(
