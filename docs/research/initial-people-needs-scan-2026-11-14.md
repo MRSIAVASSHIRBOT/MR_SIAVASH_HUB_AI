@@ -71,3 +71,53 @@ These are hypotheses for validation, not confirmed product-market fit.
 ## Immediate next research
 
 Expand beyond small businesses into students, families, independent creators, accessibility needs, community organisations, and everyday digital administration. Use public sources and consent-based interviews; do not collect private personal data or scrape closed communities. Keep the initial small-business vertical as a testable starting segment, not the permanent product boundary.
+
+
+## Cross-domain scan: creators, educators, and digital accessibility
+
+The first scan was deliberately expanded beyond business owners to avoid turning a broad public-benefit platform into a small-business-only product.
+
+### 4. Independent creators face persistent production pressure
+
+- Epidemic Sound's 2025 report describes a survey of 3,000 professional creators in the United States and United Kingdom. It reports time pressure (36%), burnout (35%), and algorithm complexity/discoverability (34%) among recurring challenges. It also reports broad AI use in content development and generation.
+- The publisher is a commercial creator-audio provider, so the findings are useful directional evidence rather than neutral global prevalence.
+- Interpretation: creators may need a dependable end-to-end production system—planning, reusable formats, editing, rights-aware asset management, multi-platform adaptation, scheduling, and performance feedback—not simply another text/image generator.
+
+Source:
+- https://corporate.epidemicsound.com/press-and-media/press-releases/2025/content-creators-are-the-new-entrepreneurs-epidemic-sound-unveils-the-future-of-the-creator-economy-report-2025/
+
+### 5. Educators report a substantial administrative workload
+
+- OECD TALIS 2024 reports that around 52% of teachers across participating education systems identify general administrative work as a source of stress.
+- Pew Research Center's survey of 2,531 U.S. public K–12 teachers reports that 84% do not have enough time during regular work hours to complete tasks such as grading, lesson planning, paperwork, and answering work email.
+- Interpretation: a teacher-facing administrative assistant could organize forms, calendars, communications, lesson resources, and routine records. It should not make consequential student decisions or replace educator judgment.
+
+Sources:
+- https://www.oecd.org/en/publications/2025/10/results-from-talis-2024_28fbde1d/full-report/the-demands-of-teaching_0e941e2f.html
+- https://www.pewresearch.org/social-trends/wp-content/uploads/sites/3/2024/04/ST_24.04.04_teacher-survey_report.pdf
+
+### 6. Accessibility barriers cause people to abandon digital tasks
+
+- Accessiway's 2025 European Digital Accessibility Survey reports 6,599 respondents across Italy, Germany, Austria, France, and the United Kingdom; 73.1% said they regularly encounter digital barriers and 68.4% had abandoned at least one digital process because of a barrier. The survey is published by a commercial accessibility provider, so its findings should be treated as directional and checked against independent accessibility research.
+- Intopia's 2025 assistive-technology survey involved 218 people in Australia and New Zealand, 91% of whom reported a disability, impairment, or chronic condition. Across 757 reported online barriers, recurring themes included inaccessible or poorly coded pages, pop-ups/overlays, cognitive load, time cost, and missing form labels.
+- Interpretation: accessibility should be a shared engineering quality gate across every generated website and interface, not a separate decorative feature. Include semantic HTML, keyboard navigation, screen-reader labels, clear instructions, readable layouts, reduced cognitive load, and accessible forms from the start.
+
+Sources:
+- https://www.accessiway.com/digital-accessibility-survey
+- https://surveys.intopia.digital/assistive-technology-survey-2025-results/
+
+## Additional opportunity candidates
+
+| Candidate | Problem hypothesis | Proposed first product slice | Evidence strength | Existing Hub fit |
+|---|---|---|---|---|
+| Creator production operations | Independent creators face time pressure, workload, and platform complexity | Plan once, generate approved variants, manage assets and rights metadata, schedule, and review results | Medium: 3,000-creator commercial survey | High: existing content/media/scheduling foundations |
+| Educator administration assistant | Teachers lose time to paperwork, planning administration, and work email | Organize forms, calendars, class communications, and reusable resources with teacher review | Medium-high: OECD cross-system evidence and Pew U.S. survey | Medium: workflows and knowledge exist; education-specific privacy and interfaces are missing |
+| Accessibility-first web quality service | People encounter barriers in forms, navigation, readability, and assistive-technology use | Automated static checks plus human-readable remediation guidance and manual review checklist | Medium: two specialist surveys with different populations | Medium: web/code foundations exist; accessibility audit and remediation pipeline is not built |
+
+## Updated product principle
+
+Accessibility, privacy, and human control are cross-cutting requirements—not optional modules. A useful AI system should reduce work without creating new barriers, preserve the user's ability to review consequential actions, and make its outputs usable by people with different devices, languages, and access needs.
+
+## Research coverage and next gaps
+
+Current evidence is strongest for small-business digital operations, creators, educators, and accessibility. It is still weak for families, older adults, public-service users outside the surveyed countries, community organisations, and people with limited connectivity or digital literacy. These groups require separate research before assigning priorities. Avoid treating the current opportunity order as a universal ranking.
