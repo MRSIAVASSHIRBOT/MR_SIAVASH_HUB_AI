@@ -4,8 +4,8 @@ from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
-from mrhub.main import create_app
 from mrhub.content.resource_reply_config import ResourceReplyConfigRepository
+from mrhub.main import create_app
 
 
 def test_resource_reply_config_is_persisted_for_the_current_user():
@@ -40,7 +40,6 @@ def test_resource_reply_config_is_persisted_for_the_current_user():
     assert loaded.json()["updated_at"] is not None
 
 
-
 def test_resource_reply_config_is_isolated_between_owners():
     client = authenticated_client()
     repository = ResourceReplyConfigRepository(get_settings().database_path)
@@ -51,7 +50,10 @@ def test_resource_reply_config_is_isolated_between_owners():
         connection.execute(
             "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
-            ("resource-other-owner", "resource-other-owner", "00", "00", datetime.now(UTC).isoformat()),
+            (
+                "resource-other-owner", "resource-other-owner", "00", "00",
+                datetime.now(UTC).isoformat(),
+            ),
         )
     repository.save(
         owner_id,
