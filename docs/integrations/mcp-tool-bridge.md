@@ -62,7 +62,7 @@ The bridge currently exposes only tools already registered in the process. The i
 
 ## Validation
 
-The test suite includes both SDK in-memory tests and a process-level acceptance test. The latter starts the actual `mrhub.mcp_service` entry point as a separate local process, connects with the official Streamable HTTP client over numeric loopback, initializes a protocol session, discovers the exposed tools, and invokes only the deterministic `text.echo` tool. It does not contact third-party services. Other startup tests verify the disabled-by-default guard, reject hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, validate port bounds, and assert the stateless transport and request-body limit:
+The test suite includes SDK in-memory tests and process-level Streamable HTTP acceptance coverage. The process-level checks start the actual `mrhub.mcp_service` entry point as a separate local process, connect over numeric loopback, discover the exposed tools, and invoke only the deterministic `text.echo` tool. The compatibility test uses the legacy `ClientSession` initialization handshake; a separate modern-client test uses the v2 `Client` in automatic mode and asserts negotiation of the stateless `2026-07-28` protocol revision. Both paths exercise the same Hub tool and policy boundary and do not contact third-party services. Other startup tests verify the disabled-by-default guard, reject hostname/non-loopback binds, accept both numeric IPv4/IPv6 loopback literals, validate port bounds, and assert the stateless transport and request-body limit:
 
 ```powershell
 python -m pip install -e ".[dev,mcp]"
