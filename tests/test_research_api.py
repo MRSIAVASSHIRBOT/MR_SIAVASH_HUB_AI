@@ -688,9 +688,6 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
             assert response.status_code == 201
             evidence_ids.append(response.json()["evidence_id"])
 
-        before_review = client.get(
-            f"/research/opportunities/{opportunity_id}"
-        ).json()["updated_at"]
         blank_review = client.patch(
             f"/research/opportunities/{opportunity_id}/evidence/{evidence_ids[0]}/independence",
             json={"independence_basis": "   "},
@@ -706,6 +703,12 @@ def test_research_validation_requires_recorded_independence_rationale(tmp_path, 
             f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
         )
         assert blocked.status_code == 409
+
+        # Capture the timestamp after all status changes so this assertion
+        # specifically verifies that evidence review updates the opportunity.
+        before_review = client.get(
+            f"/research/opportunities/{opportunity_id}"
+        ).json()["updated_at"]
 
         for evidence_id in evidence_ids:
             reviewed = client.patch(
