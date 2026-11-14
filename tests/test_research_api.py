@@ -45,6 +45,22 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
         )
         assert blocked_validation.status_code == 409
 
+        same_host_evidence = client.post(
+            f"/research/opportunities/{opportunity_id}/evidence",
+            json={
+                "source_type": "app_review",
+                "source_url": "https://example.com/reviews/another-page",
+                "source_label": "Another source type on the same host",
+                "observation_summary": "This is a distinct URL but not a distinct host.",
+                "signal_strength": "medium",
+            },
+        )
+        assert same_host_evidence.status_code == 201
+        same_host_validation = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert same_host_validation.status_code == 409
+
         second_evidence = client.post(f"/research/opportunities/{opportunity_id}/evidence", json={
             "source_type": "app_review",
             "source_url": "https://example.org/reviews/website-builder",
