@@ -39,6 +39,7 @@ class EvidenceRequest(BaseModel):
     signal_strength: Literal["low", "medium", "high"] = "medium"
     published_at: str | None = Field(default=None, max_length=40)
     publisher_group: str | None = Field(default=None, max_length=120)
+    independence_basis: str | None = Field(default=None, max_length=1000)
 
 
 class AssessmentRequest(BaseModel):
