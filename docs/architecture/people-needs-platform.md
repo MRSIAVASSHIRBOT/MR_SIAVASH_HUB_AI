@@ -73,3 +73,17 @@ Each opportunity can store owner-scoped outcome measurements through /research/o
 The local authenticated operator UI now exposes the capability catalog, opportunity intake, curated evidence entry, feedback triage/deletion, and outcome measurement. It uses the existing same-origin API and session token handling; it does not load third-party scripts or publish feedback externally. Opportunity validation still requires the API's evidence gate, and measurement timestamps must include an explicit timezone offset.
 
 The feedback intake rejects obvious email addresses, phone-number patterns, and credential-like strings in its free-text fields as a defense-in-depth measure. This is not a guarantee that all identifying information can be detected; operators must continue to minimize and review text before saving it.
+
+
+## Read-only public-source discovery
+
+The authenticated /research/discovery/search endpoint offers bounded keyword discovery through two fixed public APIs: Hacker News Algolia search and selected Stack Exchange sites. Provider hosts and paths are constants; user input is sent only as a query parameter and is never interpreted as a URL. Requests use short timeouts, no redirects, bounded response size, a per-owner in-process rate budget, and an identical-query cooldown. Result links are returned as review candidates only; result pages are not fetched and results are not automatically stored as evidence.
+
+Hacker News candidates link to the public discussion thread. Stack Exchange results are accepted only when their HTTPS hostname matches the selected allow-listed site. Author names and profile details are not collected. The discovery limiter is process-local and must be replaced or backed by shared storage before multi-worker deployment. Provider quota/backoff signals and source-specific terms must be reviewed before increasing usage.
+
+Official provider references:
+- Hacker News Search API: https://hn.algolia.com/api
+- Stack Exchange API: https://api.stackexchange.com/docs
+- Stack Exchange advanced search: https://api.stackexchange.com/docs/advanced-search
+
+These connectors are discovery aids, not representative market research. A researcher must inspect the source, record an independent observation, consider its date and context, and seek corroboration before validating an opportunity.
