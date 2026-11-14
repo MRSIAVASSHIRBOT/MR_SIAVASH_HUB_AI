@@ -37,6 +37,7 @@ router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"
 TelegramScope = Literal[
     "status:read",
     "tasks:read",
+    "tasks:result",
     "tasks:create",
     "tasks:cancel",
     "memory:search",
@@ -48,7 +49,7 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=5)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=6)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -274,7 +275,7 @@ def get_telegram_task(
 @router.get("/tasks/{task_id}/result")
 def get_telegram_task_result(
     task_id: UUID,
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:read"))],
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:result"))],
 ) -> dict[str, object]:
     """Return a bounded terminal result only to the paired client that submitted the task."""
     repository = _tasks_repository()

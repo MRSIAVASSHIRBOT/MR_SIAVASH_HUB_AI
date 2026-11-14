@@ -455,13 +455,17 @@ def test_telegram_task_history_paginates_with_client_scoped_cursors(tmp_path, mo
 def test_telegram_task_result_is_terminal_bounded_and_client_scoped(tmp_path, monkeypatch):
     client, database_path = _owner_client(tmp_path, monkeypatch)
     payload_a, challenge_a = _create_pairing(
-        client, telegram_user_id=123456789, scopes=["tasks:create", "tasks:read"]
+        client, telegram_user_id=123456789, scopes=["tasks:create", "tasks:read", "tasks:result"]
     )
     payload_b, challenge_b = _create_pairing(
-        client, telegram_user_id=987654321, scopes=["tasks:create", "tasks:read"]
+        client, telegram_user_id=987654321, scopes=["tasks:create", "tasks:read", "tasks:result"]
+    )
+    payload_read_only, challenge_read_only = _create_pairing(
+        client, telegram_user_id=555555555, scopes=["tasks:create", "tasks:read"]
     )
     tokens_a = _exchange(client, payload_a, challenge_a).json()
     tokens_b = _exchange(client, payload_b, challenge_b).json()
+    tokens_read_only = _exchange(client, payload_read_only, challenge_read_only).json()
 
     created = client.post(
         "/integrations/telegram/tasks",
@@ -498,6 +502,12 @@ def test_telegram_task_result_is_terminal_bounded_and_client_scoped(tmp_path, mo
         headers=_bot_headers(tokens_b, 987654321),
     )
     assert cross_client.status_code == 404
+
+    denied = client.get(
+        f"/integrations/telegram/tasks/{task_id}/result",
+        headers=_bot_headers(tokens_read_only, 555555555),
+    )
+    assert denied.status_code == 403
 
     results[task_id] = {"result": "x" * 33_000}
     oversized = client.get(

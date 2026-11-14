@@ -25,7 +25,9 @@ The Hub owns Telegram client registration, explicit scopes, credential issuance,
 The default scope is status:read only. The owner must explicitly opt in to any additional permission:
 
 - tasks:read
+- tasks:result (separate from task-status reads)
 - tasks:create
+- tasks:cancel (queued or approval-waiting tasks only)
 - memory:search
 
 Agent execution, approval decisions, publishing, destructive actions and arbitrary tools are not available through this integration. Task creation still passes through the Hub PolicyEngine; high-risk task types remain waiting for owner approval.
@@ -48,7 +50,7 @@ Paired client requests use a dedicated /integrations/telegram/* route family and
 - Owner-initiated consent and five-minute, single-use pairing code.
 - Numeric Telegram ID and client UUID binding.
 - Least-privilege default: status-only until the owner explicitly grants more.
-- Server-side scope enforcement on each client endpoint.
+- Server-side scope enforcement on each client endpoint, with task-result access and pending-task cancellation granted separately from ordinary task reads.
 - Short-lived access tokens and revocable refresh credentials.
 - Hashed token storage, bounded inputs, idempotent task submission and audit metadata allowlisting.
 - Per-client task listing prevents one paired client from reading another client's task history.
