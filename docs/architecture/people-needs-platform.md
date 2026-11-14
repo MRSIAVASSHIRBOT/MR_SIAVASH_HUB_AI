@@ -66,3 +66,10 @@ Feedback is owner-scoped, can be triaged as new/reviewed/converted/dismissed, an
 ## Outcome measurement
 
 Each opportunity can store owner-scoped outcome measurements through /research/opportunities/{id}/outcomes. Supported metrics include time saved, task completion rate, satisfaction, error rate, active users, and operating cost. Every record includes a baseline, observed value, unit, sample size, and measurement period. Values are observations, not causal proof: pilots should report their population, method, limitations, and whether the sample is representative. Measurements are deleted with their parent opportunity.
+
+
+## Operator workspace
+
+The local authenticated operator UI now exposes the capability catalog, opportunity intake, curated evidence entry, feedback triage/deletion, and outcome measurement. It uses the existing same-origin API and session token handling; it does not load third-party scripts or publish feedback externally. Opportunity validation still requires the API's evidence gate, and measurement timestamps must include an explicit timezone offset.
+
+The feedback intake rejects obvious email addresses, phone-number patterns, and credential-like strings in its free-text fields as a defense-in-depth measure. This is not a guarantee that all identifying information can be detected; operators must continue to minimize and review text before saving it.
