@@ -33,9 +33,11 @@ def test_resource_reply_does_not_accept_or_depend_on_follow_or_share_state():
         "//example.org/guide",
         "https://user:password@example.org/guide",
         "https://example.org/a guide",
+        "https://example.org:invalid/guide",
+        "https://example.org:65536/guide",
     ],
 )
-def test_resource_reply_rejects_non_public_or_non_https_urls(url):
+def test_resource_reply_rejects_non_https_or_malformed_urls(url):
     with pytest.raises(ValueError):
         build_optional_support_resource_reply(url)
 
