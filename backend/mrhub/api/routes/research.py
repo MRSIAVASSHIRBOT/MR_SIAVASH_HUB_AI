@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.research.discovery import ResearchDiscoveryError, discover_public_needs
 from mrhub.research.repository import (
     OPPORTUNITY_STATUSES,
     ResearchConflictError,
@@ -260,3 +261,23 @@ def list_outcome_measurements(
     except ResearchNotFound as exc:
         raise HTTPException(status_code=404, detail="Research opportunity not found") from exc
     return {"items": items, "count": len(items)}
+
+
+@router.get("/discovery/search")
+def discover_research_candidates(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    query: str = Query(min_length=1, max_length=160),
+    source: Literal["hacker_news", "stack_exchange"] = "hacker_news",
+    site: Literal[
+        "stackoverflow", "superuser", "webapps", "askubuntu",
+        "serverfault", "workplace", "academia", "writers",
+    ] = "superuser",
+    limit: int = Query(default=10, ge=1, le=20),
+) -> dict[str, object]:
+    """Search allow-listed public APIs; results remain review-only candidates."""
+    try:
+        return discover_public_needs(
+            owner_user_id=user.user_id, source=source, query=query, site=site, limit=limit
+        )
+    except ResearchDiscoveryError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
