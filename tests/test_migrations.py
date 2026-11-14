@@ -605,7 +605,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
