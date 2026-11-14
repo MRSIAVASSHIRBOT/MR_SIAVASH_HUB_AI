@@ -319,7 +319,7 @@ def test_public_discovery_only_returns_expected_stack_exchange_hosts(tmp_path, m
 
 def test_discovery_rate_limit_is_shared_across_limiter_instances(tmp_path):
     from mrhub.infrastructure.database import TaskRepository
-    from mrhub.research.discovery import _DiscoveryLimiter, ResearchDiscoveryError
+    from mrhub.research.discovery import ResearchDiscoveryError, _DiscoveryLimiter
 
     database_path = tmp_path / "shared-discovery-limit.sqlite3"
     TaskRepository(database_path).initialize()
@@ -340,7 +340,7 @@ def test_discovery_rate_limit_is_shared_across_limiter_instances(tmp_path):
 
 def test_discovery_provider_backoff_is_shared_across_owners(tmp_path):
     from mrhub.infrastructure.database import TaskRepository
-    from mrhub.research.discovery import _DiscoveryLimiter, ResearchDiscoveryError
+    from mrhub.research.discovery import ResearchDiscoveryError, _DiscoveryLimiter
 
     database_path = tmp_path / "provider-backoff.sqlite3"
     TaskRepository(database_path).initialize()
