@@ -320,3 +320,25 @@ def test_discovery_rate_limit_is_shared_across_limiter_instances(tmp_path):
 
     # Limits are owner-scoped; another authenticated owner has an independent budget.
     second_worker.check(database_path, "owner-b", "hacker_news:automation")
+
+
+def test_discovery_provider_backoff_is_shared_across_owners(tmp_path):
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.research.discovery import _DiscoveryLimiter, ResearchDiscoveryError
+
+    database_path = tmp_path / "provider-backoff.sqlite3"
+    TaskRepository(database_path).initialize()
+    limiter = _DiscoveryLimiter()
+    limiter.set_provider_backoff(database_path, "stack_exchange", 30)
+
+    for owner_id in ("owner-a", "owner-b"):
+        try:
+            limiter.check(
+                database_path, owner_id, "stack_exchange:superuser:help", "stack_exchange"
+            )
+        except ResearchDiscoveryError as exc:
+            assert exc.status_code == 429
+            assert exc.retry_after_seconds is not None
+            assert 1 <= exc.retry_after_seconds <= 30
+        else:
+            raise AssertionError("Provider cooldown must apply across all owners")
