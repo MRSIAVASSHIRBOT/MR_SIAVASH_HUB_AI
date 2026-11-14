@@ -744,4 +744,8 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
             (later, source["source_id"]),
         )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.execute("DELETE FROM auth_users WHERE user_id = 'owner-1'")
+    assert connection.execute("SELECT COUNT(*) FROM research_sources").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM research_evidence").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM research_opportunities").fetchone()[0] == 0
     connection.close()
