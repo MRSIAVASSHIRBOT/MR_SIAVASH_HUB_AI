@@ -46,7 +46,7 @@ The Hub v1 manifest is the canonical contract. Hub owns private memory, tasks, p
 6. Keep EL_AI on the narrow v1 contract and preserve the public Gateway's public-only boundary.
 7. Keep both Backlog repositories discovery-only; the active EL_IR_BOT Worker and its privacy finding require an owner decision, not automatic reactivation or modification.
 
-No secrets, credentials, production data, routes, schedules, deployments, or repository permissions were read or changed by this documentation update.
+No secret values, credentials, production data, routes, schedules, deployments, or repository permissions were changed. Only repository and infrastructure metadata was inspected read-only.
 
 # Project Status Ledger
 
