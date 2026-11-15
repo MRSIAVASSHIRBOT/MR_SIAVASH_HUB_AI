@@ -1148,6 +1148,52 @@ def test_cancel_pending_generation_atomically_cancels_task_and_purges_payload(
     assert audit_count == 1
 
 
+def test_cancel_prepared_generation_records_audit_without_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"p" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-prepared")
+    )
+    generation_id = UUID(accepted["generation_id"])
+
+    cancelled = repository.cancel_pending("owner-a", generation_id)
+
+    assert cancelled["status"] == "cancelled"
+    assert repository.get("owner-a", generation_id)["status"] == "cancelled"
+    with repository.tasks._connection() as connection:
+        rows = connection.execute(
+            """SELECT actor_type, actor_id, metadata_json
+               FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchall()
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert len(rows) == 1
+    assert rows[0]["actor_type"] == "user"
+    assert rows[0]["actor_id"] == "owner-a"
+    assert json.loads(rows[0]["metadata_json"]) == {
+        "cancellation_stage": "before_enqueue",
+        "task_id": None,
+    }
+    assert payload is None
+    assert repository.cancel_pending("owner-a", generation_id) == cancelled
+    with repository.tasks._connection() as connection:
+        count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert count == 1
+
+
 def test_cancel_pending_generation_accepts_already_approved_queued_task(
     tmp_path, monkeypatch
 ):
