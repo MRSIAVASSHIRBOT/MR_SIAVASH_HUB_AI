@@ -1,8 +1,10 @@
 """Deterministic, fail-closed routing policy for hybrid video generation.
 
-This module makes no hardware probes, network calls, provider submissions, or billing
-requests. Callers must supply a measured local-capacity snapshot and explicit
-per-request remote-processing and spending consent.
+`choose_hybrid_route` is a pure decision function: it makes no hardware probes,
+network calls, provider submissions, or billing requests. The separate
+`measure_local_capacity_snapshot` helper reads available RAM through existing
+read-only host diagnostics. Callers must supply a trusted server-side snapshot and
+explicit per-request remote-processing and spending consent.
 """
 from __future__ import annotations
 
