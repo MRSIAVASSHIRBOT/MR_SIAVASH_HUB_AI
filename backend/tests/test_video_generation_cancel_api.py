@@ -1,6 +1,5 @@
 from uuid import uuid4
 
-import pytest
 
 from client_helpers import authenticated_client
 from mrhub.video_intelligence.generation_jobs import (
