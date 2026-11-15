@@ -114,7 +114,7 @@ def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
 
 
 def _encode_telegram_generation_cursor(created_at: str, generation_id: str) -> str:
-    payload = f"{created_at}\\n{generation_id}".encode()
+    payload = f"{created_at}\n{generation_id}".encode()
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
@@ -126,7 +126,7 @@ def _decode_telegram_generation_cursor(cursor: str) -> tuple[str, UUID]:
         payload = base64.b64decode(
             cursor + padding, altchars=b"-_", validate=True
         ).decode("utf-8")
-        created_at, raw_generation_id = payload.split("\\n", 1)
+        created_at, raw_generation_id = payload.split("\n", 1)
         if not created_at or len(created_at) > 64:
             raise ValueError("Invalid generation cursor")
         parsed_at = datetime.fromisoformat(created_at)
