@@ -2373,6 +2373,41 @@
     $("#research-discovery-site-wrap").hidden = !isStack;
   }
 
+  async function loadVideoGenerationProviders() {
+    const container = $("#video-generation-providers-list");
+    const refreshButton = $("#video-generation-providers-refresh");
+    refreshButton.disabled = true;
+    try {
+      const payload = await api("/video-intelligence/generation/providers");
+      const providers = Array.isArray(payload.providers) ? payload.providers : [];
+      container.replaceChildren();
+      for (const provider of providers) {
+        const card = element("article", undefined, "record-card");
+        card.append(element("strong", (provider.provider || "Provider") + " / " + (provider.model || "مدل نامشخص")));
+        const details = [
+          provider.local === true ? "محلی" : "راه‌دور",
+          "نسبت‌ها: " + (Array.isArray(provider.supported_aspect_ratios) ? provider.supported_aspect_ratios.join("، ") : "نامشخص"),
+          "حداکثر مدت: " + (Number.isInteger(provider.max_duration_seconds) ? provider.max_duration_seconds + " ثانیه" : "نامشخص"),
+          "حداکثر وضوح: " + (provider.max_resolution || "نامشخص"),
+        ];
+        card.append(element("p", details.join(" · "), "muted"));
+        container.append(card);
+      }
+      if (providers.length === 0) {
+        renderEmpty(container, "هیچ Provider تولید ویدئویی ثبت نشده است. تولید هوش مصنوعی در این نصب در دسترس نیست؛ رندر محلیِ برش‌مستقیم قابلیت جداگانه‌ای است.");
+        message("#video-generation-providers-message", "Provider در دسترس نیست؛ هیچ Job یا درخواست خارجی اجرا نشده است.", "");
+      } else {
+        message("#video-generation-providers-message", providers.length + " Provider صریحاً پیکربندی‌شده شناسایی شد. این بررسی فقط کاتالوگ را خوانده است؛ هیچ Job آغاز نشده است.", "success");
+      }
+    } catch (error) {
+      container.replaceChildren();
+      renderEmpty(container, "فهرست Providerها قابل دریافت نیست.");
+      message("#video-generation-providers-message", error.message, "error");
+    } finally {
+      refreshButton.disabled = false;
+    }
+  }
+
   async function refreshAll() {
     try {
       await Promise.all([
@@ -2380,6 +2415,7 @@
         loadContentDrafts(),
         loadResourceReplyConfig(),
         loadMediaAssets(),
+        loadVideoGenerationProviders(),
         loadMemory(),
         loadKnowledge(),
         loadTelegramClients(),
@@ -2475,6 +2511,7 @@
   });
   $("#refresh-button").addEventListener("click", refreshAll);
 
+  $("#video-generation-providers-refresh").addEventListener("click", loadVideoGenerationProviders);
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
   $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
   $("#video-render-submit").addEventListener("click", submitVideoRender);
