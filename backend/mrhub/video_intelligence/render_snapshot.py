@@ -18,7 +18,7 @@ from mrhub.video_intelligence.timeline import VideoTimeline
 
 def _canonical_timeline_json(timeline: VideoTimeline) -> str:
     return json.dumps(
-        timeline.model_dump(mode="json"),
+        timeline.model_dump(mode="json", exclude_none=True),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
