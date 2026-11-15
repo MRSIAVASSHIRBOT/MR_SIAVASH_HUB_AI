@@ -150,6 +150,10 @@ This integration does not make the local renderer a full video editor. Rendering
 The provider submission path is intentionally single-shot. If a Worker interruption or adapter exception occurs after entering `submit`, the generation becomes `unknown_outcome` and its encrypted request is retained. An owner can explicitly request reconciliation; the original approval-bound task is requeued, and the Worker calls only `find_by_idempotency_key(generation_id)`. A missing lookup result is not proof that the provider did not accept the request, so the local state remains `unknown_outcome` and automatic resubmission is prohibited. When a provider job is found, the Worker records its opaque job id, polls `get_status`, and streams successful output through the bounded private media sink. Output registration is independently probed and lease-fenced. The provider catalog remains empty by default; this flow is exercised with test adapters until a provider is explicitly configured and reviewed.
 
 
+## Generation history
+
+The authenticated `GET /video-intelligence/generations` endpoint returns a bounded history page for the current owner only. It defaults to 20 records and caps page size at 100. Stable descending ordering uses `created_at` plus `generation_id` as a tiebreaker; the response includes a paired timestamp/UUID cursor only when another page exists. Cursor timestamps must be timezone-aware. The projection deliberately excludes encrypted prompts, provider job identifiers, credentials, and internal task payloads. History reads are metadata-only and never contact a provider.
+
 ## Generation cancellation
 
 The authenticated `DELETE /video-intelligence/generations/{generation_id}` endpoint cancels only prepared or queued requests before provider submission, atomically cancels the linked approval/queue task, and purges the encrypted prompt. If a worker has already claimed the task, or provider work is active/ambiguous, the endpoint returns `409`; the API does not claim that an external provider operation stopped until a provider-side cancellation workflow exists.
