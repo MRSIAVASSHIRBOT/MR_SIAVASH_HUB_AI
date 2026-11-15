@@ -163,6 +163,7 @@ def build_ffmpeg_command(
         ])
     else:
         command.append("-an")
+    command.extend(["-map_metadata", "-1", "-map_chapters", "-1"])
     command.extend(
         [
             "-t",
