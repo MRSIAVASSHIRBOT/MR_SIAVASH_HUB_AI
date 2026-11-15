@@ -6,7 +6,7 @@ subprocess, model download, billing, or rendering operation.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import BinaryIO, Protocol
+from typing import Annotated, BinaryIO, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -90,9 +90,17 @@ class VideoGenerationCapability(BaseModel):
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
     local: bool
-    supported_aspect_ratios: tuple[str, ...]
+    supported_aspect_ratios: tuple[
+        Annotated[str, Field(pattern=r"^(9:16|16:9|1:1|4:5)$")], ...
+    ] = Field(min_length=1)
     max_duration_seconds: int = Field(ge=3, le=60)
     max_resolution: str = Field(pattern=r"^(720p|1080p)$")
+
+    @model_validator(mode="after")
+    def validate_capability(self) -> VideoGenerationCapability:
+        if len(set(self.supported_aspect_ratios)) != len(self.supported_aspect_ratios):
+            raise ValueError("Provider aspect ratios must be unique")
+        return self
 
 
 class VideoGenerationProvider(Protocol):

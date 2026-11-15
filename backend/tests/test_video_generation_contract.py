@@ -153,6 +153,25 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
         registry.register(adapter)
 
 
+def test_generation_capabilities_require_unique_supported_aspect_ratios():
+    base = {
+        "provider": "test",
+        "model": "fixture-v1",
+        "local": True,
+        "supported_aspect_ratios": ("9:16", "16:9"),
+        "max_duration_seconds": 30,
+        "max_resolution": "720p",
+    }
+    assert VideoGenerationCapability(**base).supported_aspect_ratios == ("9:16", "16:9")
+
+    with pytest.raises(ValidationError):
+        VideoGenerationCapability(**{**base, "supported_aspect_ratios": ()})
+    with pytest.raises(ValidationError):
+        VideoGenerationCapability(**{**base, "supported_aspect_ratios": ("2:1",)})
+    with pytest.raises(ValidationError):
+        VideoGenerationCapability(**{**base, "supported_aspect_ratios": ("9:16", "9:16")})
+
+
 def test_generation_registry_rejects_adapter_without_reconciliation_lookup():
     class AdapterWithoutLookup:
         capability = VideoGenerationCapability(
