@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from math import isfinite
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,7 +37,7 @@ class RoutingReason(StrEnum):
 class LocalCapacitySnapshot(BaseModel):
     """Measured capacity from the host running the local adapter; never client supplied."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     available: bool
     available_memory_gb: float | None = Field(default=None, ge=0)
@@ -46,7 +47,7 @@ class LocalCapacitySnapshot(BaseModel):
 class HybridRoutingPolicy(BaseModel):
     """Per-request policy. Remote work is denied unless both consents are explicit."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     remote_processing_approved: bool = False
     remote_spend_approved: bool = False
@@ -61,10 +62,13 @@ class GenerationRouteCandidate:
     estimated_cost_usd: float | None = None
 
     def __post_init__(self) -> None:
-        if self.required_memory_gb < 0 or self.required_vram_gb < 0:
-            raise ValueError("Required local resources cannot be negative")
-        if self.estimated_cost_usd is not None and self.estimated_cost_usd < 0:
-            raise ValueError("Estimated provider cost cannot be negative")
+        resource_values = (self.required_memory_gb, self.required_vram_gb)
+        if any(not isfinite(value) or value < 0 for value in resource_values):
+            raise ValueError("Required local resources must be finite and non-negative")
+        if self.estimated_cost_usd is not None and (
+            not isfinite(self.estimated_cost_usd) or self.estimated_cost_usd < 0
+        ):
+            raise ValueError("Estimated provider cost must be finite and non-negative")
 
 
 class GenerationRouteDecision(BaseModel):
