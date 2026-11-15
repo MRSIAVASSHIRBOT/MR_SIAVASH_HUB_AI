@@ -91,7 +91,7 @@ class CloudflareWorkerSettingsPreviewInput(BaseModel):
         max_length=63,
         pattern=r"^[a-z0-9_][a-z0-9_-]{0,62}$",
     )
-    compatibility_date: str = Field(pattern=r"^\\d{4}-\\d{2}-\\d{2}$")
+    compatibility_date: str = Field(min_length=10, max_length=10)
     bindings: list[BindingMetadata] = Field(max_length=100)
 
     @model_validator(mode="after")
@@ -105,7 +105,10 @@ class CloudflareWorkerSettingsPreviewInput(BaseModel):
         names = [binding.name for binding in self.bindings]
         if len(names) != len(set(names)):
             raise ValueError("proposed binding names must be unique")
-        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", name) for name in names):
+        if any(
+            not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", name)
+            for name in names
+        ):
             raise ValueError("proposed binding names must be safe identifiers")
         return self
 
@@ -202,7 +205,11 @@ def _register_cloudflare_tools(
                 continue
             changes.append({
                 "field": "binding",
-                "action": "add" if old_type is None else "remove" if new_type is None else "change",
+                "action": (
+                    "add" if old_type is None
+                    else "remove" if new_type is None
+                    else "change"
+                ),
                 "name": name,
                 "current": old_type,
                 "proposed": new_type,
@@ -275,7 +282,10 @@ def _register_cloudflare_tools(
     registry.register(
         ToolDefinition(
             name="cloudflare.worker.settings.diff_preview",
-            description="Compare proposed Worker compatibility date and binding metadata with the current settings; never deploys or mutates resources.",
+            description=(
+                "Compare proposed Worker compatibility date and binding metadata with "
+                "current settings; never deploys or mutates resources."
+            ),
             input_model=CloudflareWorkerSettingsPreviewInput,
             output_model=CloudflareWorkerSettingsPreviewOutput,
             handler=preview_worker_settings,
