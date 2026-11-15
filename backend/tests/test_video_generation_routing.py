@@ -201,3 +201,33 @@ def test_local_capacity_snapshot_fails_closed_when_memory_is_unavailable(monkeyp
     snapshot = measure_local_capacity_snapshot()
     assert snapshot.available is False
     assert snapshot.available_memory_gb is None
+
+
+
+def test_unavailable_local_capacity_is_reported_as_unknown_not_insufficient():
+    local = _candidate("local-renderer", local=True, memory=4)
+    decision = choose_hybrid_route(
+        [local],
+        _request(),
+        LocalCapacitySnapshot(available=False),
+        HybridRoutingPolicy(),
+    )
+
+    assert decision.selected is False
+    assert decision.reason is RoutingReason.LOCAL_CAPACITY_UNKNOWN
+
+
+def test_local_candidate_selection_is_stable_independent_of_input_order():
+    larger = _candidate("local-z", local=True, memory=8)
+    smaller = _candidate("local-a", local=True, memory=4)
+    capacity = LocalCapacitySnapshot(available=True, available_memory_gb=12)
+
+    forward = choose_hybrid_route(
+        [larger, smaller], _request(), capacity, HybridRoutingPolicy()
+    )
+    reverse = choose_hybrid_route(
+        [smaller, larger], _request(), capacity, HybridRoutingPolicy()
+    )
+
+    assert forward.provider == reverse.provider == "local-a"
+    assert forward.model == reverse.model == "test-v1"
