@@ -78,6 +78,10 @@ def test_effective_policy_is_checked_without_provider_credentials() -> None:
     assert "build_policy = config.get(\"agent\", {}).get(\"build\", {}).get(\"permission\")" in verification
     assert "opencode --pure run" in run_step
     assert "OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}" in run_step
+    assert 'grep -Fq "API key expired."' in run_step
+    assert "The OpenRouter API key has expired." in run_step
+    assert "Settings > Secrets and variables > Actions" in run_step
+    assert "no patch was generated or published." in run_step
     assert "Add/update tests, but do not attempt to execute them." in run_step
     assert workflow.count("OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}") == 1
 
