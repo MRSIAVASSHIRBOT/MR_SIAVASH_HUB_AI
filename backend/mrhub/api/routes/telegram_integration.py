@@ -259,7 +259,7 @@ def update_telegram_client_scopes(
     payload: ClientScopesUpdateRequest,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
-    """Replace scopes on an active paired client after an explicit owner action."""
+    """Replace active-client scopes; the next paired request reads the updated allowlist."""
     scopes = frozenset(payload.scopes)
     if len(scopes) != len(payload.scopes):
         raise HTTPException(status_code=422, detail="Duplicate Telegram scopes are not allowed")
