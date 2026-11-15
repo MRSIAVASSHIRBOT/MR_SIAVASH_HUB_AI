@@ -228,6 +228,17 @@
     return button;
   }
 
+  const TELEGRAM_SCOPE_OPTIONS = [
+    { value: "status:read", label: "مشاهدهٔ وضعیت Hub" },
+    { value: "tasks:read", label: "مشاهدهٔ وضعیت و تاریخچهٔ وظایف" },
+    { value: "tasks:result", label: "دریافت نتیجهٔ نهایی وظایف" },
+    { value: "tasks:create", label: "ثبت وظیفه از طریق Policy Engine" },
+    { value: "tasks:cancel", label: "لغو وظایف در انتظار" },
+    { value: "memory:search", label: "جست‌وجوی حافظهٔ خصوصی" },
+    { value: "video:read", label: "مشاهدهٔ Providerها، تاریخچه و پیش‌نمایش مسیر ویدئو" },
+    { value: "video:cancel", label: "لغو تولید ویدئوی در انتظار" },
+  ];
+
   async function loadTelegramClients() {
     try {
       const result = await api("/integrations/telegram/clients");
@@ -248,6 +259,67 @@
             ].join(" · ")
           );
           if (client.status === "active") {
+            const scopeEditor = document.createElement("fieldset");
+            scopeEditor.className = "telegram-scope-fieldset field-wide";
+            const legend = element("legend", "مدیریت مجوزهای این اتصال");
+            scopeEditor.append(legend);
+            const grid = document.createElement("div");
+            grid.className = "checkbox-grid";
+            const currentScopes = new Set(Array.isArray(client.scopes) ? client.scopes : []);
+            for (const scope of TELEGRAM_SCOPE_OPTIONS) {
+              const label = document.createElement("label");
+              label.className = "checkbox-row";
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.name = "telegram-client-scopes";
+              checkbox.value = scope.value;
+              checkbox.checked = currentScopes.has(scope.value);
+              label.append(checkbox, document.createTextNode(scope.label));
+              grid.append(label);
+            }
+            scopeEditor.append(grid);
+            scopeEditor.append(element(
+              "p",
+              "تغییر مجوزها از درخواست بعدی این اتصال اعمال می‌شود؛ توکن‌ها دوباره صادر نمی‌شوند.",
+              "muted"
+            ));
+            const saveScopes = actionButton("ذخیرهٔ مجوزها", async () => {
+              const nextScopes = Array.from(
+                scopeEditor.querySelectorAll('input[name="telegram-client-scopes"]:checked')
+              ).map((input) => input.value).sort();
+              if (!nextScopes.length) {
+                message("#telegram-pairing-message", "حداقل یک مجوز باید باقی بماند.", "error");
+                return;
+              }
+              const previousScopes = Array.from(currentScopes).sort();
+              if (nextScopes.join("\n") === previousScopes.join("\n")) {
+                message("#telegram-pairing-message", "مجوزها تغییری نکرده‌اند.");
+                return;
+              }
+              if (!window.confirm(
+                "تمام مجوزهای اتصال با انتخاب فعلی جایگزین شوند؟ این تغییر از درخواست بعدی ربات اعمال می‌شود."
+              )) return;
+              saveScopes.disabled = true;
+              scopeEditor.disabled = true;
+              try {
+                const updated = await api(
+                  "/integrations/telegram/clients/" + encodeURIComponent(client.client_id) + "/scopes",
+                  { method: "PUT", body: { scopes: nextScopes } }
+                );
+                if (!Array.isArray(updated.scopes)
+                  || updated.scopes.slice().sort().join("\n") !== nextScopes.join("\n")) {
+                  throw new Error("پاسخ به‌روزرسانی مجوزها معتبر نیست.");
+                }
+                message("#telegram-pairing-message", "مجوزهای اتصال با موفقیت به‌روزرسانی شدند.", "success");
+                await loadTelegramClients();
+              } catch (error) {
+                message("#telegram-pairing-message", error.message, "error");
+              } finally {
+                saveScopes.disabled = false;
+                scopeEditor.disabled = false;
+              }
+            });
+            card.append(scopeEditor, saveScopes);
             card.append(actionButton("لغو این اتصال", async () => {
               if (!window.confirm("دسترسی این ربات لغو شود؟ تمام Access و Refresh Tokenهای آن باطل می‌شوند.")) return;
               try {
@@ -2421,6 +2493,91 @@
     }
   }
 
+  async function previewVideoGenerationRoute(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const container = $("#video-generation-route-preview-result");
+    const values = new FormData(form);
+    const durationSeconds = Number(values.get("duration_seconds"));
+    const maxRemoteCost = Number(values.get("max_remote_cost_usd"));
+    if (!Number.isInteger(durationSeconds) || durationSeconds < 3 || durationSeconds > 60
+      || !Number.isFinite(maxRemoteCost) || maxRemoteCost < 0 || maxRemoteCost > 10000) {
+      message("#video-generation-route-preview-message", "مدت یا سقف هزینه معتبر نیست.", "error");
+      return;
+    }
+
+    const request = {
+      duration_seconds: durationSeconds,
+      aspect_ratio: String(values.get("aspect_ratio") || ""),
+      resolution: String(values.get("resolution") || ""),
+      remote_processing_approved: values.get("remote_processing_approved") === "on",
+      remote_spend_approved: values.get("remote_spend_approved") === "on",
+      max_remote_cost_usd: maxRemoteCost,
+    };
+    submitButton.disabled = true;
+    container.replaceChildren();
+    message("#video-generation-route-preview-message", "در حال محاسبهٔ مسیر؛ هیچ Jobی آغاز نمی‌شود…");
+    try {
+      const result = await api("/video-intelligence/generation/route-preview", {
+        method: "POST",
+        body: request,
+      });
+      const decision = result && result.decision && typeof result.decision === "object"
+        ? result.decision
+        : {};
+      const reasons = {
+        selected_local: "مسیر محلی با ظرفیت اندازه‌گیری‌شده سازگار است.",
+        selected_hosted: "مسیر راه‌دور با رضایت‌ها و سقف هزینه سازگار است.",
+        no_compatible_provider: "هیچ Provider سازگاری ثبت نشده است.",
+        local_capacity_unknown: "ظرفیت محلی قابل تأیید نیست؛ مسیر محلی مسدود شد.",
+        local_capacity_insufficient: "ظرفیت محلی برای این درخواست کافی نیست.",
+        remote_consent_required: "برای بررسی مسیر راه‌دور، هر دو رضایت پردازش و هزینه لازم‌اند.",
+        remote_cost_unknown: "هزینهٔ Provider راه‌دور قابل برآورد نیست.",
+        remote_budget_exceeded: "هزینهٔ برآوردشده از سقف تعیین‌شده بیشتر است.",
+      };
+      const routeLabels = { local: "محلی", hosted: "راه‌دور" };
+      const details = [];
+      if (decision.route) details.push("مسیر: " + (routeLabels[decision.route] || decision.route));
+      if (decision.provider) details.push("Provider: " + decision.provider);
+      if (decision.model) details.push("مدل: " + decision.model);
+      if (Number.isFinite(decision.estimated_cost_usd)) {
+        details.push("برآورد هزینه: " + decision.estimated_cost_usd.toFixed(2) + " USD");
+      }
+      if (Number.isInteger(result && result.providers_considered)) {
+        details.push("Providerهای بررسی‌شده: " + result.providers_considered);
+      }
+      const card = recordCard(
+        decision.selected === true ? "مسیر قابل انتخاب" : "مسیر قابل انتخاب نیست",
+        reasons[decision.reason] || "دلیل تصمیم در دسترس نیست.",
+        details.join(" · ") || "Provider سازگاری برای این درخواست پیدا نشد."
+      );
+      const previewOnly = result.execution === "not_started"
+        && result.provider_submission_started === false
+        && result.generation_approval_required === true;
+      card.append(element(
+        "p",
+        previewOnly
+          ? "این فقط پیش‌نمایش است؛ هیچ Provider، Job یا هزینه‌ای فعال نشده است. اجرای واقعی به انتخاب و تأیید جداگانه نیاز دارد."
+          : "پاسخ سرور با قرارداد پیش‌نمایشِ بدون اجرا سازگار نیست؛ این نتیجه را مجوز اجرا تلقی نکنید.",
+        "muted"
+      ));
+      container.replaceChildren(card);
+      message(
+        "#video-generation-route-preview-message",
+        previewOnly
+          ? "پیش‌نمایش مسیر تکمیل شد؛ هیچ Job یا درخواست تولیدی آغاز نشد."
+          : "پاسخ پیش‌نمایش قابل تأیید نیست.",
+        previewOnly ? "success" : "error"
+      );
+    } catch (error) {
+      container.replaceChildren();
+      message("#video-generation-route-preview-message", error.message, "error");
+    } finally {
+      submitButton.disabled = false;
+    }
+  }
+
   function renderVideoGenerationHistory() {
     const container = $("#video-generation-history-list");
     const labels = {
@@ -2667,6 +2824,7 @@
   $("#refresh-button").addEventListener("click", refreshAll);
 
   $("#video-generation-providers-refresh").addEventListener("click", loadVideoGenerationProviders);
+  $("#video-generation-route-preview-form").addEventListener("submit", previewVideoGenerationRoute);
   $("#video-generation-history-refresh").addEventListener("click", () => loadVideoGenerationHistory());
   $("#video-generation-history-more").addEventListener("click", () => loadVideoGenerationHistory(true));
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
