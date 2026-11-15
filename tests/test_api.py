@@ -563,3 +563,11 @@ def test_request_id_header_is_validated_and_always_returned() -> None:
     generated = rejected.headers["X-Request-ID"]
     assert generated != "not-a-uuid"
     assert str(UUID(generated)) == generated
+
+    nil_uuid = client.get(
+        "/health",
+        headers={"X-Request-ID": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert nil_uuid.status_code == 200
+    assert nil_uuid.headers["X-Request-ID"] != "00000000-0000-0000-0000-000000000000"
+    assert UUID(nil_uuid.headers["X-Request-ID"]).version == 4
