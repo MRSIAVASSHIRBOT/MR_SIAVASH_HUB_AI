@@ -4,7 +4,8 @@ This addendum supersedes the older scope statement and live snapshots below wher
 
 ### Current portfolio scope
 
-- **Active:** `MR_SIAVASH_HUB_AI` (primary orchestration platform), `MR_SIAVASH_AI` (personal website and public Gateway), `Gshop` (online store), and `MR_SIAVASH_EL_AI` (Telegram interface and public website assistant; private Hub integration remains explicit opt-in).
+- **Active:** `MR_SIAVASH_HUB_AI` (primary orchestration platform), `MR_SIAVASH_AI` (personal website and public Gateway), and `MR_SIAVASH_EL_AI` (Telegram interface and public website assistant; private Hub integration remains explicit opt-in).
+- **Explicitly excluded from this maintenance cycle:** `Gshop` (online store). Per the owner's current instruction, do not inspect, modify, deploy, or otherwise work on Gshop; its separate repository remains untouched.
 - **Discovery-only / Backlog:** `MR_SIAVASH_EL_IR_BOT` and `MR_SIAVASH_IR_H_BOT`. They remain inactive; this maintenance cycle performed discovery only and did not modify or activate them.
 - PostZen daily publishing is a separate automation and is not part of this repository-maintenance workflow.
 
@@ -14,7 +15,7 @@ GitHub owner discovery returned exactly these six repositories. All use `main` a
 
 - Current `main`: `d4222646fd360c7043343aeec86adbe2e4701b5f`.
 - Latest commit: `test(worker): verify emergency-stop claim linearization (#399)` (2026-11-15 06:23 UTC).
-- Live open-pull-request query returned no open PRs.
+- At the time this main-head snapshot was captured, the live open-pull-request query returned no open PRs. This is a point-in-time baseline; the current documentation PR #400 is open against that baseline.
 - Scheduled Continuous Development run [#43699850714](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/43699850714) failed at the OpenCode provider invocation with `API key expired`. Checkout, CLI installation, and effective default-deny policy verification passed; change detection and patch publication were skipped. No patch was generated or published.
 - The provider credential was not read, copied, rotated, or changed. Owner-managed replacement through GitHub Actions Secrets is required; see [Issue #332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332). Do not rerun the privileged publisher until the credential-isolation decision in [Issue #316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) is complete.
 - GitHub branch metadata reports `main.protected=false`; the dedicated protection endpoint is not readable by the connected integration (403). See [Issue #304](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/304).
@@ -24,7 +25,7 @@ GitHub owner discovery returned exactly these six repositories. All use `main` a
 - Hub remains the authority for private memory, tasks, policy, approvals, and audit.
 - The public website Gateway remains public-only and does not receive private Hub credentials or context.
 - EL_AI may access private Hub routes only through owner-initiated pairing and the explicit opt-in boundary.
-- Gshop remains a separate commerce system; it is in the active maintenance portfolio but is not granted Hub or Gateway trust by default.
+- Gshop remains a separate commerce system and is explicitly excluded from this maintenance cycle; no Gshop repository or production resource is in scope. It is not granted Hub or Gateway trust by default.
 
 ### Next gates
 
@@ -60,7 +61,7 @@ This is a live hand-off snapshot. Re-check GitHub metadata and latest-head CI be
 
 MR_SIAVASH_HUB_AI is a local-first, hybrid-capable modular AI workspace for one primary user. Discover and evaluate third-party open-source projects, then integrate them through reviewed adapters and bounded interfaces; do not blindly copy repositories. Prefer free/open-source components without promising every provider or operation is free. No silent cloud fallback.
 
-Historical scope note (superseded by the 2026-11-15 portfolio override): Gshop and MR_SIAVASH_EL_AI are now active maintenance targets; MR_SIAVASH_EL_IR_BOT and MR_SIAVASH_IR_H_BOT remain discovery-only / Backlog. Other paused or unrelated projects remain out of scope.
+Historical scope note (superseded by the 2026-11-15 portfolio override): MR_SIAVASH_EL_AI is an active maintenance target; Gshop is explicitly excluded from current work; MR_SIAVASH_EL_IR_BOT and MR_SIAVASH_IR_H_BOT remain discovery-only / Backlog. Other paused or unrelated projects remain out of scope.
 
 ## Main baseline and merged hardening
 
