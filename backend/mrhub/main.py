@@ -1,5 +1,6 @@
 """FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -45,6 +46,9 @@ from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
 
 
+logger = logging.getLogger("mrhub.request")
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -70,7 +74,7 @@ def create_app() -> FastAPI:
             parsed_request_id = UUID(supplied_request_id)
             if (
                 len(supplied_request_id) != 36
-                or str(parsed_request_id) != supplied_request_id.lower()
+                or str(parsed_request_id) != supplied_request_id
                 or parsed_request_id.version not in range(1, 9)
                 or parsed_request_id.variant != RFC_4122
             ):
@@ -79,7 +83,23 @@ def create_app() -> FastAPI:
         except (AttributeError, TypeError, ValueError):
             request_id = str(uuid4())
 
+        request.state.request_id = request_id
         response = await call_next(request)
+        route = request.scope.get("route")
+        route_template = getattr(route, "path", "unmatched")
+        logger.info(
+            "http_request_completed request_id=%s method=%s route_template=%s status_code=%s",
+            request_id,
+            request.method,
+            route_template,
+            response.status_code,
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "route_template": route_template,
+                "status_code": response.status_code,
+            },
+        )
         response.headers["X-Request-ID"] = request_id
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
