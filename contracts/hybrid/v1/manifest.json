@@ -182,7 +182,7 @@
       "authorization_effect": false,
       "idempotency_effect": false,
       "public_gateway": "independent_correlation_id_only",
-      "note": "EL_AI generates a canonical UUIDv4 for each logical Hub operation. On the single authorized 401 recovery path it refreshes credentials with a separate request ID, then retries the original operation once with its original request ID; it does not perform generic retries or backoff. EL_AI logs only request_id, method, route template, response status, and outcome. The Hub validates canonical lowercase UUIDs, replaces missing or invalid values with UUIDv4, echoes the canonical ID on handled HTTP responses, and logs only its allowlisted fields. Public Gateway calls use an independent ID and are not forwarded to the private Hub.",
+      "note": "EL_AI generates a fresh canonical lowercase UUIDv4 for each outbound Hub HTTP request, including session refresh. The bridge does not automatically retry requests after HTTP 401 and does not perform generic retries or backoff. EL_AI logs only request_id, method, route template, response status, and outcome. The Hub validates canonical lowercase UUIDs, replaces missing or invalid values with UUIDv4, echoes the canonical ID on handled HTTP responses, and logs only its allowlisted fields. Public Gateway calls use an independent ID and are not forwarded to the private Hub.",
       "el_ai_log_event": "hub_request_completed",
       "el_ai_log_fields": [
         "request_id",
