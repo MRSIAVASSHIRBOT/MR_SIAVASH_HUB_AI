@@ -28,13 +28,13 @@ from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.idempotency import IdempotencyConflict, IdempotencyError, IdempotencyRepository
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.memory.repository import MemoryRepository
+from mrhub.security.audit import AuditLogger
+from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationCancellationConflict,
     VideoGenerationJobRepository,
 )
-from mrhub.security.audit import AuditLogger
-from mrhub.security.auth import AuthenticatedUser
-from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"])
 
@@ -114,7 +114,7 @@ def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
 
 
 def _encode_telegram_generation_cursor(created_at: str, generation_id: str) -> str:
-    payload = f"{created_at}\\n{generation_id}".encode("utf-8")
+    payload = f"{created_at}\\n{generation_id}".encode()
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
