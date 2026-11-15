@@ -152,4 +152,4 @@ The provider submission path is intentionally single-shot. If a Worker interrupt
 
 ## Generation cancellation
 
-The authenticated `DELETE /video-intelligence/generations/{generation_id}` endpoint cancels only prepared or queued requests before provider submission, atomically cancels the linked approval/queue task, and purges the encrypted prompt. Active, running, or ambiguous provider jobs return `409`; the API does not claim that an external provider operation stopped until a provider-side cancellation workflow exists.
+The authenticated `DELETE /video-intelligence/generations/{generation_id}` endpoint cancels only prepared or queued requests before provider submission, atomically cancels the linked approval/queue task, and purges the encrypted prompt. If a worker has already claimed the task, or provider work is active/ambiguous, the endpoint returns `409`; the API does not claim that an external provider operation stopped until a provider-side cancellation workflow exists.
