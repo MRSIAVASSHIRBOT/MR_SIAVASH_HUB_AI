@@ -324,6 +324,7 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
     result = handler(task, lease=lease, lease_lost=Event())
 
     assert result["status"] == "completed"
+    assert result["has_audio"] is False
     assert media.get("owner-a", UUID(result["output_asset_id"])) is not None
     assert len(observations) == 1
     with analysis_repository.tasks._connection() as connection:
@@ -1246,10 +1247,8 @@ def test_render_status_exposes_only_verified_output_metadata_for_owner(tmp_path,
     output_asset_id = "22222222-2222-4222-8222-222222222222"
     with jobs.tasks._connection() as connection:
         connection.execute(
-            (
-                "UPDATE video_render_runs SET status = 'completed', "
-                "output_asset_id = ? WHERE render_id = ?",
-            ),
+            "UPDATE video_render_runs SET status = 'completed', "
+            "output_asset_id = ? WHERE render_id = ?",
             (output_asset_id, str(render_id)),
         )
         connection.execute(
