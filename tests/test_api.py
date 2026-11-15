@@ -1,3 +1,5 @@
+from uuid import UUID, uuid4
+
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
@@ -545,3 +547,68 @@ def test_video_render_from_draft_rejects_malformed_saved_timeline(monkeypatch):
     )
 
     assert response.status_code == 422
+
+
+
+def test_request_id_header_is_validated_and_always_returned() -> None:
+    client = TestClient(create_app())
+    supplied = str(uuid4())
+
+    accepted = client.get("/health", headers={"X-Request-ID": supplied})
+    assert accepted.status_code == 200
+    assert accepted.headers["X-Request-ID"] == supplied
+
+    rejected = client.get("/health", headers={"X-Request-ID": "not-a-uuid"})
+    assert rejected.status_code == 200
+    generated = rejected.headers["X-Request-ID"]
+    assert generated != "not-a-uuid"
+    assert str(UUID(generated)) == generated
+
+    uppercase = client.get(
+        "/health",
+        headers={"X-Request-ID": supplied.upper()},
+    )
+    assert uppercase.status_code == 200
+    assert uppercase.headers["X-Request-ID"] != supplied.upper()
+    assert UUID(uppercase.headers["X-Request-ID"]).version == 4
+
+    nil_uuid = client.get(
+        "/health",
+        headers={"X-Request-ID": "00000000-0000-0000-0000-000000000000"},
+    )
+    assert nil_uuid.status_code == 200
+    assert nil_uuid.headers["X-Request-ID"] != "00000000-0000-0000-0000-000000000000"
+    assert UUID(nil_uuid.headers["X-Request-ID"]).version == 4
+
+    not_found = client.get("/__request_id_probe__")
+    assert not_found.status_code == 404
+    assert UUID(not_found.headers["X-Request-ID"]).version == 4
+
+
+
+def test_request_id_is_available_on_request_state_and_logged_privacy_safely(caplog) -> None:
+    from fastapi import Request
+
+    app = create_app()
+
+    @app.get("/__request_id_probe/{probe_id}")
+    async def request_id_probe(request: Request, probe_id: str):
+        return {"request_id": request.state.request_id, "probe_id": probe_id}
+
+    supplied = str(uuid4())
+    with caplog.at_level("INFO", logger="mrhub.request"):
+        response = TestClient(app).get(
+            "/__request_id_probe/private-value?private_query=must-not-be-logged",
+            headers={"X-Request-ID": supplied},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["request_id"] == supplied
+    record = next(record for record in caplog.records if record.name == "mrhub.request")
+    assert record.request_id == supplied
+    assert record.method == "GET"
+    assert record.route_template == "/__request_id_probe/{probe_id}"
+    assert record.status_code == 200
+    assert "private-value" not in caplog.text
+    assert "private_query" not in caplog.text
+    assert "must-not-be-logged" not in caplog.text

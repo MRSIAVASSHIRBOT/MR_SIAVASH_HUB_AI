@@ -2,7 +2,9 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from logging import getLogger
 from pathlib import Path
+from uuid import RFC_4122, UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -64,7 +66,38 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
+        supplied_request_id = request.headers.get("X-Request-ID", "")
+        try:
+            parsed_request_id = UUID(supplied_request_id)
+            if (
+                len(supplied_request_id) != 36
+                or str(parsed_request_id) != supplied_request_id
+                or parsed_request_id.version not in range(1, 9)
+                or parsed_request_id.variant != RFC_4122
+            ):
+                raise ValueError("Request ID must be a canonical UUID")
+            request_id = str(parsed_request_id)
+        except (AttributeError, TypeError, ValueError):
+            request_id = str(uuid4())
+
+        request.state.request_id = request_id
         response = await call_next(request)
+        route = request.scope.get("route")
+        route_template = getattr(route, "path", "unmatched")
+        getLogger("mrhub.request").info(
+            "http_request_completed request_id=%s method=%s route_template=%s status_code=%s",
+            request_id,
+            request.method,
+            route_template,
+            response.status_code,
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "route_template": route_template,
+                "status_code": response.status_code,
+            },
+        )
+        response.headers["X-Request-ID"] = request_id
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")

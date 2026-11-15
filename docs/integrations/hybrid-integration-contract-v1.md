@@ -58,7 +58,17 @@ A future authenticated owner console would require a separately designed server-
 
 The Hub currently uses FastAPI's `detail` error envelope for HTTP exceptions. Consumers should map status codes to safe user-facing messages and must not expose internal exception text or credential material.
 
-End-to-end `X-Request-ID` propagation is **not yet standardized** across all three services. The manifest records this as an explicit gap rather than claiming it exists. A future change must define validation, generation, propagation, logging redaction, and response behavior together, with regression tests at each boundary.
+The private EL_AI ↔ Hub request-correlation contract uses `X-Request-ID` as opaque diagnostic metadata:
+
+- EL_AI generates a fresh canonical lowercase UUIDv4 for each outbound Hub HTTP request. A session-refresh request is a separate operation and receives its own ID. The bridge does not automatically retry Hub requests.
+- Hub accepts canonical lowercase UUID versions 1–8. Missing, malformed, noncanonical, or unsupported values are replaced with a server-generated UUIDv4.
+- Hub stores the canonical value at `request.state.request_id` and returns it in the response `X-Request-ID` header for handled HTTP responses.
+- Hub completion logs contain only `request_id`, HTTP `method`, route template, and `status_code`.
+- EL_AI emits `hub_request_completed` with the same `request_id`, HTTP `method`, route template, `status_code`, and an `outcome` label. Dynamic task IDs are replaced by a route placeholder.
+- Neither side logs raw paths, query strings, request bodies, Telegram identities, task/client identifiers, or credentials.
+- Request IDs do not grant permissions and are not idempotency keys.
+
+The public website Gateway remains a separate public-only path. Its outbound requests may carry an independently generated request ID, but this does not create a route to the private Hub or imply shared request context.
 
 ## 5. Compatibility and versioning
 

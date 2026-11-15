@@ -156,8 +156,42 @@
   "observability": {
     "request_id": {
       "header": "X-Request-ID",
-      "status": "not_yet_standardized",
-      "note": "Do not assume end-to-end propagation across all three services until a separately tested contract change is merged."
+      "status": "standardized",
+      "format": "canonical_lowercase_uuid",
+      "accepted_uuid_versions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "input_case": "lowercase_only",
+      "server_fallback": "generate_uuid4_when_missing_or_invalid",
+      "response": "echo_canonical_request_id",
+      "request_state": "request.state.request_id",
+      "log_event": "http_request_completed",
+      "log_fields": [
+        "request_id",
+        "method",
+        "route_template",
+        "status_code"
+      ],
+      "authorization_effect": false,
+      "idempotency_effect": false,
+      "public_gateway": "independent_correlation_id_only",
+      "note": "EL_AI generates a canonical UUIDv4 for each logical Hub operation. On the single authorized 401 recovery path it refreshes credentials with a separate request ID, then retries the original operation once with its original request ID; it does not perform generic retries or backoff. EL_AI logs only request_id, method, route template, response status, and outcome. The Hub validates canonical lowercase UUIDs, replaces missing or invalid values with UUIDv4, echoes the canonical ID on handled HTTP responses, and logs only its allowlisted fields. Public Gateway calls use an independent ID and are not forwarded to the private Hub.",
+      "el_ai_log_event": "hub_request_completed",
+      "el_ai_log_fields": [
+        "request_id",
+        "method",
+        "route_template",
+        "status_code",
+        "outcome"
+      ],
+      "retry_policy": "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
     },
     "secrets_in_logs_or_urls": false
   },
