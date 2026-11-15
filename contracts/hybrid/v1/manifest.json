@@ -1,0 +1,169 @@
+{
+  "contract_id": "mr-siavash-hybrid-integration",
+  "contract_version": "1.0.0",
+  "status": "approved",
+  "owners": {
+    "hub": "private-state-policy-and-agent-control-plane",
+    "el_ai": "telegram-transport-identity-and-command-routing",
+    "website_gateway": "public-knowledge-and-public-support"
+  },
+  "hub_telegram": {
+    "base_path": "/integrations/telegram",
+    "authentication_headers": {
+      "authorization": "Bearer <scoped_access_token>",
+      "telegram_user_id": "X-Telegram-User-Id"
+    },
+    "scopes": [
+      "memory:search",
+      "status:read",
+      "tasks:cancel",
+      "tasks:create",
+      "tasks:read",
+      "tasks:result"
+    ],
+    "default_scopes": [
+      "status:read"
+    ],
+    "lifetimes_seconds": {
+      "access_token": 900,
+      "refresh_token": 2592000,
+      "pairing_challenge": 300
+    },
+    "endpoints": [
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/pairing-challenges",
+        "auth_mode": "hub_owner_session",
+        "required_scope": null,
+        "purpose": "Create a short-lived, owner-initiated pairing challenge bound to Telegram user and client identifiers."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/exchange",
+        "auth_mode": "single_use_pairing_code",
+        "required_scope": null,
+        "purpose": "Exchange a valid pairing challenge for scoped client credentials."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/refresh",
+        "auth_mode": "refresh_token_and_telegram_user_id",
+        "required_scope": null,
+        "purpose": "Rotate the paired client's access credential."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/clients",
+        "auth_mode": "hub_owner_session",
+        "required_scope": null,
+        "purpose": "List the authenticated owner's paired Telegram clients."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/clients/{client_id}/revoke",
+        "auth_mode": "hub_owner_session",
+        "required_scope": null,
+        "purpose": "Revoke one of the authenticated owner's paired Telegram clients."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/status",
+        "auth_mode": "paired_bearer",
+        "required_scope": "status:read",
+        "purpose": "Return the authenticated paired client's status and granted scopes."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/tasks",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:read",
+        "purpose": "List only tasks owned by the paired client, with bounded cursor pagination and optional status filtering."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/tasks/{task_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:read",
+        "purpose": "Read one task submitted by the same paired client."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/tasks/{task_id}/events",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:read",
+        "purpose": "Read the bounded audit timeline for a task submitted by the same paired client."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/tasks/{task_id}/result",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:result",
+        "purpose": "Read a bounded terminal result for a task submitted by the same paired client."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/tasks/{task_id}/cancel",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:cancel",
+        "purpose": "Cancel only an owned task that is still queued or waiting for approval."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/tasks",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:create",
+        "purpose": "Submit a task through Hub policy evaluation and idempotency reservation."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/memory/search",
+        "auth_mode": "paired_bearer",
+        "required_scope": "memory:search",
+        "purpose": "Search owner-scoped Hub memory through the paired client."
+      }
+    ],
+    "request_constraints": {
+      "task_list_limit": {
+        "minimum": 1,
+        "maximum": 50
+      },
+      "task_cursor_max_length": 512,
+      "task_history_limit": {
+        "minimum": 1,
+        "maximum": 50
+      },
+      "task_result_max_bytes": 32768,
+      "task_create_idempotency_header": "Idempotency-Key"
+    },
+    "error_response": "FastAPI HTTPException detail envelope; consumers must avoid exposing private exception details."
+  },
+  "website_public_gateway": {
+    "source": "MR_SIAVASH_AI/cloudflare/gateway/src/index.js",
+    "data_classification": "public_only",
+    "may_call_private_hub": false,
+    "may_receive_hub_credentials": false,
+    "purpose": "Serve public website knowledge and public support workflows."
+  },
+  "trust_boundaries": {
+    "shared_database": false,
+    "website_gateway_may_call_private_hub": false,
+    "browser_may_hold_hub_credentials": false,
+    "public_gateway_data_classification": "public_only",
+    "el_ai_must_use_scoped_hub_api": true,
+    "el_ai_must_not_read_hub_database_directly": true,
+    "owner_pairing_required_for_private_operations": true
+  },
+  "observability": {
+    "request_id": {
+      "header": "X-Request-ID",
+      "status": "not_yet_standardized",
+      "note": "Do not assume end-to-end propagation across all three services until a separately tested contract change is merged."
+    },
+    "secrets_in_logs_or_urls": false
+  },
+  "compatibility_policy": {
+    "additive_change": "May be introduced within v1 when existing request and response semantics remain unchanged.",
+    "breaking_change": "Requires a new major contract directory and coordinated consumer migration.",
+    "canonical_source": "MR_SIAVASH_HUB_AI/contracts/hybrid/v1/manifest.json"
+  }
+}
