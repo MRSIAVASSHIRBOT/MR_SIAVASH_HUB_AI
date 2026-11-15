@@ -109,7 +109,7 @@ endpoint remains unavailable until an adapter is separately reviewed and configu
 
 A successful provider result is not proof that a valid video file exists. Before finalization, the output must match an internal media storage key, remain within the 100 MB budget, and pass an independent local FFprobe check. Measured duration and dimensions must agree with provider metadata. The selected provider, model, and provider job ID are checked.
 
-The MP4 is registered as a new private media asset, while the job success state, asset reference, and measured metadata are committed in one SQLite transaction. Repeated finalization for the same successful job and asset is idempotent. This is a finalization primitive only; no provider adapter, download worker, or public generation endpoint is enabled.
+The MP4 is registered as a new private media asset, while the job success state, asset reference, and measured metadata are committed in one SQLite transaction. Repeated finalization for the same successful job and asset is idempotent. The provider-neutral generation API and lease-fenced Worker orchestration are implemented, including bounded output download and this finalization path. However, no production provider adapter is registered by default: generation remains unavailable until an adapter is explicitly reviewed and configured. The generation API is authenticated and does not expose an unauthenticated public generation endpoint.
 
 
 ## Bounded provider-output sink
