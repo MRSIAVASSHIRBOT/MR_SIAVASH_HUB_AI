@@ -255,10 +255,10 @@ def cancel_video_generation(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": "provider_cancellation_unavailable",
+                "code": "generation_cancellation_conflict",
                 "message": (
-                    "This generation is active or has an ambiguous provider outcome; "
-                    "provider-side cancellation workflow is not available for this state."
+                    "This generation is no longer safely pending; a worker may have "
+                    "claimed it or provider work may be active or ambiguous."
                 ),
             },
         ) from exc
