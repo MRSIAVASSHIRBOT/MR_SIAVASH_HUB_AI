@@ -228,15 +228,18 @@ def test_command_preserves_verified_source_audio_and_fills_muted_clips_with_sile
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
     output = tmp_path / "render.partial.mp4"
+    timeline_payload = _timeline_with_audio(mute_second=True).model_dump(mode="json")
+    timeline_payload["video_track"][0]["source_audio_volume"] = 1.5
+    timeline = VideoTimeline.model_validate(timeline_payload)
     command = build_ffmpeg_command(
         ffmpeg_binary="/usr/bin/ffmpeg",
-        timeline=_timeline_with_audio(mute_second=True),
+        timeline=timeline,
         source_paths={"asset-a": source},
         temporary_output=output,
     )
     graph = command[command.index("-filter_complex") + 1]
     assert "[0:a:0]" in graph
-    assert "volume=1.000" in graph
+    assert "volume=1.500" in graph
     assert "anullsrc=r=48000:cl=stereo" in graph
     assert "concat=n=2:v=0:a=1[outa]" in graph
     assert "[outa]" in command
