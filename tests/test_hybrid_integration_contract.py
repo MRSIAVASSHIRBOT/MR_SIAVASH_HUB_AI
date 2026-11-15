@@ -89,4 +89,22 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert boundaries["website_gateway_may_call_private_hub"] is False
     assert boundaries["browser_may_hold_hub_credentials"] is False
     assert boundaries["public_gateway_data_classification"] == "public_only"
-    assert contract["observability"]["request_id"]["status"] == "not_yet_standardized"
+    request_id = contract["observability"]["request_id"]
+    assert request_id["status"] == "standardized"
+    assert request_id["header"] == "X-Request-ID"
+    assert request_id["format"] == "canonical_lowercase_uuid"
+    assert request_id["accepted_uuid_versions"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert request_id["server_fallback"] == "generate_uuid4_when_missing_or_invalid"
+    assert request_id["response"] == "echo_canonical_request_id"
+    assert request_id["request_state"] == "request.state.request_id"
+    assert request_id["log_event"] == "http_request_completed"
+    assert request_id["log_fields"] == [
+        "request_id", "method", "route_template", "status_code"
+    ]
+    assert request_id["authorization_effect"] is False
+    assert request_id["idempotency_effect"] is False
+    assert request_id["public_gateway"] == "independent_correlation_id_only"
+    assert request_id["el_ai_log_event"] == "hub_request_completed"
+    assert request_id["el_ai_log_fields"] == [
+        "request_id", "method", "route_template", "status_code", "outcome"
+    ]
