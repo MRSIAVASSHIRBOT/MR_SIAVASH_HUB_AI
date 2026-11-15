@@ -60,7 +60,7 @@ The Hub currently uses FastAPI's `detail` error envelope for HTTP exceptions. Co
 
 The private EL_AI ↔ Hub request-correlation contract uses `X-Request-ID` as opaque diagnostic metadata:
 
-- EL_AI generates a fresh canonical lowercase UUIDv4 for each outbound Hub HTTP request. A session-refresh request is a separate operation and receives its own ID. The bridge does not automatically retry Hub requests.
+- EL_AI generates a canonical lowercase UUIDv4 for each logical Hub operation. If an authorized operation receives HTTP 401, EL_AI performs one bounded recovery: it refreshes credentials through a separate request with its own request ID, then replays the original operation at most once with the original request ID. A second 401 is surfaced to the caller; no generic retries or backoff are performed.
 - Hub accepts canonical lowercase UUID versions 1–8. Missing, malformed, noncanonical, or unsupported values are replaced with a server-generated UUIDv4.
 - Hub stores the canonical value at `request.state.request_id` and returns it in the response `X-Request-ID` header for handled HTTP responses.
 - Hub completion logs contain only `request_id`, HTTP `method`, route template, and `status_code`.
@@ -75,7 +75,7 @@ The public website Gateway remains a separate public-only path. Its outbound req
 - Additive fields or endpoints may be added within v1 only if existing semantics remain unchanged.
 - Changes to authentication, ownership, scope meaning, token lifetimes, or existing request/response semantics are breaking and require a new major contract version.
 - The manifest is the machine-readable source of truth; this document explains the security and operational intent.
-- Consumer repositories should pin their compatibility tests to the published v1 manifest once this baseline is merged.
+- Consumer repositories should pin their compatibility tests to the published v1 manifest; this approved v1 baseline is now merged to the Hub default branch.
 
 ## 6. Operational status
 
