@@ -631,8 +631,8 @@ class VideoGenerationJobRepository:
         """Return a bounded, stable, owner-scoped generation history page."""
         if not owner_user_id or len(owner_user_id) > 200:
             raise ValueError("Generation owner identifier is invalid")
-        if not 1 <= limit <= 100:
-            raise ValueError("Generation history limit must be between 1 and 100")
+        if not 1 <= limit <= 101:
+            raise ValueError("Generation history limit must be between 1 and 101")
         if (before_created_at is None) != (before_generation_id is None):
             raise ValueError("Both generation history cursor fields are required")
 
