@@ -85,7 +85,7 @@ class VideoGenerationResult(BaseModel):
 
 
 class VideoGenerationCapability(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
@@ -95,12 +95,25 @@ class VideoGenerationCapability(BaseModel):
     ] = Field(min_length=1)
     max_duration_seconds: int = Field(ge=3, le=60)
     max_resolution: str = Field(pattern=r"^(720p|1080p)$")
+    # Missing local resource requirements are treated as unknown by the router.
+    required_memory_gb: float | None = Field(default=None, ge=0)
+    required_vram_gb: float = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_capability(self) -> VideoGenerationCapability:
         if len(set(self.supported_aspect_ratios)) != len(self.supported_aspect_ratios):
             raise ValueError("Provider aspect ratios must be unique")
         return self
+
+
+
+
+class VideoGenerationCostEstimator(Protocol):
+    """Optional side-effect-free cost estimator for read-only route previews."""
+
+    def estimate_cost_usd(self, request: VideoGenerationRequest) -> float | None:
+        """Return a local estimate only; never contact a provider or reserve/bill."""
+        ...
 
 
 class VideoGenerationProvider(Protocol):

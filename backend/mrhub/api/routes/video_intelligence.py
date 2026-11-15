@@ -25,6 +25,10 @@ from mrhub.media.repository import MediaAssetRepository
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.edit_spec import EditSpecification
 from mrhub.video_intelligence.generation import VideoGenerationRequest
+from mrhub.video_intelligence.generation_routing import (
+    GenerationRoutePreviewRequest,
+    preview_hybrid_route,
+)
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationCancellationConflict,
     VideoGenerationConflict,
@@ -133,6 +137,15 @@ def list_video_generation_providers(
         "reason_code": None if providers else "provider_unavailable",
         "execution": "not_started",
     }
+
+
+@router.post("/generation/route-preview")
+def preview_video_generation_route(
+    payload: GenerationRoutePreviewRequest,
+    _user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Preview a local-first route without contacting providers or starting work."""
+    return preview_hybrid_route(payload)
 
 
 
