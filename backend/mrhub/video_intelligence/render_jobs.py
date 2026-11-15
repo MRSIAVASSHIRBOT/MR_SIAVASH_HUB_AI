@@ -106,7 +106,10 @@ class VideoRenderJobRepository:
                 raise ValueError("analysis_timeline_unavailable") from exc
             digest = hashlib.sha256(
                 json.dumps(
-                    {"analysis_id": str(analysis_id), "timeline": timeline.model_dump(mode="json", exclude_none=True)},
+                    {
+                        "analysis_id": str(analysis_id),
+                        "timeline": timeline.model_dump(mode="json", exclude_none=True),
+                    },
                     sort_keys=True,
                     separators=(",", ":"),
                 ).encode("utf-8")
@@ -237,14 +240,26 @@ class VideoRenderJobRepository:
                 if isinstance(has_audio, bool):
                     metadata["has_audio"] = has_audio
                 duration = task_result.get("duration_seconds")
-                if isinstance(duration, (int, float)) and not isinstance(duration, bool) and 0 < duration <= 60:
+                if (
+                    isinstance(duration, (int, float))
+                    and not isinstance(duration, bool)
+                    and 0 < duration <= 60
+                ):
                     metadata["duration_seconds"] = float(duration)
                 for key in ("width", "height"):
                     value = task_result.get(key)
-                    if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 1920:
+                    if (
+                        isinstance(value, int)
+                        and not isinstance(value, bool)
+                        and 1 <= value <= 1920
+                    ):
                         metadata[key] = value
                 file_size = task_result.get("file_size")
-                if isinstance(file_size, int) and not isinstance(file_size, bool) and 0 < file_size <= 100_000_000:
+                if (
+                    isinstance(file_size, int)
+                    and not isinstance(file_size, bool)
+                    and 0 < file_size <= 100_000_000
+                ):
                     metadata["file_size"] = file_size
                 if metadata:
                     result["output_metadata"] = metadata
