@@ -2380,6 +2380,9 @@
     try {
       const payload = await api("/video-intelligence/generation/providers");
       const providers = Array.isArray(payload.providers) ? payload.providers : [];
+      const unavailable = payload.generation_available === false
+        || payload.reason_code === "provider_unavailable"
+        || providers.length === 0;
       container.replaceChildren();
       for (const provider of providers) {
         const card = element("article", undefined, "record-card");
@@ -2393,7 +2396,8 @@
         card.append(element("p", details.join(" · "), "muted"));
         container.append(card);
       }
-      if (providers.length === 0) {
+      if (unavailable) {
+        container.replaceChildren();
         renderEmpty(container, "هیچ Provider تولید ویدئویی ثبت نشده است. تولید هوش مصنوعی در این نصب در دسترس نیست؛ رندر محلیِ برش‌مستقیم قابلیت جداگانه‌ای است.");
         message("#video-generation-providers-message", "Provider در دسترس نیست؛ هیچ Job یا درخواست خارجی اجرا نشده است.", "");
       } else {
