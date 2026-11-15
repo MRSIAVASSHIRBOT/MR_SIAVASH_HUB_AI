@@ -1,8 +1,8 @@
 """FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-import logging
 from pathlib import Path
 from uuid import RFC_4122, UUID, uuid4
 
