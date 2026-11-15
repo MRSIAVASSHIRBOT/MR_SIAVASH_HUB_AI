@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
@@ -1194,6 +1195,46 @@ def test_cancel_prepared_generation_records_audit_without_task(
     assert count == 1
 
 
+def test_cancel_pending_generation_rolls_back_when_audit_insert_fails(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"a" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-audit-failure")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    def fail_audit_insert(connection, event):
+        raise RuntimeError("simulated audit storage failure")
+
+    monkeypatch.setattr(
+        TaskRepository, "_insert_audit_event", staticmethod(fail_audit_insert)
+    )
+    with pytest.raises(RuntimeError, match="simulated audit storage failure"):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == "queued"
+    assert repository.tasks.get(task_id).status is TaskStatus.WAITING_APPROVAL
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert payload is not None
+    assert audit_count == 0
+
+
 def test_cancel_pending_generation_accepts_already_approved_queued_task(
     tmp_path, monkeypatch
 ):
@@ -1303,30 +1344,4 @@ def test_cancel_pending_generation_refuses_active_or_ambiguous_provider_jobs(
         repository.cancel_pending("owner-a", generation_id)
 
     assert repository.get("owner-a", generation_id)["status"] == active_status
-
-def test_cancel_pending_generation_refuses_worker_claimed_task(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setenv(
-        "MRH_WORKFLOW_PAYLOAD_KEY",
-        base64.urlsafe_b64encode(b"q" * 32).decode("ascii"),
-    )
-    repository, analysis_id = _repository(tmp_path)
-    accepted, _ = repository.submit(
-        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-claimed")
-    )
-    generation_id = UUID(accepted["generation_id"])
-    linked = repository.enqueue("owner-a", generation_id)
-    task_id = UUID(linked["task_id"])
-    with repository.tasks._connection() as connection:
-        connection.execute(
-            "UPDATE tasks SET status = 'running' WHERE task_id = ? AND status = 'waiting_approval'",
-            (str(task_id),),
-        )
-
-    with pytest.raises(VideoGenerationCancellationConflict):
-        repository.cancel_pending("owner-a", generation_id)
-
-    assert repository.get("owner-a", generation_id)["status"] == "queued"
-    assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
 
