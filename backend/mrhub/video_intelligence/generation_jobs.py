@@ -592,6 +592,27 @@ class VideoGenerationJobRepository:
                    WHERE generation_id = ? AND owner_user_id = ?""",
                 (str(generation_id), owner_user_id),
             )
+            TaskRepository._insert_audit_event(
+                connection,
+                {
+                    "event_id": str(uuid4()),
+                    "event_type": "video_generation.cancelled",
+                    "outcome": "success",
+                    "subject_type": "video_generation",
+                    "subject_id": str(generation_id),
+                    "actor_type": "user",
+                    "actor_id": owner_user_id,
+                    "created_at": now,
+                    "metadata": {
+                        "task_id": str(row["task_id"]) if row["task_id"] is not None else None,
+                        "cancellation_stage": (
+                            "before_enqueue"
+                            if generation_status == "prepared"
+                            else "before_provider_submission"
+                        ),
+                    },
+                },
+            )
 
         return {
             "generation_id": str(generation_id),
