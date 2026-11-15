@@ -1,4 +1,5 @@
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -794,4 +795,75 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     assert connection.execute("SELECT COUNT(*) FROM research_sources").fetchone()[0] == 0
     assert connection.execute("SELECT COUNT(*) FROM research_evidence").fetchone()[0] == 0
     assert connection.execute("SELECT COUNT(*) FROM research_opportunities").fetchone()[0] == 0
+    connection.close()
+
+
+
+def test_current_schema_validation_uses_read_only_fast_path(tmp_path):
+    connection = connect(tmp_path / "current-fast-path.sqlite3")
+    migrator = SchemaMigrator(connection)
+    assert migrator.migrate() == [migration.version for migration in MIGRATIONS]
+
+    statements = []
+    connection.set_trace_callback(statements.append)
+    assert migrator.migrate() == []
+    connection.set_trace_callback(None)
+
+    assert not any(
+        statement.strip().upper().startswith("BEGIN IMMEDIATE")
+        for statement in statements
+    )
+    connection.close()
+
+
+def test_concurrent_initializers_apply_each_migration_once(tmp_path):
+    database_path = tmp_path / "concurrent-initializers.sqlite3"
+
+    def initialize(_worker):
+        connection = sqlite3.connect(database_path, timeout=15.0)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        try:
+            return SchemaMigrator(connection).migrate()
+        finally:
+            connection.close()
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(initialize, range(4)))
+
+    applied_versions = [version for result in results for version in result]
+    assert sorted(applied_versions) == [migration.version for migration in MIGRATIONS]
+    assert len(applied_versions) == len(set(applied_versions))
+
+    connection = connect(database_path)
+    recorded = [
+        row["version"]
+        for row in connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        )
+    ]
+    assert recorded == [migration.version for migration in MIGRATIONS]
+    connection.close()
+
+
+def test_migration_history_with_a_gap_fails_closed(tmp_path):
+    connection = connect(tmp_path / "migration-history-gap.sqlite3")
+    connection.execute(
+        """CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            checksum TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        )"""
+    )
+    migration = MIGRATIONS[1]
+    connection.execute(
+        """INSERT INTO schema_migrations (version, name, checksum, applied_at)
+        VALUES (?, ?, ?, ?)""",
+        (migration.version, migration.name, migration.checksum, "2026-01-01T00:00:00+00:00"),
+    )
+    connection.commit()
+
+    with pytest.raises(MigrationError, match="strictly increasing"):
+        SchemaMigrator(connection).migrate()
     connection.close()
