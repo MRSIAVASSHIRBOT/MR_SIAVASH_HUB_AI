@@ -485,6 +485,48 @@
             <div id="video-generation-providers-list" class="record-list"></div>
           </section>
 
+          <section class="video-generation-route-preview" aria-labelledby="video-generation-route-preview-heading">
+            <div class="section-heading">
+              <h4 id="video-generation-route-preview-heading">پیش‌نمایش مسیر تولید ترکیبی</h4>
+            </div>
+            <p class="muted">این ابزار فقط سازگاری Provider محلی یا راه‌دور، ظرفیت و سقف هزینه را بررسی می‌کند. رضایت‌های این فرم فقط برای همین پیش‌نمایش‌اند؛ هیچ Prompt یا فایل رسانه‌ای ارسال نمی‌شود و اجرای واقعی همچنان به انتخاب و تأیید جداگانه نیاز دارد.</p>
+            <form id="video-generation-route-preview-form" class="form-grid">
+              <label>مدت هدف (ثانیه)
+                <input name="duration_seconds" type="number" min="3" max="60" step="1" value="10" required>
+              </label>
+              <label>نسبت تصویر
+                <select name="aspect_ratio">
+                  <option value="9:16">عمودی 9:16</option>
+                  <option value="16:9">افقی 16:9</option>
+                  <option value="1:1">مربع 1:1</option>
+                  <option value="4:5">پرتره 4:5</option>
+                </select>
+              </label>
+              <label>وضوح هدف
+                <select name="resolution">
+                  <option value="720p">720p</option>
+                  <option value="1080p">1080p</option>
+                </select>
+              </label>
+              <label>سقف هزینهٔ راه‌دور (USD)
+                <input name="max_remote_cost_usd" type="number" min="0" max="10000" step="0.01" value="0" required>
+              </label>
+              <fieldset class="telegram-scope-fieldset field-wide">
+                <legend>رضایت‌های مستقل برای بررسی مسیر راه‌دور</legend>
+                <div class="checkbox-grid">
+                  <label class="checkbox-row"><input type="checkbox" name="remote_processing_approved"> اجازهٔ پردازش راه‌دور برای این پیش‌نمایش</label>
+                  <label class="checkbox-row"><input type="checkbox" name="remote_spend_approved"> اجازهٔ بررسی گزینه‌های دارای هزینه برای این پیش‌نمایش</label>
+                </div>
+                <p class="muted">فعال‌کردن این گزینه‌ها هیچ سرویس بیرونی را فراخوانی یا هزینه‌ای ایجاد نمی‌کند؛ فقط نتیجهٔ سیاست مسیریابی را تغییر می‌دهد.</p>
+              </fieldset>
+              <div class="button-row field-wide">
+                <button id="video-generation-route-preview-submit" class="button button-secondary" type="submit">پیش‌نمایش مسیر</button>
+              </div>
+            </form>
+            <p id="video-generation-route-preview-message" class="message" role="status" aria-live="polite"></p>
+            <div id="video-generation-route-preview-result" class="record-list"></div>
+          </section>
+
           <section class="video-generation-history" aria-labelledby="video-generation-history-heading">
             <div class="section-heading">
               <h4 id="video-generation-history-heading">تاریخچه Jobهای تولید ویدئو</h4>
@@ -625,8 +667,10 @@
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="tasks:create"> ثبت وظیفه از طریق Policy Engine</label>
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="tasks:cancel"> لغو وظایف در صف یا منتظر تأیید</label>
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="memory:search"> جست‌وجوی حافظهٔ خصوصی</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:read"> مشاهدهٔ Providerها، تاریخچه و پیش‌نمایش مسیر ویدئو</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:cancel"> لغو تولید ویدئوی در انتظار</label>
             </div>
-            <p class="muted">پیش‌فرض فقط مشاهدهٔ وضعیت Hub است. دریافت نتیجه و لغو وظیفه مجوزهای مستقل‌اند و فقط در صورت نیاز فعال شوند. اجرای Agent، تأیید عملیات، انتشار محتوا و عملیات مخرب در این نسخه مجوز ندارند؛ وظایف پرخطر همچنان نیازمند تأیید مالک هستند.</p>
+            <p class="muted">پیش‌فرض فقط مشاهدهٔ وضعیت Hub است. دریافت نتیجه، لغو وظیفه، مشاهدهٔ ویدئو و لغو تولید ویدئو مجوزهای مستقل‌اند و فقط در صورت نیاز فعال شوند. اجرای Agent، تأیید عملیات، انتشار محتوا و عملیات مخرب در این نسخه مجوز ندارند؛ وظایف پرخطر همچنان نیازمند تأیید مالک هستند.</p>
           </fieldset>
           <div class="button-row field-wide">
             <button class="button button-primary" type="submit">ساخت کد اتصال یک‌بارمصرف</button>
