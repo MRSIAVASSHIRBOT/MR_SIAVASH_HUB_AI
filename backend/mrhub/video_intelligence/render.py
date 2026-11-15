@@ -198,7 +198,7 @@ def render_video_timeline(
     ffprobe_binary: str | None = None,
     timeout_seconds: int = MAX_RENDER_TIMEOUT_SECONDS,
 ) -> VideoRenderResult:
-    """Render and verify a silent MP4, publishing it only after successful probing.
+    """Render and verify an MP4, publishing it only after successful probing.
 
     The caller must resolve every source asset through the authenticated owner's
     media repository immediately before calling this function. This function
@@ -292,7 +292,8 @@ def render_video_timeline(
                     "-max_alloc",
                     "33554432",
                     "-show_entries",
-                    "format=format_name,duration:stream=codec_type,codec_name,width,height,sample_rate,channels",
+                    "format=format_name,duration:"
+                    "stream=codec_type,codec_name,width,height,sample_rate,channels",
                     "-of",
                     "json",
                     str(temporary_output),
@@ -319,7 +320,9 @@ def render_video_timeline(
             audio_streams = [
                 stream for stream in streams if stream.get("codec_type") == "audio"
             ]
-            expected_audio = any(clip.include_source_audio is True for clip in validated.video_track)
+            expected_audio = any(
+                clip.include_source_audio is True for clip in validated.video_track
+            )
             audio_valid = len(audio_streams) == (1 if expected_audio else 0)
             if expected_audio and len(audio_streams) == 1:
                 audio = audio_streams[0]
