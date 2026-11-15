@@ -12,6 +12,7 @@ from mrhub.video_intelligence.generation_routing import (
     LocalCapacitySnapshot,
     RoutingReason,
     choose_hybrid_route,
+    measure_local_capacity_snapshot,
 )
 
 
@@ -173,3 +174,30 @@ def test_routing_rejects_non_finite_capacity_cost_and_resource_values():
         _candidate("bad-cost", local=False, cost=math.inf)
     with pytest.raises(ValueError):
         _candidate("bad-memory", local=True, memory=math.nan)
+
+
+def test_local_capacity_snapshot_uses_existing_read_only_hardware_diagnostics(monkeypatch):
+    from mrhub.diagnostics import hardware
+
+    monkeypatch.setattr(
+        hardware,
+        "collect_hardware_report",
+        lambda: {"memory": {"available_gib": 6.5}},
+    )
+    snapshot = measure_local_capacity_snapshot()
+    assert snapshot.available is True
+    assert snapshot.available_memory_gb == 6.5
+    assert snapshot.available_vram_gb is None
+
+
+def test_local_capacity_snapshot_fails_closed_when_memory_is_unavailable(monkeypatch):
+    from mrhub.diagnostics import hardware
+
+    monkeypatch.setattr(
+        hardware,
+        "collect_hardware_report",
+        lambda: {"memory": {"available_gib": None}},
+    )
+    snapshot = measure_local_capacity_snapshot()
+    assert snapshot.available is False
+    assert snapshot.available_memory_gb is None
