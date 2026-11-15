@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -75,6 +76,8 @@ def test_command_uses_numeric_cut_data_and_silent_output(tmp_path):
     for position in input_positions:
         assert command[position - 2 : position] == ["-protocol_whitelist", "file,pipe"]
     assert "-an" in command
+    assert command[command.index("-map_metadata") + 1] == "-1"
+    assert command[command.index("-map_chapters") + 1] == "-1"
     assert "-map" in command
     assert "concat=n=2:v=1:a=0[outv]" in command[command.index("-filter_complex") + 1]
     assert "trim=start=0.000:end=2.000" in command[command.index("-filter_complex") + 1]
@@ -319,7 +322,8 @@ def test_real_ffmpeg_render_preserves_source_audio_when_available(tmp_path):
             "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=4",
             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
             "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-t", "4", str(source),
+            "-c:a", "aac", "-metadata", "title=MRH_SOURCE_PRIVATE_MARKER",
+            "-t", "4", str(source),
         ],
         shell=False,
         check=False,
@@ -343,3 +347,23 @@ def test_real_ffmpeg_render_preserves_source_audio_when_available(tmp_path):
     assert output.stat().st_size > 0
     assert result.has_audio is True
     assert result.duration_seconds == pytest.approx(4.0, abs=0.5)
+    metadata_probe = subprocess.run(
+        [
+            ffprobe, "-v", "error",
+            "-show_entries", "format_tags=title:stream_tags=title:chapter=id",
+            "-of", "json", str(output),
+        ],
+        shell=False,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+    )
+    assert metadata_probe.returncode == 0
+    metadata = json.loads(metadata_probe.stdout)
+    assert metadata.get("format", {}).get("tags", {}).get("title") != "MRH_SOURCE_PRIVATE_MARKER"
+    assert not metadata.get("chapters")
+    assert all(
+        stream.get("tags", {}).get("title") != "MRH_SOURCE_PRIVATE_MARKER"
+        for stream in metadata.get("streams", [])
+    )
