@@ -238,7 +238,9 @@ def _register_cloudflare_tools(
     registry.register(
         ToolDefinition(
             name="cloudflare.worker_routes.list",
-            description="List Cloudflare Worker route metadata through the isolated read-only gateway.",
+            description=(
+                "List Cloudflare Worker route metadata through the isolated read-only gateway."
+            ),
             input_model=EmptyToolInput,
             output_model=CloudflareRoutesOutput,
             handler=list_routes,
@@ -271,7 +273,9 @@ def _register_cloudflare_tools(
     registry.register(
         ToolDefinition(
             name="cloudflare.inventory.snapshot",
-            description="Capture one bounded, read-only snapshot of Worker, route, and D1 metadata.",
+            description=(
+                "Capture one bounded, read-only snapshot of Worker, route, and D1 metadata."
+            ),
             input_model=EmptyToolInput,
             output_model=CloudflareInventorySnapshotOutput,
             handler=inventory_snapshot,
