@@ -257,6 +257,7 @@ def test_authenticated_provider_catalog_lists_only_registered_capabilities_witho
     finally:
         client.close()
 
+
 def test_generation_registry_rejects_incomplete_provider_contract():
     class IncompleteAdapter:
         capability = VideoGenerationCapability(
@@ -279,7 +280,8 @@ def test_generation_registry_rejects_incomplete_provider_contract():
 
 def test_generation_registry_rejects_invalid_capability_before_registration():
     class InvalidCapabilityAdapter:
-        capability = {"provider": "test", "model": "fixture-v1"}
+        def __init__(self):
+            self.capability = {"provider": "test", "model": "fixture-v1"}
 
         def submit(self, request):
             raise AssertionError("Invalid adapters must never be called")
