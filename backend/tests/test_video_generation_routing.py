@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from mrhub.video_intelligence.generation import (
     VideoGenerationCapability,
@@ -159,3 +160,16 @@ def test_cost_and_resource_metadata_reject_negative_values():
         _candidate("bad-local", local=True, memory=-1)
     with pytest.raises(ValueError):
         _candidate("bad-hosted", local=False, cost=-0.1)
+
+
+def test_routing_rejects_non_finite_capacity_cost_and_resource_values():
+    import math
+
+    with pytest.raises(ValidationError):
+        LocalCapacitySnapshot(available=True, available_memory_gb=math.inf)
+    with pytest.raises(ValidationError):
+        HybridRoutingPolicy(max_remote_cost_usd=math.nan)
+    with pytest.raises(ValueError):
+        _candidate("bad-cost", local=False, cost=math.inf)
+    with pytest.raises(ValueError):
+        _candidate("bad-memory", local=True, memory=math.nan)
