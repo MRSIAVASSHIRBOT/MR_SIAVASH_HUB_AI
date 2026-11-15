@@ -1134,8 +1134,9 @@ def test_cancel_pending_generation_atomically_cancels_task_and_purges_payload(
     assert audit["actor_type"] == "user"
     assert audit["actor_id"] == "owner-a"
     assert json.loads(audit["metadata_json"]) == {
-        "cancellation_stage": "before_provider_submission",
-        "task_id": str(task_id),
+        "new_status": "cancelled",
+        "previous_status": "queued",
+        "reason_code": "cancelled_before_submission",
     }
 
     # Repeating the same owner cancellation is idempotent and does not duplicate audit.
@@ -1181,8 +1182,9 @@ def test_cancel_prepared_generation_records_audit_without_task(
     assert rows[0]["actor_type"] == "user"
     assert rows[0]["actor_id"] == "owner-a"
     assert json.loads(rows[0]["metadata_json"]) == {
-        "cancellation_stage": "before_enqueue",
-        "task_id": None,
+        "new_status": "cancelled",
+        "previous_status": "prepared",
+        "reason_code": "cancelled_before_enqueue",
     }
     assert payload is None
     assert repository.cancel_pending("owner-a", generation_id) == cancelled
