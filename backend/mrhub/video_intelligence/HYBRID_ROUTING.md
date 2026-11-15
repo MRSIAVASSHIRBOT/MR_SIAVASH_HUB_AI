@@ -1,6 +1,6 @@
 # Hybrid video-generation routing
 
-The hybrid route planner is provider-neutral and deliberately side-effect free. It does not inspect the machine, contact providers, submit jobs, or spend money.
+The `choose_hybrid_route` planner is provider-neutral and deliberately side-effect free: it does not inspect the machine, contact providers, submit jobs, or spend money. The separate `measure_local_capacity_snapshot` helper reads available system RAM through existing read-only host diagnostics; it must run server-side and is not called automatically by the pure planner.
 
 ## Routing order
 
