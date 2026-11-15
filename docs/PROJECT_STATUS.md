@@ -10,10 +10,10 @@ This addendum supersedes older scope statements and point-in-time snapshots belo
 
 ### Current Hub snapshot
 
-- Current `main`: `eeca6300b7688a894e31b02ea5ad41872e38bae1`.
-- Latest merged changes include PR #400 (portfolio/status documentation) and PR #401 (safe recovery of stale provider submissions after worker lease loss).
-- PR #404 (audited pending video-generation cancellation) is open as a draft. The earlier duplicate PR #402 was closed unmerged after this current-main PR superseded it; re-read PR #404's exact head and CI before any merge decision.
-- The latest main-head check-run snapshot had no failed checks, but included skipped/cancelled runs. Do not treat this as blanket release approval; inspect exact required checks for each target commit.
+- Reviewed `main` baseline: `5a2001985e1fe53ec1a9deb8e0817a982115a434`; all 23 exact-head check-runs completed successfully.
+- PR #401 (stale provider-submission recovery after worker lease loss), PR #404 (audited cancellation of prepared/queued generations), and PR #405 (strict provider-adapter contract validation) are merged into the reviewed main baseline.
+- PR #407 is the current draft: authenticated, owner-scoped generation history with bounded keyset pagination. It excludes encrypted prompts and provider job identifiers from the list projection and does not call a provider. Its exact-head CI must be rechecked before review readiness.
+- The provider registry remains empty by default. No production provider, paid service, model download, or provider credential has been selected or enabled. Provider-backed generation remains unavailable by design until an explicit owner decision and secure configuration.
 - Scheduled Continuous Development previously failed at the OpenCode provider invocation with an expired API key. The credential was not read, copied, rotated, or changed. Owner-managed replacement through GitHub Actions Secrets is required; see [Issue #332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332). Do not rerun the privileged publisher until the credential-isolation decision in [Issue #316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) is complete.
 - GitHub branch metadata reports `main.protected=false`; the dedicated protection endpoint was not readable by the connected integration (403). See [Issue #304](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/304).
 
@@ -26,10 +26,11 @@ This addendum supersedes older scope statements and point-in-time snapshots belo
 
 ### Next gates
 
-1. Complete cancellation auditability and exact-head CI for PR #404.
-2. Select and configure a real video-generation provider only after an explicit owner decision; no paid or remote fallback is permitted by default.
+1. Complete exact-head CI and review for PR #407; then integrate the owner-scoped history view and cancellation controls into the operator dashboard.
+2. Preserve the empty-by-default provider registry. A real provider adapter requires an explicit provider/model choice, reviewed security boundary, and secure owner-managed configuration.
 3. Owner-managed provider credential renewal and the security-boundary acceptance for Issue #316.
 4. Review branch protection through authorized GitHub Settings; do not change this sensitive setting without explicit approval.
+5. Complete target-device install/upgrade/rollback and backup/restore acceptance before claiming product release readiness.
 
 # Project Status Ledger
 
