@@ -1273,7 +1273,7 @@ class SchemaMigrator:
         self.connection = connection
 
     def migrate(self) -> list[int]:
-        applied_now: list[int] = []
+        """Apply pending migrations without locking an already-current database."""
         connection = self.connection
         connection.execute(
             """CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -1285,38 +1285,24 @@ class SchemaMigrator:
         )
         connection.commit()
 
-        known_versions = {migration.version for migration in MIGRATIONS}
-        recorded_versions = {
-            row["version"]
-            for row in connection.execute("SELECT version FROM schema_migrations")
-        }
-        unknown_versions = recorded_versions - known_versions
-        if unknown_versions:
-            raise MigrationError(
-                f"Database contains unsupported migration versions: {sorted(unknown_versions)}"
-            )
+        # The common request path is read-only: validate the complete history and
+        # return before taking SQLite's reserved write lock when no work is pending.
+        applied_count = self._validated_applied_count()
+        if applied_count == len(MIGRATIONS):
+            return []
 
-        for migration in MIGRATIONS:
+        applied_now: list[int] = []
+        while True:
+            # Re-read history after acquiring the lock. Another process may have
+            # completed one or more migrations since the preceding read/commit.
             connection.execute("BEGIN IMMEDIATE")
             try:
-                existing = connection.execute(
-                    "SELECT name, checksum FROM schema_migrations WHERE version = ?",
-                    (migration.version,),
-                ).fetchone()
-                if existing is not None:
-                    if existing["name"] != migration.name or existing["checksum"] != migration.checksum:
-                        raise MigrationError(
-                            f"Applied migration {migration.version} does not match its recorded checksum"
-                        )
+                applied_count = self._validated_applied_count()
+                if applied_count == len(MIGRATIONS):
                     connection.commit()
-                    continue
+                    break
 
-                later = connection.execute(
-                    "SELECT MAX(version) AS version FROM schema_migrations"
-                ).fetchone()["version"]
-                if later is not None and later >= migration.version:
-                    raise MigrationError("Migration history is not strictly increasing")
-
+                migration = MIGRATIONS[applied_count]
                 for statement in migration.statements:
                     connection.execute(statement)
 
@@ -1353,6 +1339,29 @@ class SchemaMigrator:
                 connection.rollback()
                 raise
         return applied_now
+
+    def _validated_applied_count(self) -> int:
+        """Validate migration history and return its contiguous applied prefix."""
+        rows = self.connection.execute(
+            "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        known_versions = {migration.version for migration in MIGRATIONS}
+        recorded_versions = {row["version"] for row in rows}
+        unknown_versions = recorded_versions - known_versions
+        if unknown_versions:
+            raise MigrationError(
+                f"Database contains unsupported migration versions: {sorted(unknown_versions)}"
+            )
+
+        for index, row in enumerate(rows):
+            if index >= len(MIGRATIONS) or row["version"] != MIGRATIONS[index].version:
+                raise MigrationError("Migration history is not strictly increasing")
+            migration = MIGRATIONS[index]
+            if row["name"] != migration.name or row["checksum"] != migration.checksum:
+                raise MigrationError(
+                    f"Applied migration {migration.version} does not match its recorded checksum"
+                )
+        return len(rows)
 
     def _ensure_column(self, table: str, column: str, definition: str) -> None:
         columns = {
