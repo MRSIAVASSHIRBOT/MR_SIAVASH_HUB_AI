@@ -212,6 +212,7 @@ def test_cloudflare_worker_settings_diff_preview_reports_changes_without_deployi
                 usage_model="standard",
                 bindings=[
                     BindingMetadata(name="DB", type="d1"),
+                    BindingMetadata(name="CACHE", type="kv_namespace"),
                     BindingMetadata(name="OLD_KV", type="kv_namespace"),
                 ],
             )
@@ -232,6 +233,7 @@ def test_cloudflare_worker_settings_diff_preview_reports_changes_without_deployi
             "compatibility_date": "2026-11-15",
             "bindings": [
                 {"name": "DB", "type": "d1"},
+                {"name": "CACHE", "type": "r2_bucket"},
                 {"name": "MEDIA", "type": "r2_bucket"},
             ],
         }},
@@ -247,6 +249,7 @@ def test_cloudflare_worker_settings_diff_preview_reports_changes_without_deployi
         ("compatibility_date", "change", None),
         ("binding", "add", "MEDIA"),
         ("binding", "remove", "OLD_KV"),
+        ("binding", "change", "CACHE"),
     }
     assert "gateway-test-token" not in response.text
     assert gateway.calls == ["settings:hub-gateway"]
