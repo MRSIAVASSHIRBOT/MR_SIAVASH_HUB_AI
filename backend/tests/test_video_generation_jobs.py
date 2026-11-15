@@ -1400,5 +1400,5 @@ def test_generation_history_rejects_partial_cursor_and_unbounded_limit(tmp_path)
         repository.list_for_owner(
             "owner-a", before_created_at="2026-11-15T12:00:00+00:00"
         )
-    with pytest.raises(ValueError, match="limit must be between 1 and 100"):
-        repository.list_for_owner("owner-a", limit=101)
+    with pytest.raises(ValueError, match="limit must be between 1 and 101"):
+        repository.list_for_owner("owner-a", limit=102)
