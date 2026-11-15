@@ -40,6 +40,10 @@ class VideoGenerationReconciliationCooldown(ValueError):
         super().__init__("Video generation reconciliation is temporarily rate limited")
 
 
+class VideoGenerationCancellationConflict(ValueError):
+    """Raised when cancellation cannot be completed without provider-side support."""
+
+
 class VideoGenerationJobRepository:
     """Persist encrypted generation inputs and owner-scoped job metadata."""
 
@@ -499,6 +503,122 @@ class VideoGenerationJobRepository:
                     (generation_id, owner_user_id),
                 )
         return cursor.rowcount == 1
+
+    def cancel_pending(
+        self, owner_user_id: str, generation_id: UUID
+    ) -> dict[str, object] | None:
+        """Cancel only before provider submission, atomically with task and payload cleanup.
+
+        Active or ambiguous provider operations are deliberately not marked cancelled:
+        without a provider-side cancellation worker, doing so would misrepresent the
+        external outcome and could leave billable work running.
+        """
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT j.status AS generation_status, l.task_id,
+                          t.status AS task_status
+                   FROM video_generation_jobs AS j
+                   LEFT JOIN video_generation_task_links AS l
+                     ON l.generation_id = j.generation_id
+                    AND l.owner_user_id = j.owner_user_id
+                   LEFT JOIN tasks AS t ON t.task_id = l.task_id
+                   WHERE j.generation_id = ? AND j.owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            generation_status = str(row["generation_status"])
+            if generation_status == "cancelled":
+                return {
+                    "generation_id": str(generation_id),
+                    "status": "cancelled",
+                    "cancellation_requested": False,
+                }
+
+            if generation_status == "prepared":
+                cursor = connection.execute(
+                    """UPDATE video_generation_jobs
+                       SET status = 'cancelled', error_code = 'cancelled_before_enqueue',
+                           updated_at = ?
+                       WHERE generation_id = ? AND owner_user_id = ? AND status = 'prepared'""",
+                    (now, str(generation_id), owner_user_id),
+                )
+                if cursor.rowcount != 1:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation state changed before cancellation"
+                    )
+            elif generation_status == "queued":
+                task_id = row["task_id"]
+                task_status = row["task_status"]
+                if task_id is None or task_status not in {
+                    TaskStatus.WAITING_APPROVAL.value,
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.CANCELLED.value,
+                }:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation is no longer pending provider submission"
+                    )
+                if task_status != TaskStatus.CANCELLED.value:
+                    task_cursor = connection.execute(
+                        """UPDATE tasks SET status = 'cancelled', updated_at = ?
+                           WHERE task_id = ? AND status = ?""",
+                        (now, task_id, task_status),
+                    )
+                    if task_cursor.rowcount != 1:
+                        raise VideoGenerationCancellationConflict(
+                            "Generation task changed before cancellation"
+                        )
+                generation_cursor = connection.execute(
+                    """UPDATE video_generation_jobs
+                       SET status = 'cancelled', error_code = 'cancelled_before_submission',
+                           updated_at = ?
+                       WHERE generation_id = ? AND owner_user_id = ? AND status = 'queued'""",
+                    (now, str(generation_id), owner_user_id),
+                )
+                if generation_cursor.rowcount != 1:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation state changed before cancellation"
+                    )
+            else:
+                raise VideoGenerationCancellationConflict(
+                    "Active or ambiguous provider work requires provider-side cancellation support"
+                )
+
+            connection.execute(
+                """DELETE FROM video_generation_payloads
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            )
+            TaskRepository._insert_audit_event(
+                connection,
+                {
+                    "event_id": str(uuid4()),
+                    "event_type": "video_generation.cancelled",
+                    "outcome": "success",
+                    "subject_type": "video_generation",
+                    "subject_id": str(generation_id),
+                    "actor_type": "user",
+                    "actor_id": owner_user_id,
+                    "created_at": now,
+                    "metadata": {
+                        "task_id": str(row["task_id"]) if row["task_id"] is not None else None,
+                        "cancellation_stage": (
+                            "before_enqueue"
+                            if generation_status == "prepared"
+                            else "before_provider_submission"
+                        ),
+                    },
+                },
+            )
+
+        return {
+            "generation_id": str(generation_id),
+            "status": "cancelled",
+            "cancellation_requested": False,
+        }
 
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
