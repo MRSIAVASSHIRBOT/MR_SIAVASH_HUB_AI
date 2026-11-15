@@ -35,6 +35,10 @@ from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationCancellationConflict,
     VideoGenerationJobRepository,
 )
+from mrhub.video_intelligence.generation_routing import (
+    GenerationRoutePreviewRequest,
+    preview_hybrid_route,
+)
 
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"])
 
@@ -332,6 +336,15 @@ def list_telegram_video_providers(
         "reason_code": None if providers else "provider_unavailable",
         "execution": "not_started",
     }
+
+
+@router.post("/video/route-preview")
+def preview_telegram_video_route(
+    payload: GenerationRoutePreviewRequest,
+    _identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+) -> dict[str, object]:
+    """Expose the same read-only routing policy to explicitly paired video:read clients."""
+    return preview_hybrid_route(payload)
 
 
 @router.get("/video/generations")
