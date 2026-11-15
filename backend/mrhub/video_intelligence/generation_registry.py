@@ -8,18 +8,37 @@ from mrhub.video_intelligence.generation import (
 
 
 class VideoGenerationRegistry:
-    """Only explicitly registered adapters are visible or selectable."""
+    """Only explicitly registered, contract-complete adapters are selectable."""
+
+    REQUIRED_METHODS = (
+        "submit",
+        "get_status",
+        "find_by_idempotency_key",
+        "download_output",
+        "cancel",
+    )
 
     def __init__(self) -> None:
         self._providers: dict[tuple[str, str], VideoGenerationProvider] = {}
 
     def register(self, provider: VideoGenerationProvider) -> None:
-        capability = provider.capability
-        lookup = getattr(provider, "find_by_idempotency_key", None)
-        if not callable(lookup):
+        capability = getattr(provider, "capability", None)
+        if not isinstance(capability, VideoGenerationCapability):
             raise TypeError(
-                "Video generation provider must implement find_by_idempotency_key"
+                "Video generation provider must expose a valid VideoGenerationCapability"
             )
+
+        missing = [
+            name
+            for name in self.REQUIRED_METHODS
+            if not callable(getattr(provider, name, None))
+        ]
+        if missing:
+            raise TypeError(
+                "Video generation provider is missing required methods: "
+                + ", ".join(missing)
+            )
+
         key = (capability.provider, capability.model)
         if key in self._providers:
             raise ValueError("Video generation provider is already registered")

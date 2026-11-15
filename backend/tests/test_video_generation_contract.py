@@ -256,3 +256,49 @@ def test_authenticated_provider_catalog_lists_only_registered_capabilities_witho
         }
     finally:
         client.close()
+
+
+def test_generation_registry_rejects_incomplete_provider_contract():
+    class IncompleteAdapter:
+        capability = VideoGenerationCapability(
+            provider="incomplete",
+            model="fixture-v1",
+            local=True,
+            supported_aspect_ratios=("16:9",),
+            max_duration_seconds=30,
+            max_resolution="720p",
+        )
+
+        def find_by_idempotency_key(self, idempotency_key):
+            return None
+
+    registry = VideoGenerationRegistry()
+    with pytest.raises(TypeError, match="submit"):
+        registry.register(IncompleteAdapter())
+    assert registry.catalog() == []
+
+
+def test_generation_registry_rejects_invalid_capability_before_registration():
+    class InvalidCapabilityAdapter:
+        def __init__(self):
+            self.capability = {"provider": "test", "model": "fixture-v1"}
+
+        def submit(self, request):
+            raise AssertionError("Invalid adapters must never be called")
+
+        def get_status(self, provider_job_id):
+            raise AssertionError("Invalid adapters must never be called")
+
+        def find_by_idempotency_key(self, idempotency_key):
+            raise AssertionError("Invalid adapters must never be called")
+
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            raise AssertionError("Invalid adapters must never be called")
+
+        def cancel(self, provider_job_id):
+            raise AssertionError("Invalid adapters must never be called")
+
+    registry = VideoGenerationRegistry()
+    with pytest.raises(TypeError, match="VideoGenerationCapability"):
+        registry.register(InvalidCapabilityAdapter())
+    assert registry.catalog() == []
