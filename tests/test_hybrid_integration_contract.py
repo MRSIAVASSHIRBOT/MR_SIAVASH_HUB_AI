@@ -1,10 +1,6 @@
 import json
 from pathlib import Path
 
-from mrhub.api.routes.telegram_integration import DEFAULT_SCOPES, TelegramScope
-from mrhub.integrations.telegram_pairing import TelegramPairingRepository
-from mrhub.main import create_app
-
 
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -32,6 +28,8 @@ def test_hybrid_contract_declares_supported_version_and_owners():
 
 
 def test_telegram_endpoint_manifest_matches_generated_openapi():
+    from mrhub.main import create_app
+
     contract = _contract()
     openapi_paths = create_app().openapi()["paths"]
 
@@ -39,10 +37,14 @@ def test_telegram_endpoint_manifest_matches_generated_openapi():
         method = endpoint["method"].lower()
         path = endpoint["path"]
         assert path in openapi_paths, f"Contract path missing from OpenAPI: {path}"
-        assert method in openapi_paths[path], f"Contract method missing from OpenAPI: {method} {path}"
+        assert method in openapi_paths[path], (
+            f"Contract method missing from OpenAPI: {method} {path}"
+        )
 
 
 def test_telegram_scopes_and_default_scope_match_implementation():
+    from mrhub.api.routes.telegram_integration import DEFAULT_SCOPES, TelegramScope
+
     contract = _contract()
     declared_scopes = set(contract["hub_telegram"]["scopes"])
     implemented_scopes = set(TelegramScope.__args__)
@@ -52,6 +54,8 @@ def test_telegram_scopes_and_default_scope_match_implementation():
 
 
 def test_telegram_token_and_challenge_lifetimes_match_implementation():
+    from mrhub.integrations.telegram_pairing import TelegramPairingRepository
+
     contract = _contract()
     lifetimes = contract["hub_telegram"]["lifetimes_seconds"]
 
