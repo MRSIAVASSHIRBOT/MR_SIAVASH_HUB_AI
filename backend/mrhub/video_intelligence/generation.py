@@ -85,7 +85,7 @@ class VideoGenerationResult(BaseModel):
 
 
 class VideoGenerationCapability(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
@@ -95,6 +95,9 @@ class VideoGenerationCapability(BaseModel):
     ] = Field(min_length=1)
     max_duration_seconds: int = Field(ge=3, le=60)
     max_resolution: str = Field(pattern=r"^(720p|1080p)$")
+    # Missing local resource requirements are treated as unknown by the router.
+    required_memory_gb: float | None = Field(default=None, ge=0)
+    required_vram_gb: float = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_capability(self) -> VideoGenerationCapability:
@@ -108,6 +111,14 @@ class VideoGenerationProvider(Protocol):
 
     @property
     def capability(self) -> VideoGenerationCapability:
+        ...
+
+    def estimate_cost_usd(self, request: VideoGenerationRequest) -> float | None:
+        """Optional pure local estimate; return None when price is unknown.
+
+        This method must not contact a provider, reserve capacity, or bill. It is
+        consulted only by read-only route previews and is never a submission call.
+        """
         ...
 
     def submit(self, request: VideoGenerationRequest) -> VideoGenerationSubmission:

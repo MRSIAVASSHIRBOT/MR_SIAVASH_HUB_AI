@@ -30,6 +30,10 @@ from mrhub.jobs.worker import WorkerEngine
 from mrhub.memory.repository import MemoryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.video_intelligence.generation_routing import (
+    GenerationRoutePreviewRequest,
+    preview_hybrid_route,
+)
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"])
@@ -41,6 +45,7 @@ TelegramScope = Literal[
     "tasks:create",
     "tasks:cancel",
     "memory:search",
+    "video:read",
 ]
 DEFAULT_SCOPES = ["status:read"]
 
@@ -49,7 +54,7 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=6)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=8)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -230,6 +235,15 @@ def telegram_status(
         "label": identity.label,
         "scopes": sorted(identity.scopes),
     }
+
+
+@router.post("/video/route-preview")
+def preview_telegram_video_route(
+    payload: GenerationRoutePreviewRequest,
+    _identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+) -> dict[str, object]:
+    """Expose the same read-only routing policy to explicitly paired video:read clients."""
+    return preview_hybrid_route(payload)
 
 
 @router.get("/tasks")

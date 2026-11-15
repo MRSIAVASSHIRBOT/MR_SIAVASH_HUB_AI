@@ -13,6 +13,8 @@ from mrhub.video_intelligence.generation_routing import (
     RoutingReason,
     choose_hybrid_route,
     measure_local_capacity_snapshot,
+    GenerationRoutePreviewRequest,
+    preview_hybrid_route,
 )
 
 
@@ -36,6 +38,8 @@ def _candidate(provider, *, local, memory=0, vram=0, cost=None, max_resolution="
             supported_aspect_ratios=("9:16", "16:9"),
             max_duration_seconds=30,
             max_resolution=max_resolution,
+            required_memory_gb=memory,
+            required_vram_gb=vram,
         ),
         required_memory_gb=memory,
         required_vram_gb=vram,
@@ -231,3 +235,151 @@ def test_local_candidate_selection_is_stable_independent_of_input_order():
 
     assert forward.provider == reverse.provider == "local-a"
     assert forward.model == reverse.model == "test-v1"
+
+
+def test_route_preview_is_read_only_and_uses_trusted_local_capacity(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+    from mrhub.video_intelligence import generation_routing as routing_module
+    from mrhub.video_intelligence.generation_registry import VideoGenerationRegistry
+
+    class LocalAdapter:
+        capability = VideoGenerationCapability(
+            provider="local-preview",
+            model="fixture-v1",
+            local=True,
+            supported_aspect_ratios=("9:16",),
+            max_duration_seconds=30,
+            max_resolution="720p",
+            required_memory_gb=2,
+        )
+
+        def submit(self, request):
+            raise AssertionError("Route preview must not submit generation work")
+
+        def get_status(self, provider_job_id):
+            raise AssertionError("Route preview must not query provider status")
+
+        def find_by_idempotency_key(self, idempotency_key):
+            raise AssertionError("Route preview must not reconcile provider jobs")
+
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            raise AssertionError("Route preview must not download provider output")
+
+        def cancel(self, provider_job_id):
+            raise AssertionError("Route preview must not cancel provider jobs")
+
+    registry = VideoGenerationRegistry()
+    registry.register(LocalAdapter())
+    monkeypatch.setattr(registry_module, "video_generation_registry", registry)
+    monkeypatch.setattr(
+        routing_module,
+        "measure_local_capacity_snapshot",
+        lambda: LocalCapacitySnapshot(available=True, available_memory_gb=8),
+    )
+
+    result = preview_hybrid_route(GenerationRoutePreviewRequest(
+        duration_seconds=10,
+        aspect_ratio="9:16",
+    ))
+
+    assert result["execution"] == "not_started"
+    assert result["provider_submission_started"] is False
+    assert result["providers_considered"] == 1
+    assert result["decision"]["selected"] is True
+    assert result["decision"]["route"] == "local"
+    assert result["decision"]["provider"] == "local-preview"
+
+
+def test_route_preview_requires_explicit_remote_consents_and_known_cost(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+    from mrhub.video_intelligence import generation_routing as routing_module
+    from mrhub.video_intelligence.generation_registry import VideoGenerationRegistry
+
+    class HostedAdapter:
+        capability = VideoGenerationCapability(
+            provider="hosted-preview",
+            model="fixture-v1",
+            local=False,
+            supported_aspect_ratios=("9:16",),
+            max_duration_seconds=30,
+            max_resolution="1080p",
+        )
+
+        def estimate_cost_usd(self, request):
+            assert request.duration_seconds == 10
+            return 0.35
+
+        def submit(self, request):
+            raise AssertionError("Route preview must not submit generation work")
+
+        def get_status(self, provider_job_id):
+            raise AssertionError("Route preview must not query provider status")
+
+        def find_by_idempotency_key(self, idempotency_key):
+            raise AssertionError("Route preview must not reconcile provider jobs")
+
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            raise AssertionError("Route preview must not download provider output")
+
+        def cancel(self, provider_job_id):
+            raise AssertionError("Route preview must not cancel provider jobs")
+
+    registry = VideoGenerationRegistry()
+    registry.register(HostedAdapter())
+    monkeypatch.setattr(registry_module, "video_generation_registry", registry)
+    monkeypatch.setattr(
+        routing_module,
+        "measure_local_capacity_snapshot",
+        lambda: pytest.fail("Hosted-only preview must not probe local hardware"),
+    )
+
+    denied = preview_hybrid_route(GenerationRoutePreviewRequest(
+        duration_seconds=10,
+        aspect_ratio="9:16",
+        remote_processing_approved=True,
+        max_remote_cost_usd=1,
+    ))
+    assert denied["decision"]["reason"] == "remote_consent_required"
+    assert denied["provider_submission_started"] is False
+
+    approved = preview_hybrid_route(GenerationRoutePreviewRequest(
+        duration_seconds=10,
+        aspect_ratio="9:16",
+        remote_processing_approved=True,
+        remote_spend_approved=True,
+        max_remote_cost_usd=0.5,
+    ))
+    assert approved["decision"]["selected"] is True
+    assert approved["decision"]["route"] == "hosted"
+    assert approved["decision"]["estimated_cost_usd"] == pytest.approx(0.35)
+    assert approved["execution"] == "not_started"
+
+
+def test_route_preview_rejects_client_supplied_capacity_and_invalid_consent_types():
+    with pytest.raises(ValidationError):
+        GenerationRoutePreviewRequest(
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            available_memory_gb=128,
+        )
+    with pytest.raises(ValidationError):
+        GenerationRoutePreviewRequest(
+            duration_seconds=10,
+            aspect_ratio="9:16",
+            remote_processing_approved="yes",
+        )
+
+
+def test_route_preview_without_registered_adapters_is_unavailable_and_inert(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+    from mrhub.video_intelligence.generation_registry import VideoGenerationRegistry
+
+    monkeypatch.setattr(registry_module, "video_generation_registry", VideoGenerationRegistry())
+    result = preview_hybrid_route(GenerationRoutePreviewRequest(
+        duration_seconds=10,
+        aspect_ratio="9:16",
+    ))
+    assert result["decision"]["selected"] is False
+    assert result["decision"]["reason"] == "no_compatible_provider"
+    assert result["providers_considered"] == 0
+    assert result["provider_submission_started"] is False

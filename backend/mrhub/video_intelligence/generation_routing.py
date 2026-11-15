@@ -78,13 +78,19 @@ class HybridRoutingPolicy(BaseModel):
 @dataclass(frozen=True)
 class GenerationRouteCandidate:
     capability: VideoGenerationCapability
-    required_memory_gb: float = 0
+    required_memory_gb: float | None = None
     required_vram_gb: float = 0
     estimated_cost_usd: float | None = None
 
     def __post_init__(self) -> None:
-        resource_values = (self.required_memory_gb, self.required_vram_gb)
-        if any(not isfinite(value) or value < 0 for value in resource_values):
+        resource_values = tuple(
+            value for value in (self.required_memory_gb, self.required_vram_gb)
+            if value is not None
+        )
+        if any(
+            isinstance(value, bool) or not isfinite(value) or value < 0
+            for value in resource_values
+        ):
             raise ValueError("Required local resources must be finite and non-negative")
         if self.estimated_cost_usd is not None and (
             not isfinite(self.estimated_cost_usd) or self.estimated_cost_usd < 0
@@ -119,6 +125,8 @@ def _supports_request(
 def _local_capacity_reason(
     candidate: GenerationRouteCandidate, capacity: LocalCapacitySnapshot
 ) -> RoutingReason | None:
+    if candidate.required_memory_gb is None:
+        return RoutingReason.LOCAL_CAPACITY_UNKNOWN
     if not capacity.available:
         return RoutingReason.LOCAL_CAPACITY_UNKNOWN
     if capacity.available_memory_gb is None:
@@ -154,7 +162,7 @@ def choose_hybrid_route(
     for candidate in sorted(
         local_candidates,
         key=lambda item: (
-            item.required_memory_gb,
+            item.required_memory_gb if item.required_memory_gb is not None else float("inf"),
             item.required_vram_gb,
             item.capability.provider,
             item.capability.model,
@@ -225,3 +233,81 @@ def choose_hybrid_route(
     return GenerationRouteDecision(
         selected=False, reason=RoutingReason.NO_COMPATIBLE_PROVIDER
     )
+
+
+class GenerationRoutePreviewRequest(BaseModel):
+    """Bounded read-only route preview; this payload can never submit generation work."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
+
+    duration_seconds: int = Field(ge=3, le=60, strict=True)
+    aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
+    resolution: str = Field(default="720p", pattern=r"^(720p|1080p)$")
+    remote_processing_approved: bool = Field(default=False, strict=True)
+    remote_spend_approved: bool = Field(default=False, strict=True)
+    max_remote_cost_usd: float = Field(default=0, ge=0, le=10_000)
+
+
+def preview_hybrid_route(payload: GenerationRoutePreviewRequest) -> dict[str, object]:
+    """Return a fail-closed route estimate without submitting or enqueueing a job."""
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    request = VideoGenerationRequest(
+        prompt="Read-only route preview",
+        aspect_ratio=payload.aspect_ratio,
+        duration_seconds=payload.duration_seconds,
+        resolution=payload.resolution,
+        idempotency_key="route-preview",
+    )
+    candidates: list[GenerationRouteCandidate] = []
+    for capability in video_generation_registry.catalog():
+        try:
+            provider = video_generation_registry.get(capability.provider, capability.model)
+        except LookupError:
+            continue
+
+        estimated_cost: float | None = None
+        if not capability.local:
+            estimator = getattr(provider, "estimate_cost_usd", None)
+            if callable(estimator):
+                try:
+                    estimate = estimator(request)
+                    if estimate is not None and not isinstance(estimate, bool):
+                        candidate_cost = float(estimate)
+                        if isfinite(candidate_cost) and candidate_cost >= 0:
+                            estimated_cost = candidate_cost
+                except Exception:  # noqa: BLE001 - unknown pricing must fail closed
+                    estimated_cost = None
+
+        try:
+            candidates.append(GenerationRouteCandidate(
+                capability=capability,
+                required_memory_gb=capability.required_memory_gb,
+                required_vram_gb=capability.required_vram_gb,
+                estimated_cost_usd=estimated_cost,
+            ))
+        except (TypeError, ValueError):
+            # Invalid adapter metadata is never promoted into an eligible route.
+            continue
+
+    if any(item.capability.local for item in candidates):
+        try:
+            capacity = measure_local_capacity_snapshot()
+        except Exception:  # noqa: BLE001 - unavailable probes must fail closed
+            capacity = LocalCapacitySnapshot(available=False)
+    else:
+        capacity = LocalCapacitySnapshot(available=False)
+
+    policy = HybridRoutingPolicy(
+        remote_processing_approved=payload.remote_processing_approved,
+        remote_spend_approved=payload.remote_spend_approved,
+        max_remote_cost_usd=payload.max_remote_cost_usd,
+    )
+    decision = choose_hybrid_route(candidates, request, capacity, policy)
+    return {
+        "decision": decision.model_dump(mode="json"),
+        "providers_considered": len(candidates),
+        "execution": "not_started",
+        "provider_submission_started": False,
+        "generation_approval_required": True,
+    }
