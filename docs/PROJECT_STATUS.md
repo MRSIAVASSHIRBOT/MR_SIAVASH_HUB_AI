@@ -1,36 +1,52 @@
-## Live portfolio and execution addendum — 2026-11-15
+## Portfolio maintenance addendum — 2026-11-15 UTC
 
-This addendum supersedes older scope statements and point-in-time snapshots below where they differ.
+This addendum supersedes older scope and point-in-time snapshots below where they differ. It records repository and operational evidence observed during the current portfolio run.
 
 ### Current maintenance scope
 
-- **In scope:** `MR_SIAVASH_HUB_AI`, the primary orchestration platform.
-- **Explicitly excluded:** `Gshop`. Do not inspect, modify, deploy, or operate its repository or production resources during this maintenance cycle.
-- Other personal repositories and publishing automations are outside this repository task unless explicitly requested. Their status must not be inferred from this Hub snapshot.
+- **Active:** `MR_SIAVASH_HUB_AI` (primary), `MR_SIAVASH_AI` (website and public Gateway), and `MR_SIAVASH_EL_AI` (Telegram companion).
+- **Discovery-only Backlog:** `MR_SIAVASH_EL_IR_BOT` and `MR_SIAVASH_IR_H_BOT`. Do not modify their code, workflows, secrets, infrastructure, schedules, deployments, routes, or permissions.
+- **Explicitly excluded:** `Gshop`. Do not inspect or operate its repository or production resources during this maintenance cycle.
+- PostZen publishing is a separate automation and is not part of engineering or technology-radar runs.
 
-### Current Hub snapshot
+### Current repository snapshot
 
-- Reviewed `main` baseline: `5a2001985e1fe53ec1a9deb8e0817a982115a434`; all 23 exact-head check-runs completed successfully.
-- PR #401 (stale provider-submission recovery after worker lease loss), PR #404 (audited cancellation of prepared/queued generations), and PR #405 (strict provider-adapter contract validation) are merged into the reviewed main baseline.
-- PR #407 is open and ready for review: authenticated, owner-scoped generation history with bounded keyset pagination and an operator dashboard. It excludes encrypted prompts and provider job identifiers from the list projection; the UI only cancels prepared/queued jobs and explicitly queues read-only reconciliation for ambiguous/running jobs. Exact-head CI passed 22/22 checks (Python 3.11/3.12: 1,204 passed, 1 skipped each). The PR remains unmerged pending owner authorization.
-- The provider registry remains empty by default. No production provider, paid service, model download, or provider credential has been selected or enabled. Provider-backed generation remains unavailable by design until an explicit owner decision and secure configuration.
-- Scheduled Continuous Development previously failed at the OpenCode provider invocation with an expired API key. The credential was not read, copied, rotated, or changed. Owner-managed replacement through GitHub Actions Secrets is required; see [Issue #332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332). Do not rerun the privileged publisher until the credential-isolation decision in [Issue #316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) is complete.
-- GitHub branch metadata reports `main.protected=false`; the dedicated protection endpoint was not readable by the connected integration (403). See [Issue #304](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/304).
+- **Hub main:** `0a9735fdf3ad2d898151861c15971672338e4fc5`. PR [#407](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/407), owner-scoped video-generation history and dashboard controls, merged as this commit. Its exact PR head `ff0eeca60601f77f384221c161bb456f9dbc928b` passed 22/22 observed check-runs. Post-merge main validation passed 14/14 check-runs on `0a9735fdf3ad2d898151861c15971672338e4fc5`. No production deployment occurred.
+- **Hub PR #406:** remains Draft at `03d82c7b53e090926010568798f8c7c0791802a9`. Its exact-head checks passed on the earlier base, but the branch is now 14 commits ahead and 1 behind the post-#407 main. It is not integrated, does not register a provider, and must remain Draft until synchronized and revalidated on the current base.
+- **Website main:** `31e8fc6cf22a0e821621dec0dfe28186b47b2dae`. Gateway CI, Gateway Runtime Smoke, Preview Runtime Smoke, Quality syntax checks, Workflow Security Audit, and OpenSSF Scorecard passed. The static-site deployment job was skipped; no Pages release is claimed.
+- **EL_AI main:** `6bedd95ed62ef1c3b20a829a6ff09840adc786cc`. Python 3.11/3.12 CI, Workflow Security Audit, and OpenSSF Scorecard passed. No open PR is present in the current snapshot.
+- No local repository test suite was run in this automation environment. Test claims above are hosted GitHub CI results tied to the stated SHAs.
 
-### Cross-project security boundaries
+### Cross-project trust contract
 
-- Hub remains the authority for private memory, tasks, policy, approvals, and audit.
-- The public website Gateway remains public-only and must not receive private Hub credentials or context.
-- EL_AI may access private Hub routes only through owner-initiated pairing and the explicit opt-in boundary.
-- No Gshop repository, deployment, database, payment, or production resource is part of this maintenance work.
+The Hub v1 manifest is the canonical contract. Hub owns private memory, tasks, policy, approvals, and audit. EL_AI uses owner-initiated pairing and only the scoped `/integrations/telegram` API; the default grant is `status:read`, with additional task and memory scopes explicitly granted. EL_AI must not access the Hub database directly or expose arbitrary shell, code execution, broad MCP, or approval decisions through Telegram. The public website Gateway is public-only: it must not call private Hub endpoints, receive Hub credentials, or access private Hub memory. No shared database or browser-held Hub credential is permitted.
 
-### Next gates
+### Infrastructure and release findings
 
-1. Complete owner review/authorization for PR #407, then re-run post-merge main checks; the owner-scoped history view and lifecycle controls are already included in that PR.
-2. Preserve the empty-by-default provider registry. A real provider adapter requires an explicit provider/model choice, reviewed security boundary, and secure owner-managed configuration.
-3. Owner-managed provider credential renewal and the security-boundary acceptance for Issue #316.
-4. Review branch protection through authorized GitHub Settings; do not change this sensitive setting without explicit approval.
-5. Complete target-device install/upgrade/rollback and backup/restore acceptance before claiming product release readiness.
+- GitHub reports `main.protected=false` and an empty rulesets list for all three active repositories. Required current-head checks, force-push/deletion restrictions, and PR-only changes are not repository-enforced. Configuration remains an owner/admin action; no governance settings were changed.
+- The website Worker `mr-siavash-ai-gateway` is serving 100% of traffic on its latest observed deployment from 2026-11-11. Its latest version is `62e8a337-d804-4748-8bb2-d5e0180ee2f8`; its daily schedule is `0 3 * * *`.
+- Issue [#120](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/issues/120) records deployed source commit `971a5e702876a0bc78b19c55b8b0daf358471c5`. Current website main is 46 commits ahead of that source baseline. The compare includes changes to `cloudflare/gateway/src/index.js` and the new D1 migration `0004_support_retention_runs.sql`. The current Worker deployment has not been reconciled to this newer source; do not deploy without the explicit release gate and rollback/acceptance plan.
+- No Worker named for Hub or EL_AI was found in the current Cloudflare Worker inventory. This does not establish that EL_AI has no deployment on another platform; live Telegram operation is not verified.
+- The two Python repositories and the website/Gateway tree contain no `uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or Bun lockfile in the inspected tree. Dependency reproducibility remains a foundation gap; evaluate a generated, committed lockfile and exact CI sync before upgrading packages.
+- The provider registry remains empty by default. No production provider, paid service, model download, or provider credential has been selected or enabled.
+- Issues [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) and [#316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) remain owner/security gates. Do not rerun the privileged scheduled publisher until the expired credential is owner-managed and the agent-process isolation decision is accepted.
+
+### Discovery-only Backlog snapshot
+
+- **EL_IR_BOT:** main `d562d8126863cc4d9eaa5e68d123f674a964e486`; no open PR; tests, Workflow Security Audit, and OpenSSF Scorecard passed. Issue #1 remains open for sensitive-data consent and privacy boundaries. A Cloudflare Worker with the same name is live at 100% traffic, latest deployment 2026-11-11, schedule `17 3 * * *`, with D1 database `mr-siavash-el-ir-bot-state`. This is read-only observation only; its Backlog status is unchanged.
+- **IR_H_BOT:** main `3bb2244b852cabf95b92efaa08f0c939863d6c35`; no open PR; latest Pages build/deployment run on 2026-10-24 succeeded. Issue #1 remains open for microphone-consent and voice-message handling. No corresponding Cloudflare Worker was found in the inspected inventory.
+
+### Next engineering gates
+
+1. Keep Hub as the single primary development project; synchronize and revalidate Draft PR #406 after the #407 merge.
+2. Resolve Hub provider-credential ownership and process-isolation gates without reading or exposing secret values.
+3. Reconcile the website Gateway's 46-commit source drift through a reviewed Preview and release acceptance; do not deploy automatically.
+4. Establish lockfile-based reproducible installs for Python and Node projects using a trusted toolchain, then verify Linux/Windows CI.
+5. Have the repository owner/admin configure and verify branch protection and exact-head required checks.
+6. Keep EL_AI on the narrow v1 contract and preserve the public Gateway's public-only boundary.
+7. Keep both Backlog repositories discovery-only; the active EL_IR_BOT Worker and its privacy finding require an owner decision, not automatic reactivation or modification.
+
+No secret values, credentials, production data, routes, schedules, deployments, or repository permissions were changed. Only repository and infrastructure metadata was inspected read-only.
 
 # Project Status Ledger
 
