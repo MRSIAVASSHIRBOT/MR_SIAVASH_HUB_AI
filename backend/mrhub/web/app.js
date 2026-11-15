@@ -63,6 +63,9 @@
   let videoTimelineDrafts = [];
   let activeVideoTimelineDraft = null;
   let videoStoryboardControlsLocked = false;
+  let videoGenerationHistoryItems = [];
+  let videoGenerationHistoryCursor = null;
+  let videoGenerationHistoryRequestSequence = 0;
 
   function currentVideoRenderIdentity() {
     const draft = activeVideoTimelineDraft
@@ -138,6 +141,12 @@
     videoTimelineDrafts = [];
     activeVideoTimelineDraft = null;
     videoPromptAnalysisId = null;
+    videoGenerationHistoryRequestSequence += 1;
+    videoGenerationHistoryItems = [];
+    videoGenerationHistoryCursor = null;
+    $("#video-generation-history-list").replaceChildren();
+    $("#video-generation-history-more").hidden = true;
+    message("#video-generation-history-message", "");
     $("#video-storyboard-panel").hidden = true;
     $("#video-storyboard-beats").replaceChildren();
     $("#video-analysis-result").replaceChildren();
@@ -2412,6 +2421,124 @@
     }
   }
 
+  function renderVideoGenerationHistory() {
+    const container = $("#video-generation-history-list");
+    const labels = {
+      prepared: "آماده برای تأیید",
+      queued: "در صف تأیید یا اجرا",
+      submitting: "در حال ارسال به Provider",
+      running: "در حال اجرا",
+      unknown_outcome: "نتیجه نامشخص؛ نیازمند تطبیق",
+      succeeded: "با موفقیت تکمیل شد",
+      failed: "ناموفق",
+      cancelled: "لغوشده",
+    };
+    renderRecords(
+      "#video-generation-history-list",
+      videoGenerationHistoryItems,
+      (job) => {
+        const card = recordCard(
+          (job.provider || "Provider") + " / " + (job.model || "مدل نامشخص"),
+          labels[job.status] || "وضعیت نامشخص",
+          [
+            "Job: " + job.generation_id,
+            "تحلیل منبع: " + job.source_analysis_id,
+            Number.isInteger(job.progress_percent)
+              ? "پیشرفت: " + job.progress_percent + "%"
+              : null,
+            job.output_width && job.output_height
+              ? "ابعاد خروجی: " + job.output_width + "×" + job.output_height
+              : null,
+            job.output_bytes ? "حجم خروجی: " + job.output_bytes + " بایت" : null,
+            job.error_code ? "کد نتیجه: " + job.error_code : null,
+            job.created_at
+              ? "ایجاد: " + (
+                Number.isNaN(new Date(job.created_at).getTime())
+                  ? job.created_at
+                  : new Date(job.created_at).toLocaleString("fa-IR")
+              )
+              : null,
+          ].filter(Boolean).join(" · ")
+        );
+        if (["prepared", "queued"].includes(job.status)) {
+          card.append(actionButton("لغو درخواست", async () => {
+            if (!window.confirm("درخواست تولیدی که هنوز به Provider ارسال نشده لغو شود؟")) return;
+            const buttons = card.querySelectorAll("button");
+            buttons.forEach((button) => { button.disabled = true; });
+            try {
+              await api(
+                "/video-intelligence/generations/" + encodeURIComponent(job.generation_id),
+                { method: "DELETE" }
+              );
+              message(
+                "#video-generation-history-message",
+                "درخواست در صف لغو شد و تاریخچه بروزرسانی شد.",
+                "success"
+              );
+              await loadVideoGenerationHistory();
+            } catch (error) {
+              message("#video-generation-history-message", error.message, "error");
+              await loadVideoGenerationHistory();
+            }
+          }));
+        }
+        return card;
+      },
+      "هنوز درخواست تولید ویدئویی ثبت نشده است."
+    );
+    $("#video-generation-history-more").hidden = !videoGenerationHistoryCursor;
+  }
+
+  async function loadVideoGenerationHistory(append = false) {
+    if (append && !videoGenerationHistoryCursor) return;
+    const sequence = ++videoGenerationHistoryRequestSequence;
+    const refreshButton = $("#video-generation-history-refresh");
+    const moreButton = $("#video-generation-history-more");
+    refreshButton.disabled = true;
+    if (append) moreButton.disabled = true;
+    message(
+      "#video-generation-history-message",
+      append ? "در حال دریافت صفحهٔ بعدی…" : "در حال دریافت تاریخچهٔ امن…"
+    );
+    const params = new URLSearchParams({ limit: "20" });
+    if (append && videoGenerationHistoryCursor) {
+      params.set("before_created_at", videoGenerationHistoryCursor.before_created_at);
+      params.set("before_generation_id", videoGenerationHistoryCursor.before_generation_id);
+    }
+    try {
+      const payload = await api("/video-intelligence/generations?" + params.toString());
+      if (sequence !== videoGenerationHistoryRequestSequence) return;
+      const incoming = Array.isArray(payload.items) ? payload.items : [];
+      if (append) {
+        const merged = new Map(
+          videoGenerationHistoryItems.map((item) => [item.generation_id, item])
+        );
+        for (const item of incoming) merged.set(item.generation_id, item);
+        videoGenerationHistoryItems = Array.from(merged.values());
+      } else {
+        videoGenerationHistoryItems = incoming;
+      }
+      videoGenerationHistoryCursor = payload.next_cursor || null;
+      renderVideoGenerationHistory();
+      message(
+        "#video-generation-history-message",
+        videoGenerationHistoryItems.length
+          ? videoGenerationHistoryItems.length + " درخواست در تاریخچه بارگذاری شده است."
+          : "هنوز درخواست تولید ویدئویی ثبت نشده است.",
+        "success"
+      );
+    } catch (error) {
+      if (sequence === videoGenerationHistoryRequestSequence) {
+        message("#video-generation-history-message", error.message, "error");
+      }
+    } finally {
+      if (sequence === videoGenerationHistoryRequestSequence) {
+        refreshButton.disabled = false;
+        moreButton.disabled = false;
+      }
+    }
+  }
+
   async function refreshAll() {
     try {
       await Promise.all([
@@ -2420,6 +2547,7 @@
         loadResourceReplyConfig(),
         loadMediaAssets(),
         loadVideoGenerationProviders(),
+        loadVideoGenerationHistory(),
         loadMemory(),
         loadKnowledge(),
         loadTelegramClients(),
@@ -2516,6 +2644,8 @@
   $("#refresh-button").addEventListener("click", refreshAll);
 
   $("#video-generation-providers-refresh").addEventListener("click", loadVideoGenerationProviders);
+  $("#video-generation-history-refresh").addEventListener("click", () => loadVideoGenerationHistory());
+  $("#video-generation-history-more").addEventListener("click", () => loadVideoGenerationHistory(true));
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
   $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
   $("#video-render-submit").addEventListener("click", submitVideoRender);
