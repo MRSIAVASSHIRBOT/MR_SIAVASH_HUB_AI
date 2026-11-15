@@ -8,6 +8,9 @@ CONTRACT_PATH = (
     / "v1"
     / "manifest.json"
 )
+OPENAPI_HTTP_METHODS = frozenset(
+    {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
+)
 
 
 def _contract() -> dict:
@@ -30,15 +33,30 @@ def test_telegram_endpoint_manifest_matches_generated_openapi():
     from mrhub.main import create_app
 
     contract = _contract()
+    telegram = contract["hub_telegram"]
+    base_path = telegram["base_path"]
     openapi_paths = create_app().openapi()["paths"]
 
-    for endpoint in contract["hub_telegram"]["endpoints"]:
-        method = endpoint["method"].lower()
-        path = endpoint["path"]
-        assert path in openapi_paths, f"Contract path missing from OpenAPI: {path}"
-        assert method in openapi_paths[path], (
-            f"Contract method missing from OpenAPI: {method} {path}"
-        )
+    declared_endpoints = {
+        (endpoint["method"].upper(), endpoint["path"])
+        for endpoint in telegram["endpoints"]
+    }
+    implemented_endpoints = {
+        (method.upper(), path)
+        for path, operations in openapi_paths.items()
+        if path == base_path or path.startswith(f"{base_path}/")
+        for method in operations
+        if method.lower() in OPENAPI_HTTP_METHODS
+    }
+
+    assert len(declared_endpoints) == len(telegram["endpoints"]), (
+        "Contract contains duplicate Telegram endpoint declarations"
+    )
+    assert declared_endpoints == implemented_endpoints, (
+        "Telegram contract/OpenAPI drift: "
+        f"missing_from_contract={sorted(implemented_endpoints - declared_endpoints)}, "
+        f"missing_from_openapi={sorted(declared_endpoints - implemented_endpoints)}"
+    )
 
 
 def test_telegram_scopes_and_default_scope_match_implementation():
