@@ -50,6 +50,14 @@ def _timeline():
     )
 
 
+def _timeline_with_audio(*, mute_second=False):
+    payload = _timeline().model_dump(mode="json", exclude_none=True)
+    payload["audio_render_status"] = "source_audio_passthrough"
+    payload["video_track"][0]["include_source_audio"] = True
+    payload["video_track"][1]["include_source_audio"] = False if mute_second else True
+    return VideoTimeline.model_validate(payload)
+
+
 def test_command_uses_numeric_cut_data_and_silent_output(tmp_path):
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
@@ -210,3 +218,128 @@ def test_real_ffmpeg_render_produces_probeable_mp4_when_available(tmp_path):
     assert output.stat().st_size > 0
     assert result.duration_seconds == pytest.approx(4.0, abs=0.5)
     assert (result.width, result.height) == (1920, 1080)
+
+
+
+def test_command_preserves_verified_source_audio_and_fills_muted_clips_with_silence(tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    output = tmp_path / "render.partial.mp4"
+    command = build_ffmpeg_command(
+        ffmpeg_binary="/usr/bin/ffmpeg",
+        timeline=_timeline_with_audio(mute_second=True),
+        source_paths={"asset-a": source},
+        temporary_output=output,
+    )
+    graph = command[command.index("-filter_complex") + 1]
+    assert "[0:a:0]" in graph
+    assert "volume=1.000" in graph
+    assert "anullsrc=r=48000:cl=stereo" in graph
+    assert "concat=n=2:v=0:a=1[outa]" in graph
+    assert "[outa]" in command
+    assert command[command.index("-c:a") + 1] == "aac"
+    assert command[command.index("-ar") + 1] == "48000"
+    assert "-an" not in command
+
+
+def test_renderer_publishes_only_after_verified_aac_audio_probe(tmp_path, monkeypatch):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    output = tmp_path / "final.mp4"
+
+    def fake_run(command, **kwargs):
+        if command[0] == "/usr/bin/ffmpeg":
+            Path(command[-1]).write_bytes(b"valid-mp4-with-audio")
+            return SimpleNamespace(returncode=0, stdout=b"")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                b'{"format":{"format_name":"mov,mp4,m4a","duration":"4.0"},'
+                b'"streams":[{"codec_type":"video","width":1920,"height":1080},'
+                b'{"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2}]}'
+            ),
+        )
+
+    monkeypatch.setattr(render.subprocess, "run", fake_run)
+    result = render_video_timeline(
+        timeline=_timeline_with_audio(),
+        source_paths={"asset-a": source},
+        output_path=output,
+        ffmpeg_binary="/usr/bin/ffmpeg",
+        ffprobe_binary="/usr/bin/ffprobe",
+    )
+    assert output.is_file()
+    assert result.has_audio is True
+
+
+def test_renderer_rejects_missing_audio_stream_before_publishing(tmp_path, monkeypatch):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    output = tmp_path / "final.mp4"
+
+    def fake_run(command, **kwargs):
+        if command[0] == "/usr/bin/ffmpeg":
+            Path(command[-1]).write_bytes(b"video-without-audio")
+            return SimpleNamespace(returncode=0, stdout=b"")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                b'{"format":{"format_name":"mov,mp4,m4a","duration":"4.0"},'
+                b'"streams":[{"codec_type":"video","width":1920,"height":1080}]}'
+            ),
+        )
+
+    monkeypatch.setattr(render.subprocess, "run", fake_run)
+    with pytest.raises(VideoRenderError, match="render_output_verification_failed"):
+        render_video_timeline(
+            timeline=_timeline_with_audio(),
+            source_paths={"asset-a": source},
+            output_path=output,
+            ffmpeg_binary="/usr/bin/ffmpeg",
+            ffprobe_binary="/usr/bin/ffprobe",
+        )
+    assert not output.exists()
+    assert not list(tmp_path.glob(".*.partial.mp4"))
+
+
+def test_real_ffmpeg_render_preserves_source_audio_when_available(tmp_path):
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    require_ffmpeg = os.environ.get("MRH_REQUIRE_FFMPEG") == "1"
+    if ffmpeg is None or ffprobe is None:
+        if require_ffmpeg:
+            pytest.fail("MRH_REQUIRE_FFMPEG=1 but FFmpeg/FFprobe are unavailable")
+        pytest.skip("FFmpeg and FFprobe are required for the real audio-render smoke test")
+
+    source = tmp_path / "generated-source-with-audio.mp4"
+    output = tmp_path / "generated-output-with-audio.mp4"
+    generated = subprocess.run(
+        [
+            ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "color=c=blue:s=320x240:d=4",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=4",
+            "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-t", "4", str(source),
+        ],
+        shell=False,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+    )
+    if generated.returncode != 0:
+        if require_ffmpeg:
+            pytest.fail("Installed FFmpeg could not generate the synthetic audio source")
+        pytest.skip("The installed FFmpeg build cannot generate the synthetic audio source")
+
+    result = render_video_timeline(
+        timeline=_timeline_with_audio(),
+        source_paths={"asset-a": source},
+        output_path=output,
+        ffmpeg_binary=ffmpeg,
+        ffprobe_binary=ffprobe,
+    )
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert result.has_audio is True
+    assert result.duration_seconds == pytest.approx(4.0, abs=0.5)
