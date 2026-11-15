@@ -12,6 +12,7 @@ from mrhub.video_intelligence.generation import (
     VideoGenerationSubmission,
 )
 from mrhub.video_intelligence.generation_jobs import (
+    VideoGenerationCancellationConflict,
     VideoGenerationConflict,
     VideoGenerationJobRepository,
     VideoGenerationReconciliationCooldown,
@@ -1034,3 +1035,109 @@ def test_concurrent_reconciliation_requests_create_one_active_attempt(
         ).fetchone()
     assert attempt["attempt_count"] == 1
     assert attempt["next_allowed_at"] is not None
+
+
+
+def test_cancel_pending_generation_atomically_cancels_task_and_purges_payload(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-pending")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    cancelled = repository.cancel_pending("owner-a", generation_id)
+
+    assert cancelled == {
+        "generation_id": str(generation_id),
+        "status": "cancelled",
+        "cancellation_requested": False,
+    }
+    assert repository.get("owner-a", generation_id)["status"] == "cancelled"
+    assert repository.tasks.get(task_id).status is TaskStatus.CANCELLED
+    assert repository.load_for_handoff("owner-a", generation_id) is None
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert payload is None
+
+    # Repeating the same owner cancellation is idempotent.
+    assert repository.cancel_pending("owner-a", generation_id) == cancelled
+
+
+def test_cancel_pending_generation_accepts_already_approved_queued_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"d" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-approved")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'queued' WHERE task_id = ? AND status = 'waiting_approval'",
+            (str(task_id),),
+        )
+
+    result = repository.cancel_pending("owner-a", generation_id)
+
+    assert result["status"] == "cancelled"
+    assert repository.tasks.get(task_id).status is TaskStatus.CANCELLED
+
+
+def test_cancel_pending_generation_hides_foreign_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"e" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-owner")
+    )
+
+    assert repository.cancel_pending("owner-b", UUID(accepted["generation_id"])) is None
+    assert repository.get("owner-a", UUID(accepted["generation_id"]))["status"] == "prepared"
+
+
+@pytest.mark.parametrize("active_status", ["submitting", "running", "unknown_outcome"])
+def test_cancel_pending_generation_refuses_active_or_ambiguous_provider_jobs(
+    tmp_path, monkeypatch, active_status
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"f" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request(f"cancel-{active_status}")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    repository.enqueue("owner-a", generation_id)
+    if active_status == "submitting":
+        repository.transition("owner-a", generation_id, "submitting")
+    elif active_status == "running":
+        repository.transition("owner-a", generation_id, "submitting")
+        repository.transition("owner-a", generation_id, "running", provider_job_id="remote-1")
+    else:
+        repository.transition("owner-a", generation_id, "submitting")
+        repository.transition("owner-a", generation_id, "unknown_outcome", error_code="provider_timeout")
+
+    with pytest.raises(VideoGenerationCancellationConflict):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == active_status
