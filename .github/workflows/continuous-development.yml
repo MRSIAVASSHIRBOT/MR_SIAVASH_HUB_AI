@@ -112,6 +112,9 @@ jobs:
           if [ "$agent_status" -ne 0 ]; then
             if grep -Fq "Rate limit exceeded: free-models-per-day" "$RUNNER_TEMP/opencode.log"; then
               echo "::warning::The free OpenRouter model quota is exhausted; this scheduled cycle is a no-op and no patch will be published."
+            elif grep -Fq "API key expired." "$RUNNER_TEMP/opencode.log"; then
+              echo "::error::The OpenRouter API key has expired. Update the repository secret MR_SIAVASH_HUB_AI in Settings > Secrets and variables > Actions; no patch was generated or published."
+              exit "$agent_status"
             else
               exit "$agent_status"
             fi
