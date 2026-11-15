@@ -1188,3 +1188,61 @@ def test_cancel_pending_generation_refuses_active_or_ambiguous_provider_jobs(
         repository.cancel_pending("owner-a", generation_id)
 
     assert repository.get("owner-a", generation_id)["status"] == active_status
+
+def test_cancel_prepared_generation_purges_payload_without_task_link(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"p" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-prepared")
+    )
+    generation_id = UUID(accepted["generation_id"])
+
+    cancelled = repository.cancel_pending("owner-a", generation_id)
+
+    assert cancelled["status"] == "cancelled"
+    assert repository.get("owner-a", generation_id)["status"] == "cancelled"
+    assert repository.cancel_pending("owner-a", generation_id) == cancelled
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+        task_link = connection.execute(
+            "SELECT 1 FROM video_generation_task_links WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert payload is None
+    assert task_link is None
+
+
+def test_cancel_pending_generation_refuses_worker_claimed_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"q" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-claimed")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ? AND status = 'waiting_approval'",
+            (str(task_id),),
+        )
+
+    with pytest.raises(VideoGenerationCancellationConflict):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == "queued"
+    assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
+
