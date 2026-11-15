@@ -60,7 +60,7 @@ The Hub currently uses FastAPI's `detail` error envelope for HTTP exceptions. Co
 
 The private EL_AI ↔ Hub request-correlation contract uses `X-Request-ID` as opaque diagnostic metadata:
 
-- EL_AI generates a canonical lowercase UUID for each logical outbound Hub operation; a permitted 401 retry reuses the original operation ID, while the refresh call gets its own ID.
+- EL_AI generates a fresh canonical lowercase UUIDv4 for each outbound Hub HTTP request. A session-refresh request is a separate operation and receives its own ID. The bridge does not automatically retry Hub requests.
 - Hub accepts canonical lowercase UUID versions 1–8. Missing, malformed, noncanonical, or unsupported values are replaced with a server-generated UUIDv4.
 - Hub stores the canonical value at `request.state.request_id` and returns it in the response `X-Request-ID` header for handled HTTP responses.
 - Hub completion logs contain only `request_id`, HTTP `method`, route template, and `status_code`.
