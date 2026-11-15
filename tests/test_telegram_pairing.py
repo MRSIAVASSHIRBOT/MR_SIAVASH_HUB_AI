@@ -694,3 +694,196 @@ def test_telegram_task_event_timeline_is_bounded_and_pairing_scoped(tmp_path, mo
     assert limited.status_code == 422
     assert cross_client.status_code == 404
     get_settings.cache_clear()
+
+
+def _video_generation_row(generation_id, created_at="2026-11-15T12:00:00+00:00"):
+    return {
+        "generation_id": str(generation_id),
+        "source_analysis_id": str(uuid4()),
+        "provider": "local",
+        "model": "renderer-v1",
+        "status": "queued",
+        "provider_job_id": "private-provider-job-id",
+        "progress_percent": None,
+        "output_asset_id": str(uuid4()),
+        "output_bytes": None,
+        "output_duration_seconds": None,
+        "output_width": None,
+        "output_height": None,
+        "error_code": None,
+        "created_at": created_at,
+        "updated_at": created_at,
+    }
+
+
+def test_telegram_video_history_requires_explicit_video_read_scope(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client)
+    tokens = _exchange(client, payload, challenge).json()
+
+    response = client.get(
+        "/integrations/telegram/video/generations",
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 403
+    get_settings.cache_clear()
+
+
+def test_telegram_video_history_is_bounded_owner_scoped_and_redacts_internal_ids(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["video:read"])
+    tokens = _exchange(client, payload, challenge).json()
+    first_id, second_id = uuid4(), uuid4()
+    rows = [
+        _video_generation_row(first_id),
+        _video_generation_row(second_id, "2026-11-14T12:00:00+00:00"),
+    ]
+    calls = []
+
+    def list_for_owner(
+        self, owner_user_id, *, limit=20, before_created_at=None,
+        before_generation_id=None
+    ):
+        calls.append((owner_user_id, limit, before_created_at, before_generation_id))
+        return rows
+
+    monkeypatch.setattr(VideoGenerationJobRepository, "list_for_owner", list_for_owner)
+    response = client.get(
+        "/integrations/telegram/video/generations?limit=1",
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["has_more"] is True
+    assert body["items"][0]["generation_id"] == str(first_id)
+    assert "source_analysis_id" not in body["items"][0]
+    assert "output_asset_id" not in body["items"][0]
+    assert "provider_job_id" not in body["items"][0]
+    assert body["next_cursor"]
+    assert calls == [("local-owner", 2, None, None)]
+
+    next_page = client.get(
+        "/integrations/telegram/video/generations",
+        params={"limit": 1, "cursor": body["next_cursor"]},
+        headers=_bot_headers(tokens),
+    )
+    assert next_page.status_code == 200
+    assert calls[1][0] == "local-owner"
+    assert calls[1][1] == 2
+    assert calls[1][2] == rows[0]["created_at"]
+    assert calls[1][3] == first_id
+    get_settings.cache_clear()
+
+
+def test_telegram_video_history_rejects_invalid_cursor_and_page_size(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["video:read"])
+    tokens = _exchange(client, payload, challenge).json()
+    headers = _bot_headers(tokens)
+
+    invalid_cursor = client.get(
+        "/integrations/telegram/video/generations",
+        params={"cursor": "not-a-valid-cursor!"},
+        headers=headers,
+    )
+    invalid_limit = client.get(
+        "/integrations/telegram/video/generations",
+        params={"limit": 21},
+        headers=headers,
+    )
+
+    assert invalid_cursor.status_code == 422
+    assert invalid_limit.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_telegram_video_status_is_owner_scoped_and_does_not_expose_provider_ids(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["video:read"])
+    tokens = _exchange(client, payload, challenge).json()
+    generation_id = uuid4()
+    calls = []
+
+    def get_generation(self, owner_user_id, requested_id):
+        calls.append((owner_user_id, requested_id))
+        return _video_generation_row(requested_id)
+
+    monkeypatch.setattr(VideoGenerationJobRepository, "get", get_generation)
+    response = client.get(
+        f"/integrations/telegram/video/generations/{generation_id}",
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["generation_id"] == str(generation_id)
+    assert "provider_job_id" not in response.json()
+    assert "output_asset_id" not in response.json()
+    assert calls == [("local-owner", generation_id)]
+    get_settings.cache_clear()
+
+
+def test_telegram_video_cancel_requires_separate_scope_and_only_pending_jobs(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence.generation_jobs import (
+        VideoGenerationCancellationConflict,
+        VideoGenerationJobRepository,
+    )
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    read_payload, read_challenge = _create_pairing(client, scopes=["video:read"])
+    read_tokens = _exchange(client, read_payload, read_challenge).json()
+    generation_id = uuid4()
+    denied = client.delete(
+        f"/integrations/telegram/video/generations/{generation_id}",
+        headers=_bot_headers(read_tokens),
+    )
+    assert denied.status_code == 403
+
+    cancel_payload, cancel_challenge = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["video:cancel"]
+    )
+    cancel_tokens = _exchange(
+        client, cancel_payload, cancel_challenge
+    ).json()
+    calls = []
+
+    def cancel_pending(self, owner_user_id, requested_id):
+        calls.append((owner_user_id, requested_id))
+        return {
+            "generation_id": str(requested_id),
+            "status": "cancelled",
+            "cancellation_requested": False,
+        }
+
+    monkeypatch.setattr(VideoGenerationJobRepository, "cancel_pending", cancel_pending)
+    cancelled = client.delete(
+        f"/integrations/telegram/video/generations/{generation_id}",
+        headers=_bot_headers(cancel_tokens, telegram_user_id=987654321),
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert calls == [("local-owner", generation_id)]
+
+    def active_conflict(self, owner_user_id, requested_id):
+        raise VideoGenerationCancellationConflict("provider work is already active")
+
+    monkeypatch.setattr(VideoGenerationJobRepository, "cancel_pending", active_conflict)
+    blocked = client.delete(
+        f"/integrations/telegram/video/generations/{generation_id}",
+        headers=_bot_headers(cancel_tokens, telegram_user_id=987654321),
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"]["code"] == "generation_cancellation_conflict"
+    get_settings.cache_clear()
