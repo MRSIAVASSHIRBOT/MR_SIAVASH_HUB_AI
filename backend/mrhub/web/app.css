@@ -207,7 +207,7 @@ summary { color: var(--green); cursor: pointer; }
 }
 .video-generation-panel h4 { margin: 0; }
 .video-generation-panel .button:disabled { opacity: .5; cursor: not-allowed; }
-.video-generation-panel .record-card { overflow-wrap: anywhere; }
+.video-generation-panel .record { overflow-wrap: anywhere; }
 
 
 .project-portfolio { margin: 1.1rem 0 1.25rem; }
