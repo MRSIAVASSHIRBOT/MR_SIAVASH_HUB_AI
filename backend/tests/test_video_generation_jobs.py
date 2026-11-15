@@ -1,4 +1,5 @@
 import base64
+import json
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -1115,10 +1116,36 @@ def test_cancel_pending_generation_atomically_cancels_task_and_purges_payload(
             "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
             (str(generation_id),),
         ).fetchone()
+        audit_rows = connection.execute(
+            """SELECT event_type, outcome, subject_type, subject_id,
+                      actor_type, actor_id, metadata_json
+               FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchall()
     assert payload is None
+    assert len(audit_rows) == 1
+    audit = audit_rows[0]
+    assert audit["event_type"] == "video_generation.cancelled"
+    assert audit["outcome"] == "success"
+    assert audit["subject_type"] == "video_generation"
+    assert audit["subject_id"] == str(generation_id)
+    assert audit["actor_type"] == "user"
+    assert audit["actor_id"] == "owner-a"
+    assert json.loads(audit["metadata_json"]) == {
+        "cancellation_stage": "before_provider_submission",
+        "task_id": str(task_id),
+    }
 
-    # Repeating the same owner cancellation is idempotent.
+    # Repeating the same owner cancellation is idempotent and does not duplicate audit.
     assert repository.cancel_pending("owner-a", generation_id) == cancelled
+    with repository.tasks._connection() as connection:
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert audit_count == 1
 
 
 def test_cancel_pending_generation_accepts_already_approved_queued_task(
