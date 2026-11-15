@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -213,6 +214,54 @@ def submit_video_generation(
         "approval_endpoint": f"/tasks/{task_id}/approval",
         "execution": "awaiting_approval" if awaiting_approval else "queued_or_terminal",
     }
+
+
+@router.get("/generations")
+def list_video_generation_history(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=20, ge=1, le=100),
+    before_created_at: str | None = Query(default=None, min_length=1, max_length=40),
+    before_generation_id: UUID | None = None,
+) -> dict[str, object]:
+    """List only the authenticated owner's bounded generation history."""
+    if (before_created_at is None) != (before_generation_id is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Both before_created_at and before_generation_id are required together",
+        )
+
+    normalized_cursor = None
+    if before_created_at is not None:
+        try:
+            parsed_cursor = datetime.fromisoformat(before_created_at)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail="Invalid generation history cursor timestamp"
+            ) from exc
+        if parsed_cursor.tzinfo is None or parsed_cursor.utcoffset() is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Generation history cursor timestamp must include a timezone",
+            )
+        normalized_cursor = parsed_cursor.astimezone(UTC).isoformat()
+
+    jobs = VideoGenerationJobRepository(get_settings().database_path)
+    items = jobs.list_for_owner(
+        user.user_id,
+        limit=limit + 1,
+        before_created_at=normalized_cursor,
+        before_generation_id=before_generation_id,
+    )
+    has_more = len(items) > limit
+    page = items[:limit]
+    next_cursor = None
+    if has_more and page:
+        last = page[-1]
+        next_cursor = {
+            "before_created_at": last["created_at"],
+            "before_generation_id": last["generation_id"],
+        }
+    return {"items": page, "next_cursor": next_cursor}
 
 
 @router.get("/generations/{generation_id}")

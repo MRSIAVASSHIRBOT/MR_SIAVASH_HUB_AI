@@ -1347,3 +1347,58 @@ def test_cancel_pending_generation_refuses_active_or_ambiguous_provider_jobs(
 
     assert repository.get("owner-a", generation_id)["status"] == active_status
 
+
+
+
+def test_generation_history_is_owner_scoped_and_uses_stable_cursor_order(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"h" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted = []
+    for key in ("history-a", "history-b", "history-c"):
+        result, _ = repository.submit(
+            "owner-a", analysis_id, "local", "renderer-v1", _request(key)
+        )
+        accepted.append(UUID(result["generation_id"]))
+
+    # Force a timestamp tie to prove the UUID tiebreaker prevents duplicate or
+    # skipped rows when a client follows the next-page cursor.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_generation_jobs SET created_at = ? WHERE owner_user_id = ?",
+            ("2026-11-15T12:00:00+00:00", "owner-a"),
+        )
+
+    first_page = repository.list_for_owner("owner-a", limit=2)
+    assert len(first_page) == 2
+    assert [item["generation_id"] for item in first_page] == sorted(
+        (str(item) for item in accepted), reverse=True
+    )[:2]
+    assert all("provider_job_id" not in item for item in first_page)
+    assert all("prompt" not in item and "request" not in item for item in first_page)
+
+    second_page = repository.list_for_owner(
+        "owner-a",
+        limit=2,
+        before_created_at=first_page[-1]["created_at"],
+        before_generation_id=UUID(first_page[-1]["generation_id"]),
+    )
+    assert len(second_page) == 1
+    assert second_page[0]["generation_id"] == str(
+        min(accepted, key=lambda item: str(item))
+    )
+    assert repository.list_for_owner("owner-b", limit=20) == []
+
+
+def test_generation_history_rejects_partial_cursor_and_unbounded_limit(tmp_path):
+    repository, _ = _repository(tmp_path)
+    with pytest.raises(ValueError, match="Both generation history cursor fields"):
+        repository.list_for_owner(
+            "owner-a", before_created_at="2026-11-15T12:00:00+00:00"
+        )
+    with pytest.raises(ValueError, match="limit must be between 1 and 101"):
+        repository.list_for_owner("owner-a", limit=102)

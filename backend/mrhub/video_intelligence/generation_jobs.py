@@ -620,6 +620,45 @@ class VideoGenerationJobRepository:
             "cancellation_requested": False,
         }
 
+    def list_for_owner(
+        self,
+        owner_user_id: str,
+        *,
+        limit: int = 20,
+        before_created_at: str | None = None,
+        before_generation_id: UUID | None = None,
+    ) -> list[dict[str, object]]:
+        """Return a bounded, stable, owner-scoped generation history page."""
+        if not owner_user_id or len(owner_user_id) > 200:
+            raise ValueError("Generation owner identifier is invalid")
+        if not 1 <= limit <= 101:
+            raise ValueError("Generation history limit must be between 1 and 101")
+        if (before_created_at is None) != (before_generation_id is None):
+            raise ValueError("Both generation history cursor fields are required")
+
+        query = (
+            "SELECT generation_id, source_analysis_id, provider, model, status, "
+            "progress_percent, output_asset_id, output_bytes, "
+            "output_duration_seconds, output_width, output_height, error_code, "
+            "created_at, updated_at FROM video_generation_jobs "
+            "WHERE owner_user_id = ?"
+        )
+        parameters: list[object] = [owner_user_id]
+        if before_created_at is not None and before_generation_id is not None:
+            query += (
+                " AND (created_at < ? OR "
+                "(created_at = ? AND generation_id < ?))"
+            )
+            parameters.extend(
+                [before_created_at, before_created_at, str(before_generation_id)]
+            )
+        query += " ORDER BY created_at DESC, generation_id DESC LIMIT ?"
+        parameters.append(limit)
+
+        with self.tasks._connection() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        return [dict(row) for row in rows]
+
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
