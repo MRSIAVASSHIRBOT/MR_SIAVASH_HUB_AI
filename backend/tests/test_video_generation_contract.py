@@ -153,7 +153,6 @@ def test_generation_registry_is_empty_until_explicit_adapter_registration():
         registry.register(adapter)
 
 
-
 def test_generation_registry_rejects_adapter_without_reconciliation_lookup():
     class AdapterWithoutLookup:
         capability = VideoGenerationCapability(
@@ -184,5 +183,57 @@ def test_authenticated_provider_catalog_fails_closed_when_no_adapter_is_configur
         assert payload["generation_available"] is False
         assert payload["reason_code"] == "provider_unavailable"
         assert payload["execution"] == "not_started"
+    finally:
+        client.close()
+
+
+def test_authenticated_provider_catalog_lists_only_registered_capabilities_without_execution(
+    monkeypatch,
+):
+    from client_helpers import authenticated_client
+    from mrhub.video_intelligence import generation_registry as registry_module
+
+    class NonExecutingAdapter:
+        capability = VideoGenerationCapability(
+            provider="test-local",
+            model="fixture-v1",
+            local=True,
+            supported_aspect_ratios=("9:16", "16:9"),
+            max_duration_seconds=24,
+            max_resolution="720p",
+        )
+
+        def submit(self, request):
+            raise AssertionError("Catalog lookup must not submit generation work")
+
+        def get_status(self, provider_job_id):
+            raise AssertionError("Catalog lookup must not query provider job status")
+
+        def find_by_idempotency_key(self, idempotency_key):
+            raise AssertionError("Catalog lookup must not reconcile provider jobs")
+
+        def download_output(self, provider_job_id, sink, *, max_bytes):
+            raise AssertionError("Catalog lookup must not download provider output")
+
+        def cancel(self, provider_job_id):
+            raise AssertionError("Catalog lookup must not cancel provider jobs")
+
+    registry = VideoGenerationRegistry()
+    adapter = NonExecutingAdapter()
+    registry.register(adapter)
+    monkeypatch.setattr(registry_module, "video_generation_registry", registry)
+
+    client = authenticated_client()
+    try:
+        response = client.get("/video-intelligence/generation/providers")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload == {
+            "providers": [adapter.capability.model_dump(mode="json")],
+            "count": 1,
+            "generation_available": True,
+            "reason_code": None,
+            "execution": "not_started",
+        }
     finally:
         client.close()
