@@ -55,7 +55,7 @@ def _timeline_with_audio(*, mute_second=False):
     payload = _timeline().model_dump(mode="json", exclude_none=True)
     payload["audio_render_status"] = "source_audio_passthrough"
     payload["video_track"][0]["include_source_audio"] = True
-    payload["video_track"][1]["include_source_audio"] = False if mute_second else True
+    payload["video_track"][1]["include_source_audio"] = not mute_second
     return VideoTimeline.model_validate(payload)
 
 
