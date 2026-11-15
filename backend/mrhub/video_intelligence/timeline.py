@@ -24,6 +24,8 @@ class TimelineClip(BaseModel):
     timeline_start_seconds: float = Field(ge=0, le=60)
     timeline_end_seconds: float = Field(gt=0, le=60)
     transition_in: Literal["none", "cut"] = "cut"
+    include_source_audio: bool | None = Field(default=None, strict=True)
+    source_audio_volume: float | None = Field(default=None, ge=0, le=2)
 
     @model_validator(mode="after")
     def validate_intervals(self) -> TimelineClip:
@@ -33,6 +35,8 @@ class TimelineClip(BaseModel):
             raise ValueError("Timeline clip intervals must have positive duration")
         if not math.isclose(source_duration, timeline_duration, abs_tol=0.001):
             raise ValueError("Source and timeline clip durations must match")
+        if self.include_source_audio is not True and self.source_audio_volume is not None:
+            raise ValueError("Source-audio volume requires source audio to be enabled")
         return self
 
 
@@ -48,7 +52,7 @@ class VideoTimeline(BaseModel):
     duration_shortfall_seconds: float = Field(ge=0, le=60)
     video_track: list[TimelineClip] = Field(min_length=1, max_length=125)
     audio_analysis_status: Literal["not_requested", "requested_not_implemented"]
-    audio_render_status: Literal["not_implemented"]
+    audio_render_status: Literal["not_implemented", "source_audio_passthrough"]
     timeline_status: Literal["validated_cut_only"]
     render_status: Literal["not_implemented"]
 
@@ -78,6 +82,9 @@ class VideoTimeline(BaseModel):
             raise ValueError("Duration shortfall does not match requested and actual durations")
         if self.actual_duration_seconds > self.requested_duration_seconds:
             raise ValueError("Timeline cannot exceed requested output duration")
+        has_source_audio = any(clip.include_source_audio is True for clip in clips)
+        if has_source_audio != (self.audio_render_status == "source_audio_passthrough"):
+            raise ValueError("Audio render status must match the validated source-audio clips")
         return self
 
 
@@ -131,6 +138,7 @@ def build_video_timeline(specification: EditSpecification) -> VideoTimeline:
                     timeline_start_seconds=round(timeline_cursor, 3),
                     timeline_end_seconds=round(timeline_end, 3),
                     transition_in="none" if not clips else "cut",
+                    include_source_audio=True if source.has_audio is True else None,
                 )
             )
             timeline_cursor = timeline_end
@@ -152,7 +160,11 @@ def build_video_timeline(specification: EditSpecification) -> VideoTimeline:
         ),
         video_track=clips,
         audio_analysis_status=specification.audio_plan_status,
-        audio_render_status="not_implemented",
+        audio_render_status=(
+            "source_audio_passthrough"
+            if any(clip.include_source_audio is True for clip in clips)
+            else "not_implemented"
+        ),
         timeline_status="validated_cut_only",
         render_status="not_implemented",
     )
