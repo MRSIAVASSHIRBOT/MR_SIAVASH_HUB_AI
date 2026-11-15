@@ -68,7 +68,10 @@ def create_app() -> FastAPI:
         supplied_request_id = request.headers.get("X-Request-ID", "")
         try:
             parsed_request_id = UUID(supplied_request_id)
-            if len(supplied_request_id) != 36 or str(parsed_request_id) != supplied_request_id.lower():
+            if (
+                len(supplied_request_id) != 36
+                or str(parsed_request_id) != supplied_request_id.lower()
+            ):
                 raise ValueError("Request ID must be a canonical UUID")
             request_id = str(parsed_request_id)
         except (AttributeError, TypeError, ValueError):
