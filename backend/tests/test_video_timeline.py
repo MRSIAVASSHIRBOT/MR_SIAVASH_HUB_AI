@@ -53,7 +53,8 @@ def test_timeline_splits_source_at_scene_boundaries_and_trims_to_target():
         "none", "cut", "cut"
     ]
     assert timeline.audio_analysis_status == "not_requested"
-    assert timeline.audio_render_status == "not_implemented"
+    assert timeline.audio_render_status == "source_audio_passthrough"
+    assert all(clip.include_source_audio is True for clip in timeline.video_track)
     assert timeline.render_status == "not_implemented"
 
 
@@ -147,3 +148,33 @@ def test_timeline_rejects_source_and_timeline_duration_mismatch():
                 }
             ],
         )
+
+
+
+def test_timeline_preserves_only_audio_confirmed_by_source_analysis():
+    with_audio = _asset("audio-source", 3.0, [0.0])
+    without_audio = _asset("silent-source", 3.0, [0.0])
+    without_audio["technical_metadata"]["has_audio"] = False
+    unknown_audio = _asset("unknown-source", 3.0, [0.0])
+    unknown_audio["technical_metadata"].pop("has_audio")
+
+    timeline = build_video_timeline(
+        _specification([with_audio, without_audio, unknown_audio], duration=9)
+    )
+
+    clips = {clip.source_asset_id: clip for clip in timeline.video_track}
+    assert clips["audio-source"].include_source_audio is True
+    assert clips["silent-source"].include_source_audio is None
+    assert clips["unknown-source"].include_source_audio is None
+    assert timeline.audio_render_status == "source_audio_passthrough"
+
+
+def test_timeline_audio_status_must_match_explicit_audio_clips():
+    timeline = build_video_timeline(
+        _specification([_asset("audio-source", 4.0, [0.0])], duration=4)
+    )
+    payload = timeline.model_dump(mode="json")
+    payload["audio_render_status"] = "not_implemented"
+
+    with pytest.raises(ValidationError, match="Audio render status"):
+        VideoTimeline.model_validate(payload)
