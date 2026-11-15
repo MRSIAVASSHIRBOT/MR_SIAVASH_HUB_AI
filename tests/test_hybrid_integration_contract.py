@@ -104,7 +104,11 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert request_id["authorization_effect"] is False
     assert request_id["idempotency_effect"] is False
     assert request_id["public_gateway"] == "independent_correlation_id_only"
-    assert "does not automatically retry requests after HTTP 401" in request_id["note"]
+    assert request_id["retry_policy"] == (
+        "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
+    )
+    assert "retries the original operation once" in request_id["note"]
+    assert "does not perform generic retries or backoff" in request_id["note"]
     assert request_id["el_ai_log_event"] == "hub_request_completed"
     assert request_id["el_ai_log_fields"] == [
         "request_id", "method", "route_template", "status_code", "outcome"
