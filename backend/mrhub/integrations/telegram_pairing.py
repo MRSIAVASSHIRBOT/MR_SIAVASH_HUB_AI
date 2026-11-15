@@ -27,6 +27,16 @@ class TelegramClientIdentity:
 
 
 class TelegramPairingRepository:
+    ALLOWED_SCOPES = frozenset({
+        "status:read",
+        "tasks:read",
+        "tasks:result",
+        "tasks:create",
+        "tasks:cancel",
+        "memory:search",
+        "video:read",
+        "video:cancel",
+    })
     ACCESS_TTL_SECONDS = 15 * 60
     REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60
     CHALLENGE_TTL_SECONDS = 5 * 60
@@ -301,6 +311,40 @@ class TelegramPairingRepository:
             }
             for row in rows
         ]
+
+    def update_scopes(
+        self, *, owner_user_id: str, client_id: str, scopes: frozenset[str]
+    ) -> list[str] | None:
+        """Replace scopes for one active client owned by the authenticated account."""
+        if (
+            not owner_user_id
+            or not client_id
+            or not scopes
+            or not scopes.issubset(self.ALLOWED_SCOPES)
+        ):
+            raise TelegramPairingError("Client scope update is invalid")
+        normalized_scopes = sorted(scopes)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT status FROM telegram_clients
+                   WHERE owner_user_id = ? AND client_id = ?""",
+                (owner_user_id, client_id),
+            ).fetchone()
+            if row is None or row["status"] != "active":
+                return None
+            updated = connection.execute(
+                """UPDATE telegram_clients SET scopes_json = ?
+                   WHERE owner_user_id = ? AND client_id = ? AND status = 'active'""",
+                (
+                    json.dumps(normalized_scopes, separators=(",", ":")),
+                    owner_user_id,
+                    client_id,
+                ),
+            )
+            if updated.rowcount != 1:
+                return None
+        return normalized_scopes
 
     def revoke_client(self, *, owner_user_id: str, client_id: str) -> bool:
         now = self._now().isoformat()

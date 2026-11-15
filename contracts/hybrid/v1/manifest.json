@@ -19,7 +19,9 @@
       "tasks:cancel",
       "tasks:create",
       "tasks:read",
-      "tasks:result"
+      "tasks:result",
+      "video:cancel",
+      "video:read"
     ],
     "default_scopes": [
       "status:read"
@@ -120,6 +122,41 @@
         "auth_mode": "paired_bearer",
         "required_scope": "memory:search",
         "purpose": "Search owner-scoped Hub memory through the paired client."
+      },
+      {
+        "method": "PUT",
+        "path": "/integrations/telegram/clients/{client_id}/scopes",
+        "auth_mode": "hub_owner_session",
+        "required_scope": null,
+        "purpose": "Replace the scopes of one active paired client after an explicit authenticated owner action; record the change in the audit log."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/providers",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Return the non-secret configured video provider catalog without probing providers or starting work."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/generations",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "List bounded video-generation lifecycle metadata owned by the paired account with stable cursor pagination."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/generations/{generation_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Read one generation status for the paired owner's account without exposing provider job or private asset identifiers."
+      },
+      {
+        "method": "DELETE",
+        "path": "/integrations/telegram/video/generations/{generation_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:cancel",
+        "purpose": "Cancel only an owned prepared or queued generation before provider submission; active or ambiguous provider work returns a conflict."
       }
     ],
     "request_constraints": {
@@ -133,7 +170,13 @@
         "maximum": 50
       },
       "task_result_max_bytes": 32768,
-      "task_create_idempotency_header": "Idempotency-Key"
+      "task_create_idempotency_header": "Idempotency-Key",
+      "video_generation_list_limit": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "video_generation_cursor_max_length": 512,
+      "client_scope_update_max_scopes": 8
     },
     "error_response": "FastAPI HTTPException detail envelope; consumers must avoid exposing private exception details."
   },

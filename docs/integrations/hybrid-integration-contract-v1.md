@@ -25,7 +25,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 - The exchange operation consumes the one-time pairing code and issues a 15-minute access token and a 30-day refresh token.
 - Authenticated client calls send `Authorization: Bearer <scoped_access_token>` and `X-Telegram-User-Id`.
 - Default pairing scope is `status:read`; additional scopes must be explicitly granted.
-- The Hub remains authoritative for client ownership, scope enforcement, task ownership, policy evaluation, and revocation.
+- The authenticated owner can replace scopes on an active paired client through `PUT /integrations/telegram/clients/{client_id}/scopes`; the update is audited and applies to the next request. Revoked or foreign clients cannot be updated.\n- The Hub remains authoritative for client ownership, scope enforcement, task ownership, policy evaluation, and revocation.
 - EL_AI stores credentials in the operating-system credential store and must not place credentials in URLs, logs, source control, or browser storage.
 
 ### Scope map
@@ -37,7 +37,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 | `tasks:result` | Read own bounded terminal task result |
 | `tasks:create` | Submit tasks subject to Hub policy and idempotency |
 | `tasks:cancel` | Cancel own queued or approval-waiting task |
-| `memory:search` | Search owner-scoped memory |
+| `memory:search` | Search owner-scoped memory |\n| `video:read` | Read the non-secret provider catalog, own bounded video-generation history, and individual generation status |\n| `video:cancel` | Cancel only own prepared or queued video generation before provider submission |
 
 ### Bounded operations
 
@@ -46,7 +46,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 - Terminal task result: maximum 32 KiB encoded response.
 - Task creation requires the `Idempotency-Key` header.
 - A task result is unavailable until the task reaches a terminal state.
-- Cancellation is limited to tasks that remain queued or waiting for owner approval.
+- Task cancellation is limited to tasks that remain queued or waiting for owner approval.\n- Video-generation history is limited to 1–20 records per page; its cursor is limited to 512 characters. Responses omit provider job IDs and private asset IDs.\n- Video-generation cancellation is a separate scope and cannot cancel active or ambiguous provider work; those states return HTTP 409. The provider catalog is read-only and does not probe providers or start jobs.
 
 ## 3. Public website Gateway boundary
 
