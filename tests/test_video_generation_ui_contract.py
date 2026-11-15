@@ -70,3 +70,39 @@ def test_video_generation_history_ui_only_offers_pre_submission_cancellation():
     assert '{ method: "POST" }' in history_ui
     assert "/video-intelligence/analyses/" not in history_ui
     assert "generation/providers" not in history_ui
+
+
+
+def test_hybrid_route_preview_is_visible_and_uses_explicit_preview_only_controls():
+    html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+    app = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "video-generation-route-preview-form",
+        "video-generation-route-preview-submit",
+        "video-generation-route-preview-message",
+        "video-generation-route-preview-result",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'name="remote_processing_approved"' in html
+    assert 'name="remote_spend_approved"' in html
+    assert 'name="max_remote_cost_usd"' in html
+    assert 'api("/video-intelligence/generation/route-preview"' in app
+    assert "previewVideoGenerationRoute" in app
+    assert "provider_submission_started" in app
+    assert 'result.execution === "not_started"' in app
+    assert "هیچ Prompt یا فایل رسانه‌ای ارسال نمی‌شود" in html
+
+
+def test_route_preview_ui_never_submits_or_reconciles_a_generation():
+    app = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    start = app.index("  async function previewVideoGenerationRoute(")
+    end = app.index("\n  function renderVideoGenerationHistory()", start)
+    preview = app[start:end]
+
+    assert 'method: "POST"' in preview
+    assert "/video-intelligence/generation/route-preview" in preview
+    assert "/generations" not in preview
+    assert "/analyses/" not in preview
+    assert "submit_video_generation" not in preview
+    assert "provider_submission_started === false" in preview
