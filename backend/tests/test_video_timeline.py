@@ -178,3 +178,14 @@ def test_timeline_audio_status_must_match_explicit_audio_clips():
 
     with pytest.raises(ValidationError, match="Audio render status"):
         VideoTimeline.model_validate(payload)
+
+
+def test_timeline_rejects_source_audio_gain_above_the_bounded_range():
+    timeline = build_video_timeline(
+        _specification([_asset("audio-source", 4.0, [0.0])], duration=4)
+    )
+    payload = timeline.model_dump(mode="json")
+    payload["video_track"][0]["source_audio_volume"] = 2.1
+
+    with pytest.raises(ValidationError):
+        VideoTimeline.model_validate(payload)
