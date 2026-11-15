@@ -118,7 +118,7 @@ def _local_capacity_reason(
     candidate: GenerationRouteCandidate, capacity: LocalCapacitySnapshot
 ) -> RoutingReason | None:
     if not capacity.available:
-        return RoutingReason.LOCAL_CAPACITY_INSUFFICIENT
+        return RoutingReason.LOCAL_CAPACITY_UNKNOWN
     if capacity.available_memory_gb is None:
         return RoutingReason.LOCAL_CAPACITY_UNKNOWN
     if capacity.available_memory_gb < candidate.required_memory_gb:
@@ -149,7 +149,15 @@ def choose_hybrid_route(
     hosted_candidates = [item for item in compatible if not item.capability.local]
 
     local_block_reasons: list[RoutingReason] = []
-    for candidate in local_candidates:
+    for candidate in sorted(
+        local_candidates,
+        key=lambda item: (
+            item.required_memory_gb,
+            item.required_vram_gb,
+            item.capability.provider,
+            item.capability.model,
+        ),
+    ):
         reason = _local_capacity_reason(candidate, capacity)
         if reason is None:
             return GenerationRouteDecision(
