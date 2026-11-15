@@ -62,4 +62,5 @@ def test_cancel_generation_route_rejects_active_provider_job(monkeypatch):
         client.close()
 
     assert response.status_code == 409
-    assert "provider-side cancellation workflow" in response.text
+    assert response.json()["detail"]["code"] == "generation_cancellation_conflict"
+    assert "worker may have claimed it" in response.text
