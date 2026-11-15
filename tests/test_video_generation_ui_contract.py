@@ -24,7 +24,7 @@ def test_video_generation_provider_catalog_is_visible_and_read_only():
 def test_video_generation_provider_catalog_does_not_start_generation():
     app = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
     start = app.index("  async function loadVideoGenerationProviders()")
-    end = app.index("\n  function renderVideoGenerationHistory()", start)
+    end = app.index("\n  async function previewVideoGenerationRoute()", start)
     catalog_loader = app[start:end]
 
     assert 'method: "POST"' not in catalog_loader
