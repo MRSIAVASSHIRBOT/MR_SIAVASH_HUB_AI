@@ -58,6 +58,10 @@ class PairingChallengeRequest(BaseModel):
     scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=8)
 
 
+class ClientScopesUpdateRequest(BaseModel):
+    scopes: list[TelegramScope] = Field(min_length=1, max_length=8)
+
+
 class PairingChallengeResponse(BaseModel):
     pairing_code: str
     client_id: UUID
@@ -247,6 +251,35 @@ def list_telegram_clients(
 ) -> dict[str, object]:
     clients = _pairing_repository().list_clients(user.user_id)
     return {"clients": clients, "count": len(clients)}
+
+
+@router.put("/clients/{client_id}/scopes")
+def update_telegram_client_scopes(
+    client_id: UUID,
+    payload: ClientScopesUpdateRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Replace scopes on an active paired client after an explicit owner action."""
+    scopes = frozenset(payload.scopes)
+    if len(scopes) != len(payload.scopes):
+        raise HTTPException(status_code=422, detail="Duplicate Telegram scopes are not allowed")
+    updated_scopes = _pairing_repository().update_scopes(
+        owner_user_id=user.user_id,
+        client_id=str(client_id),
+        scopes=scopes,
+    )
+    if updated_scopes is None:
+        raise HTTPException(status_code=404, detail="Active Telegram client not found")
+    AuditLogger(_tasks_repository()).record(
+        event_type="telegram.client_scopes_updated",
+        outcome="success",
+        subject_type="telegram_client",
+        subject_id=str(client_id),
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={"client_id": str(client_id), "scope_count": len(updated_scopes)},
+    )
+    return {"client_id": str(client_id), "scopes": updated_scopes}
 
 
 @router.post("/clients/{client_id}/revoke")
