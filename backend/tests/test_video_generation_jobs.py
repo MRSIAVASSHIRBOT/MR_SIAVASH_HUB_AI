@@ -1034,3 +1034,51 @@ def test_concurrent_reconciliation_requests_create_one_active_attempt(
         ).fetchone()
     assert attempt["attempt_count"] == 1
     assert attempt["next_allowed_at"] is not None
+
+
+
+def test_stale_submitting_job_can_be_requeued_for_lookup_only_recovery(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"w" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("stale-submitting")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_generation_jobs SET status = 'submitting' WHERE generation_id = ?",
+            (str(generation_id),),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'failed' WHERE task_id = ?",
+            (str(task_id),),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, error_code, finished_at
+            ) VALUES (?, 2, 'lease_lost', CURRENT_TIMESTAMP)""",
+            (str(task_id),),
+        )
+
+    queued = repository.enqueue_reconciliation("owner-a", generation_id)
+    assert queued == {
+        "generation_id": str(generation_id),
+        "task_id": str(task_id),
+        "status": "queued",
+        "created": True,
+    }
+
+    # A stale submitting job is reconciled by its stable idempotency key; the
+    # encrypted prompt is not needed and must not be decrypted or resubmitted.
+    monkeypatch.setenv("MRH_WORKFLOW_PAYLOAD_KEY", "intentionally-unavailable")
+    loaded = repository.load_for_worker(task_id)
+    assert loaded["status"] == "submitting"
+    assert "request" not in loaded
