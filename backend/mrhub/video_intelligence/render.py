@@ -1,8 +1,8 @@
 """Bounded FFmpeg renderer for validated cut-only video timelines.
 
-This module accepts only validated numeric timeline data and trusted local paths.
-It deliberately renders a silent video track; audio, text, graphics, and transitions
-other than hard cuts remain outside this renderer's contract.
+The renderer accepts validated numeric timeline data and trusted local paths. It can
+preserve verified source audio as one bounded AAC stream; text, graphics, generated
+audio, and transitions other than hard cuts remain outside its contract.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ class VideoRenderResult:
     width: int
     height: int
     file_size: int
+    has_audio: bool
 
 
 def _seconds(value: float) -> str:
@@ -119,13 +120,51 @@ def build_ffmpeg_command(
     filter_parts.append(
         f"{concat_inputs}concat=n={len(labels)}:v=1:a=0[outv]"
     )
+    audio_enabled = any(clip.include_source_audio is True for clip in timeline.video_track)
+    if audio_enabled:
+        audio_labels: list[str] = []
+        for index, clip in enumerate(timeline.video_track):
+            duration = _seconds(clip.timeline_end_seconds - clip.timeline_start_seconds)
+            label = f"a{index}"
+            audio_labels.append(f"[{label}]")
+            if clip.include_source_audio is True:
+                volume = clip.source_audio_volume if clip.source_audio_volume is not None else 1.0
+                filter_parts.append(
+                    f"[{index}:a:0]atrim=start={_seconds(clip.source_start_seconds)}:"
+                    f"end={_seconds(clip.source_end_seconds)},"
+                    "asetpts=PTS-STARTPTS,aresample=48000,"
+                    "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+                    f"volume={_seconds(volume)},apad,atrim=duration={duration}[{label}]"
+                )
+            else:
+                filter_parts.append(
+                    f"anullsrc=r=48000:cl=stereo,atrim=duration={duration},"
+                    f"asetpts=PTS-STARTPTS[{label}]"
+                )
+        filter_parts.append(
+            f"{''.join(audio_labels)}concat=n={len(audio_labels)}:v=0:a=1[outa]"
+        )
+
     command.extend(
         [
             "-filter_complex",
             ";".join(filter_parts),
             "-map",
             "[outv]",
-            "-an",
+        ]
+    )
+    if audio_enabled:
+        command.extend([
+            "-map", "[outa]",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ar", "48000",
+            "-ac", "2",
+        ])
+    else:
+        command.append("-an")
+    command.extend(
+        [
             "-t",
             _seconds(timeline.actual_duration_seconds),
             "-c:v",
@@ -253,7 +292,7 @@ def render_video_timeline(
                     "-max_alloc",
                     "33554432",
                     "-show_entries",
-                    "format=format_name,duration:stream=codec_type,width,height",
+                    "format=format_name,duration:stream=codec_type,codec_name,width,height,sample_rate,channels",
                     "-of",
                     "json",
                     str(temporary_output),
@@ -277,12 +316,25 @@ def render_video_timeline(
             video_streams = [
                 stream for stream in streams if stream.get("codec_type") == "video"
             ]
+            audio_streams = [
+                stream for stream in streams if stream.get("codec_type") == "audio"
+            ]
+            expected_audio = any(clip.include_source_audio is True for clip in validated.video_track)
+            audio_valid = len(audio_streams) == (1 if expected_audio else 0)
+            if expected_audio and len(audio_streams) == 1:
+                audio = audio_streams[0]
+                audio_valid = (
+                    audio.get("codec_name") == "aac"
+                    and int(audio.get("sample_rate", 0)) == 48000
+                    and int(audio.get("channels", 0)) == 2
+                )
             width, height = OUTPUT_DIMENSIONS[validated.output_aspect_ratio]
             if (
                 "mp4" not in str(format_info["format_name"]).split(",")
                 or len(video_streams) != 1
                 or int(video_streams[0]["width"]) != width
                 or int(video_streams[0]["height"]) != height
+                or not audio_valid
                 or not 0 < duration <= validated.actual_duration_seconds + 0.5
                 or duration < validated.actual_duration_seconds - 0.5
             ):
@@ -297,6 +349,7 @@ def render_video_timeline(
             width=width,
             height=height,
             file_size=size,
+            has_audio=expected_audio,
         )
     finally:
         temporary_output.unlink(missing_ok=True)
