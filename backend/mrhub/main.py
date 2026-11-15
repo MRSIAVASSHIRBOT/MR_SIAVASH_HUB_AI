@@ -45,6 +45,7 @@ from mrhub.integrations.assistant_gateway import router as assistant_gateway_rou
 from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
 
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
