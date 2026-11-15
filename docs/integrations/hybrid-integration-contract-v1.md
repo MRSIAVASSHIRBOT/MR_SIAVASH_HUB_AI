@@ -63,7 +63,9 @@ The private EL_AI ↔ Hub request-correlation contract uses `X-Request-ID` as op
 - EL_AI generates a canonical lowercase UUID for each logical outbound Hub operation; a permitted 401 retry reuses the original operation ID, while the refresh call gets its own ID.
 - Hub accepts canonical lowercase UUID versions 1–8. Missing, malformed, noncanonical, or unsupported values are replaced with a server-generated UUIDv4.
 - Hub stores the canonical value at `request.state.request_id` and returns it in the response `X-Request-ID` header for handled HTTP responses.
-- Hub completion logs contain only `request_id`, HTTP `method`, route template, and `status_code`. They must not include raw paths, query strings, request bodies, Telegram identities, task/client identifiers, or credentials.
+- Hub completion logs contain only `request_id`, HTTP `method`, route template, and `status_code`.
+- EL_AI emits `hub_request_completed` with the same `request_id`, HTTP `method`, route template, `status_code`, and an `outcome` label. Dynamic task IDs are replaced by a route placeholder.
+- Neither side logs raw paths, query strings, request bodies, Telegram identities, task/client identifiers, or credentials.
 - Request IDs do not grant permissions and are not idempotency keys.
 
 The public website Gateway remains a separate public-only path. Its outbound requests may carry an independently generated request ID, but this does not create a route to the private Hub or imply shared request context.

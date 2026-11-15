@@ -104,3 +104,7 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert request_id["authorization_effect"] is False
     assert request_id["idempotency_effect"] is False
     assert request_id["public_gateway"] == "independent_correlation_id_only"
+    assert request_id["el_ai_log_event"] == "hub_request_completed"
+    assert request_id["el_ai_log_fields"] == [
+        "request_id", "method", "route_template", "status_code", "outcome"
+    ]
