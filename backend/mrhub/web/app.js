@@ -2385,7 +2385,7 @@
         || providers.length === 0;
       container.replaceChildren();
       for (const provider of providers) {
-        const card = element("article", undefined, "record-card");
+        const card = element("article", undefined, "record");
         card.append(element("strong", (provider.provider || "Provider") + " / " + (provider.model || "مدل نامشخص")));
         const details = [
           provider.local === true ? "محلی" : "راه‌دور",
