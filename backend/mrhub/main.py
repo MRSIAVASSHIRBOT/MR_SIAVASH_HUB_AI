@@ -45,9 +45,6 @@ from mrhub.integrations.assistant_gateway import router as assistant_gateway_rou
 from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
 
-logger = getLogger("mrhub.request")
-
-
 def create_app() -> FastAPI:
     settings = get_settings()
 
@@ -86,7 +83,7 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         route = request.scope.get("route")
         route_template = getattr(route, "path", "unmatched")
-        logger.info(
+        getLogger("mrhub.request").info(
             "http_request_completed request_id=%s method=%s route_template=%s status_code=%s",
             request_id,
             request.method,
