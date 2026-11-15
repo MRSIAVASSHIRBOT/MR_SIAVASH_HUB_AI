@@ -1234,6 +1234,48 @@ def test_cancel_pending_generation_hides_foreign_jobs(tmp_path, monkeypatch):
     assert repository.get("owner-a", UUID(accepted["generation_id"]))["status"] == "prepared"
 
 
+def test_cancel_pending_generation_refuses_after_worker_claim_before_submit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-claimed")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    # Simulate WorkerEngine claiming the task before the generation handler
+    # transitions the generation row from queued to submitting.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+
+    with pytest.raises(VideoGenerationCancellationConflict):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == "queued"
+    assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert payload is not None
+    assert audit_count == 0
+
+
 @pytest.mark.parametrize("active_status", ["submitting", "running", "unknown_outcome"])
 def test_cancel_pending_generation_refuses_active_or_ambiguous_provider_jobs(
     tmp_path, monkeypatch, active_status
