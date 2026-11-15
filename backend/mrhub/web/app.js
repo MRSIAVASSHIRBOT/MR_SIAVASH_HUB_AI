@@ -2470,15 +2470,38 @@
                 "/video-intelligence/generations/" + encodeURIComponent(job.generation_id),
                 { method: "DELETE" }
               );
+              await loadVideoGenerationHistory();
               message(
                 "#video-generation-history-message",
                 "درخواست در صف لغو شد و تاریخچه بروزرسانی شد.",
                 "success"
               );
-              await loadVideoGenerationHistory();
             } catch (error) {
-              message("#video-generation-history-message", error.message, "error");
               await loadVideoGenerationHistory();
+              message("#video-generation-history-message", error.message, "error");
+            }
+          }));
+        } else if (["submitting", "unknown_outcome", "running"].includes(job.status)) {
+          card.append(actionButton("تطبیق نتیجهٔ قبلی", async () => {
+            if (!window.confirm("فقط وضعیت درخواست قبلی بررسی شود؟ هیچ درخواست تولید جدیدی ارسال نمی‌شود.")) return;
+            const buttons = card.querySelectorAll("button");
+            buttons.forEach((button) => { button.disabled = true; });
+            try {
+              const result = await api(
+                "/video-intelligence/generations/" + encodeURIComponent(job.generation_id) + "/reconcile",
+                { method: "POST" }
+              );
+              await loadVideoGenerationHistory();
+              message(
+                "#video-generation-history-message",
+                result.execution === "provider_reconciliation_queued"
+                  ? "درخواست بررسی نتیجهٔ قبلی در صف قرار گرفت."
+                  : "بررسی نتیجهٔ قبلی از قبل فعال است.",
+                "success"
+              );
+            } catch (error) {
+              await loadVideoGenerationHistory();
+              message("#video-generation-history-message", error.message, "error");
             }
           }));
         }
