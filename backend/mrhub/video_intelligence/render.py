@@ -293,8 +293,10 @@ def render_video_timeline(
                     "-max_alloc",
                     "33554432",
                     "-show_entries",
-                    "format=format_name,duration:"
-                    "stream=codec_type,codec_name,width,height,sample_rate,channels",
+                    (
+                        "format=format_name,duration:"
+                        "stream=codec_type,codec_name,width,height,sample_rate,channels"
+                    ),
                     "-of",
                     "json",
                     str(temporary_output),
