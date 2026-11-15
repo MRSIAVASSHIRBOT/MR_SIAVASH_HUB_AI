@@ -2,6 +2,7 @@ from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.cloudflare import (
+    BindingMetadata,
     D1DatabaseSummary,
     WorkerRoute,
     WorkerSettingsSummary,
@@ -73,6 +74,8 @@ def test_cloudflare_tools_register_only_with_gateway_and_require_owner_grant(mon
         "cloudflare.worker_routes.list",
         "cloudflare.d1_databases.list",
         "cloudflare.worker.settings.read",
+        "cloudflare.inventory.snapshot",
+        "cloudflare.worker.settings.diff_preview",
     }
     cloudflare_items = [
         item for item in registry.catalog() if item["name"].startswith("cloudflare.")
@@ -170,3 +173,122 @@ def test_cloudflare_tool_outputs_exclude_gateway_credentials(monkeypatch):
     assert "gateway-test-token" not in body
     assert "authorization" not in body
     assert response.json()["result"]["routes"][0]["script"] == "hub-gateway"
+
+
+def test_cloudflare_inventory_snapshot_is_bounded_read_only_and_aggregates_resources(monkeypatch):
+    gateway = FakeCloudflareGateway()
+    monkeypatch.setattr(
+        builtins,
+        "build_cloudflare_gateway_client",
+        lambda _settings, **_kwargs: gateway,
+    )
+    client = authenticated_client()
+    assert client.put("/tools/grants/cloudflare.read", json={}).status_code == 200
+
+    response = client.post(
+        "/tools/cloudflare.inventory.snapshot/invoke",
+        json={"payload": {}},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["worker_count"] == 1
+    assert result["route_count"] == 1
+    assert result["database_count"] == 1
+    assert result["read_only"] is True
+    assert result["deployment_performed"] is False
+    assert result["workers"][0]["id"] == "hub-gateway"
+    assert result["routes"][0]["script"] == "hub-gateway"
+    assert result["databases"][0]["name"] == "hub-metadata"
+    assert gateway.calls == ["workers", "routes", "databases"]
+
+
+def test_cloudflare_worker_settings_diff_preview_reports_changes_without_deploying(monkeypatch):
+    class PreviewGateway(FakeCloudflareGateway):
+        def get_worker_settings(self, script_name):
+            self.calls.append(f"settings:{script_name}")
+            return WorkerSettingsSummary(
+                compatibility_date="2026-11-06",
+                usage_model="standard",
+                bindings=[
+                    BindingMetadata(name="DB", type="d1"),
+                    BindingMetadata(name="CACHE", type="kv_namespace"),
+                    BindingMetadata(name="OLD_KV", type="kv_namespace"),
+                ],
+            )
+
+    gateway = PreviewGateway()
+    monkeypatch.setattr(
+        builtins,
+        "build_cloudflare_gateway_client",
+        lambda _settings, **_kwargs: gateway,
+    )
+    client = authenticated_client()
+    assert client.put("/tools/grants/cloudflare.read", json={}).status_code == 200
+
+    response = client.post(
+        "/tools/cloudflare.worker.settings.diff_preview/invoke",
+        json={"payload": {
+            "script_name": "hub-gateway",
+            "compatibility_date": "2026-11-15",
+            "bindings": [
+                {"name": "DB", "type": "d1"},
+                {"name": "CACHE", "type": "r2_bucket"},
+                {"name": "MEDIA", "type": "r2_bucket"},
+            ],
+        }},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["read_only"] is True
+    assert result["deployment_performed"] is False
+    assert result["current"]["compatibility_date"] == "2026-11-06"
+    assert result["proposed"]["compatibility_date"] == "2026-11-15"
+    assert {(item["field"], item["action"], item["name"]) for item in result["changes"]} == {
+        ("compatibility_date", "change", None),
+        ("binding", "add", "MEDIA"),
+        ("binding", "remove", "OLD_KV"),
+        ("binding", "change", "CACHE"),
+    }
+    assert "gateway-test-token" not in response.text
+    assert gateway.calls == ["settings:hub-gateway"]
+
+
+def test_cloudflare_worker_settings_diff_preview_rejects_duplicate_or_invalid_bindings(monkeypatch):
+    gateway = FakeCloudflareGateway()
+    monkeypatch.setattr(
+        builtins,
+        "build_cloudflare_gateway_client",
+        lambda _settings, **_kwargs: gateway,
+    )
+    client = authenticated_client()
+    assert client.put("/tools/grants/cloudflare.read", json={}).status_code == 200
+
+    for payload in (
+        {
+            "script_name": "hub-gateway",
+            "compatibility_date": "2026-11-15",
+            "bindings": [
+                {"name": "DB", "type": "d1"},
+                {"name": "DB", "type": "r2_bucket"},
+            ],
+        },
+        {
+            "script_name": "hub-gateway",
+            "compatibility_date": "2026-02-30",
+            "bindings": [],
+        },
+        {
+            "script_name": "hub-gateway",
+            "compatibility_date": "2026-11-15",
+            "bindings": [{"name": "SECRET", "type": "secret_text", "text": "must-not-be-accepted"}],
+        },
+    ):
+        response = client.post(
+            "/tools/cloudflare.worker.settings.diff_preview/invoke",
+            json={"payload": payload},
+        )
+        assert response.status_code == 422
+
+    assert gateway.calls == []
