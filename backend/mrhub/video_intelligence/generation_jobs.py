@@ -21,6 +21,7 @@ from mrhub.jobs.payload_envelope import (
     encrypt_payload,
     load_payload_key,
 )
+from mrhub.security.audit import AuditLogger
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
@@ -38,6 +39,10 @@ class VideoGenerationReconciliationCooldown(ValueError):
     def __init__(self, retry_after_seconds: int) -> None:
         self.retry_after_seconds = max(1, retry_after_seconds)
         super().__init__("Video generation reconciliation is temporarily rate limited")
+
+
+class VideoGenerationCancellationConflict(ValueError):
+    """Raised when a generation is no longer safely pending for cancellation."""
 
 
 class VideoGenerationJobRepository:
@@ -499,6 +504,121 @@ class VideoGenerationJobRepository:
                     (generation_id, owner_user_id),
                 )
         return cursor.rowcount == 1
+
+    def cancel_pending(
+        self, owner_user_id: str, generation_id: UUID
+    ) -> dict[str, object] | None:
+        """Cancel only before provider submission, atomically with task and payload cleanup.
+
+        Active or ambiguous provider operations are deliberately not marked cancelled:
+        without a provider-side cancellation worker, doing so would misrepresent the
+        external outcome and could leave billable work running.
+        """
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT j.status AS generation_status, l.task_id,
+                          t.status AS task_status
+                   FROM video_generation_jobs AS j
+                   LEFT JOIN video_generation_task_links AS l
+                     ON l.generation_id = j.generation_id
+                    AND l.owner_user_id = j.owner_user_id
+                   LEFT JOIN tasks AS t ON t.task_id = l.task_id
+                   WHERE j.generation_id = ? AND j.owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            generation_status = str(row["generation_status"])
+            if generation_status == "cancelled":
+                return {
+                    "generation_id": str(generation_id),
+                    "status": "cancelled",
+                    "cancellation_requested": False,
+                }
+
+            if generation_status == "prepared":
+                cursor = connection.execute(
+                    """UPDATE video_generation_jobs
+                       SET status = 'cancelled', error_code = 'cancelled_before_enqueue',
+                           updated_at = ?
+                       WHERE generation_id = ? AND owner_user_id = ? AND status = 'prepared'""",
+                    (now, str(generation_id), owner_user_id),
+                )
+                if cursor.rowcount != 1:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation state changed before cancellation"
+                    )
+            elif generation_status == "queued":
+                task_id = row["task_id"]
+                task_status = row["task_status"]
+                if task_id is None or task_status not in {
+                    TaskStatus.WAITING_APPROVAL.value,
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.CANCELLED.value,
+                }:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation is no longer pending provider submission"
+                    )
+                if task_status != TaskStatus.CANCELLED.value:
+                    task_cursor = connection.execute(
+                        """UPDATE tasks SET status = 'cancelled', updated_at = ?
+                           WHERE task_id = ? AND status = ?""",
+                        (now, task_id, task_status),
+                    )
+                    if task_cursor.rowcount != 1:
+                        raise VideoGenerationCancellationConflict(
+                            "Generation task changed before cancellation"
+                        )
+                generation_cursor = connection.execute(
+                    """UPDATE video_generation_jobs
+                       SET status = 'cancelled', error_code = 'cancelled_before_submission',
+                           updated_at = ?
+                       WHERE generation_id = ? AND owner_user_id = ? AND status = 'queued'""",
+                    (now, str(generation_id), owner_user_id),
+                )
+                if generation_cursor.rowcount != 1:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation state changed before cancellation"
+                    )
+            else:
+                raise VideoGenerationCancellationConflict(
+                    "Active or ambiguous provider work requires provider-side cancellation support"
+                )
+
+            connection.execute(
+                """DELETE FROM video_generation_payloads
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            )
+            audit_event = AuditLogger(self.tasks).build_event(
+                event_type="video_generation.cancelled",
+                outcome="success",
+                subject_type="video_generation",
+                subject_id=str(generation_id),
+                actor_type="user",
+                actor_id=owner_user_id,
+                metadata={
+                    "reason_code": (
+                        "cancelled_before_enqueue"
+                        if generation_status == "prepared"
+                        else "cancelled_before_submission"
+                    ),
+                    "previous_status": generation_status,
+                    "new_status": "cancelled",
+                },
+            )
+            audit_payload = audit_event.model_dump(mode="json")
+            audit_payload["created_at"] = now
+            TaskRepository._insert_audit_event(connection, audit_payload)
+
+        return {
+            "generation_id": str(generation_id),
+            "status": "cancelled",
+            "cancellation_requested": False,
+        }
 
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:

@@ -1,10 +1,12 @@
 import base64
+import json
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
@@ -12,6 +14,7 @@ from mrhub.video_intelligence.generation import (
     VideoGenerationSubmission,
 )
 from mrhub.video_intelligence.generation_jobs import (
+    VideoGenerationCancellationConflict,
     VideoGenerationConflict,
     VideoGenerationJobRepository,
     VideoGenerationReconciliationCooldown,
@@ -1082,3 +1085,265 @@ def test_stale_submitting_job_can_be_requeued_for_lookup_only_recovery(
     loaded = repository.load_for_worker(task_id)
     assert loaded["status"] == "submitting"
     assert "request" not in loaded
+
+
+def test_cancel_pending_generation_atomically_cancels_task_and_purges_payload(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-pending")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    cancelled = repository.cancel_pending("owner-a", generation_id)
+
+    assert cancelled == {
+        "generation_id": str(generation_id),
+        "status": "cancelled",
+        "cancellation_requested": False,
+    }
+    assert repository.get("owner-a", generation_id)["status"] == "cancelled"
+    assert repository.tasks.get(task_id).status is TaskStatus.CANCELLED
+    assert repository.load_for_handoff("owner-a", generation_id) is None
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+        audit_rows = connection.execute(
+            """SELECT event_type, outcome, subject_type, subject_id,
+                      actor_type, actor_id, metadata_json
+               FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchall()
+    assert payload is None
+    assert len(audit_rows) == 1
+    audit = audit_rows[0]
+    assert audit["event_type"] == "video_generation.cancelled"
+    assert audit["outcome"] == "success"
+    assert audit["subject_type"] == "video_generation"
+    assert audit["subject_id"] == str(generation_id)
+    assert audit["actor_type"] == "user"
+    assert audit["actor_id"] == "owner-a"
+    assert json.loads(audit["metadata_json"]) == {
+        "new_status": "cancelled",
+        "previous_status": "queued",
+        "reason_code": "cancelled_before_submission",
+    }
+
+    # Repeating the same owner cancellation is idempotent and does not duplicate audit.
+    assert repository.cancel_pending("owner-a", generation_id) == cancelled
+    with repository.tasks._connection() as connection:
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert audit_count == 1
+
+
+def test_cancel_prepared_generation_records_audit_without_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"p" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-prepared")
+    )
+    generation_id = UUID(accepted["generation_id"])
+
+    cancelled = repository.cancel_pending("owner-a", generation_id)
+
+    assert cancelled["status"] == "cancelled"
+    assert repository.get("owner-a", generation_id)["status"] == "cancelled"
+    with repository.tasks._connection() as connection:
+        rows = connection.execute(
+            """SELECT actor_type, actor_id, metadata_json
+               FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchall()
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+    assert len(rows) == 1
+    assert rows[0]["actor_type"] == "user"
+    assert rows[0]["actor_id"] == "owner-a"
+    assert json.loads(rows[0]["metadata_json"]) == {
+        "new_status": "cancelled",
+        "previous_status": "prepared",
+        "reason_code": "cancelled_before_enqueue",
+    }
+    assert payload is None
+    assert repository.cancel_pending("owner-a", generation_id) == cancelled
+    with repository.tasks._connection() as connection:
+        count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert count == 1
+
+
+def test_cancel_pending_generation_rolls_back_when_audit_insert_fails(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"a" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-audit-failure")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    def fail_audit_insert(connection, event):
+        raise RuntimeError("simulated audit storage failure")
+
+    monkeypatch.setattr(
+        TaskRepository, "_insert_audit_event", staticmethod(fail_audit_insert)
+    )
+    with pytest.raises(RuntimeError, match="simulated audit storage failure"):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == "queued"
+    assert repository.tasks.get(task_id).status is TaskStatus.WAITING_APPROVAL
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert payload is not None
+    assert audit_count == 0
+
+
+def test_cancel_pending_generation_accepts_already_approved_queued_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"d" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-approved")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'queued' WHERE task_id = ? AND status = 'waiting_approval'",
+            (str(task_id),),
+        )
+
+    result = repository.cancel_pending("owner-a", generation_id)
+
+    assert result["status"] == "cancelled"
+    assert repository.tasks.get(task_id).status is TaskStatus.CANCELLED
+
+
+def test_cancel_pending_generation_hides_foreign_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"e" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-owner")
+    )
+
+    assert repository.cancel_pending("owner-b", UUID(accepted["generation_id"])) is None
+    assert repository.get("owner-a", UUID(accepted["generation_id"]))["status"] == "prepared"
+
+
+def test_cancel_pending_generation_refuses_after_worker_claim_before_submit(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-claimed")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+
+    # Simulate WorkerEngine claiming the task before the generation handler
+    # transitions the generation row from queued to submitting.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = 'running' WHERE task_id = ?",
+            (str(task_id),),
+        )
+
+    with pytest.raises(VideoGenerationCancellationConflict):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == "queued"
+    assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
+    with repository.tasks._connection() as connection:
+        payload = connection.execute(
+            "SELECT 1 FROM video_generation_payloads WHERE generation_id = ?",
+            (str(generation_id),),
+        ).fetchone()
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancelled' AND subject_id = ?""",
+            (str(generation_id),),
+        ).fetchone()[0]
+    assert payload is not None
+    assert audit_count == 0
+
+
+@pytest.mark.parametrize("active_status", ["submitting", "running", "unknown_outcome"])
+def test_cancel_pending_generation_refuses_active_or_ambiguous_provider_jobs(
+    tmp_path, monkeypatch, active_status
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"f" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request(f"cancel-{active_status}")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    repository.enqueue("owner-a", generation_id)
+    if active_status == "submitting":
+        repository.transition("owner-a", generation_id, "submitting")
+    elif active_status == "running":
+        repository.transition("owner-a", generation_id, "submitting")
+        repository.transition("owner-a", generation_id, "running", provider_job_id="remote-1")
+    else:
+        repository.transition("owner-a", generation_id, "submitting")
+        repository.transition("owner-a", generation_id, "unknown_outcome", error_code="provider_timeout")
+
+    with pytest.raises(VideoGenerationCancellationConflict):
+        repository.cancel_pending("owner-a", generation_id)
+
+    assert repository.get("owner-a", generation_id)["status"] == active_status
+
