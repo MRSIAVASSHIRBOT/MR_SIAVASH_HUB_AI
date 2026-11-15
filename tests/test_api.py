@@ -1,3 +1,5 @@
+from uuid import UUID, uuid4
+
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
@@ -545,3 +547,19 @@ def test_video_render_from_draft_rejects_malformed_saved_timeline(monkeypatch):
     )
 
     assert response.status_code == 422
+
+
+
+def test_request_id_header_is_validated_and_always_returned() -> None:
+    client = TestClient(create_app())
+    supplied = str(uuid4())
+
+    accepted = client.get("/health", headers={"X-Request-ID": supplied})
+    assert accepted.status_code == 200
+    assert accepted.headers["X-Request-ID"] == supplied
+
+    rejected = client.get("/health", headers={"X-Request-ID": "not-a-uuid"})
+    assert rejected.status_code == 200
+    generated = rejected.headers["X-Request-ID"]
+    assert generated != "not-a-uuid"
+    assert str(UUID(generated)) == generated
