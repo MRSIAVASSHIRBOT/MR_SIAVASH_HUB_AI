@@ -7,7 +7,7 @@ import binascii
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -28,6 +28,10 @@ from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.idempotency import IdempotencyConflict, IdempotencyError, IdempotencyRepository
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.memory.repository import MemoryRepository
+from mrhub.video_intelligence.generation_jobs import (
+    VideoGenerationCancellationConflict,
+    VideoGenerationJobRepository,
+)
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
@@ -41,6 +45,8 @@ TelegramScope = Literal[
     "tasks:create",
     "tasks:cancel",
     "memory:search",
+    "video:read",
+    "video:cancel",
 ]
 DEFAULT_SCOPES = ["status:read"]
 
@@ -49,7 +55,7 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=6)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=8)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -101,6 +107,52 @@ def _decode_telegram_task_cursor(cursor: str) -> tuple[str, str]:
     except (binascii.Error, UnicodeDecodeError, ValueError):
         raise ValueError("Invalid task cursor") from None
     return created_at, str(parsed_task_id)
+
+
+def _encode_telegram_generation_cursor(created_at: str, generation_id: str) -> str:
+    payload = f"{created_at}\\n{generation_id}".encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_telegram_generation_cursor(cursor: str) -> tuple[str, UUID]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", cursor):
+        raise ValueError("Invalid generation cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = base64.b64decode(
+            cursor + padding, altchars=b"-_", validate=True
+        ).decode("utf-8")
+        created_at, raw_generation_id = payload.split("\\n", 1)
+        if not created_at or len(created_at) > 64:
+            raise ValueError("Invalid generation cursor")
+        parsed_at = datetime.fromisoformat(created_at)
+        if parsed_at.tzinfo is None or parsed_at.utcoffset() is None:
+            raise ValueError("Invalid generation cursor")
+        generation_id = UUID(raw_generation_id)
+        if str(generation_id) != raw_generation_id.lower():
+            raise ValueError("Invalid generation cursor")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid generation cursor") from None
+    return parsed_at.astimezone(UTC).isoformat(), generation_id
+
+
+def _telegram_generation_summary(generation: dict[str, object]) -> dict[str, object]:
+    """Expose only owner-safe lifecycle metadata; never provider IDs or private asset IDs."""
+    allowed = (
+        "generation_id",
+        "provider",
+        "model",
+        "status",
+        "progress_percent",
+        "output_bytes",
+        "output_duration_seconds",
+        "output_width",
+        "output_height",
+        "error_code",
+        "created_at",
+        "updated_at",
+    )
+    return {key: generation.get(key) for key in allowed}
 
 
 def _pairing_repository() -> TelegramPairingRepository:
@@ -230,6 +282,101 @@ def telegram_status(
         "label": identity.label,
         "scopes": sorted(identity.scopes),
     }
+
+
+@router.get("/video/providers")
+def list_telegram_video_providers(
+    _identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+) -> dict[str, object]:
+    """Return the reviewed provider catalog without probing or starting work."""
+    from mrhub.video_intelligence.generation_registry import video_generation_registry
+
+    providers = [item.model_dump(mode="json") for item in video_generation_registry.catalog()]
+    return {
+        "providers": providers,
+        "count": len(providers),
+        "generation_available": bool(providers),
+        "reason_code": None if providers else "provider_unavailable",
+        "execution": "not_started",
+    }
+
+
+@router.get("/video/generations")
+def list_telegram_video_generations(
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    limit: int = 10,
+    cursor: str | None = None,
+) -> dict[str, object]:
+    """List bounded video-generation metadata for the paired owner's account."""
+    if isinstance(limit, bool) or not 1 <= limit <= 20:
+        raise HTTPException(status_code=422, detail="Video generation page limit must be between 1 and 20")
+    before_created_at = None
+    before_generation_id = None
+    if cursor is not None:
+        try:
+            before_created_at, before_generation_id = _decode_telegram_generation_cursor(cursor)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid video generation cursor") from None
+
+    repository = VideoGenerationJobRepository(get_settings().database_path)
+    rows = repository.list_for_owner(
+        identity.owner_user_id,
+        limit=limit + 1,
+        before_created_at=before_created_at,
+        before_generation_id=before_generation_id,
+    )
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    last = page[-1] if page else None
+    next_cursor = (
+        _encode_telegram_generation_cursor(
+            str(last["created_at"]), str(last["generation_id"])
+        )
+        if has_more and last is not None
+        else None
+    )
+    return {
+        "items": [_telegram_generation_summary(item) for item in page],
+        "count": len(page),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+    }
+
+
+@router.get("/video/generations/{generation_id}")
+def get_telegram_video_generation(
+    generation_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+) -> dict[str, object]:
+    """Return one generation only within the paired owner's account."""
+    generation = VideoGenerationJobRepository(get_settings().database_path).get(
+        identity.owner_user_id, generation_id
+    )
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Telegram video generation not found")
+    return _telegram_generation_summary(generation)
+
+
+@router.delete("/video/generations/{generation_id}")
+def cancel_telegram_video_generation(
+    generation_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))],
+) -> dict[str, object]:
+    """Cancel only a generation that has not been submitted to a provider."""
+    repository = VideoGenerationJobRepository(get_settings().database_path)
+    try:
+        result = repository.cancel_pending(identity.owner_user_id, generation_id)
+    except VideoGenerationCancellationConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "generation_cancellation_conflict",
+                "message": "Active or ambiguous provider work cannot be cancelled through this endpoint.",
+            },
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Telegram video generation not found")
+    return result
 
 
 @router.get("/tasks")
