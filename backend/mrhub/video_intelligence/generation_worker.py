@@ -78,11 +78,12 @@ class VideoGenerationWorkerHandler:
                 provider, request, provider_name, model_name, owner,
                 generation_id, lease, lease_lost,
             )
-        if job_status not in {"unknown_outcome", "running"}:
+        if job_status not in {"submitting", "unknown_outcome", "running"}:
             raise ValueError("Generation job is not eligible for reconciliation")
         return self._reconcile(
             provider, provider_name, model_name, owner, generation_id,
             loaded.get("provider_job_id"), lease, lease_lost,
+            initial_status=job_status,
         )
 
     def _submit_once(
@@ -174,6 +175,8 @@ class VideoGenerationWorkerHandler:
         provider_job_id: object,
         lease: WorkerLease,
         lease_lost: Event,
+        *,
+        initial_status: str = "unknown_outcome",
     ) -> dict[str, object]:
         """Find an ambiguous submission by its original key; never call submit here."""
         if not provider_job_id:
@@ -181,7 +184,14 @@ class VideoGenerationWorkerHandler:
                 submission = provider.find_by_idempotency_key(str(generation_id))
             except Exception:  # noqa: BLE001 - lookup failure remains ambiguous
                 raise ValueError("provider_reconciliation_lookup_failed") from None
+            if lease_lost.is_set():
+                return {"generation_id": str(generation_id), "status": "lease_lost"}
             if submission is None:
+                if initial_status == "submitting":
+                    self.jobs.transition_under_lease(
+                        owner, generation_id, "unknown_outcome", lease=lease,
+                        error_code="provider_submission_not_discoverable",
+                    )
                 return {
                     "generation_id": str(generation_id),
                     "status": "unknown_outcome",

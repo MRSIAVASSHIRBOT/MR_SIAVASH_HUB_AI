@@ -214,7 +214,7 @@ class VideoGenerationJobRepository:
         return {"generation_id": str(generation_id), "task_id": str(task.task_id), "status": "queued", "created": True}
 
     def load_for_worker(self, task_id: UUID) -> dict[str, object] | None:
-        """Decrypt a queued, ambiguous, or running job through its linked durable task."""
+        """Load queued work or reconciliation-only state through its linked task."""
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT l.owner_user_id, l.generation_id, j.provider, j.model,
@@ -233,7 +233,7 @@ class VideoGenerationJobRepository:
         if row is None:
             return None
         job_status = str(row["status"])
-        if job_status not in {"queued", "unknown_outcome", "running"}:
+        if job_status not in {"queued", "submitting", "unknown_outcome", "running"}:
             raise ValueError("Generation job is not eligible for worker execution")
         if job_status == "running" and not row["provider_job_id"]:
             raise ValueError("Running generation job is missing its provider reference")
@@ -273,7 +273,7 @@ class VideoGenerationJobRepository:
     def enqueue_reconciliation(
         self, owner_user_id: str, generation_id: UUID
     ) -> dict[str, object] | None:
-        """Requeue the original approved task for read-only provider reconciliation."""
+        """Requeue the original task for read-only reconciliation of an ambiguous submit."""
         now = self._now()
         with self.tasks._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -291,8 +291,8 @@ class VideoGenerationJobRepository:
             if row is None:
                 return None
             generation_status = str(row["generation_status"])
-            if generation_status not in {"unknown_outcome", "running"}:
-                raise ValueError("Only ambiguous or running generation jobs can be reconciled")
+            if generation_status not in {"submitting", "unknown_outcome", "running"}:
+                raise ValueError("Only submitting, ambiguous, or running generation jobs can be reconciled")
             if generation_status == "running" and not row["provider_job_id"]:
                 raise ValueError("Running generation job is missing its provider reference")
             task_status = str(row["task_status"])

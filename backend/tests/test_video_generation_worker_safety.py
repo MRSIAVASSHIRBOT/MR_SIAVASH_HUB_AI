@@ -15,8 +15,12 @@ from mrhub.video_intelligence.generation_worker import VideoGenerationWorkerHand
 
 
 class RecordingJobs:
-    def __init__(self):
+    def __init__(self, loaded=None):
+        self.loaded = loaded
         self.transitions = []
+
+    def load_for_worker(self, _task_id):
+        return self.loaded
 
     def transition_under_lease(self, owner, generation_id, status, **kwargs):
         self.transitions.append((owner, generation_id, status, kwargs))
@@ -202,4 +206,90 @@ def test_submit_exception_is_persisted_as_unknown_outcome_not_retried():
     ]
     assert handler.jobs.transitions[-1][3]["error_code"] == (
         "provider_submission_outcome_unknown"
+    )
+
+
+
+def test_stale_submitting_job_is_reconciled_by_lookup_without_replay(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+
+    generation_id = uuid4()
+    handler = _handler()
+    handler.jobs.loaded = {
+        "owner_user_id": "owner-1",
+        "generation_id": str(generation_id),
+        "provider": "fixture",
+        "model": "fixture-v1",
+        "status": "submitting",
+        "provider_job_id": None,
+    }
+    submission = VideoGenerationSubmission(
+        provider="fixture",
+        model="fixture-v1",
+        provider_job_id="opaque-job-lease-recovery",
+        status=GenerationStatus.ACCEPTED,
+        progress_percent=15,
+    )
+    status = VideoGenerationResult(
+        provider="fixture",
+        model="fixture-v1",
+        provider_job_id="opaque-job-lease-recovery",
+        status=GenerationStatus.RUNNING,
+    )
+    provider = LookupOnlyProvider(lookup_result=submission, status_result=status)
+    monkeypatch.setattr(
+        registry_module.video_generation_registry,
+        "get",
+        lambda _provider, _model: provider,
+    )
+
+    result = handler(
+        SimpleNamespace(task_id=uuid4()),
+        lease=object(),
+        lease_lost=Event(),
+    )
+
+    assert result == {"generation_id": str(generation_id), "status": "running"}
+    assert provider.lookup_calls == 1
+    assert provider.status_calls == 1
+    assert provider.submit_calls == 0
+    assert [item[2] for item in handler.jobs.transitions] == ["running", "running"]
+
+
+def test_stale_submitting_lookup_miss_is_marked_ambiguous(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+
+    generation_id = uuid4()
+    handler = _handler()
+    handler.jobs.loaded = {
+        "owner_user_id": "owner-1",
+        "generation_id": str(generation_id),
+        "provider": "fixture",
+        "model": "fixture-v1",
+        "status": "submitting",
+        "provider_job_id": None,
+    }
+    provider = LookupOnlyProvider()
+    monkeypatch.setattr(
+        registry_module.video_generation_registry,
+        "get",
+        lambda _provider, _model: provider,
+    )
+
+    result = handler(
+        SimpleNamespace(task_id=uuid4()),
+        lease=object(),
+        lease_lost=Event(),
+    )
+
+    assert result == {
+        "generation_id": str(generation_id),
+        "status": "unknown_outcome",
+        "reason_code": "provider_submission_not_discoverable",
+    }
+    assert provider.lookup_calls == 1
+    assert provider.submit_calls == 0
+    assert [item[2] for item in handler.jobs.transitions] == ["unknown_outcome"]
+    assert handler.jobs.transitions[0][3]["error_code"] == (
+        "provider_submission_not_discoverable"
     )

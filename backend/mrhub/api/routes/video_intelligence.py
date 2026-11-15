@@ -250,7 +250,7 @@ def reconcile_video_generation(
     response: Response,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
-    """Queue an owner-requested, read-only provider lookup for an ambiguous/running job."""
+    """Queue a read-only lookup for a submitting, ambiguous, or running job."""
     jobs = VideoGenerationJobRepository(get_settings().database_path)
     try:
         queued = jobs.enqueue_reconciliation(user.user_id, generation_id)
