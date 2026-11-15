@@ -75,7 +75,7 @@ The public website Gateway remains a separate public-only path. Its outbound req
 - Additive fields or endpoints may be added within v1 only if existing semantics remain unchanged.
 - Changes to authentication, ownership, scope meaning, token lifetimes, or existing request/response semantics are breaking and require a new major contract version.
 - The manifest is the machine-readable source of truth; this document explains the security and operational intent.
-- Consumer repositories should pin their compatibility tests to the published v1 manifest once this baseline is merged.
+- Consumer repositories should pin their compatibility tests to the published v1 manifest; the approved v1 baseline is merged to the Hub default branch.
 
 ## 6. Operational status
 
