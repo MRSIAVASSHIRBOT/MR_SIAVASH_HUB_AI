@@ -571,3 +571,7 @@ def test_request_id_header_is_validated_and_always_returned() -> None:
     assert nil_uuid.status_code == 200
     assert nil_uuid.headers["X-Request-ID"] != "00000000-0000-0000-0000-000000000000"
     assert UUID(nil_uuid.headers["X-Request-ID"]).version == 4
+
+    not_found = client.get("/__request_id_probe__")
+    assert not_found.status_code == 404
+    assert UUID(not_found.headers["X-Request-ID"]).version == 4
