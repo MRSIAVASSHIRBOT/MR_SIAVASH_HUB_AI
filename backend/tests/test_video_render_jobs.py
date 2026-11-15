@@ -1246,7 +1246,10 @@ def test_render_status_exposes_only_verified_output_metadata_for_owner(tmp_path,
     output_asset_id = "22222222-2222-4222-8222-222222222222"
     with jobs.tasks._connection() as connection:
         connection.execute(
-            "UPDATE video_render_runs SET status = 'completed', output_asset_id = ? WHERE render_id = ?",
+            (
+                "UPDATE video_render_runs SET status = 'completed', "
+                "output_asset_id = ? WHERE render_id = ?",
+            ),
             (output_asset_id, str(render_id)),
         )
         connection.execute(
