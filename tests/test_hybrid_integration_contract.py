@@ -2,6 +2,7 @@ import json
 import pathlib
 
 
+
 CONTRACT_PATH = (
     pathlib.Path(__file__).resolve().parents[1]
     / "contracts"
