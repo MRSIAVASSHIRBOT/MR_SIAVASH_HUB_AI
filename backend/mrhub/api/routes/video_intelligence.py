@@ -25,6 +25,7 @@ from mrhub.security.auth import AuthenticatedUser
 from mrhub.video_intelligence.edit_spec import EditSpecification
 from mrhub.video_intelligence.generation import VideoGenerationRequest
 from mrhub.video_intelligence.generation_jobs import (
+    VideoGenerationCancellationConflict,
     VideoGenerationConflict,
     VideoGenerationJobRepository,
     VideoGenerationReconciliationCooldown,
@@ -239,6 +240,31 @@ def get_video_generation_status(
         "created_at": generation["created_at"],
         "updated_at": generation["updated_at"],
     }
+
+
+@router.delete("/generations/{generation_id}")
+def cancel_video_generation(
+    generation_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Cancel only an owner-pending generation before provider submission."""
+    jobs = VideoGenerationJobRepository(get_settings().database_path)
+    try:
+        result = jobs.cancel_pending(user.user_id, generation_id)
+    except VideoGenerationCancellationConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "provider_cancellation_unavailable",
+                "message": (
+                    "This generation is active or has an ambiguous provider outcome; "
+                    "provider-side cancellation is not available for this state."
+                ),
+            },
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    return result
 
 
 @router.post(
