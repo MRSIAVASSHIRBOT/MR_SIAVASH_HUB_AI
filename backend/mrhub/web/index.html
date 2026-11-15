@@ -475,6 +475,16 @@
             <div id="video-render-result" class="record-list"></div>
           </section>
 
+          <section class="video-generation-panel" aria-labelledby="video-generation-heading">
+            <div class="section-heading">
+              <h4 id="video-generation-heading">وضعیت Providerهای تولید ویدئو</h4>
+              <button id="video-generation-providers-refresh" class="button button-quiet" type="button">بررسی Providerها</button>
+            </div>
+            <p class="muted">این بخش فقط فهرست Adapterهای صریحاً پیکربندی‌شده را می‌خواند؛ هیچ سرویس بیرونی را فراخوانی نمی‌کند، هزینه‌ای ایجاد نمی‌کند و تولید را آغاز نمی‌کند. ثبت درخواست تولید، در صورت وجود Provider سازگار، همچنان از API و پس از تأیید مستقل مالک انجام می‌شود.</p>
+            <p id="video-generation-providers-message" class="message" role="status" aria-live="polite">وضعیت Providerها پس از ورود بارگذاری می‌شود.</p>
+            <div id="video-generation-providers-list" class="record-list"></div>
+          </section>
+
           <div class="video-prompt-composer">
             <div class="section-heading"><h4>ساخت Prompt از تحلیل معنایی معتبر</h4></div>
             <div class="form-grid">
