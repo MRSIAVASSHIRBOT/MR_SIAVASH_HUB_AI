@@ -113,6 +113,7 @@ class ResearchEvidence:
     canonical_url: str
     hostname: str
     publisher_group: str
+    independence_basis: str
     source_first_captured_at: str
     source_last_captured_at: str
     source_label: str
@@ -134,6 +135,7 @@ class ResearchEvidence:
             "canonical_url": self.canonical_url,
             "hostname": self.hostname,
             "publisher_group": self.publisher_group,
+            "independence_basis": self.independence_basis,
             "source_first_captured_at": self.source_first_captured_at,
             "source_last_captured_at": self.source_last_captured_at,
             "source_label": self.source_label,
@@ -367,6 +369,7 @@ class ResearchRepository:
             canonical_url=row["canonical_url"],
             hostname=row["hostname"],
             publisher_group=row["publisher_group"],
+            independence_basis=row["independence_basis"],
             source_first_captured_at=row["source_first_captured_at"],
             source_last_captured_at=row["source_last_captured_at"],
             source_label=row["source_label"],
@@ -386,7 +389,7 @@ class ResearchRepository:
             rows = connection.execute(
                 """SELECT e.evidence_id, e.opportunity_id, e.source_type, e.canonical_url,
                           e.source_label, e.observation_summary, e.signal_strength,
-                          e.captured_at, e.published_at, s.source_id, s.hostname,
+                          e.independence_basis, e.captured_at, e.published_at, s.source_id, s.hostname,
                           s.publisher_group, s.first_captured_at AS source_first_captured_at,
                           s.last_captured_at AS source_last_captured_at,
                           (SELECT COUNT(*) FROM research_evidence linked
@@ -405,7 +408,7 @@ class ResearchRepository:
         self, *, owner_user_id: str, opportunity_id: str, source_type: str,
         source_url: str, source_label: str, observation_summary: str,
         signal_strength: str = "medium", published_at: str | None = None,
-        publisher_group: str | None = None,
+        publisher_group: str | None = None, independence_basis: str | None = None,
     ) -> ResearchEvidence:
         self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
         if source_type not in SOURCE_TYPES:
@@ -418,6 +421,7 @@ class ResearchRepository:
             raise ResearchValidationError("Evidence URL must include a valid public hostname")
         source_label = _text(source_label, "Source label", 120)
         observation_summary = _text(observation_summary, "Observation summary", 2000)
+        independence_basis = _text(independence_basis or "", "Source independence basis", 1000, allow_empty=True)
         if published_at is not None:
             published_at = _parse_published_at(published_at).isoformat()
         requested_group = None
@@ -461,11 +465,11 @@ class ResearchRepository:
                     """INSERT INTO research_evidence (
                         evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
                         source_label, observation_summary, signal_strength, captured_at,
-                        published_at, source_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        published_at, source_id, independence_basis
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (evidence_id, opportunity_id, owner_user_id, source_type, canonical_url,
                      source_label, observation_summary, signal_strength, captured_at,
-                     published_at, source_id),
+                     published_at, source_id, independence_basis),
                 )
                 connection.execute(
                     """UPDATE research_opportunities SET updated_at = ?
@@ -476,6 +480,34 @@ class ResearchRepository:
             raise ResearchConflictError(
                 "This source URL is already attached to the opportunity"
             ) from exc
+        return next(
+            item for item in self.list_evidence(
+                owner_user_id=owner_user_id, opportunity_id=opportunity_id
+            ) if item.evidence_id == evidence_id
+        )
+
+    def update_evidence_independence_basis(
+        self, *, owner_user_id: str, opportunity_id: str, evidence_id: str,
+        independence_basis: str,
+    ) -> ResearchEvidence:
+        self.get_opportunity(owner_user_id=owner_user_id, opportunity_id=opportunity_id)
+        basis = _text(independence_basis, "Source independence basis", 1000)
+        now = self._now()
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """UPDATE research_evidence
+                   SET independence_basis = ?
+                   WHERE evidence_id = ? AND opportunity_id = ? AND owner_user_id = ?""",
+                (basis, evidence_id, opportunity_id, owner_user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ResearchNotFound("Research evidence not found")
+            connection.execute(
+                """UPDATE research_opportunities
+                   SET updated_at = ?
+                   WHERE opportunity_id = ? AND owner_user_id = ?""",
+                (now, opportunity_id, owner_user_id),
+            )
         return next(
             item for item in self.list_evidence(
                 owner_user_id=owner_user_id, opportunity_id=opportunity_id
@@ -506,7 +538,7 @@ class ResearchRepository:
             with self._connection() as connection:
                 evidence = connection.execute(
                     """SELECT e.canonical_url, e.source_type, e.published_at,
-                              s.hostname, s.publisher_group
+                              e.independence_basis, s.hostname, s.publisher_group
                        FROM research_evidence e
                        INNER JOIN research_sources s
                            ON s.source_id = e.source_id AND s.owner_user_id = e.owner_user_id
@@ -516,6 +548,7 @@ class ResearchRepository:
             current_evidence = [
                 row for row in evidence
                 if _freshness_details(row["source_type"], row["published_at"])[0] == "current"
+                and str(row["independence_basis"] or "").strip()
             ]
             source_count = len({row["canonical_url"] for row in current_evidence})
             type_count = len({row["source_type"] for row in current_evidence})
@@ -526,7 +559,8 @@ class ResearchRepository:
             if source_count < 2 or type_count < 2 or host_count < 2 or publisher_count < 2:
                 raise ResearchConflictError(
                     "Validation requires two current, dated public URLs, two source types, "
-                    "two hostnames, and two publisher groups; stale or undated evidence does not count"
+                    "two hostnames, two publisher groups, and a recorded independence rationale "
+                    "for each counted source; stale, undated, or unreviewed evidence does not count"
                 )
         if next_status == "prioritized" and any(score is None for score in effective_scores):
             raise ResearchConflictError(

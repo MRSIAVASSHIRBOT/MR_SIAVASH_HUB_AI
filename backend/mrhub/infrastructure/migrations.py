@@ -1253,7 +1253,16 @@ MIGRATIONS = (
                    SELECT RAISE(ABORT, 'research evidence source provenance mismatch');
                END""",
         ),
-    )
+    ),
+    Migration.build(
+        45,
+        "record_research_evidence_independence_rationale",
+        (
+            """ALTER TABLE research_evidence
+               ADD COLUMN independence_basis TEXT NOT NULL DEFAULT ''
+               CHECK (length(independence_basis) <= 1000)""",
+        ),
+    ),
 )
 
 

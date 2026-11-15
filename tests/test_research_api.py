@@ -34,6 +34,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
             "signal_strength": "high",
             "publisher_group": "Example Research Network",
             "published_at": published_at,
+            "independence_basis": "A public discussion hosted by an independently operated community; ownership checked separately.",
         })
         assert evidence.status_code == 201
         assert evidence.json()["canonical_url"] == "https://example.com/community/thread-1"
@@ -60,6 +61,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
                 "signal_strength": "medium",
                 "publisher_group": "Example Research Network",
                 "published_at": published_at,
+                "independence_basis": "A review platform with distinct editorial ownership, checked separately.",
             },
         )
         assert same_host_evidence.status_code == 201
@@ -76,6 +78,7 @@ def test_research_opportunity_evidence_and_assessment_lifecycle(tmp_path, monkey
             "signal_strength": "medium",
             "publisher_group": "Independent App Reviews",
             "published_at": published_at,
+            "independence_basis": "A separate app-review publisher; editorial ownership and publication origin checked.",
         })
         assert second_evidence.status_code == 201
 
@@ -519,6 +522,7 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
             "observation_summary": "People describe the repeated task.",
             "publisher_group": "Shared Media Group",
             "published_at": published_at,
+            "independence_basis": "Public forum ownership and publication origin reviewed.",
         }
         second = {
             "source_type": "app_review",
@@ -527,6 +531,7 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
             "observation_summary": "Users report the same workflow friction.",
             "publisher_group": "Shared Media Group",
             "published_at": published_at,
+            "independence_basis": "App-review publisher ownership and publication origin reviewed.",
         }
         assert client.post(
             f"/research/opportunities/{opportunity_id}/evidence", json=first
@@ -567,6 +572,7 @@ def test_research_validation_requires_fresh_sources_and_distinct_publisher_group
                 "observation_summary": "A current independent report corroborates the problem.",
                 "publisher_group": "Independent Research Institute",
                 "published_at": published_at,
+                "independence_basis": "Research institute publication and editorial governance checked independently.",
             },
         )
         assert fresh_independent.status_code == 201
@@ -645,5 +651,83 @@ def test_research_source_default_publisher_group_accepts_long_valid_hostnames(tm
         assert response.status_code == 201
         assert response.json()["hostname"] == hostname
         assert response.json()["publisher_group"] == hostname
+    finally:
+        get_settings.cache_clear()
+
+
+def test_research_validation_requires_recorded_independence_rationale(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "research-independence.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post("/research/opportunities", json={
+            "domain_id": "web",
+            "title": "Independent source review",
+            "problem_statement": "Small teams struggle to validate customer needs.",
+            "audience": "Small teams",
+        }).json()
+        opportunity_id = created["opportunity_id"]
+        published_at = datetime.now(UTC).isoformat()
+        evidence_ids = []
+        for host, group, source_type in (
+            ("one.example", "Publisher One", "public_discussion"),
+            ("two.example", "Publisher Two", "app_review"),
+        ):
+            response = client.post(
+                f"/research/opportunities/{opportunity_id}/evidence",
+                json={
+                    "source_type": source_type,
+                    "source_url": f"https://{host}/discussion",
+                    "source_label": "Public source",
+                    "observation_summary": "The source reports a recurring workflow problem.",
+                    "signal_strength": "medium",
+                    "published_at": published_at,
+                    "publisher_group": group,
+                },
+            )
+            assert response.status_code == 201
+            evidence_ids.append(response.json()["evidence_id"])
+
+        blank_review = client.patch(
+            f"/research/opportunities/{opportunity_id}/evidence/{evidence_ids[0]}/independence",
+            json={"independence_basis": "   "},
+        )
+        assert blank_review.status_code == 422
+
+        validating = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validating"}
+        )
+        assert validating.status_code == 200
+
+        blocked = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert blocked.status_code == 409
+
+        # Capture the timestamp after all status changes so this assertion
+        # specifically verifies that evidence review updates the opportunity.
+        before_review = client.get(
+            f"/research/opportunities/{opportunity_id}"
+        ).json()["updated_at"]
+
+        for evidence_id in evidence_ids:
+            reviewed = client.patch(
+                f"/research/opportunities/{opportunity_id}/evidence/{evidence_id}/independence",
+                json={
+                    "independence_basis": "Ownership and editorial origin reviewed against the other source."
+                },
+            )
+            assert reviewed.status_code == 200
+            assert reviewed.json()["independence_basis"]
+
+        after_review = client.get(
+            f"/research/opportunities/{opportunity_id}"
+        ).json()["updated_at"]
+        assert after_review > before_review
+
+        validated = client.patch(
+            f"/research/opportunities/{opportunity_id}", json={"status": "validated"}
+        )
+        assert validated.status_code == 200
     finally:
         get_settings.cache_clear()

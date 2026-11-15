@@ -605,7 +605,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -736,7 +736,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44]
+    assert SchemaMigrator(connection).migrate() == [44, 45]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -750,6 +750,18 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     source = connection.execute(
         "SELECT * FROM research_sources WHERE owner_user_id = 'owner-1'"
     ).fetchone()
+    evidence_columns = {row["name"] for row in connection.execute("PRAGMA table_info(research_evidence)")}
+    assert "independence_basis" in evidence_columns
+    legacy_rationales = connection.execute(
+        "SELECT independence_basis FROM research_evidence"
+    ).fetchall()
+    assert len(legacy_rationales) == 3
+    assert all(row["independence_basis"] == "" for row in legacy_rationales)
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE research_evidence SET independence_basis = ? WHERE evidence_id = ?",
+            ("x" * 1001, "11111111-1111-4111-8111-111111111111"),
+        )
     assert source["hostname"] == "example.com"
     assert source["publisher_group"] == "example.com"
     assert source["first_captured_at"] == now
