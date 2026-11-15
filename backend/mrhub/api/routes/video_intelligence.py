@@ -258,7 +258,7 @@ def cancel_video_generation(
                 "code": "provider_cancellation_unavailable",
                 "message": (
                     "This generation is active or has an ambiguous provider outcome; "
-                    "provider-side cancellation is not available for this state."
+                    "provider-side cancellation workflow is not available for this state."
                 ),
             },
         ) from exc

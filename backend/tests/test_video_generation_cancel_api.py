@@ -1,6 +1,5 @@
 from uuid import uuid4
 
-
 from client_helpers import authenticated_client
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationCancellationConflict,
@@ -29,7 +28,7 @@ def test_cancel_generation_route_cancels_owner_pending_job(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
-    assert calls == [("owner-1", generation_id)]
+    assert calls == [("local-owner", generation_id)]
 
 
 def test_cancel_generation_route_returns_not_found_for_foreign_or_missing_job(
