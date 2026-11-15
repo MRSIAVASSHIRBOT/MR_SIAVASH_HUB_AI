@@ -1230,3 +1230,51 @@ def test_snapshot_and_render_submission_share_one_transaction(tmp_path, monkeypa
             "SELECT COUNT(*) FROM video_render_runs"
         ).fetchone()[0] == 2
     assert legacy["render_id"] != accepted["render_id"]
+
+
+
+def test_render_status_exposes_only_verified_output_metadata_for_owner(tmp_path, monkeypatch):
+    import json
+
+    _analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-output-metadata-key")
+    task_id = accepted["task_id"]
+    render_id = UUID(accepted["render_id"])
+    now = "2026-11-15T22:00:00+00:00"
+    expiry = "2099-01-01T00:00:00+00:00"
+    output_asset_id = "22222222-2222-4222-8222-222222222222"
+    with jobs.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_render_runs SET status = 'completed', output_asset_id = ? WHERE render_id = ?",
+            (output_asset_id, str(render_id)),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token, result_json, finished_at
+            ) VALUES (?, 1, ?, ?, ?, 1, ?, ?)""",
+            (
+                task_id, now, "render-worker", expiry,
+                json.dumps({
+                    "status": "completed",
+                    "duration_seconds": 4.0,
+                    "width": 1920,
+                    "height": 1080,
+                    "file_size": 4096,
+                    "has_audio": True,
+                    "provider_job_id": "must-not-be-exposed",
+                }),
+                now,
+            ),
+        )
+    result = jobs.get("owner-a", render_id)
+    assert result["output_metadata"] == {
+        "has_audio": True,
+        "duration_seconds": 4.0,
+        "width": 1920,
+        "height": 1080,
+        "file_size": 4096,
+    }
+    assert "provider_job_id" not in result
+    assert jobs.get("owner-b", render_id) is None
