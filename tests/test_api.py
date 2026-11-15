@@ -593,7 +593,7 @@ def test_request_id_is_available_on_request_state_and_logged_privacy_safely(capl
 
     @app.get("/__request_id_probe/{probe_id}")
     async def request_id_probe(request: Request, probe_id: str):
-        return {"request_id": request.state.request_id}
+        return {"request_id": request.state.request_id, "probe_id": probe_id}
 
     supplied = str(uuid4())
     with caplog.at_level("INFO", logger="mrhub.request"):
