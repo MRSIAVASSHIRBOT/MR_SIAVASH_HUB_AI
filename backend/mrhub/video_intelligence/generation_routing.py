@@ -51,7 +51,6 @@ class HybridRoutingPolicy(BaseModel):
     remote_processing_approved: bool = False
     remote_spend_approved: bool = False
     max_remote_cost_usd: float = Field(default=0, ge=0, le=10_000)
-    prefer_local: bool = True
 
 
 @dataclass(frozen=True)
