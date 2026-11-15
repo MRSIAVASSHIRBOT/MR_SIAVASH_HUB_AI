@@ -16,6 +16,7 @@ def test_video_generation_provider_catalog_is_visible_and_read_only():
     assert 'api("/video-intelligence/generation/providers")' in app
     assert 'loadVideoGenerationProviders()' in app
     assert 'loadVideoGenerationProviders(),' in app
+    assert 'element("article", undefined, "record")' in app
     assert 'textContent' in app
     assert "provider_unavailable" in app
     assert "هیچ Job یا درخواست خارجی اجرا نشده است" in app
