@@ -1,3 +1,6 @@
+import sqlite3
+from threading import Event, Thread
+
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker import WorkerEngine
@@ -120,3 +123,54 @@ def test_emergency_stop_blocks_scheduled_content_dispatch(tmp_path):
     assert worker.run_once() is None
     assert dispatcher.calls == 1
 
+
+
+def test_emergency_stop_commit_wins_before_a_waiting_worker_claim(tmp_path):
+    repository = TaskRepository(tmp_path / "worker-control-claim-race.sqlite3")
+    repository.initialize()
+    task = TaskRecord(task_type="demo.echo", description="must remain queued")
+    repository.create(task)
+
+    control = WorkerControlRepository(repository.database_path)
+    worker = WorkerEngine(repository)
+    recovery_started = Event()
+    original_recover = worker._recover_interrupted
+
+    def observed_recovery():
+        recovery_started.set()
+        original_recover()
+
+    worker._recover_interrupted = observed_recovery
+    connection = sqlite3.connect(repository.database_path, timeout=5.0)
+    connection.execute("PRAGMA busy_timeout = 5000")
+    connection.execute("BEGIN IMMEDIATE")
+    connection.execute(
+        """UPDATE worker_control
+           SET stopped = 1, reason = ?, changed_by = ?, changed_at = CURRENT_TIMESTAMP
+           WHERE control_id = 1""",
+        ("stop wins before claim", "test-operator"),
+    )
+
+    results = []
+    thread = Thread(target=lambda: results.append(worker.run_once()))
+    thread.start()
+    try:
+        # The worker has passed its read-only pre-check and is entering the
+        # recovery/claim path while this connection owns SQLite's write lock.
+        assert recovery_started.wait(timeout=2)
+    finally:
+        connection.commit()
+        connection.close()
+
+    thread.join(timeout=4)
+    assert not thread.is_alive()
+    assert results == [None]
+
+    queued = repository.get(task.task_id)
+    assert queued is not None and queued.status is TaskStatus.QUEUED
+
+    # Only an explicit operator resume permits a subsequent claim.
+    control.set_stopped(False, reason=None, changed_by="test-operator")
+    completed = worker.run_once()
+    assert completed is not None and completed.task_id == task.task_id
+    assert completed.status is TaskStatus.SUCCEEDED
