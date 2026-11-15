@@ -8,12 +8,12 @@ from mrhub.video_intelligence.generation import (
 from mrhub.video_intelligence.generation_routing import (
     GenerationRoute,
     GenerationRouteCandidate,
+    GenerationRoutePreviewRequest,
     HybridRoutingPolicy,
     LocalCapacitySnapshot,
     RoutingReason,
     choose_hybrid_route,
     measure_local_capacity_snapshot,
-    GenerationRoutePreviewRequest,
     preview_hybrid_route,
 )
 

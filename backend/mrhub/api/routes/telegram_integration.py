@@ -31,13 +31,13 @@ from mrhub.memory.repository import MemoryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
-from mrhub.video_intelligence.generation_routing import (
-    GenerationRoutePreviewRequest,
-    preview_hybrid_route,
-)
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationCancellationConflict,
     VideoGenerationJobRepository,
+)
+from mrhub.video_intelligence.generation_routing import (
+    GenerationRoutePreviewRequest,
+    preview_hybrid_route,
 )
 
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"])

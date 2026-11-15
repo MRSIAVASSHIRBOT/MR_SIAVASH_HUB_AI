@@ -138,6 +138,13 @@
         "purpose": "Return the non-secret configured video provider catalog without probing providers or starting work."
       },
       {
+        "method": "POST",
+        "path": "/integrations/telegram/video/route-preview",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Return a fail-closed local-first route preview without submitting, enqueueing, or billing generation work."
+      },
+      {
         "method": "GET",
         "path": "/integrations/telegram/video/generations",
         "auth_mode": "paired_bearer",
