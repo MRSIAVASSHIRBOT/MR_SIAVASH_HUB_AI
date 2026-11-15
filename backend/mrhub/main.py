@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import RFC_4122, UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -71,6 +71,8 @@ def create_app() -> FastAPI:
             if (
                 len(supplied_request_id) != 36
                 or str(parsed_request_id) != supplied_request_id.lower()
+                or parsed_request_id.version not in range(1, 9)
+                or parsed_request_id.variant != RFC_4122
             ):
                 raise ValueError("Request ID must be a canonical UUID")
             request_id = str(parsed_request_id)
