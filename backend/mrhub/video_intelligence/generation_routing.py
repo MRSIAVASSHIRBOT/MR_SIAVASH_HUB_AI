@@ -44,6 +44,25 @@ class LocalCapacitySnapshot(BaseModel):
     available_vram_gb: float | None = Field(default=None, ge=0)
 
 
+def measure_local_capacity_snapshot() -> LocalCapacitySnapshot:
+    """Read current worker RAM through the existing read-only host diagnostics.
+
+    The diagnostics intentionally do not claim GPU VRAM: the current safe probe
+    only lists adapter names. GPU-bound local candidates therefore remain blocked
+    until a trusted VRAM probe is implemented.
+    """
+    from mrhub.diagnostics.hardware import collect_hardware_report
+
+    report = collect_hardware_report()
+    memory = report.get("memory", {})
+    available_gib = memory.get("available_gib")
+    return LocalCapacitySnapshot(
+        available=available_gib is not None,
+        available_memory_gb=available_gib,
+        available_vram_gb=None,
+    )
+
+
 class HybridRoutingPolicy(BaseModel):
     """Per-request policy. Remote work is denied unless both consents are explicit."""
 
