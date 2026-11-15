@@ -113,3 +113,26 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert request_id["el_ai_log_fields"] == [
         "request_id", "method", "route_template", "status_code", "outcome"
     ]
+
+
+CONTRACT_DOC_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "docs"
+    / "integrations"
+    / "hybrid-integration-contract-v1.md"
+)
+
+
+def test_hybrid_contract_document_matches_bounded_retry_policy():
+    document = CONTRACT_DOC_PATH.read_text(encoding="utf-8")
+    request_id = _contract()["observability"]["request_id"]
+
+    assert request_id["retry_policy"] == (
+        "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
+    )
+    assert "one bounded recovery" in document
+    assert "separate request with its own request ID" in document
+    assert "at most once with the original request ID" in document
+    assert "A second 401 is surfaced" in document
+    assert "no generic retries or backoff" in document
+    assert "The bridge does not automatically retry Hub requests." not in document
