@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -64,7 +65,17 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
+        supplied_request_id = request.headers.get("X-Request-ID", "")
+        try:
+            parsed_request_id = UUID(supplied_request_id)
+            if len(supplied_request_id) != 36 or str(parsed_request_id) != supplied_request_id.lower():
+                raise ValueError("Request ID must be a canonical UUID")
+            request_id = str(parsed_request_id)
+        except (AttributeError, TypeError, ValueError):
+            request_id = str(uuid4())
+
         response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
