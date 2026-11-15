@@ -1,6 +1,6 @@
 """FastAPI application entry point. Project attribution: MR_SIAVASH_IR_BOT."""
 
-import logging
+from logging import getLogger
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -46,7 +46,7 @@ from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
 
 
-logger = logging.getLogger("mrhub.request")
+logger = getLogger("mrhub.request")
 
 
 def create_app() -> FastAPI:
