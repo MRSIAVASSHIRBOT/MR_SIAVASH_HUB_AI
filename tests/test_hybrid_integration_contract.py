@@ -1,9 +1,9 @@
 import json
-from pathlib import Path
+import pathlib
 
 
 CONTRACT_PATH = (
-    Path(__file__).resolve().parents[1]
+    pathlib.Path(__file__).resolve().parents[1]
     / "contracts"
     / "hybrid"
     / "v1"
