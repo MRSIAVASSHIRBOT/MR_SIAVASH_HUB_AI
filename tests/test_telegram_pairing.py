@@ -887,3 +887,80 @@ def test_telegram_video_cancel_requires_separate_scope_and_only_pending_jobs(
     assert blocked.status_code == 409
     assert blocked.json()["detail"]["code"] == "generation_cancellation_conflict"
     get_settings.cache_clear()
+
+
+def test_owner_can_update_scopes_for_an_existing_client_without_repairing(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client)
+    tokens = _exchange(client, payload, challenge).json()
+    headers = _bot_headers(tokens)
+
+    denied = client.get(
+        "/integrations/telegram/video/generations",
+        headers=headers,
+    )
+    assert denied.status_code == 403
+
+    updated = client.put(
+        f"/integrations/telegram/clients/{payload['client_id']}/scopes",
+        json={"scopes": ["video:read", "video:cancel"]},
+    )
+    assert updated.status_code == 200
+    assert updated.json() == {
+        "client_id": payload["client_id"],
+        "scopes": ["video:cancel", "video:read"],
+    }
+
+    monkeypatch.setattr(
+        VideoGenerationJobRepository,
+        "list_for_owner",
+        lambda self, owner_user_id, **kwargs: [],
+    )
+    allowed = client.get(
+        "/integrations/telegram/video/generations",
+        headers=headers,
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["items"] == []
+
+    missing_generation = client.delete(
+        f"/integrations/telegram/video/generations/{uuid4()}",
+        headers=headers,
+    )
+    assert missing_generation.status_code == 404
+    get_settings.cache_clear()
+
+
+def test_owner_scope_update_rejects_duplicates_and_does_not_change_foreign_or_revoked_clients(
+    tmp_path, monkeypatch
+):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client)
+    _exchange(client, payload, challenge)
+
+    duplicate = client.put(
+        f"/integrations/telegram/clients/{payload['client_id']}/scopes",
+        json={"scopes": ["video:read", "video:read"]},
+    )
+    assert duplicate.status_code == 422
+
+    foreign = client.put(
+        f"/integrations/telegram/clients/{uuid4()}/scopes",
+        json={"scopes": ["video:read"]},
+    )
+    assert foreign.status_code == 404
+
+    revoked = client.post(
+        f"/integrations/telegram/clients/{payload['client_id']}/revoke"
+    )
+    assert revoked.status_code == 200
+    after_revoke = client.put(
+        f"/integrations/telegram/clients/{payload['client_id']}/scopes",
+        json={"scopes": ["video:read"]},
+    )
+    assert after_revoke.status_code == 404
+    get_settings.cache_clear()
