@@ -21,6 +21,7 @@ from mrhub.jobs.payload_envelope import (
     encrypt_payload,
     load_payload_key,
 )
+from mrhub.security.audit import AuditLogger
 from mrhub.video_intelligence.generation import (
     GenerationStatus,
     VideoGenerationRequest,
@@ -41,7 +42,7 @@ class VideoGenerationReconciliationCooldown(ValueError):
 
 
 class VideoGenerationCancellationConflict(ValueError):
-    """Raised when cancellation cannot be completed without provider-side support."""
+    """Raised when a generation is no longer safely pending for cancellation."""
 
 
 class VideoGenerationJobRepository:
@@ -592,27 +593,26 @@ class VideoGenerationJobRepository:
                    WHERE generation_id = ? AND owner_user_id = ?""",
                 (str(generation_id), owner_user_id),
             )
-            TaskRepository._insert_audit_event(
-                connection,
-                {
-                    "event_id": str(uuid4()),
-                    "event_type": "video_generation.cancelled",
-                    "outcome": "success",
-                    "subject_type": "video_generation",
-                    "subject_id": str(generation_id),
-                    "actor_type": "user",
-                    "actor_id": owner_user_id,
-                    "created_at": now,
-                    "metadata": {
-                        "task_id": str(row["task_id"]) if row["task_id"] is not None else None,
-                        "cancellation_stage": (
-                            "before_enqueue"
-                            if generation_status == "prepared"
-                            else "before_provider_submission"
-                        ),
-                    },
+            audit_event = AuditLogger(self.tasks).build_event(
+                event_type="video_generation.cancelled",
+                outcome="success",
+                subject_type="video_generation",
+                subject_id=str(generation_id),
+                actor_type="user",
+                actor_id=owner_user_id,
+                metadata={
+                    "reason_code": (
+                        "cancelled_before_enqueue"
+                        if generation_status == "prepared"
+                        else "cancelled_before_submission"
+                    ),
+                    "previous_status": generation_status,
+                    "new_status": "cancelled",
                 },
             )
+            audit_payload = audit_event.model_dump(mode="json")
+            audit_payload["created_at"] = now
+            TaskRepository._insert_audit_event(connection, audit_payload)
 
         return {
             "generation_id": str(generation_id),
