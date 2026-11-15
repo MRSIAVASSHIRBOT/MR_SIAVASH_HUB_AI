@@ -65,7 +65,8 @@ def test_video_generation_history_ui_only_offers_pre_submission_cancellation():
     assert '{ method: "DELETE" }' in history_ui
     assert "/video-intelligence/generations/" in history_ui
     assert "window.confirm" in history_ui
-    assert "unknown_outcome" in history_ui
-    assert "submitting" in history_ui
-    assert 'method: "POST"' not in history_ui
+    assert '["submitting", "unknown_outcome", "running"].includes(job.status)' in history_ui
+    assert "/reconcile" in history_ui
+    assert '{ method: "POST" }' in history_ui
+    assert "/video-intelligence/analyses/" not in history_ui
     assert "generation/providers" not in history_ui
