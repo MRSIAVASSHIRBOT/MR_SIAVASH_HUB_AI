@@ -113,3 +113,26 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert request_id["el_ai_log_fields"] == [
         "request_id", "method", "route_template", "status_code", "outcome"
     ]
+
+
+CONTRACT_DOC_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "docs"
+    / "integrations"
+    / "hybrid-integration-contract-v1.md"
+)
+
+
+def test_hybrid_contract_document_matches_manifest_retry_policy():
+    document = CONTRACT_DOC_PATH.read_text(encoding="utf-8")
+    request_id = _contract()["observability"]["request_id"]
+
+    assert request_id["retry_policy"] == (
+        "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
+    )
+    assert "If an authenticated request receives HTTP 401" in document
+    assert "separate request ID" in document
+    assert "exactly once with its original request ID" in document
+    assert "does not retry other HTTP failures or transport errors" in document
+    assert "no generic retries or backoff" in document
+    assert "once this baseline is merged" not in document
