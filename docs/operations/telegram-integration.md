@@ -40,7 +40,9 @@ The Hub API defaults to status-only access when the scopes field is omitted. Cli
 - status:read: read minimal authenticated client status.
 - tasks:read: list only tasks attributed to the exact paired client; cross-client task history is not returned.
 - tasks:create: submit bounded task requests through the Hub PolicyEngine. High-risk or unregistered task types remain waiting for owner approval.
-- memory:search: search owner memory only when the owner explicitly grants this scope.\n- video:read: read the paired owner's bounded video-generation history, individual generation status and the non-secret provider catalog. Internal provider job IDs and private asset IDs are omitted.\n- video:cancel: cancel only prepared or queued video generations before provider submission; active or ambiguous provider work returns a conflict and is never marked cancelled.
+- memory:search: search owner memory only when the owner explicitly grants this scope.
+- video:read: read the paired owner's bounded video-generation history, individual generation status and the non-secret provider catalog. Internal provider job IDs and private asset IDs are omitted.
+- video:cancel: cancel only prepared or queued video generations before provider submission; active or ambiguous provider work returns a conflict and is never marked cancelled.
 
 No Agent execution, approval decisions, content publishing or arbitrary tools are exposed through this integration. Video cancellation is separately scoped and limited to work that has not reached a provider; it cannot cancel active or ambiguous external jobs. Existing paired clients do not gain the new video scopes automatically; the owner must issue a new pairing challenge with the exact scopes.
 
