@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 DEFAULT_PORT = 8765
 BROKER_TOKEN = "mrhub-local-broker"
 UPSTREAM_HOST = "openrouter.ai"
+ALLOWED_MODEL_ID = "cohere/north-mini-code:free"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 UPSTREAM_TIMEOUT_SECONDS = 90
@@ -60,7 +61,7 @@ def validate_request(
             return 415, "json_required"
         if content_length is None or not content_length.isascii() or not content_length.isdecimal():
             return 411, "content_length_required"
-        if int(content_length) > MAX_REQUEST_BYTES:
+        if len(content_length) > 10 or int(content_length) > MAX_REQUEST_BYTES:
             return 413, "request_too_large"
 
     return 200, None
@@ -164,9 +165,13 @@ class BrokerHandler(BaseHTTPRequestHandler):
             try:
                 length = int(content_length or "0")
                 body = self.rfile.read(length)
-                if len(body) != length or not isinstance(json.loads(body), dict):
+                request_payload = json.loads(body)
+                if len(body) != length or not isinstance(request_payload, dict):
                     raise ValueError("invalid JSON request")
-            except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+                if request_payload.get("model") != ALLOWED_MODEL_ID:
+                    self._send_json_error(403, "model_not_allowed")
+                    return
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError, RecursionError):
                 self._send_json_error(400, "invalid_json_request")
                 return
 
