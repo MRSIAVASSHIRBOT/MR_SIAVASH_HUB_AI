@@ -40,7 +40,10 @@ from mrhub.video_intelligence.generation_routing import (
     preview_hybrid_route,
 )
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
-from mrhub.video_intelligence.render_jobs import VideoRenderConflict, VideoRenderJobRepository
+from mrhub.video_intelligence.render_jobs import (
+    VideoRenderConflict,
+    VideoRenderJobRepository,
+)
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
 from mrhub.video_intelligence.timeline import VideoTimeline
@@ -367,7 +370,9 @@ def telegram_status(
 
 @router.get("/video/providers")
 def list_telegram_video_providers(
-    _identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    _identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
 ) -> dict[str, object]:
     """Return the reviewed provider catalog without probing or starting work."""
     from mrhub.video_intelligence.generation_registry import video_generation_registry
@@ -385,7 +390,9 @@ def list_telegram_video_providers(
 @router.post("/video/route-preview")
 def preview_telegram_video_route(
     payload: GenerationRoutePreviewRequest,
-    _identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    _identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
 ) -> dict[str, object]:
     """Expose the same read-only routing policy to explicitly paired video:read clients."""
     return preview_hybrid_route(payload)
@@ -393,7 +400,9 @@ def preview_telegram_video_route(
 
 @router.get("/video/generations")
 def list_telegram_video_generations(
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
     limit: int = 10,
     cursor: str | None = None,
 ) -> dict[str, object]:
@@ -436,7 +445,9 @@ def list_telegram_video_generations(
 @router.get("/video/generations/{generation_id}")
 def get_telegram_video_generation(
     generation_id: UUID,
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
 ) -> dict[str, object]:
     """Return one generation only within the paired owner's account."""
     generation = VideoGenerationJobRepository(get_settings().database_path).get(
@@ -450,7 +461,9 @@ def get_telegram_video_generation(
 @router.delete("/video/generations/{generation_id}")
 def cancel_telegram_video_generation(
     generation_id: UUID,
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))
+    ],
 ) -> dict[str, object]:
     """Cancel only a generation that has not been submitted to a provider."""
     repository = VideoGenerationJobRepository(get_settings().database_path)
@@ -469,10 +482,11 @@ def cancel_telegram_video_generation(
     return result
 
 
-
 @router.get("/video/render-drafts")
 def list_telegram_video_render_drafts(
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
     analysis_id: UUID,
 ) -> dict[str, object]:
     """List bounded, owner-scoped draft metadata for the deterministic local renderer."""
@@ -498,7 +512,9 @@ def list_telegram_video_render_drafts(
 def submit_telegram_video_render(
     payload: TelegramVideoRenderSubmissionRequest,
     response: Response,
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:render"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:render"))
+    ],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, object]:
     """Queue a bounded local FFmpeg render from an exact owner-owned prepared draft."""
@@ -509,7 +525,10 @@ def submit_telegram_video_render(
     if draft is None:
         raise HTTPException(status_code=404, detail="Telegram video timeline draft not found")
     renderer_timeline_data = draft.get("renderer_timeline")
-    if not isinstance(renderer_timeline_data, dict) or not draft.get("renderer_timeline_sha256"):
+    if (
+        not isinstance(renderer_timeline_data, dict)
+        or not draft.get("renderer_timeline_sha256")
+    ):
         raise HTTPException(
             status_code=409,
             detail={
@@ -528,7 +547,9 @@ def submit_telegram_video_render(
         ):
             raise ValueError("Timeline draft version is invalid")
     except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="Telegram video timeline draft is invalid") from exc
+        raise HTTPException(
+            status_code=409, detail="Telegram video timeline draft is invalid"
+        ) from exc
 
     analysis = VideoAnalysisJobRepository(database_path).get(
         identity.owner_user_id, analysis_id
@@ -541,7 +562,9 @@ def submit_telegram_video_render(
         raise HTTPException(status_code=409, detail="Telegram video analysis is not completed")
     assets = analysis["result"].get("assets")
     if not isinstance(assets, list):
-        raise HTTPException(status_code=409, detail="Telegram video analysis assets are unavailable")
+        raise HTTPException(
+            status_code=409, detail="Telegram video analysis assets are unavailable"
+        )
 
     try:
         timeline = VideoTimeline.model_validate(renderer_timeline_data)
@@ -564,11 +587,15 @@ def submit_telegram_video_render(
             snapshot=snapshot,
         )
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Telegram video render source not found") from exc
+        raise HTTPException(
+            status_code=404, detail="Telegram video render source not found"
+        ) from exc
     except VideoRenderSnapshotConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except VideoRenderConflict as exc:
-        raise HTTPException(status_code=409, detail="Telegram video render idempotency conflict") from exc
+        raise HTTPException(
+            status_code=409, detail="Telegram video render idempotency conflict"
+        ) from exc
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -586,7 +613,9 @@ def submit_telegram_video_render(
 @router.get("/video/renders/{render_id}")
 def get_telegram_video_render(
     render_id: UUID,
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
 ) -> dict[str, object]:
     """Return one local render only within the paired owner's account."""
     render = VideoRenderJobRepository(get_settings().database_path).get(
@@ -600,7 +629,9 @@ def get_telegram_video_render(
 @router.delete("/video/renders/{render_id}")
 def cancel_telegram_video_render(
     render_id: UUID,
-    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))],
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))
+    ],
 ) -> dict[str, object]:
     """Cancel or signal cancellation for a render owned by this paired client."""
     result = VideoRenderJobRepository(get_settings().database_path).cancel(

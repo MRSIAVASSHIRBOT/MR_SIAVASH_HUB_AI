@@ -45,7 +45,7 @@ The Hub API defaults to status-only access when the scopes field is omitted. Cli
 - video:render: submit a saved, renderer-compatible owner-owned storyboard revision to the existing immutable-snapshot FFmpeg render queue. This is deterministic local rendering, not generative AI; it does not call a generation provider or transfer media to a remote service.
 - video:cancel: cancel or request cancellation of owner-scoped local FFmpeg renders, and cancel only prepared or queued provider-generation jobs before provider submission. Active or ambiguous external provider work remains non-cancellable through this scope.
 
-No Agent execution, approval decisions, content publishing or arbitrary tools are exposed through this integration. Video cancellation is separately scoped and limited to work that has not reached a provider; it cannot cancel active or ambiguous external jobs. Existing paired clients do not gain new video scopes automatically; the owner must update the existing client scopes or issue a new pairing challenge with the exact scopes.
+No Agent execution, approval decisions, content publishing or arbitrary tools are exposed through this integration. Local render cancellation is limited to the paired owner's bounded FFmpeg job; external provider generation remains non-cancellable once active or ambiguous. Existing paired clients do not gain new video scopes automatically; the owner must update the existing client scopes or issue a new pairing challenge with the exact scopes.
 
 ## Separate Cloudflare Edge + Local Bridge transport
 
