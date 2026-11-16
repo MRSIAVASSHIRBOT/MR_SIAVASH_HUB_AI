@@ -1,4 +1,5 @@
 import hashlib
+import json
 from uuid import UUID
 
 import pytest
@@ -134,3 +135,24 @@ def test_snapshot_rejects_invalid_or_oversized_timeline_json():
 def test_snapshot_rejects_non_integer_or_invalid_draft_revision(draft_version):
     with pytest.raises(ValidationError):
         _snapshot(draft_version=draft_version)
+
+
+
+def test_snapshot_accepts_legacy_timeline_without_optional_audio_fields():
+    timeline = _timeline()
+    legacy_json = json.dumps(
+        timeline.model_dump(mode="json", exclude_none=True),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    snapshot = VideoRenderTimelineSnapshot(
+        owner_user_id=OWNER,
+        analysis_id=ANALYSIS_ID,
+        draft_id=DRAFT_ID,
+        draft_version=3,
+        timeline_json=legacy_json,
+        timeline_sha256=hashlib.sha256(legacy_json.encode("utf-8")).hexdigest(),
+    )
+    assert snapshot.validated_timeline().video_track[0].include_source_audio is None

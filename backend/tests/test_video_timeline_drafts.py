@@ -3,10 +3,12 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import (
     TimelineConflict,
     TimelineDraftUpdate,
     VideoTimelineDraftRepository,
+    validate_renderer_timeline_source_bounds,
 )
 
 
@@ -208,4 +210,38 @@ def test_timeline_draft_rejects_non_integer_or_out_of_range_duration(duration):
             duration_seconds=duration,
             aspect_ratio="9:16",
             beats=_beats(),
+        )
+
+
+
+@pytest.mark.parametrize("has_audio", [False, None])
+def test_renderer_timeline_cannot_enable_unverified_source_audio(has_audio):
+    timeline = VideoTimeline(
+        output_aspect_ratio="9:16",
+        requested_duration_seconds=5,
+        actual_duration_seconds=5,
+        duration_shortfall_seconds=0,
+        audio_analysis_status="not_requested",
+        audio_render_status="source_audio_passthrough",
+        timeline_status="validated_cut_only",
+        render_status="not_implemented",
+        video_track=[{
+            "clip_id": "clip-001",
+            "source_asset_id": "source-a",
+            "source_scene_index": 0,
+            "source_start_seconds": 0,
+            "source_end_seconds": 5,
+            "timeline_start_seconds": 0,
+            "timeline_end_seconds": 5,
+            "transition_in": "none",
+            "include_source_audio": True,
+        }],
+    )
+    with pytest.raises(ValueError, match="source audio not verified"):
+        validate_renderer_timeline_source_bounds(
+            timeline,
+            [{
+                "asset_id": "source-a",
+                "technical_metadata": {"duration_seconds": 5, "has_audio": has_audio},
+            }],
         )

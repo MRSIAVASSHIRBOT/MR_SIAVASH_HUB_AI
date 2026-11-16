@@ -161,6 +161,7 @@ class VideoRenderWorkerHandler:
                 "width": rendered.width,
                 "height": rendered.height,
                 "file_size": rendered.file_size,
+                "has_audio": bool(getattr(rendered, "has_audio", False)),
             }
             output = self.media.register_rendered_output(
                 owner_user_id,

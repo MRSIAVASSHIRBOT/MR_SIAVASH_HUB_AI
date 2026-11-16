@@ -106,7 +106,10 @@ class VideoRenderJobRepository:
                 raise ValueError("analysis_timeline_unavailable") from exc
             digest = hashlib.sha256(
                 json.dumps(
-                    {"analysis_id": str(analysis_id), "timeline": timeline.model_dump(mode="json")},
+                    {
+                        "analysis_id": str(analysis_id),
+                        "timeline": timeline.model_dump(mode="json", exclude_none=True),
+                    },
                     sort_keys=True,
                     separators=(",", ":"),
                 ).encode("utf-8")
@@ -209,15 +212,16 @@ class VideoRenderJobRepository:
     def get(self, owner_user_id: str, render_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
-                """SELECT render_id, task_id, status, output_asset_id,
-                          error_code, created_at, updated_at
-                   FROM video_render_runs
-                   WHERE render_id = ? AND owner_user_id = ?""",
+                """SELECT r.render_id, r.task_id, r.status, r.output_asset_id,
+                          r.error_code, r.created_at, r.updated_at, e.result_json
+                   FROM video_render_runs AS r
+                   LEFT JOIN worker_executions AS e ON e.task_id = r.task_id
+                   WHERE r.render_id = ? AND r.owner_user_id = ?""",
                 (str(render_id), owner_user_id),
             ).fetchone()
         if row is None:
             return None
-        return {
+        result = {
             "render_id": row["render_id"],
             "status": row["status"],
             "output_asset_id": row["output_asset_id"],
@@ -225,6 +229,41 @@ class VideoRenderJobRepository:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
+        if row["status"] == "completed" and row["result_json"]:
+            try:
+                task_result = json.loads(row["result_json"])
+            except (TypeError, ValueError):
+                task_result = None
+            if isinstance(task_result, dict):
+                metadata: dict[str, object] = {}
+                has_audio = task_result.get("has_audio")
+                if isinstance(has_audio, bool):
+                    metadata["has_audio"] = has_audio
+                duration = task_result.get("duration_seconds")
+                if (
+                    isinstance(duration, (int, float))
+                    and not isinstance(duration, bool)
+                    and 0 < duration <= 60
+                ):
+                    metadata["duration_seconds"] = float(duration)
+                for key in ("width", "height"):
+                    value = task_result.get(key)
+                    if (
+                        isinstance(value, int)
+                        and not isinstance(value, bool)
+                        and 1 <= value <= 1920
+                    ):
+                        metadata[key] = value
+                file_size = task_result.get("file_size")
+                if (
+                    isinstance(file_size, int)
+                    and not isinstance(file_size, bool)
+                    and 0 < file_size <= 100_000_000
+                ):
+                    metadata["file_size"] = file_size
+                if metadata:
+                    result["output_metadata"] = metadata
+        return result
 
     def cancel(
         self, owner_user_id: str, render_id: UUID
