@@ -1,3 +1,41 @@
+## Portfolio maintenance addendum — 2026-11-16 12:14 UTC
+
+This snapshot supersedes the 2026-11-15 repository snapshot below where the values differ. It records GitHub and repository evidence observed during the coordinated maintenance run.
+
+### Active repository snapshot
+
+- **Hub `main`:** `57ac03024fa05cf76fc81d10a372944176ef98d6`. PR [#411](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/411) was merged as this commit. The 21-file change adds verified source-audio passthrough to bounded local FFmpeg renders, owner-scoped output metadata, exact FFprobe audio-stream verification, metadata/chapter stripping, and regression plus real Linux/Windows FFmpeg coverage. The exact PR head `03ffbfaeac1563e03338909c15b92851b2686f24` passed its observed PR/branch checks. Post-merge main checks were not yet complete at this snapshot: 11 of 14 check-runs had succeeded, while Backend CI and the Python 3.11/3.12 test matrices were still running. Do not call the post-merge suite fully green until all 14 checks finish.
+- **Website `main`:** `00f653837e1796ee85d0587f2c4095b3c7f0a258`. No open PR was present. Current-main Quality/Pages, Gateway CI, Production Runtime Smoke, Preview Runtime Smoke, Workflow Security Audit, and OpenSSF Scorecard runs succeeded. The Pages deployment job is manual-only and was not run by these push checks.
+- **EL_AI `main`:** `7676f7aa7ebf789717110687f68a8840d98fe53d`. No open PR was present. Python 3.11/3.12 CI, Workflow Security Audit, and OpenSSF Scorecard succeeded. The README still correctly states that no Telegram token is configured, no live bot has been connected, and no production bot deployment has occurred.
+- No open PR was present in any of the three active repositories after Hub PR #411 merged.
+
+### Cross-repository contract
+
+Hub remains authoritative for private memory, tasks, agents, approvals, tool policy, and audit. EL_AI owns Telegram transport and uses owner-initiated pairing with explicit scoped Hub routes; its current command set includes read-only video route preview, owner-scoped video history/status, and pending-only cancellation. The public Website Gateway remains public-only and must not receive Hub credentials or private Hub context. No shared database or implicit trust is permitted.
+
+### Dependencies, tests, and release controls
+
+- Hub dependencies are declared in `pyproject.toml` (FastAPI, Uvicorn, Pydantic/settings, HTTPX, Cryptography; pytest, coverage, Ruff, pip-audit, Bandit and MCP in development extras). CI includes Backend CI, Python 3.11/3.12 tests, Windows wheel smoke, Linux/Windows FFmpeg integration, Windows launcher validation, Defensive Python Scan, Workflow Security Audit and Scorecard.
+- EL_AI declares HTTPX and Keyring, with pytest/pytest-asyncio/Ruff for development; CI runs Python 3.11 and 3.12.
+- Website Gateway's `cloudflare/gateway/package.json` defines Node's built-in test runner and has no external package dependency. Repository CI runs JavaScript tests, OpenAPI validation, isolated SQLite migration checks, Chromium Academy E2E and accessibility/responsive smoke.
+- No committed Python or Node dependency lockfile was found in the inspected active project roots. Reproducible lockfile-based installs remain a follow-up.
+- Website Production Worker remains version 14 (`62e8a337-d804-4748-8bb2-d5e0180ee2f8`) at 100% traffic, annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`. Current Website `main` is 40 commits ahead and 0 behind that source baseline. Issue [#120](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/issues/120) remains open. The delta includes Gateway runtime/tests and migrations 0004/0005; isolated migration tests pass in CI, but live Production D1 migration state was not queried. The Production release workflow is manual, defaults to `deploy=false`, and retains its owner-controlled environment gate.
+- The scheduled Hub Continuous Development workflow remains blocked by `API key expired.`; see [Issue #332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332). The provider credential was not read or changed. [Issue #316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) remains open because default-deny/no-shell controls do not prove OS-level credential isolation.
+- Branch-protection reads returned HTTP 403 for all three repositories in this run. The last successful recorded state was `main.protected=false`; the current state could not be independently reverified. No access-control settings were changed.
+
+### Next engineering priorities
+
+1. Finish and verify all post-merge checks on Hub SHA `57ac03024fa05cf76fc81d10a372944176ef98d6`; investigate any failure before additional runtime work.
+2. Resolve the owner-managed provider credential expiry and independently accept the credential/process-isolation boundary before re-enabling scheduled development.
+3. Review the Website's complete 40-commit source delta, Preview acceptance, migration state, backup/rollback and then obtain explicit owner approval before any Production release.
+4. Have the repository owner configure and verify branch protection and exact-head required checks for all three repositories.
+5. Add reproducible dependency lockfiles and verify clean Linux/Windows installs.
+6. Keep EL_AI on the scoped Hub contract; perform live Telegram acceptance only after the owner configures its token securely.
+
+No secret values, production application data, Worker deployments, D1 migrations, routes, schedules, repository permissions, or access controls were changed during this run. No local test suite was executed in this automation environment; test results above are hosted GitHub Actions results tied to the stated SHAs.
+
+---
+
 ## Portfolio maintenance addendum — 2026-11-15 UTC
 
 This addendum supersedes older scope and point-in-time snapshots below where they differ. It records repository and operational evidence observed during the current portfolio run.
