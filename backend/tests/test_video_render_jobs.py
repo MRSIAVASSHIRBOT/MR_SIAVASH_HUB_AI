@@ -1278,3 +1278,22 @@ def test_render_status_exposes_only_verified_output_metadata_for_owner(tmp_path,
     }
     assert "provider_job_id" not in result
     assert jobs.get("owner-b", render_id) is None
+
+
+def test_render_history_is_owner_scoped_and_uses_stable_cursor_pages(tmp_path, monkeypatch):
+    _, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    jobs = VideoRenderJobRepository(tmp_path / "render.sqlite")
+    first, _ = jobs.submit("owner-a", analysis_id, "history-key-one")
+    second, _ = jobs.submit("owner-a", analysis_id, "history-key-two")
+
+    page = jobs.list_for_owner("owner-a", limit=1)
+    assert len(page) == 1
+    assert page[0]["render_id"] in {first["render_id"], second["render_id"]}
+    before = (page[0]["created_at"], UUID(page[0]["render_id"]))
+    next_page = jobs.list_for_owner("owner-a", limit=1, before=before)
+    assert len(next_page) == 1
+    assert next_page[0]["render_id"] != page[0]["render_id"]
+    assert jobs.list_for_owner("owner-b", limit=10) == []
+    with pytest.raises(ValueError, match="between 1 and 21"):
+        jobs.list_for_owner("owner-a", limit=22)
+
