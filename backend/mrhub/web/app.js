@@ -1093,7 +1093,7 @@
           details.push((metadata.file_size / 1_000_000).toFixed(2) + " MB");
         }
         if (typeof metadata.has_audio === "boolean") {
-          details.push(metadata.has_audio ? "صدای منبع حفظ شده" : "بدون صدای منبع");
+          details.push(metadata.has_audio ? "ترک صوتی منبع موجود است" : "بدون صدای منبع");
         }
         if (details.length) container.append(element("p", details.join(" · "), "muted"));
       }
