@@ -51,6 +51,8 @@ All endpoints require an authenticated owner session:
 - `GET /video-intelligence/renders/{render_id}` — retrieve owner-scoped render status and output asset metadata.
 - `DELETE /video-intelligence/renders/{render_id}` — cancel queued work immediately or request cooperative cancellation of a running render; the worker owns the final terminal transition after it observes the request.
 - `GET /content/assets/{asset_id}/file` — download a completed private render through the existing owner-scoped media route.
+- `GET /integrations/telegram/video/renders` — list the paired owner’s local renders with bounded cursor pagination.
+- `GET /integrations/telegram/video/renders/{render_id}/file` — stream a completed, checksum-verified MP4 to the paired owner; Telegram delivery is limited to 48 MB and requires `video:read`.
 
 ## Analysis scope and remaining work
 
