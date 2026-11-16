@@ -11,7 +11,8 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.api.dependencies import require_user
@@ -27,6 +28,7 @@ from mrhub.integrations.telegram_pairing import (
 from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.idempotency import IdempotencyConflict, IdempotencyError, IdempotencyRepository
 from mrhub.jobs.worker import WorkerEngine
+from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.memory.repository import MemoryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
@@ -63,6 +65,7 @@ TelegramScope = Literal[
     "video:cancel",
 ]
 DEFAULT_SCOPES = ["status:read"]
+MAX_TELEGRAM_VIDEO_BYTES = 48_000_000
 
 
 class PairingChallengeRequest(BaseModel):
@@ -158,6 +161,34 @@ def _decode_telegram_generation_cursor(cursor: str) -> tuple[str, UUID]:
     except (binascii.Error, UnicodeDecodeError, ValueError):
         raise ValueError("Invalid generation cursor") from None
     return parsed_at.astimezone(UTC).isoformat(), generation_id
+
+
+
+def _encode_telegram_render_cursor(created_at: str, render_id: str) -> str:
+    payload = f"{created_at}\n{render_id}".encode()
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_telegram_render_cursor(cursor: str) -> tuple[str, UUID]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", cursor):
+        raise ValueError("Invalid render cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = base64.b64decode(
+            cursor + padding, altchars=b"-_", validate=True
+        ).decode("utf-8")
+        created_at, raw_render_id = payload.split("\n", 1)
+        if not created_at or len(created_at) > 64:
+            raise ValueError("Invalid render cursor")
+        parsed_at = datetime.fromisoformat(created_at)
+        if parsed_at.tzinfo is None or parsed_at.utcoffset() is None:
+            raise ValueError("Invalid render cursor")
+        render_id = UUID(raw_render_id)
+        if str(render_id) != raw_render_id.lower():
+            raise ValueError("Invalid render cursor")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid render cursor") from None
+    return parsed_at.astimezone(UTC).isoformat(), render_id
 
 
 def _telegram_generation_summary(generation: dict[str, object]) -> dict[str, object]:
@@ -610,6 +641,47 @@ def submit_telegram_video_render(
     }
 
 
+
+@router.get("/video/renders")
+def list_telegram_video_renders(
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
+    limit: int = Query(default=10, ge=1, le=20),
+    cursor: str | None = None,
+) -> dict[str, object]:
+    """List one bounded page of the paired owner's local deterministic renders."""
+    before = None
+    if cursor is not None:
+        try:
+            before = _decode_telegram_render_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid Telegram video render cursor") from exc
+
+    repository = VideoRenderJobRepository(get_settings().database_path)
+    records = repository.list_for_owner(
+        identity.owner_user_id, limit=limit + 1, before=before
+    )
+    has_more = len(records) > limit
+    page = records[:limit]
+    renders = []
+    for record in page:
+        item = repository.get(identity.owner_user_id, UUID(record["render_id"]))
+        if item is not None:
+            renders.append(_telegram_video_render_summary(item))
+    next_cursor = (
+        _encode_telegram_render_cursor(page[-1]["created_at"], page[-1]["render_id"])
+        if has_more and page
+        else None
+    )
+    return {
+        "renders": renders,
+        "count": len(renders),
+        "next_cursor": next_cursor,
+        "render_kind": "deterministic_ffmpeg",
+    }
+
+
 @router.get("/video/renders/{render_id}")
 def get_telegram_video_render(
     render_id: UUID,
@@ -624,6 +696,87 @@ def get_telegram_video_render(
     if render is None:
         raise HTTPException(status_code=404, detail="Telegram video render not found")
     return _telegram_video_render_summary(render)
+
+
+
+@router.get("/video/renders/{render_id}/file")
+def download_telegram_video_render(
+    render_id: UUID,
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
+):
+    """Stream a completed owner-owned MP4 after verifying its bounded stored bytes."""
+    database_path = get_settings().database_path
+    render = VideoRenderJobRepository(database_path).get(
+        identity.owner_user_id, render_id
+    )
+    if render is None:
+        raise HTTPException(status_code=404, detail="Telegram video render not found")
+    if render.get("status") != "completed" or not render.get("output_asset_id"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "telegram_video_render_not_completed"},
+        )
+    try:
+        asset_id = UUID(str(render["output_asset_id"]))
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Telegram video render file not found") from None
+
+    media = MediaAssetRepository(database_path)
+    asset = media.get(identity.owner_user_id, asset_id)
+    if (
+        asset is None
+        or asset.get("media_type") != "video/mp4"
+        or asset.get("processing_status") not in {"stored", "processed"}
+    ):
+        raise HTTPException(status_code=404, detail="Telegram video render file not found")
+    storage_key = asset.get("storage_key")
+    if not isinstance(storage_key, str):
+        raise HTTPException(status_code=404, detail="Telegram video render file not found")
+    try:
+        path = media.file_path(storage_key)
+        file_size = path.stat().st_size if path.is_file() else 0
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="Telegram video render file not found") from None
+    recorded_size = asset.get("file_size")
+    if (
+        isinstance(recorded_size, bool)
+        or not isinstance(recorded_size, int)
+        or file_size != recorded_size
+        or not 1 <= file_size <= MAX_OUTPUT_BYTES
+    ):
+        raise HTTPException(status_code=404, detail="Telegram video render file not found")
+    if file_size > MAX_TELEGRAM_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={"code": "telegram_video_render_too_large", "max_bytes": MAX_TELEGRAM_VIDEO_BYTES},
+        )
+
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as file:
+            header = file.read(12)
+            if len(header) < 12 or header[4:8] != b"ftyp":
+                raise ValueError("invalid_mp4_signature")
+            digest.update(header)
+            for chunk in iter(lambda: file.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="Telegram video render file not found") from None
+    expected_hash = asset.get("content_hash")
+    if not isinstance(expected_hash, str) or digest.hexdigest() != expected_hash:
+        raise HTTPException(status_code=404, detail="Telegram video render file not found")
+
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=f"render-{render_id}.mp4",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.delete("/video/renders/{render_id}")
