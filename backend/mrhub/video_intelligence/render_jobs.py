@@ -218,8 +218,8 @@ class VideoRenderJobRepository:
         before: tuple[str, UUID] | None = None,
     ) -> list[dict[str, str]]:
         """Return one bounded, stable page of render IDs for a single owner."""
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 20:
-            raise ValueError("Render page limit must be between 1 and 20")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 21:
+            raise ValueError("Render page limit must be between 1 and 21")
         with self.tasks._connection() as connection:
             if before is None:
                 rows = connection.execute(
