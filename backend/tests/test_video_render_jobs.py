@@ -1299,7 +1299,6 @@ def test_render_history_is_owner_scoped_and_uses_stable_cursor_pages(tmp_path, m
 
 
 
-
 def test_render_history_queries_use_covering_owner_cursor_index(tmp_path):
     jobs = VideoRenderJobRepository(tmp_path / "render-history-index.sqlite")
 
