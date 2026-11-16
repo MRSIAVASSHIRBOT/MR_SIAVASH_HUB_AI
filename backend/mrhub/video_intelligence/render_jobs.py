@@ -209,6 +209,39 @@ class VideoRenderJobRepository:
             "snapshot_id": row["snapshot_id"],
         }
 
+
+    def list_for_owner(
+        self,
+        owner_user_id: str,
+        *,
+        limit: int = 10,
+        before: tuple[str, UUID] | None = None,
+    ) -> list[dict[str, str]]:
+        """Return one bounded, stable page of render IDs for a single owner."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 20:
+            raise ValueError("Render page limit must be between 1 and 20")
+        with self.tasks._connection() as connection:
+            if before is None:
+                rows = connection.execute(
+                    """SELECT render_id, created_at FROM video_render_runs
+                       WHERE owner_user_id = ?
+                       ORDER BY created_at DESC, render_id DESC LIMIT ?""",
+                    (owner_user_id, limit),
+                ).fetchall()
+            else:
+                created_at, render_id = before
+                rows = connection.execute(
+                    """SELECT render_id, created_at FROM video_render_runs
+                       WHERE owner_user_id = ?
+                         AND (created_at < ? OR (created_at = ? AND render_id < ?))
+                       ORDER BY created_at DESC, render_id DESC LIMIT ?""",
+                    (owner_user_id, created_at, created_at, str(render_id), limit),
+                ).fetchall()
+        return [
+            {"render_id": str(row["render_id"]), "created_at": str(row["created_at"])}
+            for row in rows
+        ]
+
     def get(self, owner_user_id: str, render_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
