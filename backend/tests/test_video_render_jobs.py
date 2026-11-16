@@ -1297,3 +1297,37 @@ def test_render_history_is_owner_scoped_and_uses_stable_cursor_pages(tmp_path, m
     with pytest.raises(ValueError, match="between 1 and 21"):
         jobs.list_for_owner("owner-a", limit=22)
 
+
+
+def test_render_history_queries_use_covering_owner_cursor_index(tmp_path):
+    jobs = VideoRenderJobRepository(tmp_path / "render-history-index.sqlite")
+
+    queries = (
+        (
+            """SELECT render_id, created_at FROM video_render_runs
+               WHERE owner_user_id = ?
+               ORDER BY created_at DESC, render_id DESC LIMIT ?""",
+            ("owner-a", 11),
+        ),
+        (
+            """SELECT render_id, created_at FROM video_render_runs
+               WHERE owner_user_id = ?
+                 AND (created_at < ? OR (created_at = ? AND render_id < ?))
+               ORDER BY created_at DESC, render_id DESC LIMIT ?""",
+            (
+                "owner-a",
+                "2026-11-16T10:00:00+00:00",
+                "2026-11-16T10:00:00+00:00",
+                "ffffffff-ffff-4fff-8fff-ffffffffffff",
+                11,
+            ),
+        ),
+    )
+    with jobs.tasks._connection() as connection:
+        for query, parameters in queries:
+            plan = connection.execute(
+                "EXPLAIN QUERY PLAN " + query, parameters
+            ).fetchall()
+            details = " ".join(str(row["detail"]) for row in plan)
+            assert "idx_video_render_owner_history" in details
+            assert "TEMP B-TREE" not in details.upper()

@@ -6,14 +6,17 @@ import base64
 import binascii
 import hashlib
 import json
+import os
 import re
+import stat
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.background import BackgroundTask
 
 from mrhub.api.dependencies import require_user
 from mrhub.api.telegram_auth import require_telegram_scope
@@ -189,6 +192,15 @@ def _decode_telegram_render_cursor(cursor: str) -> tuple[str, UUID]:
     except (binascii.Error, UnicodeDecodeError, ValueError):
         raise ValueError("Invalid render cursor") from None
     return parsed_at.astimezone(UTC).isoformat(), render_id
+
+
+def _stream_verified_media(file):
+    """Stream the already verified open file, never reopening its storage path."""
+    try:
+        while chunk := file.read(1024 * 1024):
+            yield chunk
+    finally:
+        file.close()
 
 
 def _telegram_generation_summary(generation: dict[str, object]) -> dict[str, object]:
@@ -706,7 +718,7 @@ def download_telegram_video_render(
         TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
     ],
 ):
-    """Stream a completed owner-owned MP4 after verifying its bounded stored bytes."""
+    """Stream a completed owner-owned MP4 from the exact file verified by SHA-256."""
     database_path = get_settings().database_path
     render = VideoRenderJobRepository(database_path).get(
         identity.owner_user_id, render_id
@@ -734,48 +746,67 @@ def download_telegram_video_render(
     storage_key = asset.get("storage_key")
     if not isinstance(storage_key, str):
         raise HTTPException(status_code=404, detail="Telegram video render file not found")
-    try:
-        path = media.file_path(storage_key)
-        file_size = path.stat().st_size if path.is_file() else 0
-    except (OSError, ValueError):
-        raise HTTPException(status_code=404, detail="Telegram video render file not found") from None
     recorded_size = asset.get("file_size")
     if (
         isinstance(recorded_size, bool)
         or not isinstance(recorded_size, int)
-        or file_size != recorded_size
-        or not 1 <= file_size <= MAX_OUTPUT_BYTES
+        or not 1 <= recorded_size <= MAX_OUTPUT_BYTES
     ):
         raise HTTPException(status_code=404, detail="Telegram video render file not found")
-    if file_size > MAX_TELEGRAM_VIDEO_BYTES:
+    if recorded_size > MAX_TELEGRAM_VIDEO_BYTES:
         raise HTTPException(
             status_code=413,
             detail={"code": "telegram_video_render_too_large", "max_bytes": MAX_TELEGRAM_VIDEO_BYTES},
         )
-
-    digest = hashlib.sha256()
     try:
-        with path.open("rb") as file:
-            header = file.read(12)
-            if len(header) < 12 or header[4:8] != b"ftyp":
-                raise ValueError("invalid_mp4_signature")
-            digest.update(header)
-            for chunk in iter(lambda: file.read(1024 * 1024), b""):
-                digest.update(chunk)
+        path = media.file_path(storage_key)
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="Telegram video render file not found") from None
-    expected_hash = asset.get("content_hash")
-    if not isinstance(expected_hash, str) or digest.hexdigest() != expected_hash:
-        raise HTTPException(status_code=404, detail="Telegram video render file not found")
 
-    return FileResponse(
-        path,
+    stream = None
+    try:
+        stream = path.open("rb")
+        opened_stat = os.fstat(stream.fileno())
+        file_size = opened_stat.st_size
+        if (
+            not stat.S_ISREG(opened_stat.st_mode)
+            or file_size != recorded_size
+            or not 1 <= file_size <= MAX_OUTPUT_BYTES
+        ):
+            raise ValueError("invalid_media_file")
+        digest = hashlib.sha256()
+        header = stream.read(12)
+        if len(header) < 12 or header[4:8] != b"ftyp":
+            raise ValueError("invalid_mp4_signature")
+        digest.update(header)
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+        expected_hash = asset.get("content_hash")
+        if not isinstance(expected_hash, str) or digest.hexdigest() != expected_hash:
+            raise ValueError("media_checksum_mismatch")
+        final_stat = os.fstat(stream.fileno())
+        if (
+            final_stat.st_size != opened_stat.st_size
+            or final_stat.st_mtime_ns != opened_stat.st_mtime_ns
+        ):
+            raise ValueError("media_changed_during_verification")
+        stream.seek(0)
+    except (OSError, ValueError):
+        if stream is not None:
+            stream.close()
+        raise HTTPException(status_code=404, detail="Telegram video render file not found") from None
+
+    filename = f"render-{render_id}.mp4"
+    return StreamingResponse(
+        _stream_verified_media(stream),
         media_type="video/mp4",
-        filename=f"render-{render_id}.mp4",
         headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(file_size),
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
+        background=BackgroundTask(stream.close),
     )
 
 

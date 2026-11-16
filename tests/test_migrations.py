@@ -61,6 +61,15 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "SELECT 1 FROM sqlite_master WHERE type = 'index' "
         "AND name = 'idx_audit_task_timeline'"
     ).fetchone() is not None
+    render_history_index = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' "
+        "AND name = 'idx_video_render_owner_history'"
+    ).fetchone()
+    assert render_history_index is not None
+    assert (
+        "owner_user_id, created_at DESC, render_id DESC"
+        in render_history_index["sql"]
+    )
     source_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
     }
@@ -606,7 +615,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -737,7 +746,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()

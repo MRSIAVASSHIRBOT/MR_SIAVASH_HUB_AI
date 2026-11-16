@@ -1,10 +1,13 @@
+import asyncio
 import hashlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
+from fastapi.responses import StreamingResponse
 
 from mrhub.api.routes import telegram_integration as telegram_routes
 
@@ -135,14 +138,28 @@ def test_telegram_render_file_requires_completed_owner_asset_and_verified_mp4(
     response = telegram_routes.download_telegram_video_render(
         render_id, SimpleNamespace(owner_user_id="owner-a")
     )
-    assert response.path == path
-    assert response.filename == f"render-{render_id}.mp4"
+    assert isinstance(response, StreamingResponse)
     assert response.media_type == "video/mp4"
+    assert response.headers["content-length"] == str(len(content))
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="render-{render_id}.mp4"'
+    )
     assert response.headers["cache-control"] == "private, no-store"
     assert calls == [
         ("render", "owner-a", render_id),
         ("asset", "owner-a", asset_id),
     ]
+
+    # The response must stream from the descriptor that was checksum-verified,
+    # not reopen a potentially replaced path after validation.
+    if os.name != "nt":
+        path.unlink()
+        path.write_bytes(b"replacement-after-verification")
+
+    async def read_body():
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert asyncio.run(read_body()) == content
 
 
 def test_telegram_render_file_rejects_missing_or_oversized_output(tmp_path, monkeypatch):
