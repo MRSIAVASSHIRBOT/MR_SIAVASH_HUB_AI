@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import threading
+from typing import ClassVar
 
 from scripts.ci import openrouter_credential_proxy as proxy
 
@@ -32,7 +33,7 @@ class FakeResponse:
 
 
 class FakeConnection:
-    instances = []
+    instances: ClassVar[list[FakeConnection]] = []
     response_status = 200
 
     def __init__(self, host, *, timeout, context):
