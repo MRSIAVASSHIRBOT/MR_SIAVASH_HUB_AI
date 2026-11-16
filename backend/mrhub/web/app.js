@@ -1080,6 +1080,23 @@
       download.addEventListener("click", downloadRenderedVideo);
       container.append(download);
       container.append(element("p", "شناسهٔ رسانهٔ خروجی: " + activeVideoRenderAssetId, "muted"));
+      const metadata = render.output_metadata;
+      if (metadata && typeof metadata === "object") {
+        const details = [];
+        if (Number.isInteger(metadata.width) && Number.isInteger(metadata.height)) {
+          details.push(metadata.width + "×" + metadata.height);
+        }
+        if (typeof metadata.duration_seconds === "number") {
+          details.push(metadata.duration_seconds.toFixed(2) + " ثانیه");
+        }
+        if (Number.isInteger(metadata.file_size)) {
+          details.push((metadata.file_size / 1_000_000).toFixed(2) + " MB");
+        }
+        if (typeof metadata.has_audio === "boolean") {
+          details.push(metadata.has_audio ? "صدای منبع حفظ شده" : "بدون صدای منبع");
+        }
+        if (details.length) container.append(element("p", details.join(" · "), "muted"));
+      }
     }
     const active = ["accepted", "running"].includes(render.status);
     $("#video-render-refresh").disabled = !activeVideoRenderId;

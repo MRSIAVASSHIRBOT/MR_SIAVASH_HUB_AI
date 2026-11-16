@@ -392,7 +392,7 @@ class MediaAssetRepository:
                     media_type, storage_key, file_size, content_hash,
                     processing_status, processing_profile, error_code, created_at, updated_at
                 ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'processed',
-                          'video_render_cut_v1', NULL, ?, ?)""",
+                          'video_render_cut_audio_v2', NULL, ?, ?)""",
                 (
                     str(asset_uuid), owner_user_id, output_filename, storage_key,
                     size, digest.hexdigest(), now, now,

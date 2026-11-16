@@ -70,6 +70,7 @@ def validate_renderer_timeline_source_bounds(
 ) -> None:
     """Require every clip interval to fit its analyzed source media duration."""
     source_durations: dict[str, float] = {}
+    source_audio: dict[str, bool | None] = {}
     for item in assets:
         if not isinstance(item, dict):
             continue
@@ -83,6 +84,8 @@ def validate_renderer_timeline_source_bounds(
         duration = float(raw_duration)
         if math.isfinite(duration) and duration > 0:
             source_durations[asset_id] = duration
+        has_audio = metadata.get("has_audio")
+        source_audio[asset_id] = has_audio if isinstance(has_audio, bool) else None
 
     for clip in timeline.video_track:
         source_duration = source_durations.get(clip.source_asset_id)
@@ -90,6 +93,8 @@ def validate_renderer_timeline_source_bounds(
             raise ValueError("Renderer timeline source duration is unavailable")
         if clip.source_end_seconds > source_duration + 0.001:
             raise ValueError("Renderer timeline source interval exceeds source duration")
+        if clip.include_source_audio is True and source_audio.get(clip.source_asset_id) is not True:
+            raise ValueError("Renderer timeline requests source audio not verified by analysis")
 
 
 class VideoTimelineDraftRepository:
@@ -110,7 +115,7 @@ class VideoTimelineDraftRepository:
     @staticmethod
     def _canonical_renderer_timeline(timeline: VideoTimeline) -> str:
         return json.dumps(
-            timeline.model_dump(mode="json"),
+            timeline.model_dump(mode="json", exclude_none=True),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
