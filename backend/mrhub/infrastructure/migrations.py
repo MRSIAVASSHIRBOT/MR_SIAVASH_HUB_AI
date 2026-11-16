@@ -1263,6 +1263,14 @@ MIGRATIONS = (
                CHECK (length(independence_basis) <= 1000)""",
         ),
     ),
+    Migration.build(
+        46,
+        "index_owner_scoped_video_render_history",
+        (
+            "CREATE INDEX IF NOT EXISTS idx_video_render_owner_history "
+            "ON video_render_runs(owner_user_id, created_at DESC, render_id DESC)",
+        ),
+    ),
 )
 
 
