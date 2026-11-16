@@ -135,7 +135,7 @@ def test_telegram_render_file_requires_completed_owner_asset_and_verified_mp4(
     response = telegram_routes.download_telegram_video_render(
         render_id, SimpleNamespace(owner_user_id="owner-a")
     )
-    assert response.path == str(path)
+    assert response.path == path
     assert response.filename == f"render-{render_id}.mp4"
     assert response.media_type == "video/mp4"
     assert response.headers["cache-control"] == "private, no-store"
