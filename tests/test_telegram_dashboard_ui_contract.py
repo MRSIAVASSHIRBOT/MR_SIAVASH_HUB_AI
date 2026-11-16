@@ -15,6 +15,7 @@ def test_telegram_pairing_form_exposes_the_complete_allowlisted_scope_set():
         "tasks:cancel",
         "memory:search",
         "video:read",
+        "video:render",
         "video:cancel",
     ):
         assert f'value="{scope}"' in html
@@ -35,6 +36,7 @@ def test_active_telegram_clients_can_replace_scopes_with_owner_confirmation():
     assert "scopeEditor.disabled = true" in editor
     assert "await loadTelegramClients()" in editor
     assert "video:read" in editor
+    assert "video:render" in editor
     assert "video:cancel" in editor
 
 

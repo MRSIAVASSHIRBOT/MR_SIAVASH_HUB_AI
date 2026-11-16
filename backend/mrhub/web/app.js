@@ -235,8 +235,9 @@
     { value: "tasks:create", label: "ثبت وظیفه از طریق Policy Engine" },
     { value: "tasks:cancel", label: "لغو وظایف در انتظار" },
     { value: "memory:search", label: "جست‌وجوی حافظهٔ خصوصی" },
-    { value: "video:read", label: "مشاهدهٔ Providerها، تاریخچه و پیش‌نمایش مسیر ویدئو" },
-    { value: "video:cancel", label: "لغو تولید ویدئوی در انتظار" },
+    { value: "video:read", label: "مشاهدهٔ Providerها، Draftها و وضعیت رندر ویدئو" },
+    { value: "video:render", label: "ثبت رندر محلی FFmpeg از Timeline آماده‌شده" },
+    { value: "video:cancel", label: "لغو تولید یا رندر ویدئو" },
   ];
 
   async function loadTelegramClients() {

@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.api.dependencies import require_user
 from mrhub.api.telegram_auth import require_telegram_scope
@@ -39,6 +39,12 @@ from mrhub.video_intelligence.generation_routing import (
     GenerationRoutePreviewRequest,
     preview_hybrid_route,
 )
+from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.render_jobs import VideoRenderConflict, VideoRenderJobRepository
+from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
+from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
+from mrhub.video_intelligence.timeline import VideoTimeline
+from mrhub.video_intelligence.timeline_drafts import VideoTimelineDraftRepository
 
 router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"])
 
@@ -50,6 +56,7 @@ TelegramScope = Literal[
     "tasks:cancel",
     "memory:search",
     "video:read",
+    "video:render",
     "video:cancel",
 ]
 DEFAULT_SCOPES = ["status:read"]
@@ -59,11 +66,11 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=8)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=9)
 
 
 class ClientScopesUpdateRequest(BaseModel):
-    scopes: list[TelegramScope] = Field(min_length=1, max_length=8)
+    scopes: list[TelegramScope] = Field(min_length=1, max_length=9)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -92,6 +99,12 @@ class TaskCreateRequest(BaseModel):
 class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=5, ge=1, le=10)
+
+
+class TelegramVideoRenderSubmissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: UUID
 
 
 def _encode_telegram_task_cursor(created_at: str, task_id: str) -> str:
@@ -161,6 +174,37 @@ def _telegram_generation_summary(generation: dict[str, object]) -> dict[str, obj
         "updated_at",
     )
     return {key: generation.get(key) for key in allowed}
+
+
+def _telegram_video_render_draft_summary(draft: dict[str, object]) -> dict[str, object]:
+    """Expose only bounded draft metadata; never return source paths or timeline content."""
+    renderer_timeline = draft.get("renderer_timeline")
+    return {
+        "draft_id": draft.get("draft_id"),
+        "version": draft.get("version"),
+        "duration_seconds": draft.get("duration_seconds"),
+        "aspect_ratio": draft.get("aspect_ratio"),
+        "renderer_ready": (
+            isinstance(renderer_timeline, dict)
+            and isinstance(draft.get("renderer_timeline_sha256"), str)
+            and bool(draft.get("renderer_timeline_sha256"))
+        ),
+        "updated_at": draft.get("updated_at"),
+    }
+
+
+def _telegram_video_render_summary(render: dict[str, object]) -> dict[str, object]:
+    """Expose render lifecycle metadata without leaking private media identifiers."""
+    return {
+        "render_id": render.get("render_id"),
+        "render_kind": "deterministic_ffmpeg",
+        "status": render.get("status"),
+        "error_code": render.get("error_code"),
+        "created_at": render.get("created_at"),
+        "updated_at": render.get("updated_at"),
+        "output_available": bool(render.get("output_asset_id")),
+        "output_metadata": render.get("output_metadata"),
+    }
 
 
 def _pairing_repository() -> TelegramPairingRepository:
@@ -423,6 +467,153 @@ def cancel_telegram_video_generation(
     if result is None:
         raise HTTPException(status_code=404, detail="Telegram video generation not found")
     return result
+
+
+
+@router.get("/video/render-drafts")
+def list_telegram_video_render_drafts(
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+    analysis_id: UUID,
+) -> dict[str, object]:
+    """List bounded, owner-scoped draft metadata for the deterministic local renderer."""
+    analysis = VideoAnalysisJobRepository(get_settings().database_path).get(
+        identity.owner_user_id, analysis_id
+    )
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Telegram video analysis not found")
+    if analysis.get("status") != "completed" or not isinstance(analysis.get("result"), dict):
+        raise HTTPException(status_code=409, detail="Telegram video analysis is not completed")
+
+    drafts = VideoTimelineDraftRepository(get_settings().database_path).list_for_analysis(
+        identity.owner_user_id, analysis_id, limit=5
+    )
+    return {
+        "analysis_id": str(analysis_id),
+        "drafts": [_telegram_video_render_draft_summary(item) for item in drafts],
+        "count": len(drafts),
+    }
+
+
+@router.post("/video/renders", status_code=202)
+def submit_telegram_video_render(
+    payload: TelegramVideoRenderSubmissionRequest,
+    response: Response,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:render"))],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Queue a bounded local FFmpeg render from an exact owner-owned prepared draft."""
+    database_path = get_settings().database_path
+    draft = VideoTimelineDraftRepository(database_path).get(
+        identity.owner_user_id, payload.draft_id
+    )
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Telegram video timeline draft not found")
+    renderer_timeline_data = draft.get("renderer_timeline")
+    if not isinstance(renderer_timeline_data, dict) or not draft.get("renderer_timeline_sha256"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "renderer_timeline_not_saved",
+                "message": "Prepare and save the renderer timeline in the Hub dashboard first",
+            },
+        )
+
+    try:
+        analysis_id = UUID(str(draft["analysis_id"]))
+        draft_version = draft.get("version")
+        if (
+            isinstance(draft_version, bool)
+            or not isinstance(draft_version, int)
+            or draft_version < 1
+        ):
+            raise ValueError("Timeline draft version is invalid")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="Telegram video timeline draft is invalid") from exc
+
+    analysis = VideoAnalysisJobRepository(database_path).get(
+        identity.owner_user_id, analysis_id
+    )
+    if (
+        analysis is None
+        or analysis.get("status") != "completed"
+        or not isinstance(analysis.get("result"), dict)
+    ):
+        raise HTTPException(status_code=409, detail="Telegram video analysis is not completed")
+    assets = analysis["result"].get("assets")
+    if not isinstance(assets, list):
+        raise HTTPException(status_code=409, detail="Telegram video analysis assets are unavailable")
+
+    try:
+        timeline = VideoTimeline.model_validate(renderer_timeline_data)
+        snapshot = VideoRenderTimelineSnapshot.create(
+            owner_user_id=identity.owner_user_id,
+            analysis_id=analysis_id,
+            draft_id=payload.draft_id,
+            draft_version=draft_version,
+            timeline=timeline,
+            analysis_source_asset_ids=[
+                str(item["asset_id"])
+                for item in assets
+                if isinstance(item, dict) and item.get("asset_id")
+            ],
+        )
+        accepted, created = VideoRenderJobRepository(database_path).submit(
+            identity.owner_user_id,
+            analysis_id,
+            idempotency_key,
+            snapshot=snapshot,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Telegram video render source not found") from exc
+    except VideoRenderSnapshotConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except VideoRenderConflict as exc:
+        raise HTTPException(status_code=409, detail="Telegram video render idempotency conflict") from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not created:
+        response.status_code = 200
+    return {
+        **{key: value for key, value in accepted.items() if key != "task_id"},
+        "draft_id": str(payload.draft_id),
+        "draft_version": draft_version,
+        "created": created,
+        "render_kind": "deterministic_ffmpeg",
+    }
+
+
+@router.get("/video/renders/{render_id}")
+def get_telegram_video_render(
+    render_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:read"))],
+) -> dict[str, object]:
+    """Return one local render only within the paired owner's account."""
+    render = VideoRenderJobRepository(get_settings().database_path).get(
+        identity.owner_user_id, render_id
+    )
+    if render is None:
+        raise HTTPException(status_code=404, detail="Telegram video render not found")
+    return _telegram_video_render_summary(render)
+
+
+@router.delete("/video/renders/{render_id}")
+def cancel_telegram_video_render(
+    render_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))],
+) -> dict[str, object]:
+    """Cancel or signal cancellation for a render owned by this paired client."""
+    result = VideoRenderJobRepository(get_settings().database_path).cancel(
+        identity.owner_user_id, render_id
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Telegram video render not found")
+    return {
+        "render_id": result["render_id"],
+        "render_kind": "deterministic_ffmpeg",
+        "status": result["status"],
+        "cancellation_requested": bool(result.get("cancellation_requested", False)),
+    }
 
 
 @router.get("/tasks")

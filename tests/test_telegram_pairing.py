@@ -964,3 +964,256 @@ def test_owner_scope_update_rejects_duplicates_and_does_not_change_foreign_or_re
     )
     assert after_revoke.status_code == 404
     get_settings.cache_clear()
+
+
+
+def test_telegram_video_render_drafts_are_owner_scoped_and_redacted(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+    from mrhub.video_intelligence.timeline_drafts import VideoTimelineDraftRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["video:read"])
+    tokens = _exchange(client, payload, challenge).json()
+    analysis_id = uuid4()
+    draft_id = uuid4()
+    calls = []
+
+    def get_analysis(self, owner_user_id, requested_id):
+        calls.append(("analysis", owner_user_id, requested_id))
+        return {"status": "completed", "result": {"assets": []}}
+
+    def list_drafts(self, owner_user_id, requested_id, limit=5):
+        calls.append(("drafts", owner_user_id, requested_id, limit))
+        return [{
+            "draft_id": str(draft_id),
+            "asset_id": "private-source-asset",
+            "version": 3,
+            "duration_seconds": 10,
+            "aspect_ratio": "9:16",
+            "renderer_timeline": {"private": "timeline"},
+            "renderer_timeline_sha256": "a" * 64,
+            "updated_at": "2026-11-16T10:00:00+00:00",
+        }]
+
+    monkeypatch.setattr(VideoAnalysisJobRepository, "get", get_analysis)
+    monkeypatch.setattr(VideoTimelineDraftRepository, "list_for_analysis", list_drafts)
+    response = client.get(
+        "/integrations/telegram/video/render-drafts",
+        params={"analysis_id": str(analysis_id)},
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["analysis_id"] == str(analysis_id)
+    assert body["count"] == 1
+    assert body["drafts"][0] == {
+        "draft_id": str(draft_id),
+        "version": 3,
+        "duration_seconds": 10,
+        "aspect_ratio": "9:16",
+        "renderer_ready": True,
+        "updated_at": "2026-11-16T10:00:00+00:00",
+    }
+    assert calls == [
+        ("analysis", "local-owner", analysis_id),
+        ("drafts", "local-owner", analysis_id, 5),
+    ]
+    get_settings.cache_clear()
+
+
+def test_telegram_video_render_submission_requires_video_render_scope_and_is_idempotent(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+    from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
+    from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
+    from mrhub.video_intelligence.timeline_drafts import VideoTimelineDraftRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    draft_id = uuid4()
+    analysis_id = uuid4()
+    render_id = uuid4()
+    snapshot_id = uuid4()
+    read_payload, read_challenge = _create_pairing(client, scopes=["video:read"])
+    read_tokens = _exchange(client, read_payload, read_challenge).json()
+    denied = client.post(
+        "/integrations/telegram/video/renders",
+        json={"draft_id": str(draft_id)},
+        headers={**_bot_headers(read_tokens), "Idempotency-Key": "telegram:123:1:video-render"},
+    )
+    assert denied.status_code == 403
+
+    payload, challenge = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["video:render"]
+    )
+    tokens = _exchange(client, payload, challenge).json()
+    source_asset_id = "2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00"
+    timeline_data = {
+        "schema_version": "1.0",
+        "output_aspect_ratio": "16:9",
+        "requested_duration_seconds": 3,
+        "actual_duration_seconds": 3.0,
+        "duration_shortfall_seconds": 0.0,
+        "video_track": [{
+            "clip_id": "clip-001",
+            "source_asset_id": source_asset_id,
+            "source_scene_index": 0,
+            "source_start_seconds": 0.0,
+            "source_end_seconds": 3.0,
+            "timeline_start_seconds": 0.0,
+            "timeline_end_seconds": 3.0,
+            "transition_in": "none",
+        }],
+        "audio_analysis_status": "not_requested",
+        "audio_render_status": "not_implemented",
+        "timeline_status": "validated_cut_only",
+        "render_status": "not_implemented",
+    }
+    draft = {
+        "draft_id": str(draft_id),
+        "analysis_id": str(analysis_id),
+        "version": 4,
+        "renderer_timeline": timeline_data,
+        "renderer_timeline_sha256": "b" * 64,
+    }
+    calls = {}
+
+    monkeypatch.setattr(
+        VideoTimelineDraftRepository,
+        "get",
+        lambda self, owner_user_id, requested_id: (
+            draft if owner_user_id == "local-owner" and requested_id == draft_id else None
+        ),
+    )
+    monkeypatch.setattr(
+        VideoAnalysisJobRepository,
+        "get",
+        lambda self, owner_user_id, requested_id: (
+            {
+                "status": "completed",
+                "result": {"assets": [{"asset_id": source_asset_id}]},
+            }
+            if owner_user_id == "local-owner" and requested_id == analysis_id
+            else None
+        ),
+    )
+
+    def create_snapshot(cls, **kwargs):
+        calls["snapshot"] = kwargs
+        return SimpleNamespace(snapshot_id=snapshot_id)
+
+    monkeypatch.setattr(
+        VideoRenderTimelineSnapshot, "create", classmethod(create_snapshot)
+    )
+
+    def submit(self, owner_user_id, requested_analysis_id, idempotency_key, *, snapshot=None):
+        calls["submit"] = (owner_user_id, requested_analysis_id, idempotency_key, snapshot)
+        return ({
+            "render_id": str(render_id),
+            "task_id": str(uuid4()),
+            "analysis_id": str(analysis_id),
+            "status": "accepted",
+            "created_at": "2026-11-16T10:00:00+00:00",
+            "snapshot_id": str(snapshot_id),
+        }, True)
+
+    monkeypatch.setattr(VideoRenderJobRepository, "submit", submit)
+    key = "telegram:987654321:42:video-render"
+    response = client.post(
+        "/integrations/telegram/video/renders",
+        json={"draft_id": str(draft_id)},
+        headers={**_bot_headers(tokens, telegram_user_id=987654321), "Idempotency-Key": key},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["render_id"] == str(render_id)
+    assert body["draft_id"] == str(draft_id)
+    assert body["draft_version"] == 4
+    assert body["snapshot_id"] == str(snapshot_id)
+    assert body["render_kind"] == "deterministic_ffmpeg"
+    assert body["created"] is True
+    assert "task_id" not in body
+    assert calls["snapshot"]["owner_user_id"] == "local-owner"
+    assert calls["snapshot"]["analysis_id"] == analysis_id
+    assert calls["snapshot"]["draft_id"] == draft_id
+    assert calls["snapshot"]["draft_version"] == 4
+    assert calls["snapshot"]["analysis_source_asset_ids"] == [source_asset_id]
+    assert calls["submit"][:3] == ("local-owner", analysis_id, key)
+    assert calls["submit"][3] is not None
+    get_settings.cache_clear()
+
+
+def test_telegram_video_render_status_and_cancel_use_separate_scopes(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    render_id = uuid4()
+    read_payload, read_challenge = _create_pairing(client, scopes=["video:read"])
+    read_tokens = _exchange(client, read_payload, read_challenge).json()
+    calls = []
+
+    def get_render(self, owner_user_id, requested_id):
+        calls.append(("get", owner_user_id, requested_id))
+        return {
+            "render_id": str(requested_id),
+            "status": "completed",
+            "output_asset_id": "private-output-asset",
+            "output_metadata": {"file_size": 1234, "duration_seconds": 3.0},
+        }
+
+    monkeypatch.setattr(VideoRenderJobRepository, "get", get_render)
+    response = client.get(
+        f"/integrations/telegram/video/renders/{render_id}",
+        headers=_bot_headers(read_tokens),
+    )
+    assert response.status_code == 200
+    assert response.json()["render_kind"] == "deterministic_ffmpeg"
+    assert response.json()["output_available"] is True
+    assert "output_asset_id" not in response.json()
+    assert "private-output-asset" not in response.text
+
+    denied = client.delete(
+        f"/integrations/telegram/video/renders/{render_id}",
+        headers=_bot_headers(read_tokens),
+    )
+    assert denied.status_code == 403
+
+    cancel_payload, cancel_challenge = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["video:cancel"]
+    )
+    cancel_tokens = _exchange(client, cancel_payload, cancel_challenge).json()
+
+    def cancel_render(self, owner_user_id, requested_id):
+        calls.append(("cancel", owner_user_id, requested_id))
+        return {
+            "render_id": str(requested_id),
+            "status": "running",
+            "cancellation_requested": True,
+        }
+
+    monkeypatch.setattr(VideoRenderJobRepository, "cancel", cancel_render)
+    cancelled = client.delete(
+        f"/integrations/telegram/video/renders/{render_id}",
+        headers=_bot_headers(cancel_tokens, telegram_user_id=987654321),
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json() == {
+        "render_id": str(render_id),
+        "render_kind": "deterministic_ffmpeg",
+        "status": "running",
+        "cancellation_requested": True,
+    }
+    assert calls == [
+        ("get", "local-owner", render_id),
+        ("cancel", "local-owner", render_id),
+    ]
+    get_settings.cache_clear()
