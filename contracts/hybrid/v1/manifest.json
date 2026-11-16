@@ -174,6 +174,13 @@
         "purpose": "List at most five owner-scoped storyboard draft summaries for a completed video analysis; omit source IDs and timeline bodies."
       },
       {
+        "method": "GET",
+        "path": "/integrations/telegram/video/renders",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "List the paired owner's deterministic local renders with bounded stable cursor pagination."
+      },
+      {
         "method": "POST",
         "path": "/integrations/telegram/video/renders",
         "auth_mode": "paired_bearer",
@@ -186,6 +193,13 @@
         "auth_mode": "paired_bearer",
         "required_scope": "video:read",
         "purpose": "Read one owner-scoped deterministic local render without exposing private output asset identifiers."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/renders/{render_id}/file",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Stream a completed owner-owned MP4 only after media size, container signature and SHA-256 verification; cap Telegram delivery at 48,000,000 bytes."
       },
       {
         "method": "DELETE",
@@ -212,7 +226,13 @@
         "maximum": 20
       },
       "video_generation_cursor_max_length": 512,
-      "client_scope_update_max_scopes": 9
+      "client_scope_update_max_scopes": 9,
+      "video_render_list_limit": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "video_render_cursor_max_length": 512,
+      "telegram_video_download_max_bytes": 48000000
     },
     "error_response": "FastAPI HTTPException detail envelope; consumers must avoid exposing private exception details."
   },
