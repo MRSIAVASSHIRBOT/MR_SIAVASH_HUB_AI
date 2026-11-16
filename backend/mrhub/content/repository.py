@@ -93,7 +93,7 @@ class ContentDraftRepository:
             if (
                 media_type != "video/mp4"
                 or asset["processing_status"] != "processed"
-                or asset["processing_profile"] != "video_render_cut_v1"
+                or asset["processing_profile"] not in {"video_render_cut_v1", "video_render_cut_audio_v2"}
             ):
                 raise MediaAttachmentError(
                     "Instagram Reels require a processed MP4 render output"
