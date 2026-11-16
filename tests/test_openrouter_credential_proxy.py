@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import http.client
+import importlib.util
 import json
 import threading
+from pathlib import Path
 from typing import ClassVar
 
-from scripts.ci import openrouter_credential_proxy as proxy
+BROKER_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "ci"
+    / "openrouter_credential_proxy.py"
+)
+BROKER_SPEC = importlib.util.spec_from_file_location("openrouter_credential_proxy", BROKER_PATH)
+assert BROKER_SPEC is not None and BROKER_SPEC.loader is not None
+proxy = importlib.util.module_from_spec(BROKER_SPEC)
+BROKER_SPEC.loader.exec_module(proxy)
 
 
 class FakeResponse:
@@ -194,6 +205,27 @@ def test_broker_rejects_non_object_json_before_upstream_request():
         )
         assert status == 400
         assert json.loads(payload)["error"]["code"] == "invalid_json_request"
+        assert FakeConnection.instances == []
+    finally:
+        _stop_server(server, thread)
+
+
+
+def test_broker_rejects_unapproved_models_before_forwarding():
+    server, thread = _start_server()
+    try:
+        status, _headers, payload = _request(
+            server,
+            "POST",
+            "/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {proxy.BROKER_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            body=json.dumps({"model": "openai/paid-model", "messages": []}),
+        )
+        assert status == 403
+        assert json.loads(payload)["error"]["code"] == "model_not_allowed"
         assert FakeConnection.instances == []
     finally:
         _stop_server(server, thread)
