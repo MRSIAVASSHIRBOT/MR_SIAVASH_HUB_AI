@@ -77,6 +77,10 @@ def test_effective_policy_is_checked_without_provider_credentials() -> None:
     assert "OPENROUTER_API_KEY" not in verification
     assert "build_policy = config.get(\"agent\", {}).get(\"build\", {}).get(\"permission\")" in verification
     assert "opencode --pure run" in run_step
+    assert "MODEL: mrhub-openrouter-proxy/cohere/north-mini-code:free" in run_step
+    assert 'OPENROUTER_API_KEY="$OPENROUTER_API_KEY" python scripts/ci/openrouter_credential_proxy.py' in run_step
+    assert "unset OPENROUTER_API_KEY" in run_step
+    assert "OPENROUTER_API_KEY" not in run_step.split("opencode --pure run", maxsplit=1)[1]
     assert "OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}" in run_step
     assert 'grep -Fq "API key expired."' in run_step
     assert "The OpenRouter API key has expired." in run_step
@@ -100,6 +104,8 @@ def test_publisher_validates_staged_paths_before_receiving_write_token() -> None
     assert 'b".github/"' in validation
     assert 'b".env"' in validation
     assert 'b"tests/test_continuous_development_security.py"' in validation
+    assert 'b"tests/test_openrouter_credential_proxy.py"' in validation
+    assert 'b"scripts/ci/"' in validation
     assert 'b"120000"' in validation
     assert 'b"160000"' in validation
     assert "git apply --index --binary" not in publisher
@@ -126,3 +132,13 @@ def test_scheduled_agent_disables_code_mode_and_automatic_project_skills() -> No
         'OPENCODE_DISABLE_CLAUDE_CODE: "true"',
     ):
         assert setting in workflow
+
+
+def test_openrouter_provider_uses_only_the_loopback_broker_credential() -> None:
+    config = _config()
+    provider = config.get("provider", {}).get("mrhub-openrouter-proxy")
+    assert isinstance(provider, dict)
+    options = provider.get("options")
+    assert isinstance(options, dict)
+    assert options.get("baseURL") == "http://127.0.0.1:8765/api/v1"
+    assert options.get("apiKey") == "mrhub-local-broker"

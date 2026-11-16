@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"deny","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"},"agent":{"build":{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"deny","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"}}},"tools":{"bash":false},"lsp":false,"mcp":{}}'
+      OPENCODE_CONFIG_CONTENT: '{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"deny","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"},"agent":{"build":{"permission":{"*":"deny","read":{"*":"allow","*.env":"deny","*.env.*":"deny","*.env.example":"allow","**/.env":"deny","**/.env.*":"deny","**/.env.example":"allow"},"edit":"allow","glob":"allow","grep":"deny","external_directory":"deny","bash":"deny","task":"deny","skill":"deny","webfetch":"deny","websearch":"deny","lsp":"deny"}}},"tools":{"bash":false},"lsp":false,"mcp":{},"provider":{"mrhub-openrouter-proxy":{"npm":"@ai-sdk/openai-compatible","name":"OpenRouter credential broker","options":{"baseURL":"http://127.0.0.1:8765/api/v1","apiKey":"mrhub-local-broker"},"models":{"cohere/north-mini-code:free":{"name":"Cohere North Mini Code Free"}}}}}'
       OPENCODE_EXPERIMENTAL_CODE_MODE: "false"
       OPENCODE_DISABLE_EXTERNAL_SKILLS: "true"
       OPENCODE_DISABLE_PROJECT_CONFIG: "true"
@@ -70,17 +70,57 @@ jobs:
           build_policy = config.get("agent", {}).get("build", {}).get("permission")
           if not isinstance(build_policy, dict) or build_policy.get("*") != "deny":
               raise SystemExit("Build agent is not configured with default-deny policy")
-          print("Verified effective default-deny OpenCode tool policy.")
+          provider = config.get("provider", {}).get("mrhub-openrouter-proxy")
+          if not isinstance(provider, dict):
+              raise SystemExit("OpenRouter credential broker provider is missing")
+          options = provider.get("options")
+          if not isinstance(options, dict):
+              raise SystemExit("OpenRouter credential broker options are missing")
+          if options.get("baseURL") != "http://127.0.0.1:8765/api/v1":
+              raise SystemExit("OpenRouter provider must use the loopback credential broker")
+          if options.get("apiKey") != "mrhub-local-broker":
+              raise SystemExit("OpenCode must use only the non-secret broker token")
+          print("Verified effective default-deny OpenCode tool policy and broker-only provider auth.")
           PY
 
       - name: Run one focused development cycle
         shell: bash
         env:
-          MODEL: openrouter/cohere/north-mini-code:free
+          MODEL: mrhub-openrouter-proxy/cohere/north-mini-code:free
           OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}
         run: |
-          if [ -z "$OPENROUTER_API_KEY" ]; then
+          set -euo pipefail
+          if [ -z "${OPENROUTER_API_KEY:-}" ]; then
             echo "::error::Repository secret MR_SIAVASH_HUB_AI is missing or empty."
+            exit 1
+          fi
+
+          # Only the trusted loopback broker receives the provider credential.
+          OPENROUTER_API_KEY="$OPENROUTER_API_KEY" python scripts/ci/openrouter_credential_proxy.py \
+            > "$RUNNER_TEMP/openrouter-credential-broker.log" 2>&1 &
+          broker_pid=$!
+          trap 'kill "$broker_pid" 2>/dev/null || true; wait "$broker_pid" 2>/dev/null || true' EXIT
+          unset OPENROUTER_API_KEY
+
+          python - <<'PY'
+          import socket
+          import time
+
+          for _ in range(50):
+              try:
+                  with socket.create_connection(("127.0.0.1", 8765), timeout=0.2):
+                      break
+              except OSError:
+                  time.sleep(0.1)
+          else:
+              raise SystemExit("OpenRouter credential broker did not start")
+          PY
+          if ! kill -0 "$broker_pid" 2>/dev/null; then
+            echo "::error::OpenRouter credential broker exited during startup."
+            exit 1
+          fi
+          if [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            echo "::error::Provider credential is still present in the OpenCode parent environment."
             exit 1
           fi
           set +e
@@ -216,10 +256,11 @@ jobs:
               b"backend/mrhub/config.py", b"tests/test_audit.py", b"tests/test_auth.py",
               b"tests/test_tool_permissions.py",
               b"tests/test_continuous_development_security.py",
+              b"tests/test_openrouter_credential_proxy.py",
           }
           protected_prefixes = (
               b".github/", b".opencode/", b"security/", b".git/",
-              b"scripts/deploy/", b".devcontainer/", b"docs/security/",
+              b"scripts/deploy/", b"scripts/ci/", b".devcontainer/", b"docs/security/",
               b"backend/mrhub/security/", b"backend/mrhub/tools/",
           )
           protected_basenames = {
