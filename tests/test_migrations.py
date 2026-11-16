@@ -70,15 +70,6 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "owner_user_id, created_at DESC, render_id DESC"
         in render_history_index["sql"]
     )
-    render_history_index = connection.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'index' "
-        "AND name = 'idx_video_render_owner_history'"
-    ).fetchone()
-    assert render_history_index is not None
-    assert (
-        "owner_user_id, created_at DESC, render_id DESC"
-        in render_history_index["sql"]
-    )
     source_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(knowledge_sources)")
     }
