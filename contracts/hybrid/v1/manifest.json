@@ -21,7 +21,8 @@
       "tasks:read",
       "tasks:result",
       "video:cancel",
-      "video:read"
+      "video:read",
+      "video:render"
     ],
     "default_scopes": [
       "status:read"
@@ -164,6 +165,34 @@
         "auth_mode": "paired_bearer",
         "required_scope": "video:cancel",
         "purpose": "Cancel only an owned prepared or queued generation before provider submission; active or ambiguous provider work returns a conflict."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/render-drafts",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "List at most five owner-scoped storyboard draft summaries for a completed video analysis; omit source IDs and timeline bodies."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/video/renders",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:render",
+        "purpose": "Submit a saved renderer-compatible owner-owned draft through the immutable-snapshot local FFmpeg queue using an idempotency key."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/renders/{render_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Read one owner-scoped deterministic local render without exposing private output asset identifiers."
+      },
+      {
+        "method": "DELETE",
+        "path": "/integrations/telegram/video/renders/{render_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:cancel",
+        "purpose": "Cancel or request cancellation for one owner-scoped local FFmpeg render."
       }
     ],
     "request_constraints": {
@@ -183,7 +212,7 @@
         "maximum": 20
       },
       "video_generation_cursor_max_length": 512,
-      "client_scope_update_max_scopes": 8
+      "client_scope_update_max_scopes": 9
     },
     "error_response": "FastAPI HTTPException detail envelope; consumers must avoid exposing private exception details."
   },
