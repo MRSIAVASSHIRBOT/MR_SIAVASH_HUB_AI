@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
@@ -260,7 +262,11 @@ def test_telegram_draft_cannot_attach_another_owners_media_asset():
     assert response.status_code == 422
 
 
-def test_instagram_reel_draft_accepts_only_verified_render_output():
+@pytest.mark.parametrize(
+    "processing_profile",
+    ("video_render_cut_v1", "video_render_cut_audio_v2"),
+)
+def test_instagram_reel_draft_accepts_only_verified_render_output(processing_profile):
     client = authenticated_client()
     video = b"\x00\x00\x00\x18ftypisom" + b"verified-render-fixture"
     from mrhub.media.repository import MediaAssetRepository
@@ -272,8 +278,8 @@ def test_instagram_reel_draft_accepts_only_verified_render_output():
     with repository.tasks._connection() as connection:
         connection.execute(
             "UPDATE content_assets SET processing_status = 'processed', "
-            "processing_profile = 'video_render_cut_v1' WHERE asset_id = ? AND owner_user_id = ?",
-            (asset_id, owner_id),
+            "processing_profile = ? WHERE asset_id = ? AND owner_user_id = ?",
+            (processing_profile, asset_id, owner_id),
         )
 
     created = client.post(
@@ -289,3 +295,34 @@ def test_instagram_reel_draft_accepts_only_verified_render_output():
     assert created.status_code == 201
     assert created.json()["content_type"] == "reel"
     assert created.json()["media_asset_id"] == asset_id
+
+
+def test_instagram_reel_draft_rejects_unknown_render_profile():
+    client = authenticated_client()
+    from mrhub.media.repository import MediaAssetRepository
+
+    repository = MediaAssetRepository(get_settings().database_path)
+    asset = repository.store_upload(
+        "local-owner",
+        "unverified.mp4",
+        "video/mp4",
+        b"\x00\x00\x00\x18ftypisom" + b"unverified-fixture",
+    )
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE content_assets SET processing_status = 'processed', "
+            "processing_profile = 'untrusted_render_profile' WHERE asset_id = ?",
+            (asset["asset_id"],),
+        )
+
+    response = client.post(
+        "/content/drafts",
+        json={
+            "platform": "instagram",
+            "content_type": "reel",
+            "title": "Unverified Reel",
+            "body": "This output profile is not approved.",
+            "media_asset_id": asset["asset_id"],
+        },
+    )
+    assert response.status_code == 422
