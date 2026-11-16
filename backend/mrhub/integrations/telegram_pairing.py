@@ -35,6 +35,7 @@ class TelegramPairingRepository:
         "tasks:cancel",
         "memory:search",
         "video:read",
+        "video:render",
         "video:cancel",
     })
     ACCESS_TTL_SECONDS = 15 * 60

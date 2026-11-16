@@ -37,7 +37,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 | `tasks:result` | Read own bounded terminal task result |
 | `tasks:create` | Submit tasks subject to Hub policy and idempotency |
 | `tasks:cancel` | Cancel own queued or approval-waiting task |
-| `memory:search` | Search owner-scoped memory |\n| `video:read` | Read the non-secret provider catalog, own bounded video-generation history, and individual generation status |\n| `video:cancel` | Cancel only own prepared or queued video generation before provider submission |
+| `memory:search` | Search owner-scoped memory |\n| `video:read` | Read the non-secret provider catalog, own bounded generation history, up to five storyboard-draft summaries, and individual generation/render status |\n| `video:render` | Submit a saved owner-owned renderer-compatible draft to the deterministic local FFmpeg queue |\n| `video:cancel` | Cancel own local FFmpeg renders or prepared/queued provider generations before provider submission |
 
 ### Bounded operations
 
@@ -46,7 +46,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 - Terminal task result: maximum 32 KiB encoded response.
 - Task creation requires the `Idempotency-Key` header.
 - A task result is unavailable until the task reaches a terminal state.
-- Task cancellation is limited to tasks that remain queued or waiting for owner approval.\n- Video-generation history is limited to 1–20 records per page; its cursor is limited to 512 characters. Responses omit provider job IDs and private asset IDs.\n- Video-generation cancellation is a separate scope and cannot cancel active or ambiguous provider work; those states return HTTP 409. The provider catalog is read-only and does not probe providers or start jobs.
+- Task cancellation is limited to tasks that remain queued or waiting for owner approval.\n- Video-generation history is limited to 1–20 records per page; its cursor is limited to 512 characters. Responses omit provider job IDs and private asset IDs.\n- Telegram render-draft listing is capped at five summaries and omits source asset IDs, renderer timeline bodies, and filesystem paths.\n- Local FFmpeg render submission requires a saved immutable draft revision and an `Idempotency-Key`; it does not call a generative provider or transfer media remotely. The private MP4 remains downloadable only through the authenticated Hub dashboard.\n- `video:cancel` is a separate scope: local FFmpeg render cancellation may signal a running local job, while active or ambiguous external provider generation remains non-cancellable and returns HTTP 409.
 
 ## 3. Public website Gateway boundary
 

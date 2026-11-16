@@ -157,3 +157,15 @@ The authenticated `GET /video-intelligence/generations` endpoint returns a bound
 ## Generation cancellation
 
 The authenticated `DELETE /video-intelligence/generations/{generation_id}` endpoint cancels only prepared or queued requests before provider submission, atomically cancels the linked approval/queue task, and purges the encrypted prompt. If a worker has already claimed the task, or provider work is active/ambiguous, the endpoint returns `409`; the API does not claim that an external provider operation stopped until a provider-side cancellation workflow exists.
+
+
+## Telegram deterministic render bridge
+
+The paired Telegram integration can expose the existing local FFmpeg render pipeline without enabling a generative provider:
+
+- `video:read` lists up to five owner-scoped storyboard drafts for a completed analysis and reads render status/output metadata. Draft responses omit source asset IDs, renderer timeline bodies and filesystem paths; render responses omit private output asset IDs.
+- `video:render` submits only a saved renderer-compatible draft. The Hub revalidates the completed analysis, creates the same immutable owner/draft-version snapshot used by the dashboard, and uses the durable render repository's idempotency key.
+- `video:cancel` cancels or signals cancellation for that owner's local render job. The scope is independent of render submission.
+- The Telegram client receives status and bounded output metadata only. The private MP4 remains downloadable through the authenticated Hub media dashboard.
+
+This path is deterministic cut-only FFmpeg rendering, not generative AI. It does not contact a hosted provider, transfer media remotely, or create a provider charge. The new `video:render` scope is opt-in and is never included in default pairing.
