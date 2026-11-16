@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 from client_helpers import authenticated_client
