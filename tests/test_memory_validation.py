@@ -120,3 +120,51 @@ def test_validation_is_owner_scoped_and_bounds_are_enforced(tmp_path: Path) -> N
             pass
         else:
             raise AssertionError("Expected bounded validation parameters")
+
+
+
+def test_validation_preview_api_is_authenticated_and_audits_counts_only() -> None:
+    from datetime import timedelta
+
+    from client_helpers import authenticated_client
+    from mrhub.config import get_settings
+    from mrhub.memory.repository import MemoryRepository
+
+    client = authenticated_client()
+    first = client.post(
+        "/memory",
+        json={
+            "category": "preferences",
+            "content": "Tea is preferred by user every morning",
+            "confidence": 0.9,
+            "verification_status": "user_approved",
+        },
+    )
+    second = client.post(
+        "/memory",
+        json={
+            "category": "preferences",
+            "content": "Tea is not preferred by user every morning",
+            "confidence": 0.4,
+        },
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    response = client.post("/memory/validate/preview", json={"limit": 100})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["contradiction_count"] == 1
+    assert result["unverified_count"] == 1
+    assert result["state_changed"] is False
+
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        audit = connection.execute(
+            "SELECT metadata_json FROM audit_events "
+            "WHERE event_type = 'memory.validation_previewed' "
+            "ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    assert audit is not None
+    assert "Tea is" not in audit["metadata_json"]
+    assert len(repository.list_entries("local-owner")) >= 2
