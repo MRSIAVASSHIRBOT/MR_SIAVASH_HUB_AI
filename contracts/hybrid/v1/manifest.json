@@ -15,6 +15,7 @@
     },
     "scopes": [
       "memory:search",
+      "memory:write",
       "status:read",
       "tasks:cancel",
       "tasks:create",
@@ -94,7 +95,7 @@
         "path": "/integrations/telegram/tasks/{task_id}/events",
         "auth_mode": "paired_bearer",
         "required_scope": "tasks:read",
-        "purpose": "Read the bounded audit timeline for a task submitted by the same paired client."
+        "purpose": "Read one stable, bounded keyset page of the audit timeline for a task submitted by the same paired client."
       },
       {
         "method": "GET",
@@ -123,6 +124,20 @@
         "auth_mode": "paired_bearer",
         "required_scope": "memory:search",
         "purpose": "Search owner-scoped Hub memory through the paired client."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/memory/{memory_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "memory:search",
+        "purpose": "Inspect one active owner-owned memory entry by ID and audit the read without exposing other owners' entries."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/memory/{memory_id}/approve",
+        "auth_mode": "paired_bearer",
+        "required_scope": "memory:write",
+        "purpose": "Mark one explicitly selected active owner-owned memory entry as user-approved; cannot create, edit, or delete memory."
       },
       {
         "method": "POST",
@@ -240,13 +255,14 @@
         "maximum": 20
       },
       "video_generation_cursor_max_length": 512,
-      "client_scope_update_max_scopes": 9,
+      "client_scope_update_max_scopes": 10,
       "video_render_list_limit": {
         "minimum": 1,
         "maximum": 20
       },
       "video_render_cursor_max_length": 512,
-      "telegram_video_download_max_bytes": 48000000
+      "telegram_video_download_max_bytes": 48000000,
+      "task_history_cursor_max_length": 512
     },
     "error_response": "FastAPI HTTPException detail envelope; consumers must avoid exposing private exception details."
   },

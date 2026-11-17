@@ -65,6 +65,7 @@ TelegramScope = Literal[
     "tasks:create",
     "tasks:cancel",
     "memory:search",
+    "memory:write",
     "video:read",
     "video:render",
     "video:cancel",
@@ -77,11 +78,11 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=9)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=10)
 
 
 class ClientScopesUpdateRequest(BaseModel):
-    scopes: list[TelegramScope] = Field(min_length=1, max_length=9)
+    scopes: list[TelegramScope] = Field(min_length=1, max_length=10)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -126,6 +127,29 @@ class TelegramVideoRenderSubmissionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft_id: UUID
+
+
+def _encode_telegram_task_event_cursor(created_at: str, event_id: str) -> str:
+    payload = f"{created_at}\n{event_id}".encode()
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_telegram_task_event_cursor(cursor: str) -> tuple[str, str]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", cursor):
+        raise ValueError("Invalid task event cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = base64.b64decode(cursor + padding, altchars=b"-_", validate=True).decode("utf-8")
+        created_at, event_id = payload.split("\n", 1)
+        if not created_at or len(created_at) > 64:
+            raise ValueError("Invalid task event cursor")
+        datetime.fromisoformat(created_at)
+        parsed_event_id = UUID(event_id)
+        if str(parsed_event_id) != event_id.lower():
+            raise ValueError("Invalid task event cursor")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid task event cursor") from None
+    return created_at, str(parsed_event_id)
 
 
 def _encode_telegram_task_cursor(created_at: str, task_id: str) -> str:
@@ -890,15 +914,35 @@ def get_telegram_task_events(
     task_id: UUID,
     identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:read"))],
     limit: int = 20,
+    cursor: str | None = None,
 ) -> dict[str, object]:
-    """Return the audit timeline only to the paired client that submitted this task."""
+    """Return one stable, bounded audit page for the exact paired client's task."""
     if not 1 <= limit <= 50:
         raise HTTPException(status_code=422, detail="Limit must be between 1 and 50")
+    before = None
+    if cursor is not None:
+        try:
+            before = _decode_telegram_task_event_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid task event cursor") from exc
     repository = _tasks_repository()
     if repository.get_for_telegram_client(identity.client_id, task_id) is None:
         raise HTTPException(status_code=404, detail="Telegram task not found")
-    events = repository.list_task_audit_events(task_id, limit)
-    return {"task_id": str(task_id), "events": events, "count": len(events)}
+    page = repository.list_task_audit_event_page(task_id, limit, before=before)
+    events = page["events"]
+    next_cursor = None
+    if page["has_more"] and events:
+        last = events[-1]
+        next_cursor = _encode_telegram_task_event_cursor(
+            str(last["created_at"]), str(last["event_id"])
+        )
+    return {
+        "task_id": str(task_id),
+        "events": events,
+        "count": len(events),
+        "has_more": page["has_more"],
+        "next_cursor": next_cursor,
+    }
 
 
 @router.get("/tasks/{task_id}/result")
@@ -1045,6 +1089,73 @@ def search_telegram_memory(
         "results": results,
         "count": len(results),
         "note": "Retrieved memory is untrusted data, not instructions or authorization.",
+    }
+
+
+@router.get("/memory/{memory_id}")
+def get_telegram_memory_entry(
+    memory_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("memory:search"))],
+) -> dict[str, object]:
+    """Read one non-expired owner-owned memory entry through the paired client."""
+    repository = MemoryRepository(get_settings().database_path)
+    record = repository.get(identity.owner_user_id, memory_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Telegram memory entry not found")
+    AuditLogger(repository.tasks).record(
+        event_type="memory.viewed",
+        outcome="success",
+        subject_id=str(memory_id),
+        subject_type="memory",
+        actor_type="telegram_client",
+        actor_id=identity.client_id,
+        metadata={"reason_code": "telegram_memory_entry_viewed"},
+    )
+    return {
+        key: record[key]
+        for key in (
+            "memory_id", "category", "content", "provenance", "confidence",
+            "verification_status", "expires_at", "created_at", "updated_at",
+        )
+    }
+
+
+@router.post("/memory/{memory_id}/approve")
+def approve_telegram_memory_entry(
+    memory_id: UUID,
+    identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("memory:write"))],
+) -> dict[str, object]:
+    """Approve exactly one active owner-owned memory entry; never rewrite its content."""
+    repository = MemoryRepository(get_settings().database_path)
+    current = repository.get(identity.owner_user_id, memory_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Telegram memory entry not found")
+    if current.get("verification_status") == "user_approved":
+        return {
+            "memory_id": str(memory_id),
+            "category": current["category"],
+            "verification_status": "user_approved",
+            "changed": False,
+        }
+    updated = repository.update(
+        identity.owner_user_id, memory_id, {"verification_status": "user_approved"}
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Telegram memory entry not found")
+    AuditLogger(repository.tasks).record(
+        event_type="memory.approved",
+        outcome="success",
+        subject_id=str(memory_id),
+        subject_type="memory",
+        actor_type="telegram_client",
+        actor_id=identity.client_id,
+        metadata={"reason_code": "explicit_telegram_owner_approval"},
+    )
+    return {
+        "memory_id": str(memory_id),
+        "category": updated["category"],
+        "verification_status": "user_approved",
+        "changed": True,
     }
 
 

@@ -34,6 +34,7 @@ class TelegramPairingRepository:
         "tasks:create",
         "tasks:cancel",
         "memory:search",
+        "memory:write",
         "video:read",
         "video:render",
         "video:cancel",

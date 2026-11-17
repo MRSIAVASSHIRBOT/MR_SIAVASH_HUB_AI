@@ -14,6 +14,7 @@ def test_telegram_pairing_form_exposes_the_complete_allowlisted_scope_set():
         "tasks:create",
         "tasks:cancel",
         "memory:search",
+        "memory:write",
         "video:read",
         "video:render",
         "video:cancel",
@@ -38,6 +39,7 @@ def test_active_telegram_clients_can_replace_scopes_with_owner_confirmation():
     assert "video:read" in editor
     assert "video:render" in editor
     assert "video:cancel" in editor
+    assert "memory:write" in editor
 
 
 def test_telegram_scope_editor_rejects_empty_or_unchanged_updates_in_the_ui():
