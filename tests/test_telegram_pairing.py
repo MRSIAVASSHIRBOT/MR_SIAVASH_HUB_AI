@@ -9,6 +9,7 @@ from mrhub.domain.tasks import TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.main import create_app
+from mrhub.memory.repository import MemoryRepository
 
 
 def _owner_client(tmp_path, monkeypatch):
