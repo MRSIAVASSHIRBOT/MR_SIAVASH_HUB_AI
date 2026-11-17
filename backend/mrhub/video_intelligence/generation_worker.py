@@ -33,9 +33,16 @@ class VideoGenerationWorkerHandler:
         provider_name = str(loaded["provider"])
         model_name = str(loaded["model"])
         job_status = str(loaded["status"])
+        cancellation_requested = bool(loaded.get("cancellation_requested"))
 
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
+        if job_status == "queued" and cancellation_requested:
+            self.jobs.transition_under_lease(
+                owner, generation_id, "cancelled", lease=lease,
+                error_code="cancelled_before_provider_submission",
+            )
+            return {"generation_id": str(generation_id), "status": "cancelled"}
         try:
             provider = video_generation_registry.get(provider_name, model_name)
         except LookupError:
@@ -84,6 +91,7 @@ class VideoGenerationWorkerHandler:
             provider, provider_name, model_name, owner, generation_id,
             loaded.get("provider_job_id"), lease, lease_lost,
             initial_status=job_status,
+            cancellation_requested=cancellation_requested,
         )
 
     def _submit_once(
@@ -102,6 +110,13 @@ class VideoGenerationWorkerHandler:
         )
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
+        current = self.jobs.get(owner, generation_id)
+        if current is not None and current.get("cancellation_requested_at") is not None:
+            self.jobs.transition_under_lease(
+                owner, generation_id, "cancelled", lease=lease,
+                error_code="cancelled_before_provider_submission",
+            )
+            return {"generation_id": str(generation_id), "status": "cancelled"}
 
         try:
             submission = provider.submit(request)
@@ -137,6 +152,13 @@ class VideoGenerationWorkerHandler:
                 provider_job_id=submission.provider_job_id,
                 error_code="provider_reported_unknown_outcome",
             )
+            current = self.jobs.get(owner, generation_id)
+            if current is not None and current.get("cancellation_requested_at") is not None:
+                return self._reconcile(
+                    provider, provider_name, model_name, owner, generation_id,
+                    submission.provider_job_id, lease, lease_lost,
+                    initial_status="unknown_outcome", cancellation_requested=True,
+                )
             raise ValueError("provider_reported_unknown_outcome")
         if submission.status in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             target = (
@@ -160,6 +182,13 @@ class VideoGenerationWorkerHandler:
             provider_job_id=submission.provider_job_id,
             progress_percent=submission.progress_percent,
         )
+        current = self.jobs.get(owner, generation_id)
+        if current is not None and current.get("cancellation_requested_at") is not None:
+            return self._reconcile(
+                provider, provider_name, model_name, owner, generation_id,
+                submission.provider_job_id, lease, lease_lost,
+                initial_status="running", cancellation_requested=True,
+            )
         return {
             "generation_id": str(generation_id),
             "status": "running",
@@ -177,6 +206,7 @@ class VideoGenerationWorkerHandler:
         lease_lost: Event,
         *,
         initial_status: str = "unknown_outcome",
+        cancellation_requested: bool = False,
     ) -> dict[str, object]:
         """Find an ambiguous submission by its original key; never call submit here."""
         if not provider_job_id:
@@ -192,11 +222,14 @@ class VideoGenerationWorkerHandler:
                         owner, generation_id, "unknown_outcome", lease=lease,
                         error_code="provider_submission_not_discoverable",
                     )
-                return {
+                response: dict[str, object] = {
                     "generation_id": str(generation_id),
                     "status": "unknown_outcome",
                     "reason_code": "provider_submission_not_discoverable",
                 }
+                if cancellation_requested:
+                    response["cancellation_requested"] = True
+                return response
             if not isinstance(submission, VideoGenerationSubmission):
                 raise ValueError("provider_reconciliation_contract_invalid")
             if (
@@ -227,17 +260,34 @@ class VideoGenerationWorkerHandler:
                     provider_job_id=submission.provider_job_id,
                     error_code="provider_reconciled_unknown_outcome",
                 )
-                return {"generation_id": str(generation_id), "status": "unknown_outcome"}
+                if not cancellation_requested:
+                    return {"generation_id": str(generation_id), "status": "unknown_outcome"}
             provider_job_id = submission.provider_job_id
-            self.jobs.transition_under_lease(
+            if submission.status is not GenerationStatus.UNKNOWN_OUTCOME:
+                self.jobs.transition_under_lease(
                 owner, generation_id, "running", lease=lease,
                 provider_job_id=str(provider_job_id),
                 progress_percent=submission.progress_percent,
-            )
+                )
 
         if lease_lost.is_set():
             return {"generation_id": str(generation_id), "status": "lease_lost"}
         provider_job_id = str(provider_job_id)
+        current = self.jobs.get(owner, generation_id)
+        cancellation_requested = cancellation_requested or (
+            current is not None and current.get("cancellation_requested_at") is not None
+        )
+        cancellation_result: bool | None = None
+        cancellation_error: str | None = None
+        if cancellation_requested:
+            try:
+                cancellation_result = provider.cancel(provider_job_id)
+                if type(cancellation_result) is not bool:
+                    cancellation_error = "provider_cancellation_contract_invalid"
+            except Exception:  # noqa: BLE001 - provider errors may contain credentials
+                cancellation_error = "provider_cancellation_failed"
+            if lease_lost.is_set():
+                return {"generation_id": str(generation_id), "status": "lease_lost"}
         try:
             result = provider.get_status(provider_job_id)
         except Exception:  # noqa: BLE001 - provider status failures are retryable
@@ -296,7 +346,16 @@ class VideoGenerationWorkerHandler:
                 provider_job_id=provider_job_id,
                 error_code="provider_status_unknown_outcome",
             )
-            return {"generation_id": str(generation_id), "status": "unknown_outcome"}
+            response: dict[str, object] = {
+                "generation_id": str(generation_id),
+                "status": "unknown_outcome",
+            }
+            if cancellation_requested:
+                response["cancellation_requested"] = True
+                response["reason_code"] = (
+                    cancellation_error or "provider_cancellation_pending"
+                )
+            return response
 
         # VideoGenerationResult intentionally carries terminal/output metadata only.
         # Keep the last provider-reported progress already persisted on the job.
@@ -304,7 +363,18 @@ class VideoGenerationWorkerHandler:
             owner, generation_id, "running", lease=lease,
             provider_job_id=provider_job_id,
         )
-        return {
+        response: dict[str, object] = {
             "generation_id": str(generation_id),
             "status": "running",
         }
+        if cancellation_requested:
+            response["cancellation_requested"] = True
+            response["reason_code"] = (
+                cancellation_error
+                or (
+                    "provider_cancellation_pending"
+                    if cancellation_result is True
+                    else "provider_cancellation_not_confirmed"
+                )
+            )
+        return response
