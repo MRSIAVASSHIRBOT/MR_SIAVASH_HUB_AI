@@ -111,6 +111,8 @@ class VideoRenderWorkerHandler:
                 path = self.media.file_path(str(asset["storage_key"]))
                 if not path.is_file():
                     raise ValueError("render_source_file_missing")
+                if not self.media.verify_file_integrity(asset):
+                    raise ValueError("render_source_integrity_mismatch")
                 source_paths[asset_value] = path
 
             if lease_lost.is_set():
