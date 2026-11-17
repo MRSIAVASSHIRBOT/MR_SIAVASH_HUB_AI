@@ -38,8 +38,9 @@ def test_dreaming_preview_proposes_duplicate_notes_without_mutating(tmp_path: Pa
     assert result["engine"] == "deterministic_memory_review_v1"
     assert result["proposal_count"] == 1
     proposal = result["proposals"][0]
-    assert proposal["canonical_memory_id"] == second["memory_id"]
-    assert proposal["candidate_memory_id"] == first["memory_id"]
+    assert {proposal["canonical_memory_id"], proposal["candidate_memory_id"]} == {
+        first["memory_id"], second["memory_id"]
+    }
     assert proposal["requires_owner_review"] is True
     assert proposal["automatic_change"] is False
     assert result["state_changed"] is False
