@@ -158,6 +158,7 @@ def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(
         "owner-a", analysis_id, "local", "renderer-v1", _request()
     )
     generation_id = UUID(accepted["generation_id"])
+    repository.transition("owner-a", generation_id, "queued")
     repository.transition("owner-a", generation_id, "submitting")
     record = repository.transition(
         "owner-a", generation_id, "unknown_outcome", error_code="provider_timeout"
@@ -205,6 +206,7 @@ def test_successful_generation_registers_private_output_asset_atomically(
         "owner-a", analysis_id, "local", "renderer-v1", _request()
     )
     generation_id = UUID(accepted["generation_id"])
+    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-1"
     )
@@ -273,6 +275,7 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
         "owner-a", analysis_id, "local", "renderer-v1", _request()
     )
     generation_id = UUID(accepted["generation_id"])
+    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-2"
     )
