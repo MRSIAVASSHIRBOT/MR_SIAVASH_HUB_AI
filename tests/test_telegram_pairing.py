@@ -671,17 +671,33 @@ def test_telegram_task_event_timeline_is_bounded_and_pairing_scoped(tmp_path, mo
 
     timeline = client.get(
         f"/integrations/telegram/tasks/{task_id}/events",
-        params={"limit": 50},
+        params={"limit": 2},
         headers=_bot_headers(tokens_a, 123456789),
     )
     assert timeline.status_code == 200
     payload = timeline.json()
     assert payload["task_id"] == str(task_id)
-    assert payload["count"] == 3
-    assert {event["event_type"] for event in payload["events"]} == {
+    assert payload["count"] == 2
+    assert payload["has_more"] is True
+    assert isinstance(payload["next_cursor"], str)
+    assert all("metadata" in event and "actor_id" not in event for event in payload["events"])
+
+    second_page = client.get(
+        f"/integrations/telegram/tasks/{task_id}/events",
+        params={"limit": 2, "cursor": payload["next_cursor"]},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert second_payload["count"] == 1
+    assert second_payload["has_more"] is False
+    assert second_payload["next_cursor"] is None
+    assert len({
+        event["event_id"] for event in [*payload["events"], *second_payload["events"]]
+    }) == 3
+    assert {event["event_type"] for event in [*payload["events"], *second_payload["events"]]} == {
         "task.submitted", "task.status_changed"
     }
-    assert all("metadata" in event and "actor_id" not in event for event in payload["events"])
 
     limited = client.get(
         f"/integrations/telegram/tasks/{task_id}/events",
@@ -692,7 +708,13 @@ def test_telegram_task_event_timeline_is_bounded_and_pairing_scoped(tmp_path, mo
         f"/integrations/telegram/tasks/{task_id}/events",
         headers=_bot_headers(tokens_b, 987654321),
     )
+    invalid_cursor = client.get(
+        f"/integrations/telegram/tasks/{task_id}/events",
+        params={"cursor": "not-a-cursor"},
+        headers=_bot_headers(tokens_a, 123456789),
+    )
     assert limited.status_code == 422
+    assert invalid_cursor.status_code == 422
     assert cross_client.status_code == 404
     get_settings.cache_clear()
 
@@ -1313,4 +1335,76 @@ def test_telegram_memory_validation_requires_scope_and_is_read_only(tmp_path, mo
     assert response.json()["unverified_count"] == 1
     assert response.json()["state_changed"] is False
     assert len(repository.list_entries("local-owner")) == 2
+    get_settings.cache_clear()
+
+
+def test_telegram_memory_entry_review_requires_separate_read_and_write_scopes(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    repository = MemoryRepository(database_path)
+    entry = repository.create(
+        "local-owner",
+        {
+            "category": "preferences",
+            "content": "The owner prefers concise technical summaries",
+            "confidence": 0.65,
+            "verification_status": "user_authored",
+        },
+    )
+    memory_id = entry["memory_id"]
+
+    read_payload, read_challenge = _create_pairing(
+        client, telegram_user_id=333333333, scopes=["memory:search"]
+    )
+    read_tokens = _exchange(client, read_payload, read_challenge).json()
+    headers = _bot_headers(read_tokens, 333333333)
+
+    inspected = client.get(
+        f"/integrations/telegram/memory/{memory_id}", headers=headers
+    )
+    assert inspected.status_code == 200
+    assert inspected.json()["content"] == entry["content"]
+    assert inspected.json()["verification_status"] == "user_authored"
+
+    denied = client.post(
+        f"/integrations/telegram/memory/{memory_id}/approve", headers=headers
+    )
+    assert denied.status_code == 403
+    assert repository.get("local-owner", UUID(memory_id))["verification_status"] == "user_authored"
+
+    write_payload, write_challenge = _create_pairing(
+        client, telegram_user_id=444444444, scopes=["memory:write"]
+    )
+    write_tokens = _exchange(client, write_payload, write_challenge).json()
+    write_headers = _bot_headers(write_tokens, 444444444)
+
+    approved = client.post(
+        f"/integrations/telegram/memory/{memory_id}/approve", headers=write_headers
+    )
+    assert approved.status_code == 200
+    assert approved.json() == {
+        "memory_id": memory_id,
+        "category": "preferences",
+        "verification_status": "user_approved",
+        "changed": True,
+    }
+    assert repository.get("local-owner", UUID(memory_id))["verification_status"] == "user_approved"
+
+    repeated = client.post(
+        f"/integrations/telegram/memory/{memory_id}/approve", headers=write_headers
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["changed"] is False
+
+    missing = client.post(
+        f"/integrations/telegram/memory/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/approve",
+        headers=write_headers,
+    )
+    assert missing.status_code == 404
+
+    with sqlite3.connect(database_path) as connection:
+        audit = connection.execute(
+            "SELECT event_type, actor_type, actor_id FROM audit_events "
+            "WHERE event_type = 'memory.approved' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    assert audit == ("memory.approved", "telegram_client", write_payload["client_id"])
     get_settings.cache_clear()
