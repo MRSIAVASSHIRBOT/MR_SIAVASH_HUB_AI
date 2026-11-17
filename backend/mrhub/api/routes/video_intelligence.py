@@ -45,6 +45,7 @@ from mrhub.video_intelligence.prompt_from_analysis import (
     PromptCompositionUnavailable,
     compose_prompts_from_analysis,
 )
+from mrhub.video_intelligence.render_preflight import inspect_video_render_preflight
 from mrhub.video_intelligence.render_jobs import (
     VideoRenderConflict,
     VideoRenderJobRepository,
@@ -705,6 +706,20 @@ def get_timeline_draft(
     if draft is None:
         raise HTTPException(status_code=404, detail="Timeline draft not found")
     return draft
+
+
+@router.get("/timeline-drafts/{draft_id}/render-preflight")
+def preflight_video_render_draft(
+    draft_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Inspect local render prerequisites without queuing work or invoking FFmpeg."""
+    try:
+        return inspect_video_render_preflight(
+            get_settings().database_path, user.user_id, draft_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Timeline draft not found") from exc
 
 
 @router.put("/timeline-drafts/{draft_id}")
