@@ -25,7 +25,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 - The exchange operation consumes the one-time pairing code and issues a 15-minute access token and a 30-day refresh token.
 - Authenticated client calls send `Authorization: Bearer <scoped_access_token>` and `X-Telegram-User-Id`.
 - Default pairing scope is `status:read`; additional scopes must be explicitly granted.
-- The authenticated owner can replace scopes on an active paired client through `PUT /integrations/telegram/clients/{client_id}/scopes`; the update is audited and applies to the next request. Revoked or foreign clients cannot be updated.\n- The Hub remains authoritative for client ownership, scope enforcement, task ownership, policy evaluation, and revocation.
+- The authenticated owner can replace scopes on an active paired client through `PUT /integrations/telegram/clients/{client_id}/scopes`; the update is audited and applies to the next request. `memory:write` is never granted by default and is required only for the explicit one-entry approval endpoint. Revoked or foreign clients cannot be updated.\n- The Hub remains authoritative for client ownership, scope enforcement, task ownership, policy evaluation, and revocation.
 - EL_AI stores credentials in the operating-system credential store and must not place credentials in URLs, logs, source control, or browser storage.
 
 ### Scope map
@@ -33,16 +33,16 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 | Scope | Permitted capability |
 |---|---|
 | `status:read` | Read paired client status |
-| `tasks:read` | Read own tasks and bounded task event history |
+| `tasks:read` | Read own tasks and cursor-paginated task event history |
 | `tasks:result` | Read own bounded terminal task result |
 | `tasks:create` | Submit tasks subject to Hub policy and idempotency |
 | `tasks:cancel` | Cancel own queued or approval-waiting task |
-| `memory:search` | Search owner-scoped memory |\n| `video:read` | Read the non-secret provider catalog, own bounded generation/render history, up to five storyboard-draft summaries, individual generation/render status, and verified private MP4 downloads |\n| `video:render` | Submit a saved owner-owned renderer-compatible draft to the deterministic local FFmpeg queue |\n| `video:cancel` | Cancel own local FFmpeg renders or prepared/queued provider generations before provider submission |
+| `memory:search` | Search and inspect active owner-scoped memory entries |\n| `memory:write` | Explicitly approve one selected active memory entry; no content edits or deletion |\n| `video:read` | Read the non-secret provider catalog, own bounded generation/render history, up to five storyboard-draft summaries, individual generation/render status, and verified private MP4 downloads |\n| `video:render` | Submit a saved owner-owned renderer-compatible draft to the deterministic local FFmpeg queue |\n| `video:cancel` | Cancel own local FFmpeg renders or prepared/queued provider generations before provider submission |
 
 ### Bounded operations
 
 - Task listing: 1–50 records per page; cursor maximum 512 characters.
-- Task history: 1–50 events per page.
+- Task history: 1–50 events per page; cursor maximum 512 characters.
 - Terminal task result: maximum 32 KiB encoded response.
 - Task creation requires the `Idempotency-Key` header.
 - A task result is unavailable until the task reaches a terminal state.
