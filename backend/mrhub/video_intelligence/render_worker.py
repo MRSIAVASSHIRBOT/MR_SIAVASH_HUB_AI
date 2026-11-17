@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import shutil
+import tempfile
+from pathlib import Path
 from threading import Event
 from uuid import UUID
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
-from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
+from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetBusy, MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
-from mrhub.video_intelligence.render import VideoRenderError, render_video_timeline
+from mrhub.video_intelligence.render import (
+    MAX_RENDER_SOURCE_SNAPSHOT_BYTES,
+    VideoRenderError,
+    render_video_timeline,
+)
 from mrhub.video_intelligence.render_jobs import VideoRenderJobRepository
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotRepository
 from mrhub.video_intelligence.timeline import VideoTimeline
@@ -40,6 +47,7 @@ class VideoRenderWorkerHandler:
             return {"render_id": str(render_id), "status": "lease_lost"}
 
         output_path = None
+        source_snapshot_directory: Path | None = None
         acquired_assets: list[UUID] = []
         try:
             current_task = self.tasks.get(task.task_id)
@@ -85,6 +93,13 @@ class VideoRenderWorkerHandler:
                 validate_renderer_timeline_source_bounds(timeline, assets)
 
             source_paths = {}
+            source_snapshot_bytes = 0
+            source_snapshot_directory = Path(
+                tempfile.mkdtemp(
+                    prefix=".mrhub-render-snapshot-",
+                    dir=self.media.storage_root,
+                )
+            )
             for asset_value in source_ids:
                 if lease_lost.is_set():
                     return {"render_id": str(render_id), "status": "lease_lost"}
@@ -108,12 +123,25 @@ class VideoRenderWorkerHandler:
                 if not acquired:
                     raise ValueError("render_source_unavailable_or_locked")
                 acquired_assets.append(asset_id)
-                path = self.media.file_path(str(asset["storage_key"]))
-                if not path.is_file():
-                    raise ValueError("render_source_file_missing")
-                if not self.media.verify_file_integrity(asset):
-                    raise ValueError("render_source_integrity_mismatch")
-                source_paths[asset_value] = path
+
+                recorded_size = asset.get("file_size")
+                if (
+                    isinstance(recorded_size, bool)
+                    or not isinstance(recorded_size, int)
+                    or not 0 < recorded_size <= MAX_OUTPUT_BYTES
+                ):
+                    raise ValueError("render_source_metadata_invalid")
+                source_snapshot_bytes += recorded_size
+                if source_snapshot_bytes > MAX_RENDER_SOURCE_SNAPSHOT_BYTES:
+                    raise ValueError("render_source_snapshot_budget_exceeded")
+
+                storage_key = str(asset["storage_key"])
+                snapshot_path = source_snapshot_directory / (
+                    f"{asset_id}{Path(storage_key).suffix}"
+                )
+                source_paths[asset_value] = self.media.create_verified_snapshot(
+                    asset, snapshot_path
+                )
 
             if lease_lost.is_set():
                 return {"render_id": str(render_id), "status": "lease_lost"}
@@ -212,9 +240,11 @@ class VideoRenderWorkerHandler:
             )
             raise ValueError("Video render execution failed") from exc
         finally:
+            if source_snapshot_directory is not None:
+                shutil.rmtree(source_snapshot_directory, ignore_errors=True)
             # Keep every source protected against deletion/transcoding for the
-            # entire FFmpeg + FFprobe + publication window. Release only this
-            # exact task/fencing-token record, including every early-return path.
+            # entire verified-copy + FFmpeg + FFprobe + publication window. Release
+            # only this exact task/fencing-token record, including early returns.
             for asset_id in reversed(acquired_assets):
                 self.media.release_analysis_use(
                     owner_user_id, asset_id, lease=lease
