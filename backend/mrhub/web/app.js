@@ -2737,7 +2737,7 @@
               : null,
           ].filter(Boolean).join(" · ")
         );
-        if (["prepared", "queued"].includes(job.status)) {
+        if (["prepared", "queued"].includes(job.status) && !job.cancellation_requested) {
           card.append(actionButton("لغو درخواست", async () => {
             if (!window.confirm("درخواست تولیدی که هنوز به Provider ارسال نشده لغو شود؟")) return;
             const buttons = card.querySelectorAll("button");
