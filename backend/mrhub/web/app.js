@@ -2758,7 +2758,10 @@
               message("#video-generation-history-message", error.message, "error");
             }
           }));
-        } else if (["submitting", "unknown_outcome", "running"].includes(job.status)) {
+        } else if (
+          ["submitting", "unknown_outcome", "running"].includes(job.status) ||
+          (job.status === "queued" && job.cancellation_requested)
+        ) {
           card.append(actionButton(
             job.cancellation_requested ? "تلاش دوباره برای لغو" : "درخواست لغو",
             async () => {
