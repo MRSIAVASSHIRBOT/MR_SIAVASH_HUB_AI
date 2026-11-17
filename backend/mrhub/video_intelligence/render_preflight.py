@@ -154,7 +154,8 @@ def inspect_video_render_preflight(
                     _check(
                         "source_integrity",
                         "warning",
-                        "The bounded preflight checksum budget was exceeded; the worker will verify every source before rendering.",
+                        "The preflight checksum budget was exceeded; "
+                        "the worker will verify every source before rendering.",
                     )
                 )
             elif all(media.verify_file_integrity(asset) for asset in source_assets):
@@ -170,7 +171,8 @@ def inspect_video_render_preflight(
                     _check(
                         "source_integrity",
                         "fail",
-                        "One or more source files do not match their recorded SHA-256 content hash.",
+                        "One or more source files do not match their "
+                        "recorded SHA-256 content hash.",
                     )
                 )
         except (OSError, TypeError, ValueError):
@@ -199,9 +201,21 @@ def inspect_video_render_preflight(
     else:
         checks.extend(
             [
-                _check("source_bounds", "fail", "A valid saved timeline and completed analysis are required."),
-                _check("source_files", "fail", "Source files cannot be checked until the analysis is complete."),
-                _check("source_integrity", "fail", "Source files cannot be verified until the analysis is complete."),
+                _check(
+                    "source_bounds",
+                    "fail",
+                    "A valid saved timeline and completed analysis are required.",
+                ),
+                _check(
+                    "source_files",
+                    "fail",
+                    "Source files cannot be checked until the analysis is complete.",
+                ),
+                _check(
+                    "source_integrity",
+                    "fail",
+                    "Source files cannot be verified until the analysis is complete.",
+                ),
             ]
         )
 
