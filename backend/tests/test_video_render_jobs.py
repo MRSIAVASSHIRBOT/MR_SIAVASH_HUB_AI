@@ -336,6 +336,176 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
     assert jobs.get("owner-a", render_id)["status"] == "completed"
 
 
+def test_render_worker_uses_verified_snapshot_if_source_changes_before_ffmpeg(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence import render_worker
+
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    jobs = VideoRenderJobRepository(database)
+    media = MediaAssetRepository(database)
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-source-snapshot-key")
+    task_id = UUID(accepted["task_id"])
+    render_id = UUID(accepted["render_id"])
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    storage_key = f"{source_id}.mp4"
+    source_path = media.file_path(storage_key)
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_bytes = b"original-video"
+    tampered_bytes = b"tampered-video"
+    assert len(source_bytes) == len(tampered_bytes)
+    source_path.write_bytes(source_bytes)
+    now = "2026-11-17T00:00:00+00:00"
+    expiry = "2099-01-01T00:00:00+00:00"
+
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO content_assets (
+                asset_id, owner_user_id, source_asset_id, original_filename,
+                media_type, storage_key, file_size, content_hash,
+                processing_status, processing_profile, error_code, created_at, updated_at
+            ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
+            (
+                str(source_id), "owner-a", "source.mp4", storage_key,
+                len(source_bytes), hashlib.sha256(source_bytes).hexdigest(), now, now,
+            ),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (str(task_id), now, "render-worker", expiry, 29),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
+            (now, str(task_id)),
+        )
+
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=29,
+        expires_at=expiry,
+    )
+    snapshot_paths = []
+
+    def fake_render(**kwargs):
+        snapshot_path = kwargs["source_paths"][str(source_id)]
+        snapshot_paths.append(snapshot_path)
+        assert snapshot_path != source_path
+        assert snapshot_path.read_bytes() == source_bytes
+        source_path.write_bytes(tampered_bytes)
+        assert snapshot_path.read_bytes() == source_bytes
+        kwargs["output_path"].write_bytes(b"rendered")
+        return SimpleNamespace(
+            output_path=kwargs["output_path"],
+            duration_seconds=3.0,
+            width=1920,
+            height=1080,
+            file_size=8,
+        )
+
+    monkeypatch.setattr(render_worker, "render_video_timeline", fake_render)
+    result = VideoRenderWorkerHandler(analysis_repository.tasks)(
+        analysis_repository.tasks.get(task_id),
+        lease=lease,
+        lease_lost=Event(),
+    )
+
+    assert result["status"] == "completed"
+    assert len(snapshot_paths) == 1
+    assert snapshot_paths[0].exists() is False
+    assert source_path.read_bytes() == tampered_bytes
+    assert jobs.get("owner-a", render_id)["status"] == "completed"
+    assert media.get("owner-a", UUID(result["output_asset_id"])) is not None
+
+
+def test_render_worker_rejects_source_snapshot_over_budget_before_ffmpeg(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence import render_worker
+
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    jobs = VideoRenderJobRepository(database)
+    media = MediaAssetRepository(database)
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-source-budget-key")
+    task_id = UUID(accepted["task_id"])
+    render_id = UUID(accepted["render_id"])
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    storage_key = f"{source_id}.mp4"
+    source_path = media.file_path(storage_key)
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_bytes = b"bounded-source"
+    source_path.write_bytes(source_bytes)
+    now = "2026-11-17T00:00:00+00:00"
+    expiry = "2099-01-01T00:00:00+00:00"
+
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO content_assets (
+                asset_id, owner_user_id, source_asset_id, original_filename,
+                media_type, storage_key, file_size, content_hash,
+                processing_status, processing_profile, error_code, created_at, updated_at
+            ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
+            (
+                str(source_id), "owner-a", "source.mp4", storage_key,
+                len(source_bytes), hashlib.sha256(source_bytes).hexdigest(), now, now,
+            ),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (str(task_id), now, "render-worker", expiry, 31),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
+            (now, str(task_id)),
+        )
+        reserved = connection.execute(
+            "SELECT output_storage_key FROM video_render_runs WHERE render_id = ?",
+            (str(render_id),),
+        ).fetchone()
+
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=31,
+        expires_at=expiry,
+    )
+    called = False
+
+    def fake_render(**_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("FFmpeg must not run above the source snapshot budget")
+
+    monkeypatch.setattr(render_worker, "MAX_RENDER_SOURCE_SNAPSHOT_BYTES", 1)
+    monkeypatch.setattr(render_worker, "render_video_timeline", fake_render)
+    with pytest.raises(ValueError, match="Video render execution failed"):
+        VideoRenderWorkerHandler(analysis_repository.tasks)(
+            analysis_repository.tasks.get(task_id),
+            lease=lease,
+            lease_lost=Event(),
+        )
+
+    assert called is False
+    assert jobs.get("owner-a", render_id)["status"] == "failed"
+    assert reserved is not None
+    assert media.file_path(str(reserved["output_storage_key"])).exists() is False
+    assert list(media.storage_root.glob(".mrhub-render-snapshot-*")) == []
+    with analysis_repository.tasks._connection() as connection:
+        remaining_locks = connection.execute(
+            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0]
+    assert remaining_locks == 0
+
+
 def test_render_worker_rejects_same_size_source_content_tampering_before_ffmpeg(
     tmp_path, monkeypatch
 ):
