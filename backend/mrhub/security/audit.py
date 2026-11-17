@@ -47,6 +47,12 @@ class AuditLogger:
         "client_id",
         "telegram_user_id",
         "scope_count",
+        "entries_scanned",
+        "expired_count",
+        "unverified_count",
+        "contradiction_count",
+        "proposal_count",
+        "state_changed",
     })
 
     def __init__(self, repository: TaskRepository) -> None:

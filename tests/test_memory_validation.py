@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -162,6 +163,14 @@ def test_validation_preview_api_is_authenticated_and_audits_counts_only() -> Non
             "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
     assert audit is not None
+    metadata = json.loads(audit["metadata_json"])
+    assert metadata == {
+        "contradiction_count": 1,
+        "entries_scanned": 2,
+        "expired_count": 0,
+        "state_changed": False,
+        "unverified_count": 1,
+    }
     assert "Tea is" not in audit["metadata_json"]
     assert len(repository.list_entries("local-owner")) >= 2
 
