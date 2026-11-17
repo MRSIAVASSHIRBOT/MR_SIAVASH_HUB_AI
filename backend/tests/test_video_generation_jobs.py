@@ -1503,7 +1503,11 @@ def test_active_generation_cancellation_is_owner_scoped_and_terminal_jobs_are_no
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-terminal"
     )
     repository.transition("owner-a", generation_id, "running")
-    repository.transition("owner-a", generation_id, "succeeded")
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE video_generation_jobs SET status = 'succeeded' WHERE generation_id = ?",
+            (str(generation_id),),
+        )
     assert repository.request_cancellation("owner-b", generation_id) is None
     terminal = repository.request_cancellation("owner-a", generation_id)
     assert terminal["status"] == "succeeded"
