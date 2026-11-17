@@ -223,6 +223,51 @@ class TaskRepository:
             for row in rows
         ]
 
+    def list_task_audit_event_page(
+        self,
+        task_id: UUID,
+        limit: int = 20,
+        *,
+        before: tuple[str, str] | None = None,
+    ) -> dict[str, object]:
+        """Return one stable keyset page of sanitized task lifecycle events."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("Task audit page limit must be between 1 and 50")
+        parameters: list[object] = [str(task_id)]
+        where = ""
+        if before is not None:
+            created_at, event_id = before
+            parameters.extend((created_at, created_at, event_id))
+            where = " AND (created_at < ? OR (created_at = ? AND event_id < ?))"
+        parameters.append(limit + 1)
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT event_id, event_type, outcome, created_at, metadata_json
+                FROM audit_events
+                WHERE subject_type = 'task' AND subject_id = ?
+                """ + where + """
+                ORDER BY created_at DESC, event_id DESC
+                LIMIT ?
+                """,
+                tuple(parameters),
+            ).fetchall()
+        has_more = len(rows) > limit
+        page = rows[:limit]
+        return {
+            "events": [
+                {
+                    "event_id": row["event_id"],
+                    "event_type": row["event_type"],
+                    "outcome": row["outcome"],
+                    "created_at": row["created_at"],
+                    "metadata": json.loads(row["metadata_json"]),
+                }
+                for row in page
+            ],
+            "has_more": has_more,
+        }
+
     def update_status(
         self,
         task_id: UUID,
