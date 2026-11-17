@@ -47,6 +47,7 @@ from mrhub.video_intelligence.generation_routing import (
     preview_hybrid_route,
 )
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.render_preflight import inspect_video_render_preflight
 from mrhub.video_intelligence.render_jobs import (
     VideoRenderConflict,
     VideoRenderJobRepository,
@@ -585,6 +586,24 @@ def list_telegram_video_render_drafts(
         "drafts": [_telegram_video_render_draft_summary(item) for item in drafts],
         "count": len(drafts),
     }
+
+
+@router.get("/video/render-preflight")
+def preflight_telegram_video_render(
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
+    draft_id: UUID,
+) -> dict[str, object]:
+    """Return a read-only local render preflight for this paired owner's draft."""
+    try:
+        return inspect_video_render_preflight(
+            get_settings().database_path, identity.owner_user_id, draft_id
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404, detail="Telegram video timeline draft not found"
+        ) from exc
 
 
 @router.post("/video/renders", status_code=202)
