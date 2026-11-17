@@ -49,3 +49,26 @@ This is intentionally a first consolidation primitive, not a complete LLM-based 
 ```
 
 The response includes `state_changed: false` and a limitations list. Treat every proposal as a review hint, not a verified duplicate.
+
+
+## Memory validation preview
+
+`POST /memory/validate/preview` performs a bounded, read-only owner-scoped review of up to 100 memory records. It reports:
+- expired records that are no longer part of ordinary retrieval;
+- records not explicitly approved by the owner or carrying confidence below 0.8;
+- possible polarity conflicts when same-category notes have highly similar wording but different explicit negation markers.
+
+The default lexical similarity threshold is 0.72 (allowed range 0.65–1.0). These are triage hints, not factual judgments. The engine does not query external sources, infer truth, promote notes, or modify/delete any record. Every item requires owner review. Audit metadata contains aggregate counts only, never note content.
+
+The paired Telegram endpoint `POST /integrations/telegram/memory/validate/preview` requires the existing `memory:search` scope and resolves the owner from the paired credential.
+
+### Example request
+
+```json
+{
+  "limit": 100,
+  "similarity_threshold": 0.72
+}
+```
+
+A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.

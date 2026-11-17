@@ -132,6 +132,13 @@
         "purpose": "Return bounded, owner-scoped duplicate-memory review proposals without mutating memory; every proposal requires owner review."
       },
       {
+        "method": "POST",
+        "path": "/integrations/telegram/memory/validate/preview",
+        "auth_mode": "paired_bearer",
+        "required_scope": "memory:search",
+        "purpose": "Return bounded owner-scoped possible contradictions, expired notes, and unverified memory for owner review; no memory mutation."
+      },
+      {
         "method": "PUT",
         "path": "/integrations/telegram/clients/{client_id}/scopes",
         "auth_mode": "hub_owner_session",

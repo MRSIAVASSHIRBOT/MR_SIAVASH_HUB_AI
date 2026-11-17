@@ -12,6 +12,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.memory.dreaming import MemoryDreamingEngine
 from mrhub.memory.repository import MemoryRepository
+from mrhub.memory.validation import MemoryValidationEngine
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 
@@ -92,6 +93,11 @@ class MemoryDreamPreview(BaseModel):
     similarity_threshold: float = Field(default=0.82, ge=0.75, le=1.0)
 
 
+class MemoryValidationPreview(BaseModel):
+    limit: int = Field(default=100, ge=1, le=100)
+    similarity_threshold: float = Field(default=0.72, ge=0.65, le=1.0)
+
+
 def _repository() -> MemoryRepository:
     return MemoryRepository(get_settings().database_path)
 
@@ -169,6 +175,35 @@ def preview_memory_dreaming(
         metadata={
             "entries_scanned": result["entries_scanned"],
             "proposal_count": result["proposal_count"],
+            "state_changed": False,
+        },
+    )
+    return result
+
+
+@router.post("/validate/preview")
+def preview_memory_validation(
+    payload: MemoryValidationPreview,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return owner-scoped validation hints without changing saved memory."""
+    settings = get_settings()
+    result = MemoryValidationEngine(settings.database_path).preview(
+        user.user_id,
+        limit=payload.limit,
+        threshold=payload.similarity_threshold,
+    )
+    AuditLogger(MemoryRepository(settings.database_path).tasks).record(
+        event_type="memory.validation_previewed",
+        outcome="success",
+        subject_type="memory_validation",
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={
+            "entries_scanned": result["entries_scanned"],
+            "expired_count": result["expired_count"],
+            "unverified_count": result["unverified_count"],
+            "contradiction_count": result["contradiction_count"],
             "state_changed": False,
         },
     )
