@@ -16,7 +16,9 @@ def test_cancel_generation_route_cancels_owner_pending_job(monkeypatch):
             "cancellation_requested": False,
         }
 
-    monkeypatch.setattr(VideoGenerationJobRepository, "request_cancellation", request_cancellation)
+    monkeypatch.setattr(
+        VideoGenerationJobRepository, "request_cancellation", request_cancellation
+    )
     client = authenticated_client()
     try:
         response = client.delete(f"/video-intelligence/generations/{generation_id}")
