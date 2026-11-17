@@ -1544,6 +1544,8 @@ def test_cancellation_is_honored_when_worker_claimed_task_before_generation_tran
     assert requested["cancellation_requested"] is True
     assert requested["created"] is False
     assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
+    monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
     loaded = repository.load_for_worker(task_id)
     assert loaded["status"] == "queued"
     assert loaded["cancellation_requested"] is True
+    assert "request" not in loaded
