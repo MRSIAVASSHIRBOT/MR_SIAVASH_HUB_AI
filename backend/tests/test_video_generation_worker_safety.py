@@ -22,6 +22,9 @@ class RecordingJobs:
     def load_for_worker(self, _task_id):
         return self.loaded
 
+    def get(self, _owner, _generation_id):
+        return None
+
     def transition_under_lease(self, owner, generation_id, status, **kwargs):
         self.transitions.append((owner, generation_id, status, kwargs))
 
