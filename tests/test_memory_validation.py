@@ -126,8 +126,6 @@ def test_validation_is_owner_scoped_and_bounds_are_enforced(tmp_path: Path) -> N
 def test_validation_preview_api_is_authenticated_and_audits_counts_only() -> None:
     from client_helpers import authenticated_client
     from mrhub.config import get_settings
-    from mrhub.memory.repository import MemoryRepository
-
     client = authenticated_client()
     first = client.post(
         "/memory",
@@ -166,3 +164,20 @@ def test_validation_preview_api_is_authenticated_and_audits_counts_only() -> Non
     assert audit is not None
     assert "Tea is" not in audit["metadata_json"]
     assert len(repository.list_entries("local-owner")) >= 2
+
+
+
+def test_validation_does_not_treat_not_only_as_negation(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "validation.sqlite3")
+    _owner(repository, "owner-a")
+    repository.create(
+        "owner-a",
+        {"category": "preferences", "content": "Tea is preferred by user every morning"},
+    )
+    repository.create(
+        "owner-a",
+        {"category": "preferences", "content": "Tea is not only preferred by user every morning"},
+    )
+
+    result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
+    assert result["contradiction_count"] == 0
