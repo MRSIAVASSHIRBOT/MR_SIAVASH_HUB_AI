@@ -1441,7 +1441,9 @@ def test_active_generation_cancellation_is_persisted_and_requeues_the_same_task(
     assert loaded["cancellation_requested"] is True
     assert loaded["provider_job_id"] == "provider-job-active"
     assert "request" not in loaded
-    assert repository.get("owner-a", generation_id)["cancellation_requested_at"] is not None
+    assert (
+        repository.get("owner-a", generation_id)["cancellation_requested_at"] is not None
+    )
     with repository.tasks._connection() as connection:
         audit_count = connection.execute(
             """SELECT COUNT(*) FROM audit_events
