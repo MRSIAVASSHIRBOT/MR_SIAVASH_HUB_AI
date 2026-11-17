@@ -4,8 +4,18 @@ from mrhub.memory.dreaming import MemoryDreamingEngine
 from mrhub.memory.repository import MemoryRepository
 
 
+def _create_owner(repository: MemoryRepository, owner_id: str) -> None:
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (owner_id, owner_id, "00", "00", "2026-01-01T00:00:00+00:00"),
+        )
+
+
 def test_dreaming_preview_proposes_duplicate_notes_without_mutating(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "memory.sqlite3")
+    _create_owner(repository, "owner-a")
     first = repository.create(
         "owner-a",
         {
@@ -38,6 +48,7 @@ def test_dreaming_preview_proposes_duplicate_notes_without_mutating(tmp_path: Pa
 
 def test_dreaming_preview_does_not_compare_different_categories(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "memory.sqlite3")
+    _create_owner(repository, "owner-a")
     repository.create(
         "owner-a",
         {"category": "engineering", "content": "SQLite FTS5 provides local lexical memory retrieval"},
@@ -53,16 +64,12 @@ def test_dreaming_preview_does_not_compare_different_categories(tmp_path: Path) 
 
 def test_dreaming_preview_is_owner_scoped_and_bounded(tmp_path: Path) -> None:
     repository = MemoryRepository(tmp_path / "memory.sqlite3")
+    _create_owner(repository, "owner-a")
     repository.create(
         "owner-a",
         {"category": "engineering", "content": "SQLite FTS5 provides local lexical memory retrieval"},
     )
-    with repository.tasks._connection() as connection:
-        connection.execute(
-            "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            ("owner-b", "owner-b", "00", "00", "2026-01-01T00:00:00+00:00"),
-        )
+    _create_owner(repository, "owner-b")
     repository.create(
         "owner-b",
         {"category": "engineering", "content": "SQLite FTS5 provides local lexical memory retrieval"},
