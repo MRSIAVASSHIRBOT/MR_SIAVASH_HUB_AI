@@ -81,3 +81,45 @@ def test_dreaming_preview_rejects_unsafe_bounds(tmp_path: Path) -> None:
         assert "limit" in str(exc)
     else:
         raise AssertionError("Expected bounded limit validation")
+
+
+
+def test_memory_dream_preview_api_is_authenticated_and_audits_counts_only() -> None:
+    from client_helpers import authenticated_client
+    from mrhub.config import get_settings
+    from mrhub.memory.repository import MemoryRepository
+
+    client = authenticated_client()
+    first = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": "SQLite FTS5 provides local lexical memory retrieval",
+        },
+    )
+    second = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": "SQLite FTS5 provides local lexical memory retrieval",
+        },
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+    preview = client.post("/memory/dream/preview", json={"limit": 100})
+    assert preview.status_code == 200
+    payload = preview.json()
+    assert payload["proposal_count"] == 1
+    assert payload["state_changed"] is False
+    assert payload["proposals"][0]["requires_owner_review"] is True
+
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        audit = connection.execute(
+            "SELECT metadata_json FROM audit_events "
+            "WHERE event_type = 'memory.dream_previewed' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    assert audit is not None
+    assert "SQLite FTS5" not in audit["metadata_json"]
+    assert len(repository.list_entries("local-owner")) >= 2
