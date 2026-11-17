@@ -21,7 +21,7 @@ def test_validation_flags_polarity_conflicts_without_mutating_memory(tmp_path: P
         "owner-a",
         {
             "category": "preferences",
-            "content": "User prefers tea every morning",
+            "content": "Tea is preferred by user every morning",
             "confidence": 0.9,
             "verification_status": "user_approved",
         },
@@ -30,7 +30,7 @@ def test_validation_flags_polarity_conflicts_without_mutating_memory(tmp_path: P
         "owner-a",
         {
             "category": "preferences",
-            "content": "User does not prefer tea every morning",
+            "content": "Tea is not preferred by user every morning",
             "confidence": 0.4,
         },
     )
