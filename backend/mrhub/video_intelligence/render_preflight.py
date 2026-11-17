@@ -12,13 +12,12 @@ from uuid import UUID
 from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
 from mrhub.video_intelligence.timeline import VideoTimeline
-MAX_PREFLIGHT_SOURCE_HASH_BYTES = 512 * 1024 * 1024
-
-
 from mrhub.video_intelligence.timeline_drafts import (
     VideoTimelineDraftRepository,
     validate_renderer_timeline_source_bounds,
 )
+
+MAX_PREFLIGHT_SOURCE_HASH_BYTES = 512 * 1024 * 1024
 
 
 def _check(code: str, status: str, detail: str) -> dict[str, str]:
