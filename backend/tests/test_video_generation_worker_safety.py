@@ -33,6 +33,9 @@ class LookupOnlyProvider:
         self.lookup_result = lookup_result
         self.lookup_error = lookup_error
         self.status_result = status_result
+        self.cancel_result = False
+        self.cancel_error = None
+        self.cancel_calls = 0
         self.submit_calls = 0
         self.lookup_calls = 0
         self.status_calls = 0
@@ -52,6 +55,12 @@ class LookupOnlyProvider:
         if isinstance(self.status_result, Exception):
             raise self.status_result
         return self.status_result
+
+    def cancel(self, _provider_job_id):
+        self.cancel_calls += 1
+        if self.cancel_error is not None:
+            raise self.cancel_error
+        return self.cancel_result
 
 
 def _handler():
@@ -293,3 +302,214 @@ def test_stale_submitting_lookup_miss_is_marked_ambiguous(monkeypatch):
     assert handler.jobs.transitions[0][3]["error_code"] == (
         "provider_submission_not_discoverable"
     )
+
+
+
+def test_provider_cancellation_is_confirmed_by_status_before_marking_cancelled():
+    handler = _handler()
+    generation_id = uuid4()
+    provider = LookupOnlyProvider(
+        status_result=VideoGenerationResult(
+            provider="fixture",
+            model="fixture-v1",
+            provider_job_id="provider-cancel-1",
+            status=GenerationStatus.CANCELLED,
+        )
+    )
+    provider.cancel_result = True
+
+    result = handler._reconcile(
+        provider, "fixture", "fixture-v1", "owner-1", generation_id,
+        "provider-cancel-1", object(), Event(),
+        initial_status="running", cancellation_requested=True,
+    )
+
+    assert result == {"generation_id": str(generation_id), "status": "cancelled"}
+    assert provider.cancel_calls == 1
+    assert provider.status_calls == 1
+    assert provider.submit_calls == 0
+    assert [item[2] for item in handler.jobs.transitions] == ["cancelled"]
+
+
+def test_provider_cancellation_request_keeps_running_job_active_until_confirmed():
+    handler = _handler()
+    generation_id = uuid4()
+    provider = LookupOnlyProvider(
+        status_result=VideoGenerationResult(
+            provider="fixture",
+            model="fixture-v1",
+            provider_job_id="provider-cancel-2",
+            status=GenerationStatus.RUNNING,
+        )
+    )
+    provider.cancel_result = True
+
+    result = handler._reconcile(
+        provider, "fixture", "fixture-v1", "owner-1", generation_id,
+        "provider-cancel-2", object(), Event(),
+        initial_status="running", cancellation_requested=True,
+    )
+
+    assert result["status"] == "running"
+    assert result["cancellation_requested"] is True
+    assert result["reason_code"] == "provider_cancellation_pending"
+    assert provider.cancel_calls == 1
+    assert provider.status_calls == 1
+    assert [item[2] for item in handler.jobs.transitions] == ["running"]
+
+
+def test_provider_cancellation_failure_is_sanitized_and_does_not_fake_success():
+    handler = _handler()
+    generation_id = uuid4()
+    provider = LookupOnlyProvider(
+        status_result=VideoGenerationResult(
+            provider="fixture",
+            model="fixture-v1",
+            provider_job_id="provider-cancel-3",
+            status=GenerationStatus.RUNNING,
+        )
+    )
+    provider.cancel_error = RuntimeError("private provider token and URL")
+
+    result = handler._reconcile(
+        provider, "fixture", "fixture-v1", "owner-1", generation_id,
+        "provider-cancel-3", object(), Event(),
+        initial_status="running", cancellation_requested=True,
+    )
+
+    assert result["status"] == "running"
+    assert result["cancellation_requested"] is True
+    assert result["reason_code"] == "provider_cancellation_failed"
+    assert "private provider token" not in str(result)
+    assert provider.cancel_calls == 1
+    assert provider.status_calls == 1
+    assert [item[2] for item in handler.jobs.transitions] == ["running"]
+
+
+def test_ambiguous_submission_cancellation_only_looks_up_original_job_key():
+    handler = _handler()
+    generation_id = uuid4()
+    provider = LookupOnlyProvider()
+
+    result = handler._reconcile(
+        provider, "fixture", "fixture-v1", "owner-1", generation_id,
+        None, object(), Event(),
+        initial_status="unknown_outcome", cancellation_requested=True,
+    )
+
+    assert result["status"] == "unknown_outcome"
+    assert result["cancellation_requested"] is True
+    assert provider.lookup_calls == 1
+    assert provider.cancel_calls == 0
+    assert provider.submit_calls == 0
+    assert provider.status_calls == 0
+
+
+def test_worker_observes_a_cancellation_requested_during_provider_submission(
+    monkeypatch,
+):
+    from mrhub.video_intelligence import generation_registry as registry_module
+
+    generation_id = uuid4()
+    handler = _handler()
+    loaded = {
+        "owner_user_id": "owner-1",
+        "generation_id": str(generation_id),
+        "provider": "fixture",
+        "model": "fixture-v1",
+        "status": "queued",
+        "provider_job_id": None,
+        "request": {
+            "prompt": "original",
+            "aspect_ratio": "9:16",
+            "duration_seconds": 10,
+            "resolution": "720p",
+        },
+        "cancellation_requested": False,
+    }
+
+    class CancellingJobs(RecordingJobs):
+        def __init__(self, initial):
+            super().__init__(initial)
+            self.get_calls = 0
+
+        def get(self, _owner, _generation_id):
+            self.get_calls += 1
+            if self.get_calls == 1:
+                return None
+            return {"cancellation_requested_at": "2026-11-17T00:00:00+00:00"}
+
+    handler.jobs = CancellingJobs(loaded)
+
+    class AcceptedThenCancelledProvider(LookupOnlyProvider):
+        capability = SimpleNamespace(
+            provider="fixture",
+            model="fixture-v1",
+            max_duration_seconds=30,
+            max_resolution="720p",
+            supported_aspect_ratios=("9:16",),
+        )
+
+        def submit(self, _request):
+            return VideoGenerationSubmission(
+                provider="fixture",
+                model="fixture-v1",
+                provider_job_id="provider-after-submit",
+                status=GenerationStatus.ACCEPTED,
+            )
+
+    provider = AcceptedThenCancelledProvider(
+        status_result=VideoGenerationResult(
+            provider="fixture",
+            model="fixture-v1",
+            provider_job_id="provider-after-submit",
+            status=GenerationStatus.CANCELLED,
+        )
+    )
+    provider.cancel_result = True
+    monkeypatch.setattr(
+        registry_module.video_generation_registry,
+        "get",
+        lambda _provider, _model: provider,
+    )
+
+    result = handler(
+        SimpleNamespace(task_id=uuid4()),
+        lease=object(),
+        lease_lost=Event(),
+    )
+
+    assert result["status"] == "cancelled"
+    assert provider.cancel_calls == 1
+    assert provider.status_calls == 1
+
+
+def test_queued_cancellation_is_completed_without_provider_lookup(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+
+    generation_id = uuid4()
+    handler = _handler()
+    handler.jobs.loaded = {
+        "owner_user_id": "owner-1",
+        "generation_id": str(generation_id),
+        "provider": "fixture",
+        "model": "fixture-v1",
+        "status": "queued",
+        "provider_job_id": None,
+        "request": {"prompt": "original"},
+        "cancellation_requested": True,
+    }
+    monkeypatch.setattr(
+        registry_module.video_generation_registry,
+        "get",
+        lambda *_args: pytest.fail("cancelled queued work must not resolve a provider"),
+    )
+
+    result = handler(
+        SimpleNamespace(task_id=uuid4()),
+        lease=object(),
+        lease_lost=Event(),
+    )
+
+    assert result["status"] == "cancelled"
+    assert [item[2] for item in handler.jobs.transitions] == ["cancelled"]
