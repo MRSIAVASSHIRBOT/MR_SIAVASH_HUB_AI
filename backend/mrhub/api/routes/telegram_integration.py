@@ -606,6 +606,24 @@ def preflight_telegram_video_render(
         ) from exc
 
 
+@router.get("/video/render-preflight-submit")
+def preflight_telegram_video_render_for_submit(
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:render"))
+    ],
+    draft_id: UUID,
+) -> dict[str, object]:
+    """Check render prerequisites using the same scope required to submit a render."""
+    try:
+        return inspect_video_render_preflight(
+            get_settings().database_path, identity.owner_user_id, draft_id
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=404, detail="Telegram video timeline draft not found"
+        ) from exc
+
+
 @router.post("/video/renders", status_code=202)
 def submit_telegram_video_render(
     payload: TelegramVideoRenderSubmissionRequest,
