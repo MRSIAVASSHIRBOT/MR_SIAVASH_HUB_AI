@@ -125,6 +125,13 @@
         "purpose": "Search owner-scoped Hub memory through the paired client."
       },
       {
+        "method": "POST",
+        "path": "/integrations/telegram/memory/dream/preview",
+        "auth_mode": "paired_bearer",
+        "required_scope": "memory:search",
+        "purpose": "Return bounded, owner-scoped duplicate-memory review proposals without mutating memory; every proposal requires owner review."
+      },
+      {
         "method": "PUT",
         "path": "/integrations/telegram/clients/{client_id}/scopes",
         "auth_mode": "hub_owner_session",

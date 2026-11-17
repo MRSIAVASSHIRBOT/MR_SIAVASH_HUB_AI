@@ -29,3 +29,23 @@ All endpoints require the local owner's bearer session.
 ## Current limits
 
 This is the memory-entry slice only. Markdown/plain-text document ingestion, source/chunk records, citation-aware context assembly, evaluation corpus, and retrieval integration into the agent remain separate milestones. SQLite FTS5 availability is required; no vector database, embedding API, cloud fallback, or external indexing service is used.
+
+
+## Dreaming preview — first safe implementation
+
+`POST /memory/dream/preview` runs a deterministic, owner-scoped review over at most 100 active memory entries. It proposes possible duplicates only when entries share a category and their normalized token Jaccard similarity meets the configured threshold (default 0.82; allowed range 0.75–1.0).
+
+The endpoint is read-only with respect to memory content. It returns candidate IDs, short excerpts, heuristic similarity, and an explicit owner-review requirement. It does not merge, rewrite, downgrade, or delete entries. The audit event records counts only, never memory content.
+
+This is intentionally a first consolidation primitive, not a complete LLM-based Dreaming system: it does not inspect raw session transcripts, infer contradictions, establish factual correctness, or autonomously promote knowledge. Those capabilities require a separately evaluated proposal/approval workflow and explicit source provenance.
+
+### Example
+
+```json
+{
+  "limit": 100,
+  "similarity_threshold": 0.82
+}
+```
+
+The response includes `state_changed: false` and a limitations list. Treat every proposal as a review hint, not a verified duplicate.
