@@ -1396,7 +1396,7 @@ def test_telegram_memory_entry_review_requires_separate_read_and_write_scopes(tm
     assert repeated.json()["changed"] is False
 
     missing = client.post(
-        f"/integrations/telegram/memory/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/approve",
+        "/integrations/telegram/memory/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/approve",
         headers=write_headers,
     )
     assert missing.status_code == 404
