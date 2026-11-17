@@ -787,7 +787,7 @@ class VideoGenerationJobRepository:
             "progress_percent, output_asset_id, output_bytes, "
             "output_duration_seconds, output_width, output_height, error_code, "
             "CASE WHEN cancellation_requested_at IS NOT NULL "
-            "AND status IN ('submitting', 'running', 'unknown_outcome') "
+            "AND status IN ('queued', 'submitting', 'running', 'unknown_outcome') "
             "THEN 1 ELSE 0 END AS cancellation_requested, "
             "created_at, updated_at FROM video_generation_jobs "
             "WHERE owner_user_id = ?"
