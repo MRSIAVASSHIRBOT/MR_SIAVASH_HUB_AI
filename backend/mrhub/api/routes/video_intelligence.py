@@ -307,7 +307,7 @@ def get_video_generation_status(
         "output_height": generation["output_height"],
         "error_code": generation["error_code"],
         "cancellation_requested": (
-            generation["status"] in {"submitting", "running", "unknown_outcome"}
+            generation["status"] in {"queued", "submitting", "running", "unknown_outcome"}
             and generation.get("cancellation_requested_at") is not None
         ),
         "created_at": generation["created_at"],
