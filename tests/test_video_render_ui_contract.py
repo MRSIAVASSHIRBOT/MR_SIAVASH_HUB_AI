@@ -14,4 +14,6 @@ def test_render_dashboard_explains_source_audio_and_shows_verified_output_metada
     assert "video-render-preflight" in page
     assert "video-render-preflight-result" in page
     assert "render-preflight" in app
+    assert "videoRenderPreflightIdentity !== requestIdentity" in app
+    assert "currentVideoRenderIdentity() === requestIdentity" in app
     assert "هیچ رندر یا Providerی اجرا نمی‌شود" in app
