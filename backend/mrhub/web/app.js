@@ -62,6 +62,7 @@
   let videoPromptAnalysisId = null;
   let videoTimelineDrafts = [];
   let activeVideoTimelineDraft = null;
+  let videoRenderPreflightIdentity = null;
   let videoStoryboardControlsLocked = false;
   let videoGenerationHistoryItems = [];
   let videoGenerationHistoryCursor = null;
@@ -996,12 +997,16 @@
     const renderMayBeActive = Boolean(activeVideoRenderId)
       && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
     const mutationBlocked = videoStoryboardControlsLocked || renderMayBeActive;
+    const preparedRenderIdentity = currentVideoRenderIdentity();
     const hasPreparedRendererTimeline = Boolean(
-      activeVideoTimelineDraft
-      && activeVideoTimelineDraft.renderer_timeline
-      && activeVideoTimelineDraft.renderer_timeline_sha256
+      preparedRenderIdentity && preparedRenderIdentity.startsWith("draft:")
     );
+    const preflightMatches = hasPreparedRendererTimeline
+      && videoRenderPreflightIdentity === preparedRenderIdentity;
     $("#video-render-preflight").disabled = !hasPreparedRendererTimeline || videoStoryboardControlsLocked;
+    $("#video-render-submit").disabled = !canSubmitVideoRender
+      || mutationBlocked
+      || (hasPreparedRendererTimeline && !preflightMatches);
     $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft || mutationBlocked;
     $("#video-storyboard-save").disabled = !hasSelectedPrompt || mutationBlocked;
     $("#video-storyboard-compose").disabled = !hasSelectedPrompt || mutationBlocked;
@@ -1203,10 +1208,15 @@
       "#video-render-preflight-message",
       "در حال بررسی فایل‌ها و ابزارهای محلی؛ هیچ رندر یا Providerی اجرا نمی‌شود…"
     );
+    const requestIdentity = currentVideoRenderIdentity();
     try {
       const result = await api(
         "/video-intelligence/timeline-drafts/" + encodeURIComponent(draft.draft_id) + "/render-preflight"
       );
+      videoRenderPreflightIdentity = result.ready === true
+        && currentVideoRenderIdentity() === requestIdentity
+        ? requestIdentity
+        : null;
       renderVideoRenderPreflight(result);
       message(
         "#video-render-preflight-message",
@@ -1216,6 +1226,7 @@
         result.ready ? "success" : "error"
       );
     } catch (error) {
+      videoRenderPreflightIdentity = null;
       message("#video-render-preflight-message", error.message, "error");
     } finally {
       syncStoryboardRenderButtons();
@@ -1256,6 +1267,14 @@
       ? "draft:" + rendererDraft.draft_id + ":v" + rendererDraft.version
         + ":" + rendererDraft.renderer_timeline_sha256
       : "analysis:" + requestAnalysisId;
+    if (rendererDraft && videoRenderPreflightIdentity !== requestIdentity) {
+      message(
+        "#video-render-message",
+        "پیش‌بررسی این نسخه از Timeline لازم است؛ ابتدا «بررسی آمادگی رندر» را اجرا کنید.",
+        "error"
+      );
+      return;
+    }
     let requestKey = pendingVideoRenderRequests[requestIdentity] || null;
     const legacyRequestMatches = pendingVideoRenderKey
       && pendingVideoRenderAnalysisId === requestAnalysisId
