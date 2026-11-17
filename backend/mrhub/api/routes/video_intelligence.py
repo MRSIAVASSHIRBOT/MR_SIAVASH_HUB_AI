@@ -45,11 +45,11 @@ from mrhub.video_intelligence.prompt_from_analysis import (
     PromptCompositionUnavailable,
     compose_prompts_from_analysis,
 )
-from mrhub.video_intelligence.render_preflight import inspect_video_render_preflight
 from mrhub.video_intelligence.render_jobs import (
     VideoRenderConflict,
     VideoRenderJobRepository,
 )
+from mrhub.video_intelligence.render_preflight import inspect_video_render_preflight
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
 from mrhub.video_intelligence.repository import VideoBrandRepository
