@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from datetime import UTC, datetime
@@ -78,6 +79,29 @@ class MediaAssetRepository:
         if path.parent != root:
             raise ValueError("Media path escapes storage root")
         return path
+
+    def verify_file_integrity(self, asset: dict[str, object]) -> bool:
+        """Verify an owner-resolved media file against its immutable size and SHA-256 metadata."""
+        storage_key = asset.get("storage_key")
+        expected_hash = asset.get("content_hash")
+        expected_size = asset.get("file_size")
+        if (
+            not isinstance(storage_key, str)
+            or not isinstance(expected_hash, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None
+            or isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or not 0 < expected_size <= MAX_OUTPUT_BYTES
+        ):
+            return False
+        path = self.file_path(storage_key)
+        if not path.is_file() or path.stat().st_size != expected_size:
+            return False
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return hmac.compare_digest(digest.hexdigest(), expected_hash)
 
     def create_output_sink(
         self, storage_key: str, *, max_bytes: int = MAX_OUTPUT_BYTES
