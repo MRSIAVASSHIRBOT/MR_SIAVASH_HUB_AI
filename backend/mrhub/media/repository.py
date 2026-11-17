@@ -151,16 +151,18 @@ class MediaAssetRepository:
 
             digest = hashlib.sha256()
             copied = 0
-            with os.fdopen(descriptor, "rb", closefd=False) as source:
-                with destination_path.open("xb") as snapshot:
-                    created = True
-                    while chunk := source.read(1024 * 1024):
-                        copied += len(chunk)
-                        if copied > expected_size:
-                            raise ValueError("Media source exceeded its recorded size")
-                        digest.update(chunk)
-                        snapshot.write(chunk)
-                    snapshot.flush()
+            with (
+                os.fdopen(descriptor, "rb", closefd=False) as source,
+                destination_path.open("xb") as snapshot,
+            ):
+                created = True
+                while chunk := source.read(1024 * 1024):
+                    copied += len(chunk)
+                    if copied > expected_size:
+                        raise ValueError("Media source exceeded its recorded size")
+                    digest.update(chunk)
+                    snapshot.write(chunk)
+                snapshot.flush()
 
             after = os.fstat(descriptor)
             path_after = source_path.lstat()
