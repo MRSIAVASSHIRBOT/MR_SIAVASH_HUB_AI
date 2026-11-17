@@ -658,6 +658,7 @@ class VideoGenerationJobRepository:
                 return None
 
             generation_status = str(row["generation_status"])
+            task_status = row["task_status"]
             if generation_status in {"succeeded", "failed", "cancelled"}:
                 return {
                     "generation_id": str(generation_id),
@@ -666,7 +667,11 @@ class VideoGenerationJobRepository:
                     "created": False,
                     "execution": "already_terminal",
                 }
-            if generation_status not in {"submitting", "unknown_outcome", "running"}:
+            claimed_before_submit = (
+                generation_status == "queued"
+                and task_status == TaskStatus.RUNNING.value
+            )
+            if generation_status not in {"submitting", "unknown_outcome", "running"} and not claimed_before_submit:
                 raise VideoGenerationCancellationConflict(
                     "Generation is not in a cancellable lifecycle state"
                 )
@@ -676,7 +681,6 @@ class VideoGenerationJobRepository:
                 )
 
             task_id = row["task_id"]
-            task_status = row["task_status"]
             if task_id is None or task_status is None:
                 raise VideoGenerationCancellationConflict(
                     "Generation has no recoverable worker task"
@@ -721,7 +725,7 @@ class VideoGenerationJobRepository:
                    SET cancellation_requested_at = COALESCE(cancellation_requested_at, ?),
                        updated_at = ?
                    WHERE generation_id = ? AND owner_user_id = ?
-                     AND status IN ('submitting', 'unknown_outcome', 'running')""",
+                     AND status IN ('queued', 'submitting', 'unknown_outcome', 'running')""",
                 (now, now, str(generation_id), owner_user_id),
             )
 
