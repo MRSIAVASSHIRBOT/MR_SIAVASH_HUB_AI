@@ -2714,7 +2714,9 @@
       (job) => {
         const card = recordCard(
           (job.provider || "Provider") + " / " + (job.model || "مدل نامشخص"),
-          labels[job.status] || "وضعیت نامشخص",
+          job.cancellation_requested
+            ? (labels[job.status] || "وضعیت نامشخص") + " · لغو در حال پیگیری"
+            : (labels[job.status] || "وضعیت نامشخص"),
           [
             "Job: " + job.generation_id,
             "تحلیل منبع: " + job.source_analysis_id,
@@ -2757,6 +2759,34 @@
             }
           }));
         } else if (["submitting", "unknown_outcome", "running"].includes(job.status)) {
+          card.append(actionButton(
+            job.cancellation_requested ? "تلاش دوباره برای لغو" : "درخواست لغو",
+            async () => {
+              const confirmation = job.cancellation_requested
+                ? "درخواست لغو دوباره به Provider ارسال شود؟ نتیجه فقط پس از تأیید Worker نهایی می‌شود."
+                : "از Provider درخواست لغو شود؟ تا تأیید وضعیت نهایی، ممکن است پردازش بیرونی همچنان ادامه داشته باشد.";
+              if (!window.confirm(confirmation)) return;
+              const buttons = card.querySelectorAll("button");
+              buttons.forEach((button) => { button.disabled = true; });
+              try {
+                const result = await api(
+                  "/video-intelligence/generations/" + encodeURIComponent(job.generation_id),
+                  { method: "DELETE" }
+                );
+                await loadVideoGenerationHistory();
+                message(
+                  "#video-generation-history-message",
+                  result.status === "cancelled"
+                    ? "لغو پیش از ارسال به Provider تأیید شد."
+                    : "درخواست لغو ثبت شد؛ وضعیت لغوشده فقط پس از تأیید Provider نمایش داده می‌شود.",
+                  "success"
+                );
+              } catch (error) {
+                await loadVideoGenerationHistory();
+                message("#video-generation-history-message", error.message, "error");
+              }
+            }
+          ));
           card.append(actionButton("تطبیق نتیجهٔ قبلی", async () => {
             if (!window.confirm("فقط وضعیت درخواست قبلی بررسی شود؟ هیچ درخواست تولید جدیدی ارسال نمی‌شود.")) return;
             const buttons = card.querySelectorAll("button");
