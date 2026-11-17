@@ -996,6 +996,12 @@
     const renderMayBeActive = Boolean(activeVideoRenderId)
       && (!activeVideoRenderStatus || ["accepted", "running"].includes(activeVideoRenderStatus));
     const mutationBlocked = videoStoryboardControlsLocked || renderMayBeActive;
+    const hasPreparedRendererTimeline = Boolean(
+      activeVideoTimelineDraft
+      && activeVideoTimelineDraft.renderer_timeline
+      && activeVideoTimelineDraft.renderer_timeline_sha256
+    );
+    $("#video-render-preflight").disabled = !hasPreparedRendererTimeline || videoStoryboardControlsLocked;
     $("#video-storyboard-prepare-render-timeline").disabled = !hasDraft || mutationBlocked;
     $("#video-storyboard-save").disabled = !hasSelectedPrompt || mutationBlocked;
     $("#video-storyboard-compose").disabled = !hasSelectedPrompt || mutationBlocked;
@@ -1008,6 +1014,7 @@
     const nodes = [
       $("#video-analysis-submit"),
       $("#video-render-submit"),
+      $("#video-render-preflight"),
       $("#video-prompt-source"),
       $("#video-storyboard-draft-select"),
       $("#video-storyboard-add-beat"),
@@ -1045,6 +1052,9 @@
     sessionStorage.removeItem("mrh_video_render_pending_analysis_id");
     sessionStorage.removeItem("mrh_video_render_pending_identity");
     $("#video-render-result").replaceChildren();
+    $("#video-render-preflight-result").replaceChildren();
+    $("#video-render-preflight-message").textContent = "";
+    $("#video-render-preflight").disabled = true;
     $("#video-render-refresh").disabled = true;
     $("#video-render-cancel").disabled = true;
     $("#video-render-submit").disabled = !canSubmitVideoRender;
@@ -1139,6 +1149,76 @@
       if (activeVideoRenderId === renderId && activeVideoRenderIdentity === renderIdentity) {
         message("#video-render-message", error.message, "error");
       }
+    }
+  }
+
+  function renderVideoRenderPreflight(result) {
+    const container = $("#video-render-preflight-result");
+    container.replaceChildren();
+    const warningCount = Array.isArray(result.warnings) ? result.warnings.length : 0;
+    container.append(element(
+      "p",
+      result.ready
+        ? "پیش‌نیازهای اصلی آماده‌اند" + (warningCount ? " · هشدار: " + warningCount : "") + " · هیچ Jobی ایجاد نشده است."
+        : "رندر هنوز آماده نیست؛ موارد ناموفق را برطرف کن.",
+      result.ready ? "message success" : "message error"
+    ));
+    const labels = {
+      timeline_integrity: "یکپارچگی Timeline",
+      analysis_completed: "تکمیل تحلیل منبع",
+      source_bounds: "محدوده کلیپ‌ها و مالکیت منابع",
+      source_files: "فایل‌های رسانه‌ای منبع",
+      ffmpeg_available: "دسترسی به FFmpeg",
+      ffprobe_available: "دسترسی به FFprobe",
+      output_storage: "ذخیره‌سازی خروجی",
+      disk_space: "فضای آزاد دیسک"
+    };
+    const statuses = { pass: "موفق", warning: "هشدار", fail: "ناموفق" };
+    for (const check of Array.isArray(result.checks) ? result.checks : []) {
+      const card = element("article", undefined, "record");
+      const status = statuses[check.status] || "نامشخص";
+      card.append(
+        element("strong", labels[check.code] || check.code),
+        element("p", status + " · " + (check.detail || ""), "muted")
+      );
+      container.append(card);
+    }
+    container.append(element(
+      "p",
+      "این بررسی فقط یک تصویر لحظه‌ای و بدون تغییر وضعیت است؛ Worker پیش از اجرا، مالکیت و فایل‌ها را دوباره بررسی می‌کند.",
+      "muted"
+    ));
+  }
+
+  async function preflightVideoRender() {
+    const draft = activeVideoTimelineDraft;
+    if (!draft || !draft.renderer_timeline || !draft.renderer_timeline_sha256) {
+      message("#video-render-preflight-message", "ابتدا Timeline رندر را آماده و ذخیره کن.", "error");
+      return;
+    }
+    const button = $("#video-render-preflight");
+    button.disabled = true;
+    $("#video-render-preflight-result").replaceChildren();
+    message(
+      "#video-render-preflight-message",
+      "در حال بررسی فایل‌ها و ابزارهای محلی؛ هیچ رندر یا Providerی اجرا نمی‌شود…"
+    );
+    try {
+      const result = await api(
+        "/video-intelligence/timeline-drafts/" + encodeURIComponent(draft.draft_id) + "/render-preflight"
+      );
+      renderVideoRenderPreflight(result);
+      message(
+        "#video-render-preflight-message",
+        result.ready
+          ? "پیش‌بررسی کامل شد؛ ثبت رندر همچنان فقط با اقدام جداگانه انجام می‌شود."
+          : "پیش‌بررسی کامل شد؛ ابتدا موانع مشخص‌شده را برطرف کن.",
+        result.ready ? "success" : "error"
+      );
+    } catch (error) {
+      message("#video-render-preflight-message", error.message, "error");
+    } finally {
+      syncStoryboardRenderButtons();
     }
   }
 
@@ -2848,6 +2928,7 @@
   $("#video-generation-history-more").addEventListener("click", () => loadVideoGenerationHistory(true));
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
   $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
+  $("#video-render-preflight").addEventListener("click", preflightVideoRender);
   $("#video-render-submit").addEventListener("click", submitVideoRender);
   $("#video-render-refresh").addEventListener("click", refreshVideoRender);
   $("#video-render-cancel").addEventListener("click", cancelVideoRender);
