@@ -66,6 +66,7 @@ def test_video_generation_history_ui_supports_provider_confirmed_cancellation():
     assert "/video-intelligence/generations/" in history_ui
     assert "window.confirm" in history_ui
     assert "job.cancellation_requested" in history_ui
+    assert '(job.status === "queued" && job.cancellation_requested)' in history_ui
     assert "تلاش دوباره برای لغو" in history_ui
     assert "وضعیت لغوشده فقط پس از تأیید Provider" in history_ui
     assert '["submitting", "unknown_outcome", "running"].includes(job.status)' in history_ui
