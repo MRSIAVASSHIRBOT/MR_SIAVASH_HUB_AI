@@ -260,8 +260,8 @@ class VideoGenerationWorkerHandler:
                     provider_job_id=submission.provider_job_id,
                     error_code="provider_reconciled_unknown_outcome",
                 )
-                    if not cancellation_requested:
-                        return {"generation_id": str(generation_id), "status": "unknown_outcome"}
+                if not cancellation_requested:
+                    return {"generation_id": str(generation_id), "status": "unknown_outcome"}
             provider_job_id = submission.provider_job_id
             if submission.status is not GenerationStatus.UNKNOWN_OUTCOME:
                 self.jobs.transition_under_lease(
