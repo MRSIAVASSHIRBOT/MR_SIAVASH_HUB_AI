@@ -156,7 +156,10 @@ def inspect_video_render_preflight(
                     "pass" if source_bytes <= MAX_RENDER_SOURCE_SNAPSHOT_BYTES else "fail",
                     "The verified source snapshot fits the bounded local render budget."
                     if source_bytes <= MAX_RENDER_SOURCE_SNAPSHOT_BYTES
-                    else "Referenced source files exceed the 1 GiB local snapshot budget; reduce the source set before rendering.",
+                    else (
+                        "Referenced source files exceed the 1 GiB local snapshot budget; "
+                        "reduce the source set before rendering."
+                    ),
                 )
             )
             if source_bytes > MAX_PREFLIGHT_SOURCE_HASH_BYTES:
@@ -276,7 +279,10 @@ def inspect_video_render_preflight(
             else "warning",
             "At least the maximum bounded output size is available."
             if free_bytes is not None and free_bytes >= MAX_OUTPUT_BYTES
-            else "Free space is below the 100 MB output cap or could not be measured; the worker will recheck during execution.",
+            else (
+                "Free space is below the 100 MB output cap or could not be measured; "
+                "the worker will recheck during execution."
+            ),
         )
     )
     snapshot_space_known = source_files_ready and free_bytes is not None
@@ -291,9 +297,15 @@ def inspect_video_render_preflight(
             "pass" if snapshot_space_ready else "fail" if snapshot_space_known else "warning",
             "The media volume has room for a verified source snapshot and the maximum output."
             if snapshot_space_ready
-            else "The media volume does not have enough free space for the verified source snapshot and bounded output."
+            else (
+                "The media volume does not have enough free space for the "
+                "verified source snapshot and bounded output."
+            )
             if snapshot_space_known
-            else "Snapshot storage capacity could not be measured; the worker will enforce its byte budget.",
+            else (
+                "Snapshot storage capacity could not be measured; "
+                "the worker will enforce its byte budget."
+            ),
         )
     )
 
