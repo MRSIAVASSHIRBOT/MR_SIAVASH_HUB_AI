@@ -204,6 +204,20 @@
       },
       {
         "method": "GET",
+        "path": "/integrations/telegram/video/render-preflight-submit",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:render",
+        "purpose": "Recheck owner-scoped local-render prerequisites with the exact render-submission scope before a separate idempotent render request; does not create a job or execute work."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/render-preflight",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Inspect an owner-scoped saved local-render draft without creating a job, mutating the draft, invoking FFmpeg, or contacting a provider."
+      },
+      {
+        "method": "GET",
         "path": "/integrations/telegram/video/renders",
         "auth_mode": "paired_bearer",
         "required_scope": "video:read",
