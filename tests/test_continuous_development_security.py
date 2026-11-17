@@ -75,6 +75,9 @@ def test_effective_policy_is_checked_without_provider_credentials() -> None:
     assert "opencode --pure debug config" in verification
     assert "json.loads" in verification
     assert "OPENROUTER_API_KEY" not in verification
+    assert 'source_config = json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT", "{}"))' in verification
+    assert 'source_options.get("apiKey") != "mrhub-local-broker"' in verification
+    assert 'options.get("apiKey") != "mrhub-local-broker"' not in verification
     assert "build_policy = config.get(\"agent\", {}).get(\"build\", {}).get(\"permission\")" in verification
     assert "opencode --pure run" in run_step
     assert "MODEL: mrhub-openrouter-proxy/cohere/north-mini-code:free" in run_step
