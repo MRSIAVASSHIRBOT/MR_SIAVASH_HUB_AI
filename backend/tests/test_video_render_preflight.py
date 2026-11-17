@@ -7,9 +7,9 @@ from uuid import UUID
 
 import pytest
 
-import mrhub.video_intelligence.render_preflight as render_preflight
 from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import VideoTimelineDraftRepository
+from mrhub.video_intelligence import render_preflight
 
 
 OWNER = "owner-a"
