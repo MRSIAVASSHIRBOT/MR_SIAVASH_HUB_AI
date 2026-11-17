@@ -2765,9 +2765,11 @@
           card.append(actionButton(
             job.cancellation_requested ? "تلاش دوباره برای لغو" : "درخواست لغو",
             async () => {
-              const confirmation = job.cancellation_requested
-                ? "درخواست لغو دوباره به Provider ارسال شود؟ نتیجه فقط پس از تأیید Worker نهایی می‌شود."
-                : "از Provider درخواست لغو شود؟ تا تأیید وضعیت نهایی، ممکن است پردازش بیرونی همچنان ادامه داشته باشد.";
+              const confirmation = job.status === "queued"
+                ? "درخواست لغو پیش از ارسال به Provider به Worker اعلام شود؟ اگر ارسال شروع شده باشد، لغو فقط پس از تأیید Provider نهایی می‌شود."
+                : job.cancellation_requested
+                  ? "درخواست لغو دوباره به Provider ارسال شود؟ نتیجه فقط پس از تأیید Worker نهایی می‌شود."
+                  : "از Provider درخواست لغو شود؟ تا تأیید وضعیت نهایی، ممکن است پردازش بیرونی همچنان ادامه داشته باشد.";
               if (!window.confirm(confirmation)) return;
               const buttons = card.querySelectorAll("button");
               buttons.forEach((button) => { button.disabled = true; });
@@ -2781,7 +2783,9 @@
                   "#video-generation-history-message",
                   result.status === "cancelled"
                     ? "لغو پیش از ارسال به Provider تأیید شد."
-                    : "درخواست لغو ثبت شد؛ وضعیت لغوشده فقط پس از تأیید Provider نمایش داده می‌شود.",
+                    : result.status === "queued"
+                      ? "درخواست لغو به Worker اعلام شد؛ پیش از ارسال به Provider متوقف خواهد شد."
+                      : "درخواست لغو ثبت شد؛ وضعیت لغوشده فقط پس از تأیید Provider نمایش داده می‌شود.",
                   "success"
                 );
               } catch (error) {
