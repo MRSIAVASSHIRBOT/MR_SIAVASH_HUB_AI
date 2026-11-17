@@ -248,10 +248,10 @@ class VideoGenerationWorkerHandler:
                     owner, generation_id, target, lease=lease,
                     provider_job_id=submission.provider_job_id,
                     error_code=(
-                    "provider_generation_cancelled"
-                    if submission.status is GenerationStatus.CANCELLED
-                    else "provider_generation_failed"
-                ),
+                        "provider_generation_cancelled"
+                        if submission.status is GenerationStatus.CANCELLED
+                        else "provider_generation_failed"
+                    ),
                 )
                 return {"generation_id": str(generation_id), "status": target}
             if submission.status is GenerationStatus.UNKNOWN_OUTCOME:
@@ -260,7 +260,7 @@ class VideoGenerationWorkerHandler:
                     provider_job_id=submission.provider_job_id,
                     error_code="provider_reconciled_unknown_outcome",
                 )
-                if not cancellation_requested:
+                    if not cancellation_requested:
                     return {"generation_id": str(generation_id), "status": "unknown_outcome"}
             provider_job_id = submission.provider_job_id
             if submission.status is not GenerationStatus.UNKNOWN_OUTCOME:
