@@ -26,6 +26,10 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
     worker_columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(worker_executions)")
     }
+    generation_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
+    }
+    assert "cancellation_requested_at" in generation_columns
     assert {
         "attempt_count", "recovered_at", "next_attempt_at",
         "lease_owner", "lease_expires_at", "heartbeat_at", "execution_token",
@@ -615,7 +619,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -746,7 +750,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()

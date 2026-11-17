@@ -158,7 +158,7 @@ The authenticated `GET /video-intelligence/generations` endpoint returns a bound
 
 ## Generation cancellation
 
-The authenticated `DELETE /video-intelligence/generations/{generation_id}` endpoint cancels only prepared or queued requests before provider submission, atomically cancels the linked approval/queue task, and purges the encrypted prompt. If a worker has already claimed the task, or provider work is active/ambiguous, the endpoint returns `409`; the API does not claim that an external provider operation stopped until a provider-side cancellation workflow exists.
+The authenticated `DELETE /video-intelligence/generations/{generation_id}` endpoint atomically cancels prepared or queued requests before provider submission and purges the encrypted prompt. For active or ambiguous provider work, it persists an owner cancellation request and lets the existing lease-fenced task perform the provider-side cancellation. The provider adapter's cancellation operation must be idempotent; the Worker always follows it with an authoritative status lookup and marks the job `cancelled` only when the provider confirms that terminal state. If the provider still reports `running`, the local job remains active with a visible cancellation-pending flag, and the owner can explicitly retry. An ambiguous submission with no known provider job ID is reconciled only by the original idempotency key; a lookup miss never triggers a new submission or a false cancellation. The UI distinguishes a requested cancellation from a confirmed terminal cancellation.
 
 
 ## Telegram deterministic render bridge

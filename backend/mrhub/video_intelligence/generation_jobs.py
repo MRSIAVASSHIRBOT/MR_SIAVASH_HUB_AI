@@ -224,6 +224,7 @@ class VideoGenerationJobRepository:
             row = connection.execute(
                 """SELECT l.owner_user_id, l.generation_id, j.provider, j.model,
                           j.status, j.provider_job_id, j.progress_percent,
+                          j.cancellation_requested_at,
                           p.envelope_version, p.nonce_b64, p.ciphertext_b64
                    FROM video_generation_task_links AS l
                    JOIN video_generation_jobs AS j
@@ -245,7 +246,7 @@ class VideoGenerationJobRepository:
         generation_id = str(row["generation_id"])
         owner_user_id = str(row["owner_user_id"])
         payload = None
-        if job_status == "queued":
+        if job_status == "queued" and row["cancellation_requested_at"] is None:
             if any(
                 row[field] is None
                 for field in ("envelope_version", "nonce_b64", "ciphertext_b64")
@@ -270,6 +271,7 @@ class VideoGenerationJobRepository:
             "status": job_status,
             "provider_job_id": row["provider_job_id"],
             "progress_percent": row["progress_percent"],
+            "cancellation_requested": row["cancellation_requested_at"] is not None,
         }
         if payload is not None:
             loaded["request"] = payload
@@ -510,9 +512,9 @@ class VideoGenerationJobRepository:
     ) -> dict[str, object] | None:
         """Cancel only before provider submission, atomically with task and payload cleanup.
 
-        Active or ambiguous provider operations are deliberately not marked cancelled:
-        without a provider-side cancellation worker, doing so would misrepresent the
-        external outcome and could leave billable work running.
+        Active or ambiguous provider operations remain conflicts here; callers must
+        use request_cancellation() so the lease-fenced Worker can confirm the provider
+        outcome instead of changing local state optimistically.
         """
         now = self._now()
         with self.tasks._connection() as connection:
@@ -620,6 +622,147 @@ class VideoGenerationJobRepository:
             "cancellation_requested": False,
         }
 
+    def request_cancellation(
+        self, owner_user_id: str, generation_id: UUID
+    ) -> dict[str, object] | None:
+        """Cancel pending work or queue a provider-confirmed cancellation attempt.
+
+        Active provider work is never marked cancelled by the API. The owner request
+        is persisted, then the existing approval-bound task is requeued or allowed
+        to observe the flag under its current lease. The Worker must confirm the
+        provider's terminal state before the job can become cancelled.
+        """
+        try:
+            pending = self.cancel_pending(owner_user_id, generation_id)
+        except VideoGenerationCancellationConflict:
+            pass
+        else:
+            return pending
+
+        now = self._now()
+        with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT j.status AS generation_status, j.provider_job_id,
+                          j.cancellation_requested_at, l.task_id,
+                          t.status AS task_status
+                   FROM video_generation_jobs AS j
+                   LEFT JOIN video_generation_task_links AS l
+                     ON l.generation_id = j.generation_id
+                    AND l.owner_user_id = j.owner_user_id
+                   LEFT JOIN tasks AS t ON t.task_id = l.task_id
+                   WHERE j.generation_id = ? AND j.owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            generation_status = str(row["generation_status"])
+            task_status = row["task_status"]
+            if generation_status in {"succeeded", "failed", "cancelled"}:
+                return {
+                    "generation_id": str(generation_id),
+                    "status": generation_status,
+                    "cancellation_requested": False,
+                    "created": False,
+                    "execution": "already_terminal",
+                }
+            claimed_before_submit = (
+                generation_status == "queued"
+                and task_status == TaskStatus.RUNNING.value
+            )
+            if (
+                generation_status not in {"submitting", "unknown_outcome", "running"}
+                and not claimed_before_submit
+            ):
+                raise VideoGenerationCancellationConflict(
+                    "Generation is not in a cancellable lifecycle state"
+                )
+            if generation_status == "running" and not row["provider_job_id"]:
+                raise VideoGenerationCancellationConflict(
+                    "Running generation is missing its provider reference"
+                )
+
+            task_id = row["task_id"]
+            if task_id is None or task_status is None:
+                raise VideoGenerationCancellationConflict(
+                    "Generation has no recoverable worker task"
+                )
+
+            requeued = False
+            if task_status in {TaskStatus.QUEUED.value, TaskStatus.RUNNING.value}:
+                next_task_status = str(task_status)
+            elif task_status in {
+                TaskStatus.FAILED.value,
+                TaskStatus.SUCCEEDED.value,
+                TaskStatus.CANCELLED.value,
+            }:
+                cursor = connection.execute(
+                    """UPDATE tasks SET status = ?, updated_at = ?
+                       WHERE task_id = ? AND status = ?""",
+                    (TaskStatus.QUEUED.value, now, task_id, task_status),
+                )
+                if cursor.rowcount != 1:
+                    raise VideoGenerationCancellationConflict(
+                        "Generation task changed before cancellation was queued"
+                    )
+                connection.execute(
+                    """UPDATE worker_executions
+                       SET attempt_count = 0, result_json = NULL, error_code = NULL,
+                           started_at = NULL, finished_at = NULL, recovered_at = ?,
+                           next_attempt_at = NULL, lease_owner = NULL,
+                           lease_expires_at = NULL, heartbeat_at = NULL
+                       WHERE task_id = ?""",
+                    (now, task_id),
+                )
+                next_task_status = TaskStatus.QUEUED.value
+                requeued = True
+            else:
+                raise VideoGenerationCancellationConflict(
+                    "Generation task is awaiting an unsupported lifecycle transition"
+                )
+
+            was_requested = row["cancellation_requested_at"] is not None
+            connection.execute(
+                """UPDATE video_generation_jobs
+                   SET cancellation_requested_at = COALESCE(cancellation_requested_at, ?),
+                       updated_at = ?
+                   WHERE generation_id = ? AND owner_user_id = ?
+                     AND status IN ('queued', 'submitting', 'unknown_outcome', 'running')""",
+                (now, now, str(generation_id), owner_user_id),
+            )
+
+            if not was_requested or requeued:
+                audit_event = AuditLogger(self.tasks).build_event(
+                    event_type="video_generation.cancellation_requested",
+                    outcome="accepted",
+                    subject_type="video_generation",
+                    subject_id=str(generation_id),
+                    actor_type="user",
+                    actor_id=owner_user_id,
+                    metadata={
+                        "previous_status": generation_status,
+                        "reason_code": "provider_cancellation_requested",
+                    },
+                )
+                audit_payload = audit_event.model_dump(mode="json")
+                audit_payload["created_at"] = now
+                TaskRepository._insert_audit_event(connection, audit_payload)
+
+        return {
+            "generation_id": str(generation_id),
+            "status": generation_status,
+            "cancellation_requested": True,
+            "task_id": str(task_id),
+            "task_status": next_task_status,
+            "created": requeued,
+            "execution": (
+                "provider_cancellation_queued"
+                if requeued
+                else "provider_cancellation_active"
+            ),
+        }
+
     def list_for_owner(
         self,
         owner_user_id: str,
@@ -640,6 +783,9 @@ class VideoGenerationJobRepository:
             "SELECT generation_id, source_analysis_id, provider, model, status, "
             "progress_percent, output_asset_id, output_bytes, "
             "output_duration_seconds, output_width, output_height, error_code, "
+            "CASE WHEN cancellation_requested_at IS NOT NULL "
+            "AND status IN ('queued', 'submitting', 'running', 'unknown_outcome') "
+            "THEN 1 ELSE 0 END AS cancellation_requested, "
             "created_at, updated_at FROM video_generation_jobs "
             "WHERE owner_user_id = ?"
         )
@@ -657,13 +803,20 @@ class VideoGenerationJobRepository:
 
         with self.tasks._connection() as connection:
             rows = connection.execute(query, parameters).fetchall()
-        return [dict(row) for row in rows]
+        return [
+            {
+                **dict(row),
+                "cancellation_requested": bool(row["cancellation_requested"]),
+            }
+            for row in rows
+        ]
 
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
                 """SELECT generation_id, source_analysis_id, provider, model, status,
-                          provider_job_id, progress_percent, output_asset_id,
+                          provider_job_id, progress_percent, cancellation_requested_at,
+                          output_asset_id,
                           output_bytes, output_duration_seconds, output_width,
                           output_height, error_code, created_at, updated_at
                    FROM video_generation_jobs

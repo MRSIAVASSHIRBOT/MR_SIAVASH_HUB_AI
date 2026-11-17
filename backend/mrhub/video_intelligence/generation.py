@@ -159,4 +159,10 @@ class VideoGenerationProvider(Protocol):
         ...
 
     def cancel(self, provider_job_id: str) -> bool:
+        """Idempotently request provider-side cancellation for an existing job.
+
+        True means the provider accepted the cancellation request; False means it
+        could not accept a new request (for example, the job is already terminal).
+        Callers must still confirm the final outcome through get_status().
+        """
         ...
