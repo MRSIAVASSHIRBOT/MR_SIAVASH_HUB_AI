@@ -336,6 +336,92 @@ def test_render_worker_holds_fenced_media_use_leases_through_render_and_publicat
     assert jobs.get("owner-a", render_id)["status"] == "completed"
 
 
+def test_render_worker_rejects_same_size_source_content_tampering_before_ffmpeg(
+    tmp_path, monkeypatch
+):
+    from mrhub.video_intelligence import render_worker
+
+    analysis_repository, analysis_id = _completed_analysis(tmp_path, monkeypatch)
+    database = tmp_path / "render.sqlite"
+    jobs = VideoRenderJobRepository(database)
+    media = MediaAssetRepository(database)
+    accepted, _ = jobs.submit("owner-a", analysis_id, "render-tampered-source-key")
+    task_id = UUID(accepted["task_id"])
+    render_id = UUID(accepted["render_id"])
+    source_id = UUID("2c83d1c5-1d8d-4c29-8a3d-4dd0e0b10a00")
+    storage_key = f"{source_id}.mp4"
+    source_path = media.file_path(storage_key)
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    recorded_bytes = b"original-source"
+    source_path.write_bytes(b"tampered-source")
+    now = "2026-11-04T00:00:00+00:00"
+    expiry = "2099-01-01T00:00:00+00:00"
+
+    with analysis_repository.tasks._connection() as connection:
+        connection.execute(
+            """INSERT INTO content_assets (
+                asset_id, owner_user_id, source_asset_id, original_filename,
+                media_type, storage_key, file_size, content_hash,
+                processing_status, processing_profile, error_code, created_at, updated_at
+            ) VALUES (?, ?, NULL, ?, 'video/mp4', ?, ?, ?, 'stored', NULL, NULL, ?, ?)""",
+            (
+                str(source_id), "owner-a", "source.mp4", storage_key,
+                len(recorded_bytes), hashlib.sha256(recorded_bytes).hexdigest(), now, now,
+            ),
+        )
+        connection.execute(
+            """INSERT INTO worker_executions (
+                task_id, attempt_count, started_at, lease_owner,
+                lease_expires_at, execution_token
+            ) VALUES (?, 1, ?, ?, ?, ?)""",
+            (str(task_id), now, "render-worker", expiry, 23),
+        )
+        connection.execute(
+            "UPDATE tasks SET status = 'running', updated_at = ? WHERE task_id = ?",
+            (now, str(task_id)),
+        )
+        reserved = connection.execute(
+            "SELECT output_storage_key FROM video_render_runs WHERE render_id = ?",
+            (str(render_id),),
+        ).fetchone()
+    assert reserved is not None
+
+    lease = WorkerLease(
+        task_id=str(task_id),
+        owner="render-worker",
+        fencing_token=23,
+        expires_at=expiry,
+    )
+    called = False
+
+    def fake_render(**_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("FFmpeg must not receive a source with a mismatched content hash")
+
+    monkeypatch.setattr(render_worker, "render_video_timeline", fake_render)
+    with pytest.raises(ValueError, match="Video render execution failed"):
+        VideoRenderWorkerHandler(analysis_repository.tasks)(
+            analysis_repository.tasks.get(task_id),
+            lease=lease,
+            lease_lost=Event(),
+        )
+
+    output_key = str(reserved["output_storage_key"])
+    output_asset_id = UUID(output_key.removesuffix(".mp4"))
+    assert source_path.stat().st_size == len(recorded_bytes)
+    assert called is False
+    assert jobs.get("owner-a", render_id)["status"] == "failed"
+    assert media.get("owner-a", output_asset_id) is None
+    assert media.file_path(output_key).exists() is False
+    with analysis_repository.tasks._connection() as connection:
+        remaining_locks = connection.execute(
+            "SELECT COUNT(*) FROM media_asset_analysis_leases WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0]
+    assert remaining_locks == 0
+
+
 def test_stale_render_recovery_releases_source_lock_and_removes_reserved_orphan(
     tmp_path, monkeypatch
 ):

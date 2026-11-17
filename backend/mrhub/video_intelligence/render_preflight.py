@@ -17,6 +17,8 @@ from mrhub.video_intelligence.timeline_drafts import (
     validate_renderer_timeline_source_bounds,
 )
 
+MAX_PREFLIGHT_SOURCE_HASH_BYTES = 512 * 1024 * 1024
+
 
 def _check(code: str, status: str, detail: str) -> dict[str, str]:
     return {"code": code, "status": status, "detail": detail}
@@ -100,6 +102,7 @@ def inspect_video_render_preflight(
             and source_ids.issubset(allowed_ids)
             and str(draft.get("asset_id")) in source_ids
         )
+        source_assets: list[dict[str, object]] = []
         try:
             if not references_valid or not isinstance(assets, list):
                 raise ValueError("render_source_ownership_invalid")
@@ -137,6 +140,7 @@ def inspect_video_render_preflight(
                 if actual_size != recorded_size:
                     raise ValueError("render_source_size_mismatch")
                 source_bytes += actual_size
+                source_assets.append(asset)
             source_files_ready = True
             checks.append(
                 _check(
@@ -145,12 +149,45 @@ def inspect_video_render_preflight(
                     "All referenced owner-owned source files exist and match their recorded sizes.",
                 )
             )
+            if source_bytes > MAX_PREFLIGHT_SOURCE_HASH_BYTES:
+                checks.append(
+                    _check(
+                        "source_integrity",
+                        "warning",
+                        "The preflight checksum budget was exceeded; "
+                        "the worker will verify every source before rendering.",
+                    )
+                )
+            elif all(media.verify_file_integrity(asset) for asset in source_assets):
+                checks.append(
+                    _check(
+                        "source_integrity",
+                        "pass",
+                        "Every source file matches its recorded SHA-256 content hash.",
+                    )
+                )
+            else:
+                checks.append(
+                    _check(
+                        "source_integrity",
+                        "fail",
+                        "One or more source files do not match their "
+                        "recorded SHA-256 content hash.",
+                    )
+                )
         except (OSError, TypeError, ValueError):
             checks.append(
                 _check(
                     "source_files",
                     "fail",
                     "One or more source files are missing, changed, unsupported, or not ready.",
+                )
+            )
+            checks.append(
+                _check(
+                    "source_integrity",
+                    "fail",
+                    "Source file integrity could not be verified.",
                 )
             )
             if not any(item["code"] == "source_bounds" for item in checks):
@@ -164,8 +201,21 @@ def inspect_video_render_preflight(
     else:
         checks.extend(
             [
-                _check("source_bounds", "fail", "A valid saved timeline and completed analysis are required."),
-                _check("source_files", "fail", "Source files cannot be checked until the analysis is complete."),
+                _check(
+                    "source_bounds",
+                    "fail",
+                    "A valid saved timeline and completed analysis are required.",
+                ),
+                _check(
+                    "source_files",
+                    "fail",
+                    "Source files cannot be checked until the analysis is complete.",
+                ),
+                _check(
+                    "source_integrity",
+                    "fail",
+                    "Source files cannot be verified until the analysis is complete.",
+                ),
             ]
         )
 

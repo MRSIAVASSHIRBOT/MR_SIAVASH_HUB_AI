@@ -84,6 +84,7 @@ def _install_fakes(monkeypatch, tmp_path: Path, *, digest_override=None, create_
         "processing_status": "stored",
         "storage_key": storage_key,
         "file_size": len(content),
+        "content_hash": hashlib.sha256(content).hexdigest(),
     }
 
     class FakeDraftRepository:
@@ -114,6 +115,15 @@ def _install_fakes(monkeypatch, tmp_path: Path, *, digest_override=None, create_
         def file_path(self, requested_key):
             assert requested_key == storage_key
             return source_path
+
+        def verify_file_integrity(self, requested_asset):
+            return (
+                requested_asset is asset
+                and source_path.is_file()
+                and source_path.stat().st_size == requested_asset["file_size"]
+                and hashlib.sha256(source_path.read_bytes()).hexdigest()
+                == requested_asset["content_hash"]
+            )
 
     monkeypatch.setattr(render_preflight, "VideoTimelineDraftRepository", FakeDraftRepository)
     monkeypatch.setattr(render_preflight, "VideoAnalysisJobRepository", FakeAnalysisRepository)
@@ -160,6 +170,31 @@ def test_preflight_fails_closed_for_tampered_timeline_and_missing_source(tmp_pat
     assert result["ready"] is False
     assert statuses["timeline_integrity"] == "fail"
     assert statuses["source_files"] == "fail"
+
+
+def test_preflight_detects_same_size_source_content_tampering(tmp_path, monkeypatch):
+    _, source_path = _install_fakes(monkeypatch, tmp_path)
+    source_path.write_bytes(b"changed-source-video")
+    result = render_preflight.inspect_video_render_preflight(
+        tmp_path / "hub.sqlite", OWNER, DRAFT_ID
+    )
+    statuses = {item["code"]: item["status"] for item in result["checks"]}
+    assert source_path.stat().st_size == len(b"bounded-source-video")
+    assert statuses["source_files"] == "pass"
+    assert statuses["source_integrity"] == "fail"
+    assert result["ready"] is False
+
+
+def test_preflight_defers_large_checksum_work_to_the_worker(tmp_path, monkeypatch):
+    _install_fakes(monkeypatch, tmp_path)
+    monkeypatch.setattr(render_preflight, "MAX_PREFLIGHT_SOURCE_HASH_BYTES", 1)
+    result = render_preflight.inspect_video_render_preflight(
+        tmp_path / "hub.sqlite", OWNER, DRAFT_ID
+    )
+    statuses = {item["code"]: item["status"] for item in result["checks"]}
+    assert result["ready"] is True
+    assert statuses["source_integrity"] == "warning"
+    assert "source_integrity" in result["warnings"]
 
 
 def test_preflight_requires_both_local_ffmpeg_tools(tmp_path, monkeypatch):
