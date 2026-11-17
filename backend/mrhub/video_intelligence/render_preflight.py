@@ -36,7 +36,7 @@ def inspect_video_render_preflight(
     renderer_digest = draft.get("renderer_timeline_sha256")
     try:
         if not isinstance(renderer_data, dict) or not isinstance(renderer_digest, str):
-            raise ValueError("renderer_timeline_not_saved")
+            raise TypeError("renderer_timeline_not_saved")
         timeline = VideoTimeline.model_validate(renderer_data)
         canonical = VideoTimelineDraftRepository._canonical_renderer_timeline(timeline)
         actual_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
