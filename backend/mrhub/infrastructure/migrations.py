@@ -1271,6 +1271,13 @@ MIGRATIONS = (
              "ON video_render_runs(owner_user_id, created_at DESC, render_id DESC)"),
         ),
     ),
+    Migration.build(
+        47,
+        "owner_requested_video_generation_cancellation",
+        (
+            "ALTER TABLE video_generation_jobs ADD COLUMN cancellation_requested_at TEXT",
+        ),
+    ),
 )
 
 
