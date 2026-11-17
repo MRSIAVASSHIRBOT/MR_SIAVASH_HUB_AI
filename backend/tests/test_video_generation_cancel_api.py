@@ -1,17 +1,14 @@
 from uuid import uuid4
 
 from client_helpers import authenticated_client
-from mrhub.video_intelligence.generation_jobs import (
-    VideoGenerationCancellationConflict,
-    VideoGenerationJobRepository,
-)
+from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
 
 
 def test_cancel_generation_route_cancels_owner_pending_job(monkeypatch):
     generation_id = uuid4()
     calls = []
 
-    def cancel_pending(self, owner_user_id, requested_id):
+    def request_cancellation(self, owner_user_id, requested_id):
         calls.append((owner_user_id, requested_id))
         return {
             "generation_id": str(requested_id),
@@ -19,7 +16,7 @@ def test_cancel_generation_route_cancels_owner_pending_job(monkeypatch):
             "cancellation_requested": False,
         }
 
-    monkeypatch.setattr(VideoGenerationJobRepository, "cancel_pending", cancel_pending)
+    monkeypatch.setattr(VideoGenerationJobRepository, "request_cancellation", request_cancellation)
     client = authenticated_client()
     try:
         response = client.delete(f"/video-intelligence/generations/{generation_id}")
@@ -36,7 +33,7 @@ def test_cancel_generation_route_returns_not_found_for_foreign_or_missing_job(
 ):
     monkeypatch.setattr(
         VideoGenerationJobRepository,
-        "cancel_pending",
+        "request_cancellation",
         lambda self, owner_user_id, generation_id: None,
     )
     client = authenticated_client()
@@ -48,22 +45,34 @@ def test_cancel_generation_route_returns_not_found_for_foreign_or_missing_job(
     assert response.status_code == 404
 
 
-def test_cancel_generation_route_rejects_active_provider_job(monkeypatch):
-    def conflict(self, owner_user_id, generation_id):
-        raise VideoGenerationCancellationConflict(
-            "Active provider cancellation requires a provider-side cancellation workflow"
-        )
+def test_cancel_generation_route_queues_provider_cancellation_for_active_job(monkeypatch):
+    generation_id = uuid4()
+    calls = []
 
-    monkeypatch.setattr(VideoGenerationJobRepository, "cancel_pending", conflict)
+    def request_cancellation(self, owner_user_id, requested_id):
+        calls.append((owner_user_id, requested_id))
+        return {
+            "generation_id": str(requested_id),
+            "status": "running",
+            "cancellation_requested": True,
+            "created": True,
+            "execution": "provider_cancellation_queued",
+        }
+
+    monkeypatch.setattr(
+        VideoGenerationJobRepository, "request_cancellation", request_cancellation
+    )
     client = authenticated_client()
     try:
-        response = client.delete(f"/video-intelligence/generations/{uuid4()}")
+        response = client.delete(f"/video-intelligence/generations/{generation_id}")
     finally:
         client.close()
 
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "generation_cancellation_conflict"
-    assert "worker may have claimed it" in response.text
+    assert response.status_code == 202
+    assert response.json()["status"] == "running"
+    assert response.json()["cancellation_requested"] is True
+    assert response.json()["execution"] == "provider_cancellation_queued"
+    assert calls == [("local-owner", generation_id)]
 
 
 
@@ -109,7 +118,8 @@ def test_generation_history_route_returns_bounded_owner_page(monkeypatch):
         client.close()
 
     assert response.status_code == 200
-    assert response.json() == {"items": rows, "next_cursor": None}
+    expected_rows = [{**rows[0], "cancellation_requested": False}]
+    assert response.json() == {"items": expected_rows, "next_cursor": None}
     assert calls == [("local-owner", 11, None, None)]
 
 
@@ -188,7 +198,7 @@ def test_generation_history_route_emits_next_cursor_only_when_more_results_exist
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["items"] == rows[:1]
+    assert payload["items"] == [{**rows[0], "cancellation_requested": False}]
     assert payload["next_cursor"] == {
         "before_created_at": rows[0]["created_at"],
         "before_generation_id": rows[0]["generation_id"],
