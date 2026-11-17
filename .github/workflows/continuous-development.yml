@@ -45,10 +45,12 @@ jobs:
           opencode --pure debug config > "$RUNNER_TEMP/opencode-effective-config.json"
           python - "$RUNNER_TEMP/opencode-effective-config.json" <<'PY'
           import json
+          import os
           import sys
           from pathlib import Path
 
           config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          source_config = json.loads(os.environ.get("OPENCODE_CONFIG_CONTENT", "{}"))
           policy = config.get("permission")
           if not isinstance(policy, dict) or policy.get("*") != "deny":
               raise SystemExit("OpenCode effective policy is not default-deny")
@@ -70,17 +72,28 @@ jobs:
           build_policy = config.get("agent", {}).get("build", {}).get("permission")
           if not isinstance(build_policy, dict) or build_policy.get("*") != "deny":
               raise SystemExit("Build agent is not configured with default-deny policy")
+          source_provider = source_config.get("provider", {}).get("mrhub-openrouter-proxy")
+          if not isinstance(source_provider, dict):
+              raise SystemExit("Workflow-owned OpenRouter broker provider is missing")
+          source_options = source_provider.get("options")
+          if not isinstance(source_options, dict):
+              raise SystemExit("Workflow-owned OpenRouter broker options are missing")
+          if source_options.get("baseURL") != "http://127.0.0.1:8765/api/v1":
+              raise SystemExit("Workflow-owned provider must use the loopback credential broker")
+          if source_options.get("apiKey") != "mrhub-local-broker":
+              raise SystemExit("Workflow-owned provider must use only the non-secret broker token")
+
           provider = config.get("provider", {}).get("mrhub-openrouter-proxy")
           if not isinstance(provider, dict):
-              raise SystemExit("OpenRouter credential broker provider is missing")
+              raise SystemExit("Effective OpenRouter credential broker provider is missing")
           options = provider.get("options")
           if not isinstance(options, dict):
-              raise SystemExit("OpenRouter credential broker options are missing")
+              raise SystemExit("Effective OpenRouter credential broker options are missing")
           if options.get("baseURL") != "http://127.0.0.1:8765/api/v1":
-              raise SystemExit("OpenRouter provider must use the loopback credential broker")
-          if options.get("apiKey") != "mrhub-local-broker":
-              raise SystemExit("OpenCode must use only the non-secret broker token")
-          print("Verified effective default-deny OpenCode tool policy and broker-only provider auth.")
+              raise SystemExit("Effective OpenRouter provider must use the loopback credential broker")
+          # The debug serializer may omit or mask credential fields. Verify the
+          # literal non-secret key in workflow-owned input and the effective endpoint separately.
+          print("Verified effective default-deny policy and workflow-owned broker-only provider configuration.")
           PY
 
       - name: Run one focused development cycle
