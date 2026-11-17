@@ -265,9 +265,9 @@ class VideoGenerationWorkerHandler:
             provider_job_id = submission.provider_job_id
             if submission.status is not GenerationStatus.UNKNOWN_OUTCOME:
                 self.jobs.transition_under_lease(
-                owner, generation_id, "running", lease=lease,
-                provider_job_id=str(provider_job_id),
-                progress_percent=submission.progress_percent,
+                    owner, generation_id, "running", lease=lease,
+                    provider_job_id=str(provider_job_id),
+                    progress_percent=submission.progress_percent,
                 )
 
         if lease_lost.is_set():
@@ -340,6 +340,14 @@ class VideoGenerationWorkerHandler:
                 ),
             )
             return {"generation_id": str(generation_id), "status": target}
+        if result.status is GenerationStatus.RUNNING and not cancellation_requested:
+            current = self.jobs.get(owner, generation_id)
+            if current is not None and current.get("cancellation_requested_at") is not None:
+                return self._reconcile(
+                    provider, provider_name, model_name, owner, generation_id,
+                    provider_job_id, lease, lease_lost,
+                    initial_status="running", cancellation_requested=True,
+                )
         if result.status is GenerationStatus.UNKNOWN_OUTCOME:
             self.jobs.transition_under_lease(
                 owner, generation_id, "unknown_outcome", lease=lease,
