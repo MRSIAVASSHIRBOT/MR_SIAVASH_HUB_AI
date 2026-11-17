@@ -246,7 +246,7 @@ class VideoGenerationJobRepository:
         generation_id = str(row["generation_id"])
         owner_user_id = str(row["owner_user_id"])
         payload = None
-        if job_status == "queued":
+        if job_status == "queued" and row["cancellation_requested_at"] is None:
             if any(
                 row[field] is None
                 for field in ("envelope_version", "nonce_b64", "ciphertext_b64")
