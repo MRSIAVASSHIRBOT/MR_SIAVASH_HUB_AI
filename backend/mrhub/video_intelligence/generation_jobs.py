@@ -742,10 +742,7 @@ class VideoGenerationJobRepository:
                     actor_id=owner_user_id,
                     metadata={
                         "previous_status": generation_status,
-                        "task_requeued": requeued,
-                        "provider_job_reference_present": (
-                            row["provider_job_id"] is not None
-                        ),
+                        "reason_code": "provider_cancellation_requested",
                     },
                 )
                 audit_payload = audit_event.model_dump(mode="json")
