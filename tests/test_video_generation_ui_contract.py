@@ -61,7 +61,7 @@ def test_video_generation_history_ui_supports_provider_confirmed_cancellation():
     end = app.index("\n  async function refreshAll()", start)
     history_ui = app[start:end]
 
-    assert '["prepared", "queued"].includes(job.status)' in history_ui
+    assert '["prepared", "queued"].includes(job.status) && !job.cancellation_requested' in history_ui
     assert '{ method: "DELETE" }' in history_ui
     assert "/video-intelligence/generations/" in history_ui
     assert "window.confirm" in history_ui
