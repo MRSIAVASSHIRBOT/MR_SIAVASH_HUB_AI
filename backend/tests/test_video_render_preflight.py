@@ -10,6 +10,7 @@ import pytest
 
 from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import VideoTimelineDraftRepository
+
 render_preflight = importlib.import_module("mrhub.video_intelligence.render_preflight")
 
 
