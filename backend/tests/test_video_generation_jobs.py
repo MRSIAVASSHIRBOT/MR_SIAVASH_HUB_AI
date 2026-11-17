@@ -1513,3 +1513,35 @@ def test_active_generation_cancellation_is_owner_scoped_and_terminal_jobs_are_no
     assert terminal["status"] == "succeeded"
     assert terminal["cancellation_requested"] is False
     assert repository.get("owner-a", generation_id)["status"] == "succeeded"
+
+
+
+def test_cancellation_is_honored_when_worker_claimed_task_before_generation_transition(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"f" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-claimed")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.RUNNING.value, str(task_id)),
+        )
+
+    requested = repository.request_cancellation("owner-a", generation_id)
+
+    assert requested["status"] == "queued"
+    assert requested["cancellation_requested"] is True
+    assert requested["created"] is False
+    assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
+    loaded = repository.load_for_worker(task_id)
+    assert loaded["status"] == "queued"
+    assert loaded["cancellation_requested"] is True
