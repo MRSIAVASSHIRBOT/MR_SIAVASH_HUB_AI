@@ -671,7 +671,10 @@ class VideoGenerationJobRepository:
                 generation_status == "queued"
                 and task_status == TaskStatus.RUNNING.value
             )
-            if generation_status not in {"submitting", "unknown_outcome", "running"} and not claimed_before_submit:
+            if (
+                generation_status not in {"submitting", "unknown_outcome", "running"}
+                and not claimed_before_submit
+            ):
                 raise VideoGenerationCancellationConflict(
                     "Generation is not in a cancellable lifecycle state"
                 )
@@ -740,7 +743,9 @@ class VideoGenerationJobRepository:
                     metadata={
                         "previous_status": generation_status,
                         "task_requeued": requeued,
-                        "provider_job_reference_present": row["provider_job_id"] is not None,
+                        "provider_job_reference_present": (
+                            row["provider_job_id"] is not None
+                        ),
                     },
                 )
                 audit_payload = audit_event.model_dump(mode="json")
@@ -802,7 +807,10 @@ class VideoGenerationJobRepository:
         with self.tasks._connection() as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [
-            {**dict(row), "cancellation_requested": bool(row["cancellation_requested"])}
+            {
+                **dict(row),
+                "cancellation_requested": bool(row["cancellation_requested"]),
+            }
             for row in rows
         ]
 
