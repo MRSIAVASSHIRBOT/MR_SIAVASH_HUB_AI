@@ -1402,3 +1402,110 @@ def test_generation_history_rejects_partial_cursor_and_unbounded_limit(tmp_path)
         )
     with pytest.raises(ValueError, match="limit must be between 1 and 101"):
         repository.list_for_owner("owner-a", limit=102)
+
+
+
+def test_active_generation_cancellation_is_persisted_and_requeues_the_same_task(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"c" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-active")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    repository.transition("owner-a", generation_id, "queued")
+    repository.transition(
+        "owner-a", generation_id, "submitting", provider_job_id="provider-job-active"
+    )
+    repository.transition("owner-a", generation_id, "running")
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.SUCCEEDED.value, str(task_id)),
+        )
+
+    requested = repository.request_cancellation("owner-a", generation_id)
+
+    assert requested["status"] == "running"
+    assert requested["cancellation_requested"] is True
+    assert requested["created"] is True
+    assert requested["execution"] == "provider_cancellation_queued"
+    assert repository.tasks.get(task_id).status is TaskStatus.QUEUED
+    loaded = repository.load_for_worker(task_id)
+    assert loaded["cancellation_requested"] is True
+    assert loaded["provider_job_id"] == "provider-job-active"
+    assert "request" not in loaded
+    assert repository.get("owner-a", generation_id)["cancellation_requested_at"] is not None
+    with repository.tasks._connection() as connection:
+        audit_count = connection.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE event_type = 'video_generation.cancellation_requested'
+                 AND subject_id = ? AND actor_id = ?""",
+            (str(generation_id), "owner-a"),
+        ).fetchone()[0]
+    assert audit_count == 1
+
+
+def test_active_generation_cancellation_does_not_steal_a_running_worker_lease(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"d" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-running-worker")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+    task_id = UUID(linked["task_id"])
+    repository.transition("owner-a", generation_id, "queued")
+    repository.transition(
+        "owner-a", generation_id, "submitting", provider_job_id="provider-job-running"
+    )
+    repository.transition("owner-a", generation_id, "running")
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.RUNNING.value, str(task_id)),
+        )
+
+    requested = repository.request_cancellation("owner-a", generation_id)
+
+    assert requested["created"] is False
+    assert requested["execution"] == "provider_cancellation_active"
+    assert repository.tasks.get(task_id).status is TaskStatus.RUNNING
+    assert repository.load_for_worker(task_id)["cancellation_requested"] is True
+
+
+def test_active_generation_cancellation_is_owner_scoped_and_terminal_jobs_are_not_changed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"e" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request("cancel-owner-scope")
+    )
+    generation_id = UUID(accepted["generation_id"])
+    repository.enqueue("owner-a", generation_id)
+    repository.transition("owner-a", generation_id, "queued")
+    repository.transition(
+        "owner-a", generation_id, "submitting", provider_job_id="provider-job-terminal"
+    )
+    repository.transition("owner-a", generation_id, "running")
+    repository.transition("owner-a", generation_id, "succeeded")
+    assert repository.request_cancellation("owner-b", generation_id) is None
+    terminal = repository.request_cancellation("owner-a", generation_id)
+    assert terminal["status"] == "succeeded"
+    assert terminal["cancellation_requested"] is False
+    assert repository.get("owner-a", generation_id)["status"] == "succeeded"
