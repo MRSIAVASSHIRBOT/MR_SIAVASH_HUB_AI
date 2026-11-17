@@ -267,7 +267,13 @@ def list_video_generation_history(
         before_generation_id=before_generation_id,
     )
     has_more = len(items) > limit
-    page = items[:limit]
+    page = [
+        {
+            **item,
+            "cancellation_requested": bool(item.get("cancellation_requested", False)),
+        }
+        for item in items[:limit]
+    ]
     next_cursor = None
     if has_more and page:
         last = page[-1]
@@ -300,6 +306,10 @@ def get_video_generation_status(
         "output_width": generation["output_width"],
         "output_height": generation["output_height"],
         "error_code": generation["error_code"],
+        "cancellation_requested": (
+            generation["status"] in {"submitting", "running", "unknown_outcome"}
+            and generation.get("cancellation_requested_at") is not None
+        ),
         "created_at": generation["created_at"],
         "updated_at": generation["updated_at"],
     }
@@ -308,12 +318,13 @@ def get_video_generation_status(
 @router.delete("/generations/{generation_id}")
 def cancel_video_generation(
     generation_id: UUID,
+    response: Response,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
-    """Cancel only an owner-pending generation before provider submission."""
+    """Request cancellation and let the fenced Worker confirm provider outcome."""
     jobs = VideoGenerationJobRepository(get_settings().database_path)
     try:
-        result = jobs.cancel_pending(user.user_id, generation_id)
+        result = jobs.request_cancellation(user.user_id, generation_id)
     except VideoGenerationCancellationConflict as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -327,6 +338,8 @@ def cancel_video_generation(
         ) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Generation job not found")
+    if result.get("created") is True:
+        response.status_code = status.HTTP_202_ACCEPTED
     return result
 
 
