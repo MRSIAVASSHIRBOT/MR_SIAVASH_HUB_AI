@@ -46,7 +46,7 @@ The Hub API defaults to status-only access when the scopes field is omitted. Cli
 - video:render: submit a saved, renderer-compatible owner-owned storyboard revision to the existing immutable-snapshot FFmpeg render queue. This is deterministic local rendering, not generative AI; it does not call a generation provider or transfer media to a remote service.
 - video:cancel: cancel or request cancellation of owner-scoped local FFmpeg renders, and cancel only prepared or queued provider-generation jobs before provider submission. Active or ambiguous external provider work remains non-cancellable through this scope.
 
-No Agent execution, approval decisions, content publishing or arbitrary tools are exposed through this integration. Local render cancellation is limited to the paired owner's bounded FFmpeg job; external provider generation remains non-cancellable once active or ambiguous. Existing paired clients do not gain new memory or video scopes automatically; the owner must update the existing client scopes or issue a new pairing challenge with the exact scopes.
+No Agent execution, task approval decisions, content publishing or arbitrary tools are exposed through this integration. The only write capability is the separately scoped, explicit approval marker on one active memory entry; it cannot edit or delete memory. Local render cancellation is limited to the paired owner's bounded FFmpeg job; external provider generation remains non-cancellable once active or ambiguous. Existing paired clients do not gain new memory or video scopes automatically; the owner must update the existing client scopes or issue a new pairing challenge with the exact scopes.
 
 ## Separate Cloudflare Edge + Local Bridge transport
 
@@ -60,7 +60,7 @@ The proposed path is:
 4. The Bridge calls only the loopback Hub API (`http://127.0.0.1:8000`) and stores Hub access/refresh credentials in the operating-system Keyring.
 5. The Bridge submits a bounded reply to the Worker; the Worker validates the lease and sends the reply through Telegram.
 
-The Worker must never call the local Hub directly. Do not create a public tunnel, expose the Hub port, or place Hub bearer credentials in D1, Worker variables, browser storage or Telegram messages. The initial command surface is limited to pairing, status and explicitly scoped task listing; it does not authorize shell execution, arbitrary tools, Agent execution, approval decisions, publishing or destructive operations.
+The Worker must never call the local Hub directly. Do not create a public tunnel, expose the Hub port, or place Hub bearer credentials in D1, Worker variables, browser storage or Telegram messages. The initial transport does not authorize shell execution, arbitrary tools, Agent execution, task approval decisions, publishing or destructive operations. Memory review is limited to read-only inspection unless the owner separately grants memory:write for one explicit approval marker.
 
 ### Provisioning and rollout gates
 
