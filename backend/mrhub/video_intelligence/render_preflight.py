@@ -11,6 +11,7 @@ from uuid import UUID
 
 from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.video_intelligence.jobs import VideoAnalysisJobRepository
+from mrhub.video_intelligence.render import MAX_RENDER_SOURCE_SNAPSHOT_BYTES
 from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import (
     VideoTimelineDraftRepository,
@@ -149,13 +150,25 @@ def inspect_video_render_preflight(
                     "All referenced owner-owned source files exist and match their recorded sizes.",
                 )
             )
+            checks.append(
+                _check(
+                    "source_snapshot_budget",
+                    "pass" if source_bytes <= MAX_RENDER_SOURCE_SNAPSHOT_BYTES else "fail",
+                    "The verified source snapshot fits the bounded local render budget."
+                    if source_bytes <= MAX_RENDER_SOURCE_SNAPSHOT_BYTES
+                    else (
+                        "Referenced source files exceed the 1 GiB local snapshot budget; "
+                        "reduce the source set before rendering."
+                    ),
+                )
+            )
             if source_bytes > MAX_PREFLIGHT_SOURCE_HASH_BYTES:
                 checks.append(
                     _check(
                         "source_integrity",
                         "warning",
                         "The preflight checksum budget was exceeded; "
-                        "the worker will verify every source before rendering.",
+                        "the worker will hash and snapshot every source before rendering.",
                     )
                 )
             elif all(media.verify_file_integrity(asset) for asset in source_assets):
@@ -266,7 +279,33 @@ def inspect_video_render_preflight(
             else "warning",
             "At least the maximum bounded output size is available."
             if free_bytes is not None and free_bytes >= MAX_OUTPUT_BYTES
-            else "Free space is below the 100 MB output cap or could not be measured; the worker will recheck during execution.",
+            else (
+                "Free space is below the 100 MB output cap or could not be measured; "
+                "the worker will recheck during execution."
+            ),
+        )
+    )
+    snapshot_space_known = source_files_ready and free_bytes is not None
+    snapshot_space_ready = (
+        snapshot_space_known
+        and source_bytes <= MAX_RENDER_SOURCE_SNAPSHOT_BYTES
+        and free_bytes >= source_bytes + MAX_OUTPUT_BYTES
+    )
+    checks.append(
+        _check(
+            "snapshot_storage",
+            "pass" if snapshot_space_ready else "fail" if snapshot_space_known else "warning",
+            "The media volume has room for a verified source snapshot and the maximum output."
+            if snapshot_space_ready
+            else (
+                "The media volume does not have enough free space for the "
+                "verified source snapshot and bounded output."
+            )
+            if snapshot_space_known
+            else (
+                "Snapshot storage capacity could not be measured; "
+                "the worker will enforce its byte budget."
+            ),
         )
     )
 
@@ -285,12 +324,14 @@ def inspect_video_render_preflight(
         ),
         "aspect_ratio": timeline.output_aspect_ratio if timeline is not None else None,
         "max_output_bytes": MAX_OUTPUT_BYTES,
+        "max_source_snapshot_bytes": MAX_RENDER_SOURCE_SNAPSHOT_BYTES,
         "execution": "not_started",
         "state_changed": False,
         "provider_calls": 0,
         "remote_calls": 0,
         "note": (
-            "This is a read-only snapshot. The worker rechecks ownership, file access, "
-            "and active media leases immediately before rendering."
+            "This is a read-only snapshot. The worker rechecks ownership, copies each "
+            "source into a private SHA-256-verified snapshot, and enforces the same "
+            "source-byte budget before FFmpeg starts."
         ),
     }
