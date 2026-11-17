@@ -1217,3 +1217,50 @@ def test_telegram_video_render_status_and_cancel_use_separate_scopes(tmp_path, m
         ("cancel", "local-owner", render_id),
     ]
     get_settings.cache_clear()
+
+
+
+def test_telegram_memory_dream_preview_requires_memory_scope_and_is_read_only(tmp_path, monkeypatch):
+    from mrhub.memory.repository import MemoryRepository
+
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    denied_payload, denied_challenge = _create_pairing(client, scopes=["status:read"])
+    denied_tokens = _exchange(client, denied_payload, denied_challenge).json()
+    denied = client.post(
+        "/integrations/telegram/memory/dream/preview",
+        json={"limit": 100},
+        headers=_bot_headers(denied_tokens),
+    )
+    assert denied.status_code == 403
+
+    payload, challenge = _create_pairing(
+        client, telegram_user_id=987654321, scopes=["memory:search"]
+    )
+    tokens = _exchange(client, payload, challenge).json()
+    repository = MemoryRepository(get_settings().database_path)
+    repository.create(
+        "local-owner",
+        {
+            "category": "engineering",
+            "content": "SQLite FTS5 provides local lexical memory retrieval",
+        },
+    )
+    repository.create(
+        "local-owner",
+        {
+            "category": "engineering",
+            "content": "SQLite FTS5 provides local lexical memory retrieval",
+        },
+    )
+
+    response = client.post(
+        "/integrations/telegram/memory/dream/preview",
+        json={"limit": 100},
+        headers=_bot_headers(tokens, telegram_user_id=987654321),
+    )
+    assert response.status_code == 200
+    assert response.json()["proposal_count"] == 1
+    assert response.json()["state_changed"] is False
+    assert response.json()["proposals"][0]["requires_owner_review"] is True
+    assert len(repository.list_entries("local-owner")) == 2
+    get_settings.cache_clear()
