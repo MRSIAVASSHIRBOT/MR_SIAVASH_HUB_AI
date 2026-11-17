@@ -158,7 +158,6 @@ def test_unknown_outcome_retains_encrypted_payload_for_reconciliation(
         "owner-a", analysis_id, "local", "renderer-v1", _request()
     )
     generation_id = UUID(accepted["generation_id"])
-    repository.transition("owner-a", generation_id, "queued")
     repository.transition("owner-a", generation_id, "submitting")
     record = repository.transition(
         "owner-a", generation_id, "unknown_outcome", error_code="provider_timeout"
@@ -206,7 +205,6 @@ def test_successful_generation_registers_private_output_asset_atomically(
         "owner-a", analysis_id, "local", "renderer-v1", _request()
     )
     generation_id = UUID(accepted["generation_id"])
-    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-1"
     )
@@ -275,7 +273,6 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
         "owner-a", analysis_id, "local", "renderer-v1", _request()
     )
     generation_id = UUID(accepted["generation_id"])
-    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-2"
     )
@@ -914,6 +911,9 @@ def test_provider_cancellation_uses_distinct_terminal_error_code(
     calls = []
 
     class Jobs:
+        def get(self, _owner, _requested_id):
+            return None
+
         def transition_under_lease(self, owner, requested_id, target, **kwargs):
             calls.append((owner, requested_id, target, kwargs))
             return {"status": target}
@@ -1419,7 +1419,6 @@ def test_active_generation_cancellation_is_persisted_and_requeues_the_same_task(
     generation_id = UUID(accepted["generation_id"])
     linked = repository.enqueue("owner-a", generation_id)
     task_id = UUID(linked["task_id"])
-    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-active"
     )
@@ -1468,7 +1467,6 @@ def test_active_generation_cancellation_does_not_steal_a_running_worker_lease(
     generation_id = UUID(accepted["generation_id"])
     linked = repository.enqueue("owner-a", generation_id)
     task_id = UUID(linked["task_id"])
-    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-running"
     )
@@ -1500,7 +1498,6 @@ def test_active_generation_cancellation_is_owner_scoped_and_terminal_jobs_are_no
     )
     generation_id = UUID(accepted["generation_id"])
     repository.enqueue("owner-a", generation_id)
-    repository.transition("owner-a", generation_id, "queued")
     repository.transition(
         "owner-a", generation_id, "submitting", provider_job_id="provider-job-terminal"
     )
