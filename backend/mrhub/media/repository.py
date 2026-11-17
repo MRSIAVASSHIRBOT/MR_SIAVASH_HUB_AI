@@ -4,7 +4,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -102,6 +104,89 @@ class MediaAssetRepository:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 digest.update(chunk)
         return hmac.compare_digest(digest.hexdigest(), expected_hash)
+
+    def create_verified_snapshot(
+        self, asset: dict[str, object], destination: Path
+    ) -> Path:
+        """Copy one verified asset into a private immutable render input snapshot.
+
+        The source is opened once, hashed while copying, and checked through the
+        same descriptor before and after the copy. FFmpeg must consume this snapshot,
+        never reopen the mutable storage path after a separate integrity check.
+        """
+        storage_key = asset.get("storage_key")
+        expected_hash = asset.get("content_hash")
+        expected_size = asset.get("file_size")
+        if (
+            not isinstance(storage_key, str)
+            or not isinstance(expected_hash, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None
+            or isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or not 0 < expected_size <= MAX_OUTPUT_BYTES
+        ):
+            raise ValueError("Media integrity metadata is invalid")
+
+        # Validate the opaque storage key and containment before using the raw path
+        # so a symlink itself can be rejected rather than silently resolved.
+        self.file_path(storage_key)
+        source_path = self.storage_root.resolve() / storage_key
+        destination_path = Path(destination)
+        descriptor: int | None = None
+        created = False
+        try:
+            path_before = source_path.lstat()
+            if not stat.S_ISREG(path_before.st_mode) or path_before.st_size != expected_size:
+                raise ValueError("Media source is not a regular file of the recorded size")
+            flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(source_path, flags)
+            before = os.fstat(descriptor)
+            identity = (before.st_dev, before.st_ino)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or identity != (path_before.st_dev, path_before.st_ino)
+                or before.st_size != expected_size
+            ):
+                raise ValueError("Media source changed before snapshot creation")
+
+            digest = hashlib.sha256()
+            copied = 0
+            with os.fdopen(descriptor, "rb", closefd=False) as source:
+                with destination_path.open("xb") as snapshot:
+                    created = True
+                    while chunk := source.read(1024 * 1024):
+                        copied += len(chunk)
+                        if copied > expected_size:
+                            raise ValueError("Media source exceeded its recorded size")
+                        digest.update(chunk)
+                        snapshot.write(chunk)
+                    snapshot.flush()
+
+            after = os.fstat(descriptor)
+            path_after = source_path.lstat()
+            stable_metadata = (
+                before.st_dev == after.st_dev
+                and before.st_ino == after.st_ino
+                and before.st_size == after.st_size
+                and before.st_mtime_ns == after.st_mtime_ns
+                and before.st_ctime_ns == after.st_ctime_ns
+                and stat.S_ISREG(path_after.st_mode)
+                and (path_after.st_dev, path_after.st_ino) == identity
+            )
+            if (
+                not stable_metadata
+                or copied != expected_size
+                or not hmac.compare_digest(digest.hexdigest(), expected_hash)
+            ):
+                raise ValueError("Media source integrity verification failed")
+            return destination_path
+        except BaseException:
+            if created:
+                destination_path.unlink(missing_ok=True)
+            raise
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
     def create_output_sink(
         self, storage_key: str, *, max_bytes: int = MAX_OUTPUT_BYTES

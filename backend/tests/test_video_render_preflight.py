@@ -155,6 +155,9 @@ def test_preflight_passes_for_prepared_owner_owned_sources_without_starting_work
         "analysis_completed",
         "source_bounds",
         "source_files",
+        "source_integrity",
+        "source_snapshot_budget",
+        "snapshot_storage",
         "ffmpeg_available",
         "ffprobe_available",
         "output_storage",
@@ -197,6 +200,17 @@ def test_preflight_defers_large_checksum_work_to_the_worker(tmp_path, monkeypatc
     assert "source_integrity" in result["warnings"]
 
 
+def test_preflight_rejects_source_sets_over_the_snapshot_budget(tmp_path, monkeypatch):
+    _install_fakes(monkeypatch, tmp_path)
+    monkeypatch.setattr(render_preflight, "MAX_RENDER_SOURCE_SNAPSHOT_BYTES", 1)
+    result = render_preflight.inspect_video_render_preflight(
+        tmp_path / "hub.sqlite", OWNER, DRAFT_ID
+    )
+    statuses = {item["code"]: item["status"] for item in result["checks"]}
+    assert result["ready"] is False
+    assert statuses["source_snapshot_budget"] == "fail"
+
+
 def test_preflight_requires_both_local_ffmpeg_tools(tmp_path, monkeypatch):
     _install_fakes(monkeypatch, tmp_path)
     monkeypatch.setattr(
@@ -213,7 +227,7 @@ def test_preflight_requires_both_local_ffmpeg_tools(tmp_path, monkeypatch):
     assert statuses["ffprobe_available"] == "pass"
 
 
-def test_preflight_reports_low_disk_as_warning_without_claiming_failure(tmp_path, monkeypatch):
+def test_preflight_blocks_when_snapshot_and_output_cannot_fit(tmp_path, monkeypatch):
     _install_fakes(monkeypatch, tmp_path)
     monkeypatch.setattr(
         render_preflight.shutil,
@@ -224,8 +238,9 @@ def test_preflight_reports_low_disk_as_warning_without_claiming_failure(tmp_path
         tmp_path / "hub.sqlite", OWNER, DRAFT_ID
     )
     statuses = {item["code"]: item["status"] for item in result["checks"]}
-    assert result["ready"] is True
+    assert result["ready"] is False
     assert statuses["disk_space"] == "warning"
+    assert statuses["snapshot_storage"] == "fail"
     assert result["warnings"] == ["disk_space"]
 
 

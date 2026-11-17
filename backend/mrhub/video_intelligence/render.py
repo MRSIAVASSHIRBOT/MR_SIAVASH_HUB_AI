@@ -24,6 +24,7 @@ MAX_RENDER_CLIPS = 125
 MAX_RENDER_DURATION_SECONDS = 60
 MAX_RENDER_DIMENSION = 1920
 MAX_RENDER_TIMEOUT_SECONDS = 180
+MAX_RENDER_SOURCE_SNAPSHOT_BYTES = 1024 * 1024 * 1024
 MAX_PROBE_OUTPUT_BYTES = 16_384
 OUTPUT_DIMENSIONS = {
     "9:16": (1080, 1920),
@@ -202,9 +203,9 @@ def render_video_timeline(
     """Render and verify an MP4, publishing it only after successful probing.
 
     The caller must resolve every source asset through the authenticated owner's
-    media repository immediately before calling this function. This function
-    independently validates the timeline, local file existence, output location,
-    process bounds, and generated MP4 metadata.
+    media repository and pass private, hash-verified snapshots rather than mutable
+    storage paths. This function independently validates the timeline, local file
+    existence, output location, process bounds, and generated MP4 metadata.
     """
     try:
         validated = (
