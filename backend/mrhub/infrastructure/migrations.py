@@ -1278,6 +1278,23 @@ MIGRATIONS = (
             "ALTER TABLE video_generation_jobs ADD COLUMN cancellation_requested_at TEXT",
         ),
     ),
+    Migration.build(
+        48,
+        "owner_scoped_video_scene_analysis_jobs",
+        (
+            """CREATE TABLE IF NOT EXISTS video_scene_jobs (
+                job_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id) ON DELETE CASCADE,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                source_asset_id TEXT REFERENCES content_assets(asset_id) ON DELETE SET NULL,
+                threshold REAL NOT NULL CHECK (threshold >= 0.05 AND threshold <= 0.95),
+                max_scene_changes INTEGER NOT NULL CHECK (max_scene_changes BETWEEN 1 AND 24),
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_video_scene_jobs_owner_created ON video_scene_jobs(owner_user_id, created_at DESC, job_id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_video_scene_jobs_source_asset ON video_scene_jobs(source_asset_id)",
+        ),
+    ),
 )
 
 
