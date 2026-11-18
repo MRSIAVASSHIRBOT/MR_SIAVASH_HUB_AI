@@ -1,8 +1,8 @@
 import sqlite3
 from uuid import UUID
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 
 from client_helpers import authenticated_client, run_worker_once
 from mrhub.api.routes.video_intelligence import cancel_video_scene_job, get_video_scene_job
