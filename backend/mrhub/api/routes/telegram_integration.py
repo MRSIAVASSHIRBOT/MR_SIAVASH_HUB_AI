@@ -54,6 +54,14 @@ from mrhub.video_intelligence.render_jobs import (
 from mrhub.video_intelligence.render_preflight import inspect_video_render_preflight
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
+from mrhub.video_intelligence.scene_jobs import (
+    SceneJobCapacityExceeded,
+    SceneJobSourceNotFound,
+    SceneJobSourceNotReady,
+    SceneJobUnsupportedMedia,
+    VideoSceneJobConflict,
+    VideoSceneJobRepository,
+)
 from mrhub.video_intelligence.timeline import VideoTimeline
 from mrhub.video_intelligence.timeline_drafts import VideoTimelineDraftRepository
 
@@ -68,6 +76,7 @@ TelegramScope = Literal[
     "memory:search",
     "memory:write",
     "video:read",
+    "video:analyze",
     "video:render",
     "video:cancel",
 ]
@@ -128,6 +137,14 @@ class TelegramVideoRenderSubmissionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft_id: UUID
+
+
+class TelegramVideoSceneSubmissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: UUID
+    threshold: float = Field(default=0.30, ge=0.05, le=0.95, strict=True)
+    max_scene_changes: int = Field(default=24, ge=1, le=24, strict=True)
 
 
 def _encode_telegram_task_event_cursor(created_at: str, event_id: str) -> str:
@@ -287,6 +304,20 @@ def _telegram_video_render_summary(render: dict[str, object]) -> dict[str, objec
         "updated_at": render.get("updated_at"),
         "output_available": bool(render.get("output_asset_id")),
         "output_metadata": render.get("output_metadata"),
+    }
+
+
+def _telegram_video_scene_job_summary(job: dict[str, object]) -> dict[str, object]:
+    """Expose only the paired owner's scene-job state and bounded timestamp result."""
+    return {
+        "job_id": job.get("job_id"),
+        "status": job.get("status"),
+        "created_at": job.get("created_at"),
+        "updated_at": job.get("updated_at"),
+        "threshold": job.get("threshold"),
+        "max_scene_changes": job.get("max_scene_changes"),
+        "result": job.get("result"),
+        "error_code": job.get("error_code"),
     }
 
 
@@ -902,6 +933,112 @@ def cancel_telegram_video_render(
         "status": result["status"],
         "cancellation_requested": bool(result.get("cancellation_requested", False)),
     }
+
+
+
+@router.post("/video/scene-jobs", status_code=202)
+def submit_telegram_video_scene_job(
+    payload: TelegramVideoSceneSubmissionRequest,
+    response: Response,
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:analyze"))
+    ],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Queue bounded local scene analysis for the paired owner's source asset."""
+    try:
+        accepted, created = VideoSceneJobRepository(get_settings().database_path).create(
+            identity.owner_user_id,
+            payload.asset_id,
+            idempotency_key=idempotency_key,
+            threshold=payload.threshold,
+            max_scene_changes=payload.max_scene_changes,
+        )
+    except VideoSceneJobConflict as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except SceneJobSourceNotFound as exc:
+        raise HTTPException(status_code=404, detail="Telegram video asset not found") from exc
+    except SceneJobUnsupportedMedia as exc:
+        raise HTTPException(status_code=415, detail="Scene analysis requires a video asset") from exc
+    except SceneJobSourceNotReady as exc:
+        raise HTTPException(status_code=409, detail="Telegram video asset is not ready") from exc
+    except SceneJobCapacityExceeded as exc:
+        raise HTTPException(status_code=429, detail="Scene analysis capacity is temporarily full") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not created:
+        response.status_code = 200
+    _tasks_repository()
+    AuditLogger(_tasks_repository()).record(
+        event_type="video.scene_job.submitted",
+        outcome="queued" if created else "idempotent_replay",
+        subject_type="video_scene_job",
+        subject_id=str(accepted["job_id"]),
+        actor_type="telegram_client",
+        actor_id=identity.client_id,
+        metadata={
+            "task_type": "video.scene_detection",
+            "threshold": payload.threshold,
+            "max_scene_changes": payload.max_scene_changes,
+        },
+    )
+    return {
+        "job_id": accepted["job_id"],
+        "status": accepted["status"],
+        "created_at": accepted["created_at"],
+        "created": created,
+        "execution": "queued",
+    }
+
+
+@router.get("/video/scene-jobs/{job_id}")
+def get_telegram_video_scene_job(
+    job_id: UUID,
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
+) -> dict[str, object]:
+    """Read a scene job only within the paired owner's account."""
+    job = VideoSceneJobRepository(get_settings().database_path).get(
+        identity.owner_user_id, job_id
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="Telegram video scene job not found")
+    return _telegram_video_scene_job_summary(job)
+
+
+@router.post("/video/scene-jobs/{job_id}/cancel")
+def cancel_telegram_video_scene_job(
+    job_id: UUID,
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:cancel"))
+    ],
+) -> dict[str, object]:
+    """Cancel an owned queued scene job or request cooperative cancellation."""
+    jobs = VideoSceneJobRepository(get_settings().database_path)
+    job = jobs.get(identity.owner_user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Telegram video scene job not found")
+    try:
+        JobEngine(_tasks_repository()).cancel(UUID(str(job["task_id"])))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Telegram video scene job not found") from exc
+    except (InvalidTaskTransition, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail="Telegram video scene job state changed") from exc
+    updated = jobs.get(identity.owner_user_id, job_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Telegram video scene job not found")
+    AuditLogger(_tasks_repository()).record(
+        event_type="video.scene_job.cancelled",
+        outcome="cancelled",
+        subject_type="video_scene_job",
+        subject_id=str(job_id),
+        actor_type="telegram_client",
+        actor_id=identity.client_id,
+        metadata={"task_type": "video.scene_detection"},
+    )
+    return _telegram_video_scene_job_summary(updated)
 
 
 @router.get("/tasks")
