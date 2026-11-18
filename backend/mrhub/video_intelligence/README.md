@@ -16,6 +16,7 @@ A modular, owner-scoped foundation for video analysis and prompt generation.
 - Deterministic, provider-neutral prompt composition that validates detected scene-cut timestamps and carries them into per-beat timing cues without treating heuristic cuts as semantic descriptions.
 - Authenticated brand-profile CRUD with per-user ownership, unique names per owner, and image-asset ownership validation.
 - Authenticated video metadata inspection for owned MP4/QuickTime assets.
+- Owner-scoped asynchronous scene-cut jobs on the shared pull worker, with idempotent admission, per-owner/global queue caps, verified media snapshots, cooperative cancellation, and sanitized timestamp-only results.
 - Durable owner-scoped analysis submission with mandatory idempotency keys, AES-GCM encrypted request payloads, lease-fenced results, and worker recovery cleanup.
 - Bounded admission of up to two active analyses per owner and 25 globally; idempotent retries are resolved before capacity enforcement.
 - Admission accepts only assets in `stored` or `processed` state and the Worker rechecks readiness before analysis to close a concurrent-transcode race.
@@ -39,6 +40,10 @@ All endpoints require an authenticated owner session:
 - `PUT /video-intelligence/brands/{profile_id}` — update an owned profile.
 - `DELETE /video-intelligence/brands/{profile_id}` — delete an owned profile.
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
+- `POST /video-intelligence/assets/{asset_id}/scene-jobs` — queue bounded scene-cut analysis; requires an `Idempotency-Key` header.
+- `GET /video-intelligence/scene-jobs?limit=10&cursor=...` — list a bounded owner-scoped page with a stable opaque cursor.
+- `GET /video-intelligence/scene-jobs/{job_id}` — inspect the owner's scene-job status and timestamp-only results.
+- `POST /video-intelligence/scene-jobs/{job_id}/cancel` — cancel an owned queued job or request bounded cooperative cancellation.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
 - `GET /video-intelligence/analyses/{analysis_id}` — retrieve status and bounded results for an analysis owned by the current user.
 - `POST /video-intelligence/analyses/{analysis_id}/prompts/compose` — compose one prompt per source asset from a completed, validated semantic analysis. The optional pair `timeline_draft_id` + `timeline_draft_version` applies that exact owner-scoped storyboard revision to its matching asset; a stale version returns `409`. Composition never starts video generation.

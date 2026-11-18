@@ -50,6 +50,11 @@ def create_task(
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> TaskRecord:
+    if payload.task_type == "video.scene_detection":
+        raise HTTPException(
+            status_code=403,
+            detail="Use the dedicated video-intelligence scene-job API",
+        )
     risk_class = policy.classify_task_type(payload.task_type)
     decision = policy.evaluate(ActionRequest(
         action="task.submit",
@@ -121,7 +126,7 @@ def create_task(
 @router.get("/{task_id}", response_model=TaskRecord)
 def get_task(task_id: UUID) -> TaskRecord:
     task = get_engine().get(task_id)
-    if task is None:
+    if task is None or task.task_type == "video.scene_detection":
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
@@ -129,7 +134,8 @@ def get_task(task_id: UUID) -> TaskRecord:
 @router.get("/{task_id}/result")
 def get_task_result(task_id: UUID) -> dict[str, object]:
     repository = get_repository()
-    if repository.get(task_id) is None:
+    task = repository.get(task_id)
+    if task is None or task.task_type == "video.scene_detection":
         raise HTTPException(status_code=404, detail="Task not found")
     result = WorkerEngine(repository).get_result(task_id)
     if result is None:
@@ -139,4 +145,6 @@ def get_task_result(task_id: UUID) -> dict[str, object]:
 
 @router.get("", response_model=list[TaskRecord])
 def list_tasks(limit: int = Query(default=50, ge=1, le=100)) -> list[TaskRecord]:
-    return list(get_repository().list_recent(limit))
+    tasks = get_repository().list_recent(100)
+    visible = [task for task in tasks if task.task_type != "video.scene_detection"]
+    return list(visible[:limit])

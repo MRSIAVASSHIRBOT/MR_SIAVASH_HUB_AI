@@ -31,6 +31,23 @@ class RetryableWorkerError(WorkerError):
     """A handler may raise this only for a known transient, safe-to-retry condition."""
 
 
+class TerminalWorkerError(WorkerError):
+    """A handler reports a stable, sanitized terminal failure code."""
+
+    def __init__(self, error_code: str) -> None:
+        valid = (
+            bool(error_code)
+            and len(error_code) <= 80
+            and error_code[0].isalpha()
+            and error_code.isascii()
+            and all(char.islower() or char.isdigit() or char == "_" for char in error_code)
+        )
+        if not valid:
+            raise ValueError("Invalid terminal worker error code")
+        super().__init__(error_code)
+        self.error_code = error_code
+
+
 def action_fingerprint(task: TaskRecord) -> str:
     canonical = json.dumps(
         {
@@ -89,6 +106,7 @@ class WorkerEngine:
         self.handlers["video.analysis"] = self._run_video_analysis
         self.handlers["video.render"] = self._run_video_render
         self.handlers["video.generation"] = self._run_video_generation
+        self.handlers["video.scene_detection"] = self._run_video_scene_detection
         self._initialize()
 
     def _now(self) -> datetime:
@@ -174,6 +192,16 @@ class WorkerEngine:
             task, lease=lease, lease_lost=lease_lost
         )
 
+    def _run_video_scene_detection(
+        self, task: TaskRecord, lease: WorkerLease, lease_lost: Event
+    ) -> dict[str, object]:
+        """Run bounded scene detection under the canonical worker lease."""
+        from mrhub.video_intelligence.scene_worker import VideoSceneWorkerHandler
+
+        return VideoSceneWorkerHandler(self.repository)(
+            task, lease=lease, lease_lost=lease_lost
+        )
+
     def _recover_interrupted(self) -> None:
         """Recover stale jobs without replaying an ambiguous workflow step."""
         cutoff = (self._now() - timedelta(seconds=self.STALE_AFTER_SECONDS)).isoformat()
@@ -212,12 +240,16 @@ class WorkerEngine:
                     recovered_status = TaskStatus.FAILED
                     audit_outcome = "failed"
                     reason_code = "worker_interrupted"
+                    scene_job = connection.execute(
+                        "SELECT job_id FROM video_scene_jobs WHERE task_id = ?",
+                        (str(task.task_id),),
+                    ).fetchone()
                     video_analysis = connection.execute(
                         """SELECT analysis_id, owner_user_id, status FROM video_analysis_runs
                            WHERE task_id = ?""",
                         (str(task.task_id),),
                     ).fetchone()
-                    if video_analysis is not None:
+                    if video_analysis is not None or scene_job is not None:
                         # Recovery runs only after the task is older than the stale
                         # threshold and its worker lease has expired. At this point
                         # orphaned file-use locks can be released safely.
@@ -247,6 +279,12 @@ class WorkerEngine:
                             "DELETE FROM video_analysis_payloads WHERE analysis_id = ?",
                             (video_analysis["analysis_id"],),
                         )
+                        connection.execute(
+                            """UPDATE idempotency_records SET status = 'failed'
+                               WHERE task_id = ? AND status IN ('accepted', 'running')""",
+                            (str(task.task_id),),
+                        )
+                    elif scene_job is not None:
                         connection.execute(
                             """UPDATE idempotency_records SET status = 'failed'
                                WHERE task_id = ? AND status IN ('accepted', 'running')""",
@@ -791,12 +829,14 @@ class WorkerEngine:
             return self._finish_failure(task, "handler_not_registered", lease=lease)
 
         try:
-            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis", "video.generation", "video.render"}:
+            if task.task_type in {"agent.workflow", "agent.model_run", "video.analysis", "video.generation", "video.render", "video.scene_detection"}:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)
         except RetryableWorkerError:
             return self._schedule_retry_or_fail(task, lease=lease)
+        except TerminalWorkerError as exc:
+            return self._finish_failure(task, exc.error_code, lease=lease)
         except (ValueError, TypeError, KeyError):
             # Never persist exception text: it may contain private input or secrets.
             return self._finish_failure(task, "handler_failed", lease=lease)

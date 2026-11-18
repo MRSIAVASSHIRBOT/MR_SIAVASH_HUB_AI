@@ -1408,3 +1408,117 @@ def test_telegram_memory_entry_review_requires_separate_read_and_write_scopes(tm
         ).fetchone()
     assert audit == ("memory.approved", "telegram_client", write_payload["client_id"])
     get_settings.cache_clear()
+
+
+def test_telegram_video_scene_jobs_require_explicit_scopes_and_are_owner_scoped(
+    tmp_path, monkeypatch
+):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    asset = client.post(
+        "/content/assets",
+        headers={"X-File-Name": "telegram-scene.mp4", "Content-Type": "video/mp4"},
+        content=b"\x00\x00\x00\x18ftypisom0000",
+    )
+    assert asset.status_code == 201
+    asset_id = asset.json()["asset_id"]
+
+    payload, challenge = _create_pairing(
+        client,
+        telegram_user_id=555555555,
+        scopes=["video:analyze", "video:read", "video:cancel"],
+    )
+    assert challenge["scopes"] == ["video:analyze", "video:cancel", "video:read"]
+    tokens = _exchange(client, payload, challenge).json()
+    headers = _bot_headers(tokens, 555555555)
+
+    accepted = client.post(
+        "/integrations/telegram/video/scene-jobs",
+        json={"asset_id": asset_id, "threshold": 0.4, "max_scene_changes": 12},
+        headers={**headers, "Idempotency-Key": "telegram-scene:555555555:1"},
+    )
+    assert accepted.status_code == 202
+    job_id = accepted.json()["job_id"]
+    assert "task_id" not in accepted.json()
+
+    replay = client.post(
+        "/integrations/telegram/video/scene-jobs",
+        json={"asset_id": asset_id, "threshold": 0.4, "max_scene_changes": 12},
+        headers={**headers, "Idempotency-Key": "telegram-scene:555555555:1"},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["job_id"] == job_id
+
+    status = client.get(
+        f"/integrations/telegram/video/scene-jobs/{job_id}", headers=headers
+    )
+    assert status.status_code == 200
+    assert status.json()["status"] == "queued"
+    assert "task_id" not in status.json()
+    assert "source_asset_id" not in status.json()
+
+    history_second = client.post(
+        "/integrations/telegram/video/scene-jobs",
+        json={"asset_id": asset_id, "threshold": 0.4, "max_scene_changes": 12},
+        headers={**headers, "Idempotency-Key": "telegram-scene:555555555:2"},
+    )
+    assert history_second.status_code == 202
+    history_one = client.get(
+        "/integrations/telegram/video/scene-jobs",
+        params={"limit": 1},
+        headers=headers,
+    )
+    assert history_one.status_code == 200
+    assert history_one.json()["has_more"] is True
+    first_page_id = history_one.json()["items"][0]["job_id"]
+    assert first_page_id in {job_id, history_second.json()["job_id"]}
+    history_two = client.get(
+        "/integrations/telegram/video/scene-jobs",
+        params={"limit": 1, "cursor": history_one.json()["next_cursor"]},
+        headers=headers,
+    )
+    assert history_two.status_code == 200
+    second_page_id = history_two.json()["items"][0]["job_id"]
+    assert second_page_id in {job_id, history_second.json()["job_id"]}
+    assert second_page_id != first_page_id
+
+    cancelled = client.post(
+        f"/integrations/telegram/video/scene-jobs/{job_id}/cancel", headers=headers
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    with sqlite3.connect(database_path) as connection:
+        audit = connection.execute(
+            "SELECT event_type, actor_type, actor_id FROM audit_events "
+            "WHERE event_type = 'video.scene_job.submitted' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    assert audit == (
+        "video.scene_job.submitted", "telegram_client", payload["client_id"]
+    )
+    get_settings.cache_clear()
+
+
+def test_telegram_video_scene_submission_is_denied_without_video_analyze_scope(
+    tmp_path, monkeypatch
+):
+    client, _database_path = _owner_client(tmp_path, monkeypatch)
+    asset = client.post(
+        "/content/assets",
+        headers={"X-File-Name": "scope-test.mp4", "Content-Type": "video/mp4"},
+        content=b"\x00\x00\x00\x18ftypisom0000",
+    )
+    assert asset.status_code == 201
+    payload, challenge = _create_pairing(
+        client, telegram_user_id=666666666, scopes=["video:read"]
+    )
+    tokens = _exchange(client, payload, challenge).json()
+    denied = client.post(
+        "/integrations/telegram/video/scene-jobs",
+        json={"asset_id": asset.json()["asset_id"]},
+        headers={
+            **_bot_headers(tokens, 666666666),
+            "Idempotency-Key": "telegram-scene:666666666:1",
+        },
+    )
+    assert denied.status_code == 403
+    get_settings.cache_clear()

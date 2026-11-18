@@ -77,3 +77,11 @@ class VideoAnalysisAccepted(BaseModel):
     status: Literal["accepted"] = "accepted"
     mode: AnalysisMode
     message: str
+
+class VideoSceneAnalysisRequest(BaseModel):
+    """Strict resource bounds for one asynchronous read-only scene analysis."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    threshold: float = Field(default=0.30, ge=0.05, le=0.95, strict=True)
+    max_scene_changes: int = Field(default=24, ge=1, le=24, strict=True)

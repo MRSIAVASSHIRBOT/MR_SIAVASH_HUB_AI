@@ -21,6 +21,7 @@
       "tasks:create",
       "tasks:read",
       "tasks:result",
+      "video:analyze",
       "video:cancel",
       "video:read",
       "video:render"
@@ -250,6 +251,34 @@
         "auth_mode": "paired_bearer",
         "required_scope": "video:cancel",
         "purpose": "Cancel or request cancellation for one owner-scoped local FFmpeg render."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/video/scene-jobs",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:analyze",
+        "purpose": "Queue bounded owner-scoped local scene-cut analysis for a stored video asset with idempotent admission; no remote provider is called."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/scene-jobs",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "List bounded owner-scoped scene-analysis jobs with stable cursor pagination and timestamp-only results."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/video/scene-jobs/{job_id}",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:read",
+        "purpose": "Read one owner-scoped local scene-analysis job without exposing task IDs or private media paths."
+      },
+      {
+        "method": "POST",
+        "path": "/integrations/telegram/video/scene-jobs/{job_id}/cancel",
+        "auth_mode": "paired_bearer",
+        "required_scope": "video:cancel",
+        "purpose": "Cancel only the paired owner's queued or running local scene-analysis job."
       }
     ],
     "request_constraints": {
@@ -276,7 +305,16 @@
       },
       "video_render_cursor_max_length": 512,
       "telegram_video_download_max_bytes": 48000000,
-      "task_history_cursor_max_length": 512
+      "task_history_cursor_max_length": 512,
+      "video_scene_job_list_limit": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "video_scene_job_cursor_max_length": 512,
+      "video_scene_max_changes": {
+        "minimum": 1,
+        "maximum": 24
+      }
     },
     "error_response": "FastAPI HTTPException detail envelope; consumers must avoid exposing private exception details."
   },

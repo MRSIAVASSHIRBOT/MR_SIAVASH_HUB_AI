@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import sqlite3
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -20,9 +22,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
+from mrhub.domain.tasks import RiskClass
+from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError
 from mrhub.media.repository import MediaAssetRepository
+from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 from mrhub.video_intelligence.edit_spec import EditSpecification
 from mrhub.video_intelligence.generation import VideoGenerationRequest
 from mrhub.video_intelligence.generation_jobs import (
@@ -53,10 +60,19 @@ from mrhub.video_intelligence.render_preflight import inspect_video_render_prefl
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
 from mrhub.video_intelligence.repository import VideoBrandRepository
+from mrhub.video_intelligence.scene_jobs import (
+    SceneJobCapacityExceeded,
+    SceneJobSourceNotFound,
+    SceneJobSourceNotReady,
+    SceneJobUnsupportedMedia,
+    VideoSceneJobConflict,
+    VideoSceneJobRepository,
+)
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
     BrandIdentity,
     VideoAnalysisRequest,
+    VideoSceneAnalysisRequest,
     VideoTechnicalMetadata,
 )
 from mrhub.video_intelligence.service import build_generation_prompt, probe_video
@@ -976,3 +992,187 @@ def cancel_video_render(
     if result is None:
         raise HTTPException(status_code=404, detail="Video render not found")
     return result
+
+
+
+def _scene_jobs() -> VideoSceneJobRepository:
+    return VideoSceneJobRepository(get_settings().database_path)
+
+
+def _public_scene_job(job: dict[str, object]) -> dict[str, object]:
+    return {
+        key: value for key, value in job.items()
+        if key not in {"task_id", "source_asset_id"}
+    }
+
+
+@router.post(
+    "/assets/{asset_id}/scene-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_video_scene_job(
+    asset_id: UUID,
+    payload: VideoSceneAnalysisRequest,
+    response: Response,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    """Queue bounded local scene-cut detection without running FFmpeg in HTTP."""
+    decision = PolicyEngine().evaluate(
+        ActionRequest(action="video.scene_detection", risk_class=RiskClass.LOW)
+    )
+    if decision.decision is not PolicyDecision.ALLOW:
+        raise HTTPException(status_code=403, detail="Scene analysis is not permitted")
+
+    try:
+        accepted, created = _scene_jobs().create(
+            user.user_id,
+            asset_id,
+            idempotency_key=idempotency_key,
+            threshold=payload.threshold,
+            max_scene_changes=payload.max_scene_changes,
+        )
+    except VideoSceneJobConflict as exc:
+        raise HTTPException(status_code=409, detail="Idempotency key conflict") from exc
+    except SceneJobSourceNotFound as exc:
+        raise HTTPException(status_code=404, detail="Media asset not found") from exc
+    except SceneJobUnsupportedMedia as exc:
+        raise HTTPException(status_code=415, detail="Scene analysis requires a video asset") from exc
+    except SceneJobSourceNotReady as exc:
+        raise HTTPException(status_code=409, detail="Media asset is not ready for analysis") from exc
+    except SceneJobCapacityExceeded as exc:
+        raise HTTPException(status_code=429, detail="Scene analysis capacity is temporarily full") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    AuditLogger(repository).record(
+        event_type="video.scene_job.submitted",
+        outcome="queued" if created else "idempotent_replay",
+        subject_type="video_scene_job",
+        subject_id=str(accepted["job_id"]),
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={
+            "task_type": "video.scene_detection",
+            "threshold": payload.threshold,
+            "max_scene_changes": payload.max_scene_changes,
+        },
+    )
+    return {
+        "job_id": accepted["job_id"],
+        "status": accepted["status"],
+        "created_at": accepted["created_at"],
+        "created": created,
+        "execution": "queued",
+    }
+
+
+def _encode_video_scene_cursor(created_at: str, job_id: str) -> str:
+    payload = f"{created_at}\\n{job_id}".encode()
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_video_scene_cursor(cursor: str) -> tuple[str, str]:
+    if (
+        not isinstance(cursor, str)
+        or not cursor
+        or len(cursor) > 512
+        or not cursor.isascii()
+        or not all(char.isalnum() or char in "_-" for char in cursor)
+    ):
+        raise ValueError("Invalid scene-job cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        decoded = base64.b64decode(
+            cursor + padding, altchars=b"-_", validate=True
+        ).decode("utf-8")
+        created_at, raw_job_id = decoded.split("\\n", 1)
+        parsed_time = datetime.fromisoformat(created_at)
+        parsed_job_id = UUID(raw_job_id)
+        if parsed_time.tzinfo is None or parsed_time.utcoffset() is None:
+            raise ValueError("Scene-job cursor timestamp must include a timezone")
+        if str(parsed_job_id) != raw_job_id.lower():
+            raise ValueError("Scene-job cursor UUID is not canonical")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid scene-job cursor") from None
+    return created_at, str(parsed_job_id)
+
+
+@router.get("/scene-jobs")
+def list_video_scene_jobs(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=10, ge=1, le=50),
+    cursor: str | None = None,
+) -> dict[str, object]:
+    """List a bounded owner-scoped page of scene-analysis jobs."""
+    try:
+        before = _decode_video_scene_cursor(cursor) if cursor is not None else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid scene-job cursor") from exc
+    repository = _scene_jobs()
+    records = repository.list_for_owner(
+        user.user_id, limit=limit + 1, before=before
+    )
+    has_more = len(records) > limit
+    page = records[:limit]
+    items = [_public_scene_job(item) for item in page]
+    next_cursor = (
+        _encode_video_scene_cursor(str(page[-1]["created_at"]), str(page[-1]["job_id"]))
+        if has_more and page
+        else None
+    )
+    return {
+        "items": items,
+        "count": len(items),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+    }
+
+
+@router.get("/scene-jobs/{job_id}")
+def get_video_scene_job(
+    job_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Read only sanitized scene-job state for the authenticated owner."""
+    job = _scene_jobs().get(user.user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scene job not found")
+    return _public_scene_job(job)
+
+
+@router.post("/scene-jobs/{job_id}/cancel")
+def cancel_video_scene_job(
+    job_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Cancel an owned queued job or request cooperative cancellation of running work."""
+    jobs = _scene_jobs()
+    job = jobs.get(user.user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scene job not found")
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    try:
+        JobEngine(repository).cancel(UUID(str(job["task_id"])))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Scene job not found") from exc
+    except (InvalidTaskTransition, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail="Scene job state changed; reload and retry") from exc
+    updated = jobs.get(user.user_id, job_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Scene job not found")
+    AuditLogger(repository).record(
+        event_type="video.scene_job.cancelled",
+        outcome="cancelled",
+        subject_type="video_scene_job",
+        subject_id=str(job_id),
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={"task_type": "video.scene_detection"},
+    )
+    return _public_scene_job(updated)
