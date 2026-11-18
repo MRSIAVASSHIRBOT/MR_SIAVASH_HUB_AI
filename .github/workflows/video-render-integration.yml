@@ -18,7 +18,7 @@ jobs:
   real-ffmpeg-render:
     name: Real FFmpeg MP4 integration
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
@@ -29,15 +29,23 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install FFmpeg and FFprobe from Ubuntu packages
-        timeout-minutes: 8
+      - name: Install FFmpeg and FFprobe when not already available
+        timeout-minutes: 18
         run: |
           set -euo pipefail
 
-          # Use Ubuntu's signed package repository instead of a mutable third-party
-          # "latest" release asset with a stale checksum.
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ffmpeg
+          has_required_ffmpeg() {
+            command -v ffmpeg >/dev/null 2>&1               && command -v ffprobe >/dev/null 2>&1               && ffmpeg -hide_banner -encoders 2>&1 | grep -Eq '[[:space:]]libx264[[:space:]]'
+          }
+
+          if has_required_ffmpeg; then
+            echo "Using the runner-provided FFmpeg and FFprobe binaries."
+          else
+            # Prefer Ubuntu's signed packages. Allow transient mirror retries and
+            # enough time for the dependency set on slow hosted-runner mirrors.
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install --no-install-recommends -y ffmpeg
+          fi
 
           command -v ffmpeg
           command -v ffprobe
@@ -46,7 +54,7 @@ jobs:
 
           encoders="$(ffmpeg -hide_banner -encoders 2>&1)"
           if ! grep -Eq '[[:space:]]libx264[[:space:]]' <<<"$encoders"; then
-            echo "::error::Ubuntu FFmpeg package does not expose the required libx264 encoder."
+            echo "::error::FFmpeg does not expose the required libx264 encoder."
             exit 1
           fi
       - name: Install project and development dependencies
