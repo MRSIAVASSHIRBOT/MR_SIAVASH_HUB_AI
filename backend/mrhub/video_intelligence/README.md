@@ -41,6 +41,7 @@ All endpoints require an authenticated owner session:
 - `DELETE /video-intelligence/brands/{profile_id}` — delete an owned profile.
 - `GET /video-intelligence/assets/{asset_id}/metadata` — inspect technical metadata for an owned video asset.
 - `POST /video-intelligence/assets/{asset_id}/scene-jobs` — queue bounded scene-cut analysis; requires an `Idempotency-Key` header.
+- `GET /video-intelligence/scene-jobs?limit=10&cursor=...` — list a bounded owner-scoped page with a stable opaque cursor.
 - `GET /video-intelligence/scene-jobs/{job_id}` — inspect the owner's scene-job status and timestamp-only results.
 - `POST /video-intelligence/scene-jobs/{job_id}/cancel` — cancel an owned queued job or request bounded cooperative cancellation.
 - `POST /video-intelligence/analyses` — queue analysis for 1–5 owned video assets. Requires an `Idempotency-Key` header; the encrypted request is processed by the shared Worker.
