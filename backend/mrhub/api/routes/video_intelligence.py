@@ -57,6 +57,7 @@ from mrhub.video_intelligence.render_jobs import (
 from mrhub.video_intelligence.render_preflight import inspect_video_render_preflight
 from mrhub.video_intelligence.render_snapshot import VideoRenderTimelineSnapshot
 from mrhub.video_intelligence.render_snapshot_repository import VideoRenderSnapshotConflict
+from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.scene_jobs import (
     SceneJobCapacityExceeded,
     SceneJobSourceNotFound,
@@ -65,7 +66,6 @@ from mrhub.video_intelligence.scene_jobs import (
     VideoSceneJobConflict,
     VideoSceneJobRepository,
 )
-from mrhub.video_intelligence.repository import VideoBrandRepository
 from mrhub.video_intelligence.schemas import (
     BeatInstruction,
     BrandIdentity,
