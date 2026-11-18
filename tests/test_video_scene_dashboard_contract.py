@@ -15,6 +15,7 @@ def test_scene_analysis_dashboard_and_telegram_scope_are_explicit_and_opt_in():
     assert "scene_start_times" in app
     assert "loadVideoSceneJobs(true)" in app
     assert "cancelVideoSceneJob(job.job_id)" in app
+    assert 'value: "video:analyze"' in app
     assert "هیچ فایل یا Promptی به سرویس بیرونی ارسال نمی‌شود" in page
 
     analyze_scope = next(
