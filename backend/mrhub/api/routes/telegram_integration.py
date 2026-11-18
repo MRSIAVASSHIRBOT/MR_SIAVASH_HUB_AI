@@ -1020,8 +1020,9 @@ def cancel_telegram_video_scene_job(
     job = jobs.get(identity.owner_user_id, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Telegram video scene job not found")
+    repository = _tasks_repository()
     try:
-        JobEngine(_tasks_repository()).cancel(UUID(str(job["task_id"])))
+        JobEngine(repository).cancel(UUID(str(job["task_id"])))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Telegram video scene job not found") from exc
     except (InvalidTaskTransition, RuntimeError) as exc:
