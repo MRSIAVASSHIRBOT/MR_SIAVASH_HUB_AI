@@ -45,7 +45,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
-        "resource_reply_configs", "research_sources",
+        "resource_reply_configs", "research_sources", "video_scene_jobs",
     } <= {
         row["name"]
         for row in connection.execute(
