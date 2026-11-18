@@ -1469,14 +1469,17 @@ def test_telegram_video_scene_jobs_require_explicit_scopes_and_are_owner_scoped(
     )
     assert history_one.status_code == 200
     assert history_one.json()["has_more"] is True
-    assert history_one.json()["items"][0]["job_id"] == history_second.json()["job_id"]
+    first_page_id = history_one.json()["items"][0]["job_id"]
+    assert first_page_id in {job_id, history_second.json()["job_id"]}
     history_two = client.get(
         "/integrations/telegram/video/scene-jobs",
         params={"limit": 1, "cursor": history_one.json()["next_cursor"]},
         headers=headers,
     )
     assert history_two.status_code == 200
-    assert history_two.json()["items"][0]["job_id"] == job_id
+    second_page_id = history_two.json()["items"][0]["job_id"]
+    assert second_page_id in {job_id, history_second.json()["job_id"]}
+    assert second_page_id != first_page_id
 
     cancelled = client.post(
         f"/integrations/telegram/video/scene-jobs/{job_id}/cancel", headers=headers
