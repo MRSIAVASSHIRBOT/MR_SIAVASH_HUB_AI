@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import sqlite3
 from datetime import UTC, datetime
 from typing import Annotated, Literal
@@ -1066,6 +1068,68 @@ def submit_video_scene_job(
         "created_at": accepted["created_at"],
         "created": created,
         "execution": "queued",
+    }
+
+
+def _encode_video_scene_cursor(created_at: str, job_id: str) -> str:
+    payload = f"{created_at}\\n{job_id}".encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_video_scene_cursor(cursor: str) -> tuple[str, str]:
+    if (
+        not isinstance(cursor, str)
+        or not cursor
+        or len(cursor) > 512
+        or not cursor.isascii()
+        or not all(char.isalnum() or char in "_-" for char in cursor)
+    ):
+        raise ValueError("Invalid scene-job cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        decoded = base64.b64decode(
+            cursor + padding, altchars=b"-_", validate=True
+        ).decode("utf-8")
+        created_at, raw_job_id = decoded.split("\\n", 1)
+        parsed_time = datetime.fromisoformat(created_at)
+        parsed_job_id = UUID(raw_job_id)
+        if parsed_time.tzinfo is None or parsed_time.utcoffset() is None:
+            raise ValueError("Scene-job cursor timestamp must include a timezone")
+        if str(parsed_job_id) != raw_job_id.lower():
+            raise ValueError("Scene-job cursor UUID is not canonical")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid scene-job cursor") from None
+    return created_at, str(parsed_job_id)
+
+
+@router.get("/scene-jobs")
+def list_video_scene_jobs(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=10, ge=1, le=50),
+    cursor: str | None = None,
+) -> dict[str, object]:
+    """List a bounded owner-scoped page of scene-analysis jobs."""
+    try:
+        before = _decode_video_scene_cursor(cursor) if cursor is not None else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid scene-job cursor") from exc
+    repository = _scene_jobs()
+    records = repository.list_for_owner(
+        user.user_id, limit=limit + 1, before=before
+    )
+    has_more = len(records) > limit
+    page = records[:limit]
+    items = [_public_scene_job(item) for item in page]
+    next_cursor = (
+        _encode_video_scene_cursor(str(page[-1]["created_at"]), str(page[-1]["job_id"]))
+        if has_more and page
+        else None
+    )
+    return {
+        "items": items,
+        "count": len(items),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
     }
 
 
