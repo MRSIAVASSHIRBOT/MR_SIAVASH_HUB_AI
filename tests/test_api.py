@@ -615,6 +615,7 @@ def test_request_id_is_available_on_request_state_and_logged_privacy_safely(capl
 
 def test_task_list_filters_internal_scene_jobs_before_applying_limit(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
+
     from mrhub.domain.tasks import TaskRecord
     from mrhub.infrastructure.database import TaskRepository
 
