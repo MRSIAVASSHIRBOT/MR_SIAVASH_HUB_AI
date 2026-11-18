@@ -255,7 +255,8 @@
     { value: "tasks:cancel", label: "لغو وظایف در انتظار" },
     { value: "memory:search", label: "جست‌وجو و مشاهدهٔ حافظهٔ خصوصی" },
     { value: "memory:write", label: "تأیید صریح یک یادداشت حافظه" },
-    { value: "video:read", label: "مشاهدهٔ Providerها، Draftها و وضعیت رندر ویدئو" },
+    { value: "video:read", label: "مشاهدهٔ Providerها، Draftها، تاریخچه و وضعیت ویدئو" },
+    { value: "video:analyze", label: "ثبت تحلیل محلی مرز صحنه‌ها با FFmpeg" },
     { value: "video:render", label: "ثبت رندر محلی FFmpeg از Timeline آماده‌شده" },
     { value: "video:cancel", label: "لغو تولید یا رندر ویدئو" },
   ];
