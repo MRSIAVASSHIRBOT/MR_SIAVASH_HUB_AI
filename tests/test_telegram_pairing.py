@@ -1427,7 +1427,7 @@ def test_telegram_video_scene_jobs_require_explicit_scopes_and_are_owner_scoped(
         telegram_user_id=555555555,
         scopes=["video:analyze", "video:read", "video:cancel"],
     )
-    assert challenge["scopes"] == ["video:analyze", "video:read", "video:cancel"]
+    assert challenge["scopes"] == ["video:analyze", "video:cancel", "video:read"]
     tokens = _exchange(client, payload, challenge).json()
     headers = _bot_headers(tokens, 555555555)
 
