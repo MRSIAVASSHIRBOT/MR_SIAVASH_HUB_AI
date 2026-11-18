@@ -1072,7 +1072,7 @@ def submit_video_scene_job(
 
 
 def _encode_video_scene_cursor(created_at: str, job_id: str) -> str:
-    payload = f"{created_at}\\n{job_id}".encode("utf-8")
+    payload = f"{created_at}\\n{job_id}".encode()
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 

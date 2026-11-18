@@ -1417,7 +1417,7 @@ def test_telegram_video_scene_jobs_require_explicit_scopes_and_are_owner_scoped(
     asset = client.post(
         "/content/assets",
         headers={"X-File-Name": "telegram-scene.mp4", "Content-Type": "video/mp4"},
-        content=b"\\x00\\x00\\x00\\x18ftypisom0000",
+        content=b"\x00\x00\x00\x18ftypisom0000",
     )
     assert asset.status_code == 201
     asset_id = asset.json()["asset_id"]
@@ -1505,7 +1505,7 @@ def test_telegram_video_scene_submission_is_denied_without_video_analyze_scope(
     asset = client.post(
         "/content/assets",
         headers={"X-File-Name": "scope-test.mp4", "Content-Type": "video/mp4"},
-        content=b"\\x00\\x00\\x00\\x18ftypisom0000",
+        content=b"\x00\x00\x00\x18ftypisom0000",
     )
     assert asset.status_code == 201
     payload, challenge = _create_pairing(
