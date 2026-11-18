@@ -36,8 +36,12 @@ def summary() -> dict[str, object]:
 
 @router.post("/{task_id}/cancel", response_model=TaskRecord)
 def cancel(task_id: UUID) -> TaskRecord:
+    job_engine = engine()
+    task = job_engine.get(task_id)
+    if task is None or task.task_type == "video.scene_detection":
+        raise HTTPException(status_code=404, detail="Task not found")
     try:
-        return engine().cancel(task_id)
+        return job_engine.cancel(task_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
     except (InvalidTaskTransition, RuntimeError) as exc:
