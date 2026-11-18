@@ -101,6 +101,35 @@ class TaskRepository:
             for row in rows
         ]
 
+
+    def list_recent_for_dashboard(self, limit: int = 50) -> Iterable[TaskRecord]:
+        """Return visible dashboard tasks without internal scene-worker records.
+
+        Filtering happens in SQLite before LIMIT so a busy scene-analysis queue
+        cannot starve ordinary user-visible tasks from the dashboard.
+        """
+        bounded_limit = max(1, min(limit, 100))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """SELECT * FROM tasks
+                   WHERE task_type <> ?
+                   ORDER BY created_at DESC, task_id DESC
+                   LIMIT ?""",
+                ("video.scene_detection", bounded_limit),
+            ).fetchall()
+        return [
+            TaskRecord(
+                task_id=UUID(row["task_id"]),
+                task_type=row["task_type"],
+                status=TaskStatus(row["status"]),
+                risk_class=RiskClass(row["risk_class"]),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                description=row["description"],
+            )
+            for row in rows
+        ]
+
     def list_recent_for_telegram_client(
         self,
         client_id: str,
