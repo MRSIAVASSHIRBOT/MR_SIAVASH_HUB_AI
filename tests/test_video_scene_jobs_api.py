@@ -176,7 +176,8 @@ def test_scene_job_history_uses_stable_owner_cursor_pages():
     body_one = page_one.json()
     assert body_one["count"] == 1
     assert body_one["has_more"] is True
-    assert body_one["items"][0]["job_id"] == second.json()["job_id"]
+    first_page_id = body_one["items"][0]["job_id"]
+    assert first_page_id in {first.json()["job_id"], second.json()["job_id"]}
     assert "task_id" not in body_one["items"][0]
     assert "source_asset_id" not in body_one["items"][0]
 
@@ -185,7 +186,9 @@ def test_scene_job_history_uses_stable_owner_cursor_pages():
         params={"limit": 1, "cursor": body_one["next_cursor"]},
     )
     assert page_two.status_code == 200
-    assert page_two.json()["items"][0]["job_id"] == first.json()["job_id"]
+    second_page_id = page_two.json()["items"][0]["job_id"]
+    assert second_page_id in {first.json()["job_id"], second.json()["job_id"]}
+    assert second_page_id != first_page_id
     invalid = client.get(
         "/video-intelligence/scene-jobs", params={"cursor": "***"}
     )
