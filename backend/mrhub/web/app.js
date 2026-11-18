@@ -39,6 +39,7 @@
   let canSubmitVideoRender = false;
   if (!token) {
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_scene_job_id");
     sessionStorage.removeItem("mrh_video_render_id");
     sessionStorage.removeItem("mrh_video_render_analysis_id");
     sessionStorage.removeItem("mrh_video_render_identity");
@@ -49,6 +50,7 @@
     pendingVideoRenderIdentity = null;
     pendingVideoRenderRequests = Object.create(null);
     activeVideoAnalysisId = null;
+    activeVideoSceneJobId = null;
     activeVideoRenderId = null;
     activeVideoRenderAnalysisId = null;
     activeVideoRenderIdentity = null;
@@ -67,6 +69,12 @@
   let videoGenerationHistoryItems = [];
   let videoGenerationHistoryCursor = null;
   let videoGenerationHistoryRequestSequence = 0;
+  let activeVideoSceneJobId = sessionStorage.getItem("mrh_video_scene_job_id");
+  let videoSceneJobItems = [];
+  let videoSceneJobCursor = null;
+  let videoSceneJobRequestSequence = 0;
+  let pendingVideoSceneJobKey = null;
+  let pendingVideoSceneJobFingerprint = null;
 
   function currentVideoRenderIdentity() {
     const draft = activeVideoTimelineDraft
@@ -129,6 +137,7 @@
     token = null;
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem("mrh_video_analysis_id");
+    sessionStorage.removeItem("mrh_video_scene_job_id");
     sessionStorage.removeItem("mrh_video_render_pending_identity");
     sessionStorage.removeItem("mrh_video_render_pending_requests");
     pendingVideoRenderIdentity = null;
@@ -145,6 +154,15 @@
     videoGenerationHistoryRequestSequence += 1;
     videoGenerationHistoryItems = [];
     videoGenerationHistoryCursor = null;
+    activeVideoSceneJobId = null;
+    pendingVideoSceneJobKey = null;
+    pendingVideoSceneJobFingerprint = null;
+    videoSceneJobRequestSequence += 1;
+    videoSceneJobItems = [];
+    videoSceneJobCursor = null;
+    $("#video-scene-job-list").replaceChildren();
+    $("#video-scene-history-more").hidden = true;
+    message("#video-scene-job-message", "");
     $("#video-generation-history-list").replaceChildren();
     $("#video-generation-history-more").hidden = true;
     message("#video-generation-history-message", "");
@@ -816,6 +834,7 @@
     const response = await api("/content/assets?limit=100");
     mediaAssetsCache = Array.isArray(response.assets) ? response.assets : [];
     updateVideoAssetOptions();
+    updateVideoSceneAssetOptions();
     const select = $("#draft-media-select");
     const selected = select.value;
     select.replaceChildren(element("option", "بدون رسانه"));
@@ -887,6 +906,220 @@
       option.value = asset.asset_id;
       option.selected = selected.has(asset.asset_id);
       select.append(option);
+    }
+  }
+
+
+  function updateVideoSceneAssetOptions() {
+    const select = $("#video-scene-asset");
+    if (!select) return;
+    const selected = select.value;
+    const videos = mediaAssetsCache.filter((asset) =>
+      ["video/mp4", "video/quicktime"].includes(asset.media_type)
+    );
+    select.replaceChildren();
+    if (!videos.length) {
+      const option = element("option", "ویدئوی سازگار در کتابخانه وجود ندارد");
+      option.value = "";
+      option.disabled = true;
+      select.append(option);
+      return;
+    }
+    for (const asset of videos) {
+      const sizeMb = (Number(asset.file_size || 0) / (1024 * 1024)).toFixed(1);
+      const option = element("option", asset.original_filename + " · " + sizeMb + " MB");
+      option.value = asset.asset_id;
+      select.append(option);
+    }
+    if (videos.some((asset) => asset.asset_id === selected)) select.value = selected;
+  }
+
+  function renderVideoSceneJobs() {
+    const container = $("#video-scene-job-list");
+    if (!container) return;
+    container.replaceChildren();
+    const labels = {
+      queued: "در صف Worker محلی",
+      running: "در حال تشخیص مرز صحنه‌ها",
+      succeeded: "تحلیل تکمیل شد",
+      failed: "تحلیل ناموفق",
+      cancelled: "لغو شد",
+      rejected: "رد شد",
+    };
+    for (const job of videoSceneJobItems) {
+      const result = job.result && typeof job.result === "object" ? job.result : null;
+      const statusText = labels[job.status] || job.status || "نامشخص";
+      const card = recordCard(
+        "تحلیل صحنهٔ محلی",
+        statusText,
+        job.job_id + " · آخرین تغییر: " + (job.updated_at || job.created_at || "نامشخص")
+      );
+      if (result) {
+        const timestamps = Array.isArray(result.scene_start_times)
+          ? result.scene_start_times.filter((value) => Number.isFinite(value))
+          : [];
+        let detail = "تعداد صحنه: " + (Number.isInteger(result.scene_count) ? result.scene_count : timestamps.length);
+        if (timestamps.length) {
+          detail += " · زمان شروع: " + timestamps.map((value) => Number(value).toFixed(2)).join("، ") + " ثانیه";
+        }
+        if (result.truncated) detail += " · نتیجه به سقف مرزها رسیده است";
+        card.append(element("small", detail));
+      }
+      if (job.error_code) {
+        card.append(element("small", "کد خطا: " + job.error_code, "message error"));
+      }
+      if (["queued", "running"].includes(job.status)) {
+        card.append(actionButton("لغو تحلیل", () => cancelVideoSceneJob(job.job_id)));
+      }
+      container.append(card);
+    }
+    if (!videoSceneJobItems.length) {
+      renderEmpty(container, "هنوز تحلیل صحنه‌ای ثبت نشده است.");
+    }
+    $("#video-scene-history-more").hidden = !videoSceneJobCursor;
+  }
+
+  async function loadVideoSceneJobs(append = false) {
+    if (append && !videoSceneJobCursor) return;
+    const sequence = ++videoSceneJobRequestSequence;
+    const refreshButton = $("#video-scene-history-refresh");
+    const moreButton = $("#video-scene-history-more");
+    refreshButton.disabled = true;
+    if (append) moreButton.disabled = true;
+    message(
+      "#video-scene-job-message",
+      append ? "در حال دریافت صفحهٔ بعدی…" : "در حال دریافت تاریخچهٔ تحلیل صحنه…"
+    );
+    const params = new URLSearchParams({ limit: "20" });
+    if (append && videoSceneJobCursor) params.set("cursor", videoSceneJobCursor);
+    try {
+      const payload = await api("/video-intelligence/scene-jobs?" + params.toString());
+      if (sequence !== videoSceneJobRequestSequence) return;
+      const incoming = Array.isArray(payload.items) ? payload.items : [];
+      if (append) {
+        const merged = new Map(videoSceneJobItems.map((item) => [item.job_id, item]));
+        for (const item of incoming) merged.set(item.job_id, item);
+        videoSceneJobItems = Array.from(merged.values());
+      } else {
+        videoSceneJobItems = incoming;
+      }
+      videoSceneJobCursor = typeof payload.next_cursor === "string" ? payload.next_cursor : null;
+      renderVideoSceneJobs();
+      message(
+        "#video-scene-job-message",
+        videoSceneJobItems.length
+          ? videoSceneJobItems.length + " تحلیل در تاریخچه بارگذاری شده است."
+          : "هنوز تحلیل صحنه‌ای ثبت نشده است.",
+        "success"
+      );
+    } catch (error) {
+      if (sequence === videoSceneJobRequestSequence) {
+        message("#video-scene-job-message", error.message, "error");
+      }
+    } finally {
+      if (sequence === videoSceneJobRequestSequence) {
+        refreshButton.disabled = false;
+        moreButton.disabled = false;
+      }
+    }
+  }
+
+  async function submitVideoSceneJob(event) {
+    event.preventDefault();
+    const assetId = $("#video-scene-asset").value;
+    const threshold = Number($("#video-scene-threshold").value);
+    const maxSceneChanges = Number($("#video-scene-max-changes").value);
+    if (!assetId) {
+      message("#video-scene-job-message", "ابتدا یک ویدئوی متعلق به حساب خود انتخاب کنید.", "error");
+      return;
+    }
+    if (!Number.isFinite(threshold) || threshold < 0.05 || threshold > 0.95) {
+      message("#video-scene-job-message", "آستانه باید بین ۰٫۰۵ و ۰٫۹۵ باشد.", "error");
+      return;
+    }
+    if (!Number.isInteger(maxSceneChanges) || maxSceneChanges < 1 || maxSceneChanges > 24) {
+      message("#video-scene-job-message", "حداکثر مرزها باید عدد صحیح بین ۱ تا ۲۴ باشد.", "error");
+      return;
+    }
+    const fingerprint = JSON.stringify({
+      asset_id: assetId,
+      threshold,
+      max_scene_changes: maxSceneChanges,
+    });
+    if (!pendingVideoSceneJobKey || pendingVideoSceneJobFingerprint !== fingerprint) {
+      if (!window.crypto || typeof window.crypto.randomUUID !== "function") {
+        message("#video-scene-job-message", "مرورگر از تولید شناسهٔ امن درخواست پشتیبانی نمی‌کند.", "error");
+        return;
+      }
+      pendingVideoSceneJobKey = window.crypto.randomUUID();
+      pendingVideoSceneJobFingerprint = fingerprint;
+    }
+    const button = $("#video-scene-submit");
+    button.disabled = true;
+    try {
+      const accepted = await api(
+        "/video-intelligence/assets/" + encodeURIComponent(assetId) + "/scene-jobs",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": pendingVideoSceneJobKey },
+          body: { threshold, max_scene_changes: maxSceneChanges },
+        }
+      );
+      if (typeof accepted.job_id !== "string") {
+        throw new Error("پاسخ API شناسهٔ Job معتبر ندارد.");
+      }
+      activeVideoSceneJobId = accepted.job_id;
+      sessionStorage.setItem("mrh_video_scene_job_id", activeVideoSceneJobId);
+      pendingVideoSceneJobKey = null;
+      pendingVideoSceneJobFingerprint = null;
+      message(
+        "#video-scene-job-message",
+        accepted.created === false
+          ? "درخواست تکراری به همان Job قبلی متصل شد."
+          : "تحلیل محلی در صف Worker ثبت شد؛ هیچ Provider بیرونی فراخوانی نشده است.",
+        "success"
+      );
+      await loadVideoSceneJobs();
+    } catch (error) {
+      message("#video-scene-job-message", error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function refreshActiveVideoSceneJob() {
+    if (!activeVideoSceneJobId) {
+      await loadVideoSceneJobs();
+      return;
+    }
+    try {
+      const job = await api(
+        "/video-intelligence/scene-jobs/" + encodeURIComponent(activeVideoSceneJobId)
+      );
+      const merged = new Map(videoSceneJobItems.map((item) => [item.job_id, item]));
+      merged.set(job.job_id, job);
+      videoSceneJobItems = Array.from(merged.values());
+      renderVideoSceneJobs();
+      message("#video-scene-job-message", "وضعیت Job: " + (job.status || "نامشخص") + ".", "success");
+    } catch (error) {
+      message("#video-scene-job-message", error.message, "error");
+    }
+  }
+
+  async function cancelVideoSceneJob(jobId) {
+    if (!window.confirm("درخواست لغو این تحلیل محلی ثبت شود؟")) return;
+    try {
+      const job = await api(
+        "/video-intelligence/scene-jobs/" + encodeURIComponent(jobId) + "/cancel",
+        { method: "POST" }
+      );
+      const merged = new Map(videoSceneJobItems.map((item) => [item.job_id, item]));
+      merged.set(job.job_id, job);
+      videoSceneJobItems = Array.from(merged.values());
+      renderVideoSceneJobs();
+      message("#video-scene-job-message", "وضعیت پس از درخواست لغو: " + (job.status || "نامشخص") + ".", "success");
+    } catch (error) {
+      message("#video-scene-job-message", error.message, "error");
     }
   }
 
@@ -2883,6 +3116,7 @@
         loadMediaAssets(),
         loadVideoGenerationProviders(),
         loadVideoGenerationHistory(),
+        loadVideoSceneJobs(),
         loadMemory(),
         loadKnowledge(),
         loadTelegramClients(),
@@ -2890,6 +3124,9 @@
         loadAgentProposals(),
         loadResearch(),
       ]);
+      if (activeVideoSceneJobId) {
+        await refreshActiveVideoSceneJob();
+      }
       if (activeVideoAnalysisId) {
         $("#video-analysis-refresh").disabled = false;
         await refreshVideoAnalysis();
@@ -2982,6 +3219,10 @@
   $("#video-generation-route-preview-form").addEventListener("submit", previewVideoGenerationRoute);
   $("#video-generation-history-refresh").addEventListener("click", () => loadVideoGenerationHistory());
   $("#video-generation-history-more").addEventListener("click", () => loadVideoGenerationHistory(true));
+  $("#video-scene-job-form").addEventListener("submit", submitVideoSceneJob);
+  $("#video-scene-history-refresh").addEventListener("click", () => loadVideoSceneJobs());
+  $("#video-scene-history-more").addEventListener("click", () => loadVideoSceneJobs(true));
+  $("#video-scene-job-refresh").addEventListener("click", refreshActiveVideoSceneJob);
   $("#video-analysis-form").addEventListener("submit", submitVideoAnalysis);
   $("#video-analysis-refresh").addEventListener("click", refreshVideoAnalysis);
   $("#video-render-preflight").addEventListener("click", preflightVideoRender);
