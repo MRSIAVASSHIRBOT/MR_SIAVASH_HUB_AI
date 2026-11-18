@@ -243,6 +243,38 @@ class VideoSceneJobRepository:
             ).fetchone()
         return self._record(row) if row is not None else None
 
+    def list_for_owner(
+        self,
+        owner_user_id: str,
+        *,
+        limit: int = 10,
+        before: tuple[str, str] | None = None,
+    ) -> list[dict[str, object]]:
+        """List a bounded owner page using a stable created-at/job-id cursor."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 51:
+            raise ValueError("Scene-job page limit must be between 1 and 51")
+        parameters: list[object] = [owner_user_id]
+        cursor_clause = ""
+        if before is not None:
+            created_at, job_id = before
+            parameters.extend((created_at, created_at, job_id))
+            cursor_clause = "AND (j.created_at < ? OR (j.created_at = ? AND j.job_id < ?))"
+        parameters.append(limit)
+        with self.tasks._connection() as connection:
+            rows = connection.execute(
+                f"""SELECT j.job_id, j.task_id, j.source_asset_id, j.threshold,
+                           j.max_scene_changes, j.created_at, t.status, t.updated_at,
+                           e.result_json, e.error_code
+                    FROM video_scene_jobs AS j
+                    JOIN tasks AS t ON t.task_id = j.task_id
+                    LEFT JOIN worker_executions AS e ON e.task_id = j.task_id
+                    WHERE j.owner_user_id = ? {cursor_clause}
+                    ORDER BY j.created_at DESC, j.job_id DESC
+                    LIMIT ?""",
+                tuple(parameters),
+            ).fetchall()
+        return [self._record(row) for row in rows]
+
     def get_for_worker(self, task_id: UUID) -> dict[str, object] | None:
         """Expose private source bindings only to the trusted worker."""
         with self.tasks._connection() as connection:
