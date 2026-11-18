@@ -1456,6 +1456,28 @@ def test_telegram_video_scene_jobs_require_explicit_scopes_and_are_owner_scoped(
     assert "task_id" not in status.json()
     assert "source_asset_id" not in status.json()
 
+    history_second = client.post(
+        "/integrations/telegram/video/scene-jobs",
+        json={"asset_id": asset_id, "threshold": 0.4, "max_scene_changes": 12},
+        headers={**headers, "Idempotency-Key": "telegram-scene:555555555:2"},
+    )
+    assert history_second.status_code == 202
+    history_one = client.get(
+        "/integrations/telegram/video/scene-jobs",
+        params={"limit": 1},
+        headers=headers,
+    )
+    assert history_one.status_code == 200
+    assert history_one.json()["has_more"] is True
+    assert history_one.json()["items"][0]["job_id"] == history_second.json()["job_id"]
+    history_two = client.get(
+        "/integrations/telegram/video/scene-jobs",
+        params={"limit": 1, "cursor": history_one.json()["next_cursor"]},
+        headers=headers,
+    )
+    assert history_two.status_code == 200
+    assert history_two.json()["items"][0]["job_id"] == job_id
+
     cancelled = client.post(
         f"/integrations/telegram/video/scene-jobs/{job_id}/cancel", headers=headers
     )
