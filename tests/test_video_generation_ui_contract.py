@@ -122,5 +122,5 @@ def test_video_scene_job_state_is_declared_before_unauthenticated_reset():
 
     assert app.index(declaration) < app.index(unauthenticated_reset)
     reset_start = app.index(unauthenticated_reset)
-    reset_end = app.index("\\n  }", reset_start)
+    reset_end = app.index("  let pendingVideoAnalysisKey", reset_start)
     assert "activeVideoSceneJobId = null;" in app[reset_start:reset_end]
