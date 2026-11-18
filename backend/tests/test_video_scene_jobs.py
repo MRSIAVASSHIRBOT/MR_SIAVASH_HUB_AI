@@ -185,7 +185,7 @@ def test_worker_failure_codes_are_sanitized(tmp_path, monkeypatch):
 
 
 def test_stale_scene_worker_recovery_releases_asset_use_lock(tmp_path):
-    _database_path, tasks, media, jobs, asset = _setup(tmp_path)
+    _database_path, tasks, _media, jobs, asset = _setup(tmp_path)
     accepted, _ = jobs.create(
         "owner-a", UUID(str(asset["asset_id"])), idempotency_key="stale-scene"
     )
