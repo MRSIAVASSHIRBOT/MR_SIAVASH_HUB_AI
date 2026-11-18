@@ -9,6 +9,7 @@
   let pendingModelRunIdempotencyKey = null;
   let pendingModelRunPayloadFingerprint = null;
   let activeVideoAnalysisId = sessionStorage.getItem("mrh_video_analysis_id");
+  let activeVideoSceneJobId = sessionStorage.getItem("mrh_video_scene_job_id");
   let activeVideoRenderId = sessionStorage.getItem("mrh_video_render_id");
   let activeVideoRenderAnalysisId = sessionStorage.getItem("mrh_video_render_analysis_id");
   let activeVideoRenderIdentity = sessionStorage.getItem("mrh_video_render_identity")
@@ -69,7 +70,6 @@
   let videoGenerationHistoryItems = [];
   let videoGenerationHistoryCursor = null;
   let videoGenerationHistoryRequestSequence = 0;
-  let activeVideoSceneJobId = sessionStorage.getItem("mrh_video_scene_job_id");
   let videoSceneJobItems = [];
   let videoSceneJobCursor = null;
   let videoSceneJobRequestSequence = 0;
