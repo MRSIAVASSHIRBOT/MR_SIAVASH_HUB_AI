@@ -157,3 +157,36 @@ def test_generic_task_routes_cannot_submit_or_discover_scene_jobs():
     assert client.get(f"/tasks/{task_id}/result").status_code == 404
     assert client.post(f"/jobs/{task_id}/cancel").status_code == 404
     assert all(item["task_id"] != task_id for item in client.get("/tasks").json())
+
+
+def test_scene_job_history_uses_stable_owner_cursor_pages():
+    client = authenticated_client()
+    asset_id = _upload_video(client)
+    first = _submit(client, asset_id, "history-one")
+    assert first.status_code == 202
+    cancelled = client.post(
+        f"/video-intelligence/scene-jobs/{first.json()['job_id']}/cancel"
+    )
+    assert cancelled.status_code == 200
+    second = _submit(client, asset_id, "history-two")
+    assert second.status_code == 202
+
+    page_one = client.get("/video-intelligence/scene-jobs", params={"limit": 1})
+    assert page_one.status_code == 200
+    body_one = page_one.json()
+    assert body_one["count"] == 1
+    assert body_one["has_more"] is True
+    assert body_one["items"][0]["job_id"] == second.json()["job_id"]
+    assert "task_id" not in body_one["items"][0]
+    assert "source_asset_id" not in body_one["items"][0]
+
+    page_two = client.get(
+        "/video-intelligence/scene-jobs",
+        params={"limit": 1, "cursor": body_one["next_cursor"]},
+    )
+    assert page_two.status_code == 200
+    assert page_two.json()["items"][0]["job_id"] == first.json()["job_id"]
+    invalid = client.get(
+        "/video-intelligence/scene-jobs", params={"cursor": "***"}
+    )
+    assert invalid.status_code == 422
