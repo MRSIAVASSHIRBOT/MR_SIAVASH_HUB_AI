@@ -969,8 +969,8 @@ def submit_telegram_video_scene_job(
 
     if not created:
         response.status_code = 200
-    _tasks_repository()
-    AuditLogger(_tasks_repository()).record(
+    repository = _tasks_repository()
+    AuditLogger(repository).record(
         event_type="video.scene_job.submitted",
         outcome="queued" if created else "idempotent_replay",
         subject_type="video_scene_job",
@@ -1029,7 +1029,7 @@ def cancel_telegram_video_scene_job(
     updated = jobs.get(identity.owner_user_id, job_id)
     if updated is None:
         raise HTTPException(status_code=404, detail="Telegram video scene job not found")
-    AuditLogger(_tasks_repository()).record(
+    AuditLogger(repository).record(
         event_type="video.scene_job.cancelled",
         outcome="cancelled",
         subject_type="video_scene_job",
