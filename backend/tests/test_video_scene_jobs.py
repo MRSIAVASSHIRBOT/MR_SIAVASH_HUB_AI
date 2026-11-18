@@ -6,11 +6,9 @@ import pytest
 
 from mrhub.domain.tasks import TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.worker import WorkerEngine
 from mrhub.media.repository import MediaAssetRepository
 from mrhub.video_intelligence.scene_jobs import (
-    MAX_ACTIVE_SCENE_JOBS_PER_OWNER,
     SceneJobCapacityExceeded,
     SceneJobSourceNotFound,
     SceneJobSourceNotReady,
@@ -98,7 +96,7 @@ def test_scene_jobs_enforce_per_owner_capacity(tmp_path, monkeypatch):
 def test_worker_runs_scene_detection_on_a_verified_private_snapshot(tmp_path, monkeypatch):
     from mrhub.video_intelligence import scene_worker
 
-    _database_path, tasks, media, jobs, asset = _setup(tmp_path)
+    _database_path, tasks, _media, jobs, asset = _setup(tmp_path)
     accepted, _ = jobs.create(
         "owner-a", UUID(str(asset["asset_id"])),
         idempotency_key="worker-scene",
