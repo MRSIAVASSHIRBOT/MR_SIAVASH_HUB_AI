@@ -13,8 +13,8 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import WorkerLease
 from mrhub.jobs.worker import TerminalWorkerError
 from mrhub.media.repository import MediaAssetBusy, MediaAssetRepository
-from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.scene_jobs import VideoSceneJobRepository
+from mrhub.video_intelligence.scenes import SceneDetectionError, detect_scene_boundaries
 from mrhub.video_intelligence.service import probe_video
 
 
