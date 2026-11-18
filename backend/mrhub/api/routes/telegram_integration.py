@@ -226,6 +226,15 @@ def _encode_telegram_render_cursor(created_at: str, render_id: str) -> str:
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
+def _encode_telegram_video_scene_cursor(created_at: str, job_id: str) -> str:
+    return _encode_telegram_render_cursor(created_at, job_id)
+
+
+def _decode_telegram_video_scene_cursor(cursor: str) -> tuple[str, str]:
+    created_at, job_id = _decode_telegram_render_cursor(cursor)
+    return created_at, str(job_id)
+
+
 def _decode_telegram_render_cursor(cursor: str) -> tuple[str, UUID]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", cursor):
         raise ValueError("Invalid render cursor")
@@ -989,6 +998,43 @@ def submit_telegram_video_scene_job(
         "created_at": accepted["created_at"],
         "created": created,
         "execution": "queued",
+    }
+
+
+@router.get("/video/scene-jobs")
+def list_telegram_video_scene_jobs(
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("video:read"))
+    ],
+    limit: int = Query(default=10, ge=1, le=20),
+    cursor: str | None = None,
+) -> dict[str, object]:
+    """List a bounded page of scene jobs for the paired owner."""
+    try:
+        before = (
+            _decode_telegram_video_scene_cursor(cursor)
+            if cursor is not None
+            else None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid video scene cursor") from exc
+    records = VideoSceneJobRepository(get_settings().database_path).list_for_owner(
+        identity.owner_user_id, limit=limit + 1, before=before
+    )
+    has_more = len(records) > limit
+    page = records[:limit]
+    next_cursor = (
+        _encode_telegram_video_scene_cursor(
+            str(page[-1]["created_at"]), str(page[-1]["job_id"])
+        )
+        if has_more and page
+        else None
+    )
+    return {
+        "items": [_telegram_video_scene_job_summary(job) for job in page],
+        "count": len(page),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
     }
 
 
