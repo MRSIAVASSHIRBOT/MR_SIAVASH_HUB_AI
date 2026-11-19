@@ -145,6 +145,4 @@ def get_task_result(task_id: UUID) -> dict[str, object]:
 
 @router.get("", response_model=list[TaskRecord])
 def list_tasks(limit: int = Query(default=50, ge=1, le=100)) -> list[TaskRecord]:
-    tasks = get_repository().list_recent(100)
-    visible = [task for task in tasks if task.task_type != "video.scene_detection"]
-    return list(visible[:limit])
+    return list(get_repository().list_recent_for_dashboard(limit))

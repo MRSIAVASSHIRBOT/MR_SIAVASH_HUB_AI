@@ -460,6 +460,36 @@
           <p id="video-analysis-message" class="message" role="status" aria-live="polite"></p>
           <div id="video-analysis-result" class="record-list"></div>
 
+
+          <section class="video-scene-analysis-panel" aria-labelledby="video-scene-analysis-heading">
+            <div class="section-heading">
+              <h4 id="video-scene-analysis-heading">تشخیص مستقل مرز صحنه‌ها</h4>
+              <span class="status-pill status-muted">محلی · بدون Provider بیرونی</span>
+            </div>
+            <p class="muted">برای یک ویدئوی متعلق به حساب خود، تحلیل سبک و محدود FFmpeg را جدا از تحلیل معنایی اجرا کنید. درخواست فقط در صف Worker محلی ثبت می‌شود؛ این صفحه Worker را خودکار اجرا نمی‌کند و هیچ فایل یا Promptی به سرویس بیرونی ارسال نمی‌شود.</p>
+            <form id="video-scene-job-form" class="form-grid">
+              <label class="field-wide">ویدئوی من
+                <select id="video-scene-asset" name="asset_id" required>
+                  <option value="">ابتدا ویدئوی MP4 بارگذاری کنید</option>
+                </select>
+              </label>
+              <label>آستانهٔ تشخیص تغییر
+                <input id="video-scene-threshold" name="threshold" type="number" min="0.05" max="0.95" step="0.05" value="0.30" required>
+              </label>
+              <label>حداکثر مرزهای صحنه
+                <input id="video-scene-max-changes" name="max_scene_changes" type="number" min="1" max="24" step="1" value="24" required>
+              </label>
+              <button id="video-scene-submit" class="button button-secondary" type="submit">ثبت تحلیل محلی</button>
+            </form>
+            <div class="button-row">
+              <button id="video-scene-history-refresh" class="button button-quiet" type="button">تازه‌سازی تاریخچه</button>
+              <button id="video-scene-job-refresh" class="button button-quiet" type="button">بررسی Job فعال</button>
+              <button id="video-scene-history-more" class="button button-quiet" type="button" hidden>نمایش موارد قدیمی‌تر</button>
+            </div>
+            <p id="video-scene-job-message" class="message" role="status" aria-live="polite"></p>
+            <div id="video-scene-job-list" class="record-list"></div>
+          </section>
+
           <section class="video-render-panel" aria-labelledby="video-render-heading">
             <div class="section-heading">
               <h4 id="video-render-heading">رندر و دریافت MP4</h4>
@@ -671,11 +701,12 @@
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="tasks:cancel"> لغو وظایف در صف یا منتظر تأیید</label>
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="memory:search"> جست‌وجوی حافظهٔ خصوصی</label>
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="memory:write"> تأیید صریح یک یادداشت حافظه</label>
-              <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:read"> مشاهدهٔ Providerها، Draftها و وضعیت رندر ویدئو</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:read"> مشاهدهٔ Providerها، Draftها، تاریخچه و وضعیت ویدئو</label>
+              <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:analyze"> ثبت تحلیل محلی مرز صحنه‌ها با FFmpeg</label>
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:render"> ثبت رندر محلی FFmpeg از Timeline آماده‌شده</label>
               <label class="checkbox-row"><input type="checkbox" name="scopes" value="video:cancel"> لغو تولید یا رندر ویدئو</label>
             </div>
-            <p class="muted">پیش‌فرض فقط مشاهدهٔ وضعیت Hub است. دریافت نتیجه، لغو وظیفه، مشاهدهٔ ویدئو، ثبت رندر محلی و لغو عملیات ویدئو مجوزهای مستقل‌اند و فقط در صورت نیاز فعال شوند. اجرای Agent، تأیید عملیات، انتشار محتوا و عملیات مخرب در این نسخه مجوز ندارند؛ وظایف پرخطر همچنان نیازمند تأیید مالک هستند.</p>
+            <p class="muted">پیش‌فرض فقط مشاهدهٔ وضعیت Hub است. دریافت نتیجه، لغو وظیفه، مشاهدهٔ ویدئو، تحلیل محلی صحنه‌ها، ثبت رندر محلی و لغو عملیات ویدئو مجوزهای مستقل‌اند و فقط در صورت نیاز فعال شوند. اجرای Agent، تأیید عملیات، انتشار محتوا و عملیات مخرب در این نسخه مجوز ندارند؛ وظایف پرخطر همچنان نیازمند تأیید مالک هستند.</p>
           </fieldset>
           <div class="button-row field-wide">
             <button class="button button-primary" type="submit">ساخت کد اتصال یک‌بارمصرف</button>

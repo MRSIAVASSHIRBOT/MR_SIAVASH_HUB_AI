@@ -612,3 +612,42 @@ def test_request_id_is_available_on_request_state_and_logged_privacy_safely(capl
     assert "private-value" not in caplog.text
     assert "private_query" not in caplog.text
     assert "must-not-be-logged" not in caplog.text
+
+def test_task_list_filters_internal_scene_jobs_before_applying_limit(tmp_path, monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from mrhub.domain.tasks import TaskRecord
+    from mrhub.infrastructure.database import TaskRepository
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "scene-task-list.sqlite3"))
+    get_settings.cache_clear()
+    client = authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+
+    visible = repository.create(
+        TaskRecord(task_type="demo.echo", description="visible dashboard task")
+    )
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET created_at = ?, updated_at = ? WHERE task_id = ?",
+            (
+                datetime(2020, 1, 1, tzinfo=UTC).isoformat(),
+                datetime(2020, 1, 1, tzinfo=UTC).isoformat(),
+                str(visible.task_id),
+            ),
+        )
+    for index in range(101):
+        repository.create(
+            TaskRecord(
+                task_type="video.scene_detection",
+                description=f"internal scene job {index}",
+            )
+        )
+
+    response = client.get("/tasks?limit=1")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["task_id"] == str(visible.task_id)
+    get_settings.cache_clear()
+

@@ -113,3 +113,14 @@ def test_route_preview_ui_never_submits_or_reconciles_a_generation():
     assert "/analyses/" not in preview
     assert "submit_video_generation" not in preview
     assert "provider_submission_started === false" in preview
+
+
+def test_video_scene_job_state_is_declared_before_unauthenticated_reset():
+    app = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    declaration = 'let activeVideoSceneJobId = sessionStorage.getItem("mrh_video_scene_job_id");'
+    unauthenticated_reset = "if (!token) {"
+
+    assert app.index(declaration) < app.index(unauthenticated_reset)
+    reset_start = app.index(unauthenticated_reset)
+    reset_end = app.index("  let pendingVideoAnalysisKey", reset_start)
+    assert "activeVideoSceneJobId = null;" in app[reset_start:reset_end]
