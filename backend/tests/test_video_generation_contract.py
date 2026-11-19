@@ -302,3 +302,23 @@ def test_generation_registry_rejects_invalid_capability_before_registration():
     with pytest.raises(TypeError, match="VideoGenerationCapability"):
         registry.register(InvalidCapabilityAdapter())
     assert registry.catalog() == []
+
+
+def test_generation_request_remote_consent_fields_are_strict_and_bounded():
+    request = _request(
+        remote_processing_approved=True,
+        remote_spend_approved=True,
+        max_remote_cost_usd=2.5,
+    )
+    assert request.remote_processing_approved is True
+    assert request.remote_spend_approved is True
+    assert request.max_remote_cost_usd == 2.5
+
+    with pytest.raises(ValidationError):
+        _request(remote_processing_approved="yes")
+    with pytest.raises(ValidationError):
+        _request(remote_spend_approved=1)
+    with pytest.raises(ValidationError):
+        _request(max_remote_cost_usd=10_001)
+    with pytest.raises(ValidationError):
+        _request(max_remote_cost_usd=float("inf"))
