@@ -259,4 +259,5 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert "/tools/grants/cloudflare.read" in script
     assert "/tools/cloudflare.inventory.snapshot/invoke" in script
     assert "if (response.status === 401)" in script
+    assert "این عملیات به مجوز فعال نیاز دارد." in script
     assert "response.status === 401 || response.status === 403" not in script
