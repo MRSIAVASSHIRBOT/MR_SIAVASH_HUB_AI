@@ -290,8 +290,16 @@ def test_agent_workflow_resume_revalidates_and_executes_only_remaining_step(monk
     assert task.status_code == 200
     assert task.json()["status"] == "queued"
 
+    permission_resolvers = []
+
+    def capture_resume_permissions(self, request, **callbacks):
+        permission_resolvers.append(callbacks.get("permission_provider"))
+        return original_execute(self, request, **callbacks)
+
+    monkeypatch.setattr(AgentCore, "execute", capture_resume_permissions)
     completed = run_worker_once()
     assert completed is not None and completed.status.value == "succeeded"
+    assert permission_resolvers and callable(permission_resolvers[0])
     final_workflow = client.get(f"/agent/workflows/{workflow_id}").json()
     assert final_workflow["status"] == "succeeded"
     assert final_workflow["steps"][1]["status"] == "succeeded"
