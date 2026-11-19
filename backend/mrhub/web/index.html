@@ -159,6 +159,48 @@
         <div id="provider-list" class="provider-grid"></div>
       </section>
 
+      <section class="panel cloudflare-access-panel" id="cloudflare-access-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">CLOUDFLARE READ ACCESS</p><h2>دسترسی فقط‌خواندنی Cloudflare</h2></div>
+          <span id="cloudflare-readiness" class="status-pill status-muted">پس از ورود بررسی می‌شود</span>
+        </div>
+        <p class="muted">این بخش فقط فرادادهٔ Workerها، Routeها و نام پایگاه‌های D1 را می‌خواند؛ محتوای ردیف‌های D1، مقدار Secretها، تغییر تنظیمات و Deploy در دسترس نیست. مجوز موقت فقط با اقدام مالک فعال می‌شود و خودکار تمدید نخواهد شد.</p>
+        <form id="cloudflare-grant-form" class="stack-form">
+          <label>مدت مجوز خواندن
+            <select name="expires_in_seconds">
+              <option value="600" selected>۱۰ دقیقه</option>
+              <option value="3600">۱ ساعت</option>
+              <option value="86400">۲۴ ساعت</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button id="cloudflare-grant-submit" class="button button-secondary" type="submit" disabled>اعطا یا تمدید مجوز خواندن</button>
+            <button id="cloudflare-grants-refresh" class="button button-quiet" type="button">تازه‌سازی وضعیت</button>
+          </div>
+        </form>
+        <p id="cloudflare-access-message" class="message" role="status" aria-live="polite"></p>
+        <div id="cloudflare-grant-list" class="record-list" aria-live="polite">
+          <p class="muted">برای مشاهدهٔ مجوزها وارد شوید.</p>
+        </div>
+        <div class="button-row">
+          <button id="cloudflare-inventory-button" class="button button-primary" type="button" disabled>دریافت Snapshot فقط‌خواندنی</button>
+        </div>
+        <pre id="cloudflare-inventory-result" class="output-box" aria-live="polite">Snapshot فقط پس از پیکربندی Gateway، اعطای مجوز موقت و انتخاب این دکمه دریافت می‌شود.</pre>
+        <div class="workflow-tools">
+          <div class="section-heading">
+            <div><p class="eyebrow">WORKER SETTINGS INSPECTOR</p><h3>بازرسی تنظیمات یک Worker</h3></div>
+          </div>
+          <p class="muted">فقط تاریخ سازگاری، مدل مصرف و نام/نوع Bindingها خوانده می‌شود؛ مقدار Bindingها و Secretها هرگز دریافت یا نمایش داده نمی‌شوند.</p>
+          <form id="cloudflare-worker-settings-form" class="stack-form">
+            <label>نام Worker
+              <input name="script_name" required maxlength="63" pattern="[a-z0-9_][a-z0-9_-]{0,62}" placeholder="نام دقیق Worker">
+            </label>
+            <button id="cloudflare-worker-settings-button" class="button button-secondary" type="submit" disabled>خواندن فرادادهٔ تنظیمات</button>
+          </form>
+          <pre id="cloudflare-worker-settings-result" class="output-box" aria-live="polite">پس از پیکربندی Gateway و اعطای مجوز موقت، نام Worker را وارد کنید.</pre>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="section-heading">
           <div><p class="eyebrow">MODEL INFERENCE</p><h2>آزمایش مدل</h2></div>

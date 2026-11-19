@@ -7,6 +7,8 @@ from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.main import create_app
+from mrhub.security.audit import AuditLogger
+from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
@@ -215,3 +217,48 @@ def test_tool_grant_management_requires_authentication(tmp_path, monkeypatch):
     ).status_code in (401, 403)
     assert client.delete("/tools/grants/cloudflare.read").status_code in (401, 403)
     get_settings.cache_clear()
+
+
+def test_tool_grant_list_is_owner_scoped_and_not_cached():
+    client = authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    repository.create_auth_user("other-owner", "other-owner", "22" * 16, "22" * 32)
+    service = ToolPermissionService(repository, AuditLogger(repository))
+    service.grant("other-owner", "cloudflare.read", 600)
+
+    empty = client.get("/tools/grants")
+    assert empty.status_code == 200
+    assert empty.headers["cache-control"] == "no-store"
+    assert empty.json() == []
+
+    own = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert own.status_code == 200
+    listed = client.get("/tools/grants")
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["grant_id"] == own.json()["grant_id"]
+
+
+def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
+    client = authenticated_client()
+    html = client.get("/ui").text
+    script = client.get("/ui/app.js").text
+
+    assert 'id="cloudflare-access-panel"' in html
+    assert 'id="cloudflare-grant-submit"' in html
+    assert 'id="cloudflare-inventory-button"' in html
+    assert 'id="cloudflare-worker-settings-form"' in html
+    assert 'id="cloudflare-worker-settings-button"' in html
+    assert "cloudflare.inventory.snapshot" in script
+    assert "cloudflare.worker.settings.read" in script
+    assert "if (!(cloudflareInventoryAvailable || cloudflareWorkerSettingsAvailable)) return;" in script
+    assert "/tools/cloudflare.worker.settings.read/invoke" in script
+    assert "/tools/grants/cloudflare.read" in script
+    assert "/tools/cloudflare.inventory.snapshot/invoke" in script
+    assert "if (response.status === 401)" in script
+    assert "این عملیات به مجوز فعال نیاز دارد." in script
+    assert "response.status === 401 || response.status === 403" not in script
