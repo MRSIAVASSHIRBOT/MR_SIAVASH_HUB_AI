@@ -26,9 +26,25 @@ from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, l
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
+
+
+def _build_owner_agent_core(
+    owner_user_id: str,
+    repository: TaskRepository | None = None,
+) -> AgentCore:
+    """Build an AgentCore whose grants come only from the authenticated owner store."""
+    tasks = repository or TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    permissions = ToolPermissionService(tasks, AuditLogger(tasks))
+    return AgentCore(
+        build_model_router(),
+        build_tool_registry(),
+        permission_provider=lambda: permissions.active_permissions(owner_user_id),
+    )
 
 
 class WorkflowReconciliationRequest(BaseModel):
@@ -105,8 +121,11 @@ def discover_agent_capabilities() -> dict[str, object]:
 
 
 @router.post("/plan")
-def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
-    core = AgentCore(build_model_router(), build_tool_registry())
+def create_agent_plan(
+    request: AgentPlanRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    core = _build_owner_agent_core(current_user.user_id)
     try:
         return core.plan(request)
     except LookupError as exc:
@@ -118,7 +137,7 @@ def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
 @router.post("/execute")
 def execute_agent_tools(request: AgentPlanRequest, current_user: Annotated[AuthenticatedUser, Depends(require_user)]) -> dict[str, object]:
     """Run only explicitly requested tools that pass the server policy checks."""
-    core = AgentCore(build_model_router(), build_tool_registry())
+    core = _build_owner_agent_core(current_user.user_id)
     try:
         execution = core.execute(request)
         repository = AgentRunRepository(get_settings().database_path)
@@ -175,18 +194,18 @@ def execute_agent_workflow(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
 ) -> dict[str, object]:
     """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
-    core = AgentCore(build_model_router(), build_tool_registry())
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    core = _build_owner_agent_core(current_user.user_id, tasks)
     try:
         plan = core.plan(request)
         request_digest = _workflow_digest(request)
-        settings = get_settings()
         if not plan.get("execution_ready"):
             legacy = AgentWorkflowRepository(settings.database_path)
             workflow = legacy.create(request_digest, plan, owner_user_id=current_user.user_id)
             return {"workflow": workflow, "execution": None}
 
-        tasks = TaskRepository(settings.database_path)
-        tasks.initialize()
         recovery = WorkflowRecoveryRepository(settings.database_path)
         idempotency = IdempotencyRepository(settings.database_path)
         scope = f"agent-workflow:{current_user.user_id}"
@@ -425,7 +444,7 @@ def resume_agent_workflow(
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
-    core = AgentCore(build_model_router(), build_tool_registry())
+    core = _build_owner_agent_core(current_user.user_id, tasks)
     try:
         plan = core.plan(request.request)
         return AgentWorkflowRunner(tasks, core).queue_resume(
