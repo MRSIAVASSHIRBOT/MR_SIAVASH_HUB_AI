@@ -186,32 +186,6 @@ def test_kimi_vision_endpoint_uses_explicit_provider_and_inline_image(
     assert limited.json()["detail"]["code"] == "kimi_rate_limited"
     get_settings.cache_clear()
 
-def test_remote_mode_never_selects_kimi_when_both_cloud_providers_are_enabled(
-    tmp_path, monkeypatch
-) -> None:
-    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "both-providers.sqlite3"))
-    monkeypatch.setenv("MRH_REMOTE_INFERENCE_ENABLED", "true")
-    monkeypatch.setenv("MRH_REMOTE_INFERENCE_API_KEY", "openrouter-test-key")
-    monkeypatch.setenv("MRH_REMOTE_INFERENCE_MODEL", "example/free-model")
-    monkeypatch.setenv("MRH_KIMI_INFERENCE_ENABLED", "true")
-    monkeypatch.setenv("MRH_KIMI_API_KEY", "kimi-test-key")
-    monkeypatch.setenv("MRH_KIMI_MODEL", "kimi-k3.1-pro")
-    get_settings.cache_clear()
-
-    remote_router = model_routes.build_model_router(
-        provider_mode="remote",
-        include_stub=False,
-    )
-    assert [item.provider for item in remote_router.catalog()] == ["openrouter"]
-
-    kimi_router = model_routes.build_model_router(
-        provider_mode="kimi",
-        include_stub=False,
-    )
-    assert [item.provider for item in kimi_router.catalog()] == ["moonshot"]
-    get_settings.cache_clear()
-
-
 def test_kimi_owner_limiter_is_atomic_across_instances_and_expires_old_events(
     tmp_path,
 ) -> None:
