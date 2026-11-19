@@ -63,9 +63,9 @@ For every upstream, record the canonical URL and revision, license obligations, 
 ## Order
 
 1. Complete a real MCP host acceptance test before enabling the bridge in a deployment.
-3. Keep E2B deferred until the sandbox threat model, licensing, costs, and real-host acceptance are complete.
-4. Keep Headroom deferred unless an isolated benchmark demonstrates material benefit without destabilizing the existing provider/context stack.
-5. Apply the Cloudflare-derived review checklist to future integrations and security-sensitive changes.
+2. Keep E2B deferred until the sandbox threat model, licensing, costs, and real-host acceptance are complete.
+3. Keep Headroom deferred unless an isolated benchmark demonstrates material benefit without destabilizing the existing provider/context stack.
+4. Apply the Cloudflare-derived review checklist to future integrations and security-sensitive changes.
 
 Headroom, PixelRAG, Cloudflare's audit skill, and E2B remain candidates or methodology references; MCP is the first implemented optional runtime bridge, subject to host acceptance.
 
