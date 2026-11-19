@@ -33,6 +33,9 @@ class VideoGenerationRequest(BaseModel):
     aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
     duration_seconds: int = Field(ge=3, le=60)
     resolution: str = Field(default="720p", pattern=r"^(720p|1080p)$")
+    remote_processing_approved: bool = Field(default=False, strict=True)
+    remote_spend_approved: bool = Field(default=False, strict=True)
+    max_remote_cost_usd: float = Field(default=0, ge=0, le=10_000, allow_inf_nan=False)
     idempotency_key: str = Field(min_length=1, max_length=255)
 
 

@@ -1,6 +1,7 @@
 """Lease-fenced provider submission and explicit outcome reconciliation."""
 from __future__ import annotations
 
+from math import isfinite
 from threading import Event
 from uuid import UUID
 
@@ -67,6 +68,39 @@ class VideoGenerationWorkerHandler:
             request_data = dict(loaded["request"])
             request_data["idempotency_key"] = str(generation_id)
             request = VideoGenerationRequest.model_validate(request_data)
+            if not capability.local:
+                if not (
+                    request.remote_processing_approved
+                    and request.remote_spend_approved
+                ):
+                    self.jobs.transition_under_lease(
+                        owner, generation_id, "failed", lease=lease,
+                        error_code="remote_consent_required",
+                    )
+                    raise ValueError("remote_consent_required")
+                estimator = getattr(provider, "estimate_cost_usd", None)
+                try:
+                    estimate = estimator(request) if callable(estimator) else None
+                    if (
+                        estimate is None
+                        or isinstance(estimate, bool)
+                        or not isfinite(float(estimate))
+                        or float(estimate) < 0
+                    ):
+                        raise ValueError("unknown estimate")
+                    estimated_cost = float(estimate)
+                except Exception:  # noqa: BLE001 - pricing must fail closed
+                    self.jobs.transition_under_lease(
+                        owner, generation_id, "failed", lease=lease,
+                        error_code="remote_cost_unknown",
+                    )
+                    raise ValueError("remote_cost_unknown") from None
+                if estimated_cost > request.max_remote_cost_usd:
+                    self.jobs.transition_under_lease(
+                        owner, generation_id, "failed", lease=lease,
+                        error_code="remote_budget_exceeded",
+                    )
+                    raise ValueError("remote_budget_exceeded")
             if (
                 request.duration_seconds > capability.max_duration_seconds
                 or request.resolution not in {"720p", "1080p"}

@@ -483,6 +483,7 @@ def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch, e
     provider = SimpleNamespace(
         capability=SimpleNamespace(
             provider="local",
+            local=True,
             model="renderer-v1",
             max_duration_seconds=60,
             supported_aspect_ratios=["9:16"],
@@ -701,6 +702,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     class Provider:
         capability = SimpleNamespace(
             provider="local",
+            local=True,
             model="renderer-v1",
             max_duration_seconds=60,
             supported_aspect_ratios=["9:16"],
@@ -790,6 +792,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     # catalog changes after the original request has already been accepted.
     provider.capability = SimpleNamespace(
         provider="local",
+        local=True,
         model="renderer-v1",
         max_duration_seconds=5,
         supported_aspect_ratios=["16:9"],
@@ -1552,3 +1555,46 @@ def test_cancellation_is_honored_when_worker_claimed_task_before_generation_tran
     assert loaded["status"] == "queued"
     assert loaded["cancellation_requested"] is True
     assert "request" not in loaded
+
+
+def test_generation_task_ownership_is_bound_to_the_linked_owner(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+
+    assert linked is not None
+    task_id = UUID(linked["task_id"])
+    assert repository.owns_task("owner-a", task_id) is True
+    assert repository.owns_task("owner-b", task_id) is False
+    assert repository.owns_task("", task_id) is False
+
+
+def test_generation_history_exposes_only_owner_linked_approval_metadata(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+
+    rows = repository.list_for_owner("owner-a")
+
+    assert len(rows) == 1
+    assert rows[0]["task_id"] == linked["task_id"]
+    assert rows[0]["approval_pending"] is True
+    assert repository.list_for_owner("owner-b") == []

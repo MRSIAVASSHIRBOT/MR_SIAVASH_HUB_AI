@@ -597,6 +597,44 @@
             <div id="video-prompt-timeline" class="record-list"></div>
           </div>
 
+          <section class="video-generation-submit-panel" aria-labelledby="video-generation-submit-heading">
+            <div class="section-heading">
+              <h4 id="video-generation-submit-heading">ثبت درخواست تولید ویدئو</h4>
+            </div>
+            <p class="muted">این مرحله فقط درخواست را ثبت می‌کند. پس از ثبت، یک اقدام جداگانه برای تأیید مالک نمایش داده می‌شود؛ تا پیش از آن هیچ Provider اجرا نمی‌شود. برای Provider راه‌دور، رضایت پردازش و هزینه و سقف هزینه الزامی است.</p>
+            <form id="video-generation-submit-form" class="form-grid">
+              <label>Provider و مدل صریح
+                <select id="video-generation-provider-select" name="provider" required>
+                  <option value="">ابتدا Provider پیکربندی‌شده را بارگذاری کنید</option>
+                </select>
+              </label>
+              <label>مدت خروجی (ثانیه)
+                <input name="duration_seconds" type="number" min="3" max="60" step="1" value="10" required>
+              </label>
+              <label>وضوح خروجی
+                <select name="resolution">
+                  <option value="720p">720p</option>
+                  <option value="1080p">1080p</option>
+                </select>
+              </label>
+              <label>سقف هزینهٔ راه‌دور (USD)
+                <input name="max_remote_cost_usd" type="number" min="0" max="10000" step="0.01" value="0" required>
+              </label>
+              <fieldset class="telegram-scope-fieldset field-wide">
+                <legend>رضایت‌های لازم برای Provider راه‌دور</legend>
+                <div class="checkbox-grid">
+                  <label class="checkbox-row"><input type="checkbox" name="remote_processing_approved"> اجازهٔ ارسال Prompt برای پردازش راه‌دور</label>
+                  <label class="checkbox-row"><input type="checkbox" name="remote_spend_approved"> اجازهٔ استفاده از سرویس دارای هزینه تا سقف تعیین‌شده</label>
+                </div>
+                <p class="muted">این رضایت‌ها فقط برای همین درخواست‌اند. حتی پس از ثبت، ارسال واقعی تا تأیید جداگانهٔ مالک متوقف می‌ماند.</p>
+              </fieldset>
+              <div class="button-row field-wide">
+                <button id="video-generation-submit-button" class="button button-primary" type="submit" disabled>ثبت درخواست و رفتن به مرحلهٔ تأیید</button>
+              </div>
+            </form>
+            <p id="video-generation-submit-message" class="message" role="status" aria-live="polite"></p>
+          </section>
+
           <section id="video-storyboard-panel" class="video-storyboard-panel" hidden aria-labelledby="video-storyboard-heading">
             <div class="section-heading">
               <h4 id="video-storyboard-heading">ویرایش Storyboard</h4>

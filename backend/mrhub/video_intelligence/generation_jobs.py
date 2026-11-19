@@ -780,25 +780,29 @@ class VideoGenerationJobRepository:
             raise ValueError("Both generation history cursor fields are required")
 
         query = (
-            "SELECT generation_id, source_analysis_id, provider, model, status, "
-            "progress_percent, output_asset_id, output_bytes, "
-            "output_duration_seconds, output_width, output_height, error_code, "
-            "CASE WHEN cancellation_requested_at IS NOT NULL "
-            "AND status IN ('queued', 'submitting', 'running', 'unknown_outcome') "
+            "SELECT j.generation_id, j.source_analysis_id, j.provider, j.model, j.status, "
+            "j.progress_percent, j.output_asset_id, j.output_bytes, "
+            "j.output_duration_seconds, j.output_width, j.output_height, j.error_code, "
+            "CASE WHEN j.cancellation_requested_at IS NOT NULL "
+            "AND j.status IN ('queued', 'submitting', 'running', 'unknown_outcome') "
             "THEN 1 ELSE 0 END AS cancellation_requested, "
-            "created_at, updated_at FROM video_generation_jobs "
-            "WHERE owner_user_id = ?"
+            "l.task_id, CASE WHEN t.status = 'waiting_approval' THEN 1 ELSE 0 END AS approval_pending, "
+            "j.created_at, j.updated_at FROM video_generation_jobs AS j "
+            "LEFT JOIN video_generation_task_links AS l "
+            "ON l.generation_id = j.generation_id AND l.owner_user_id = j.owner_user_id "
+            "LEFT JOIN tasks AS t ON t.task_id = l.task_id "
+            "WHERE j.owner_user_id = ?"
         )
         parameters: list[object] = [owner_user_id]
         if before_created_at is not None and before_generation_id is not None:
             query += (
-                " AND (created_at < ? OR "
-                "(created_at = ? AND generation_id < ?))"
+                " AND (j.created_at < ? OR "
+                "(j.created_at = ? AND j.generation_id < ?))"
             )
             parameters.extend(
                 [before_created_at, before_created_at, str(before_generation_id)]
             )
-        query += " ORDER BY created_at DESC, generation_id DESC LIMIT ?"
+        query += " ORDER BY j.created_at DESC, j.generation_id DESC LIMIT ?"
         parameters.append(limit)
 
         with self.tasks._connection() as connection:
@@ -807,9 +811,22 @@ class VideoGenerationJobRepository:
             {
                 **dict(row),
                 "cancellation_requested": bool(row["cancellation_requested"]),
+                "approval_pending": bool(row["approval_pending"]),
             }
             for row in rows
         ]
+
+    def owns_task(self, owner_user_id: str, task_id: UUID) -> bool:
+        """Return whether a generation task is linked to this exact owner."""
+        if not owner_user_id or len(owner_user_id) > 200:
+            return False
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                """SELECT 1 FROM video_generation_task_links
+                   WHERE task_id = ? AND owner_user_id = ?""",
+                (str(task_id), owner_user_id),
+            ).fetchone()
+        return row is not None
 
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:

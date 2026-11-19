@@ -124,3 +124,26 @@ def test_video_scene_job_state_is_declared_before_unauthenticated_reset():
     reset_start = app.index(unauthenticated_reset)
     reset_end = app.index("  let pendingVideoAnalysisKey", reset_start)
     assert "activeVideoSceneJobId = null;" in app[reset_start:reset_end]
+
+
+def test_generation_submission_ui_requires_selected_provider_and_separate_approval():
+    html = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+    app = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+    for element_id in (
+        "video-generation-submit-form",
+        "video-generation-provider-select",
+        "video-generation-submit-button",
+        "video-generation-submit-message",
+    ):
+        assert f'id="{element_id}"' in html
+    assert 'name="remote_processing_approved"' in html
+    assert 'name="remote_spend_approved"' in html
+    assert 'name="max_remote_cost_usd"' in html
+    assert "submitVideoGeneration" in app
+    assert '"/video-intelligence/analyses/"' in app
+    assert '"Idempotency-Key"' in app
+    assert '"/tasks/" + encodeURIComponent(job.task_id) + "/approval"' in app
+    assert 'decision: "approved"' in app
+    assert "job.approval_pending === true" in app
+    assert "window.confirm" in app

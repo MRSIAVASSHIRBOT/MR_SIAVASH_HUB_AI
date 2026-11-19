@@ -117,3 +117,36 @@ def test_non_pending_task_cannot_be_approved(tmp_path, monkeypatch) -> None:
         json={"decision": "approved"},
     )
     assert response.status_code == 409
+
+
+def test_generation_approval_and_decision_are_owner_scoped(tmp_path, monkeypatch):
+    from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+    from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+    client = make_authenticated_client(tmp_path, monkeypatch)
+    repository = TaskRepository(tmp_path / "approvals.sqlite3")
+    task = TaskRecord(
+        task_type="video.generation",
+        status=TaskStatus.WAITING_APPROVAL,
+        risk_class=RiskClass.HIGH,
+        description="Owner-scoped generation request",
+    )
+    repository.create(task)
+    monkeypatch.setattr(
+        VideoGenerationJobRepository,
+        "owns_task",
+        lambda self, owner_user_id, task_id: False,
+    )
+
+    try:
+        decision = client.post(
+            f"/tasks/{task.task_id}/approval",
+            json={"decision": "approved"},
+        )
+        disclosure = client.get(f"/tasks/{task.task_id}/approval")
+    finally:
+        client.close()
+
+    assert decision.status_code == 404
+    assert disclosure.status_code == 404
+    assert repository.get_task_approval(task.task_id) is None
