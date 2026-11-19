@@ -6,9 +6,9 @@ from mrhub.api.routes import tools as tools_api
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.main import create_app
 from mrhub.security.audit import AuditLogger
 from mrhub.security.tool_permissions import ToolPermissionService
-from mrhub.main import create_app
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
