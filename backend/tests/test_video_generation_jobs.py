@@ -228,6 +228,7 @@ def test_successful_generation_registers_private_output_asset_atomically(
             duration_seconds=10.0,
             width=720,
             height=1280,
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
             metadata_status="available",
         ),
     )
@@ -294,6 +295,7 @@ def test_output_registration_rejects_provider_identity_mismatch(tmp_path, monkey
             duration_seconds=10.0,
             width=720,
             height=1280,
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
             metadata_status="available",
         ),
     )
@@ -758,6 +760,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
             duration_seconds=10.0,
             width=720,
             height=1280,
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
             metadata_status="available",
         ),
     )

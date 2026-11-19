@@ -220,7 +220,7 @@ def test_probe_video_bounds_stream_count_and_discards_unneeded_stderr(tmp_path, 
             args=command,
             returncode=0,
             stdout=json.dumps({
-                "format": {"duration": "4.5"},
+                "format": {"duration": "4.5", "format_name": "mov,mp4,m4a,3gp,3g2,mj2"},
                 "streams": [
                     {
                         "codec_type": "video",
@@ -303,7 +303,7 @@ def test_probe_video_accepts_valid_core_metadata(tmp_path, monkeypatch):
     stdout = (
         b'{"streams": [{"codec_type": "video", "codec_name": "h264", '
         b'"width": 1920, "height": 1080, "avg_frame_rate": "30000/1001"}, '
-        b'{"codec_type": "audio"}], "format": {"duration": "12.5"}}'
+        b'{"codec_type": "audio"}], "format": {"duration": "12.5", "format_name": "mov,mp4,m4a,3gp,3g2,mj2"}}'
     )
     monkeypatch.setattr(
         "mrhub.video_intelligence.service.shutil.which",

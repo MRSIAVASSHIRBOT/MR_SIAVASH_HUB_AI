@@ -109,6 +109,7 @@ def test_provider_output_is_bounded_and_registered_as_private_asset(
             duration_seconds=10,
             width=720,
             height=1280,
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
             metadata_status="available",
         ),
     )
@@ -190,5 +191,34 @@ def test_provider_download_exception_is_sanitized_and_partial_file_is_removed(
         )
 
     assert "private token" not in str(error.value)
+    assert jobs.get("owner-a", generation_id)["status"] == "submitting"
+    assert list(media.storage_root.iterdir()) == []
+
+
+def test_provider_output_with_non_mp4_container_is_rejected_and_removed(
+    tmp_path, monkeypatch
+):
+    jobs, media, generation_id = _setup(tmp_path, monkeypatch)
+    content = b"provider-output-fixture"
+    from mrhub.video_intelligence import service
+
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=10,
+            width=720,
+            height=1280,
+            format_name="matroska,webm",
+            metadata_status="available",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="MP4 media validation"):
+        download_and_register_generation_output(
+            _Provider(content), _result(content), jobs, media,
+            "owner-a", generation_id,
+        )
+
     assert jobs.get("owner-a", generation_id)["status"] == "submitting"
     assert list(media.storage_root.iterdir()) == []

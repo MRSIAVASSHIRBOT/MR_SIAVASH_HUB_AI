@@ -31,7 +31,7 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
         binary,
         "-v", "error",
         "-max_streams", str(_MAX_PROBE_STREAMS),
-        "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate",
+        "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate",
         "-of", "json",
         str(path),
     ]
@@ -72,6 +72,9 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
 
         # FFprobe output is untrusted parser input. Reject missing, non-finite,
         # or implausible core values rather than reporting misleading metadata.
+        format_name = format_data.get("format_name")
+        if not isinstance(format_name, str) or not format_name or len(format_name) > 256:
+            return VideoTechnicalMetadata(metadata_status="probe_failed")
         duration = float(format_data["duration"])
         width = int(video["width"])
         height = int(video["height"])
@@ -107,6 +110,7 @@ def probe_video(path: pathlib.Path) -> VideoTechnicalMetadata:
             height=height,
             frame_rate=round(fps, 3),
             codec=codec,
+            format_name=format_name,
             has_audio=has_audio,
             metadata_status="available",
         )
