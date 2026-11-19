@@ -128,6 +128,7 @@
   }
 
   let cloudflareInventoryAvailable = false;
+  let cloudflareWorkerSettingsAvailable = false;
   let activeCloudflareReadGrant = false;
 
   function setAuthenticated(value) {
@@ -196,13 +197,16 @@
     $("#resource-reply-preview").textContent = "پس از واردکردن لینک عمومی محتوا، پیش‌نمایش پیام اینجا نمایش داده می‌شود.";
     message("#resource-reply-message", "");
     cloudflareInventoryAvailable = false;
+    cloudflareWorkerSettingsAvailable = false;
     activeCloudflareReadGrant = false;
     $("#cloudflare-grant-list").replaceChildren();
     $("#cloudflare-readiness").textContent = "بدون نشست";
     $("#cloudflare-readiness").className = "status-pill status-muted";
     $("#cloudflare-grant-submit").disabled = true;
     $("#cloudflare-inventory-button").disabled = true;
+    $("#cloudflare-worker-settings-button").disabled = true;
     $("#cloudflare-inventory-result").textContent = "برای مشاهدهٔ Snapshot دوباره وارد شوید.";
+    $("#cloudflare-worker-settings-result").textContent = "برای مشاهدهٔ تنظیمات دوباره وارد شوید.";
     message("#cloudflare-access-message", "");
     setAuthenticated(false);
   }
@@ -3255,6 +3259,7 @@
   async function loadCloudflareReadAccess() {
     const grantButton = $("#cloudflare-grant-submit");
     const inventoryButton = $("#cloudflare-inventory-button");
+    const settingsButton = $("#cloudflare-worker-settings-button");
     const readiness = $("#cloudflare-readiness");
     try {
       const [grantsResult, toolsResult] = await Promise.allSettled([
@@ -3270,6 +3275,9 @@
       cloudflareInventoryAvailable = tools.some(
         (item) => item.name === "cloudflare.inventory.snapshot"
       );
+      cloudflareWorkerSettingsAvailable = tools.some(
+        (item) => item.name === "cloudflare.worker.settings.read"
+      );
       activeCloudflareReadGrant = Boolean(activeGrant);
       renderRecords(
         "#cloudflare-grant-list",
@@ -3278,7 +3286,7 @@
         "هیچ مجوز فعال Cloudflare برای این حساب ثبت نشده است."
       );
 
-      if (!cloudflareInventoryAvailable) {
+      if (!cloudflareInventoryAvailable && !cloudflareWorkerSettingsAvailable) {
         readiness.textContent = toolsResult.status === "rejected"
           ? "وضعیت Gateway قابل تأیید نیست"
           : "Gateway در این محیط پیکربندی نشده است";
@@ -3291,8 +3299,9 @@
           ? "status-pill"
           : "status-pill status-warning";
       }
-      grantButton.disabled = !cloudflareInventoryAvailable;
+      grantButton.disabled = !(cloudflareInventoryAvailable || cloudflareWorkerSettingsAvailable);
       inventoryButton.disabled = !(cloudflareInventoryAvailable && activeCloudflareReadGrant);
+      settingsButton.disabled = !(cloudflareWorkerSettingsAvailable && activeCloudflareReadGrant);
       if (toolsResult.status === "rejected") {
         message("#cloudflare-access-message", "فهرست ابزارهای Gateway دریافت نشد؛ هیچ درخواست Cloudflare اجرا نشده است.", "error");
       } else {
@@ -3301,11 +3310,13 @@
       return true;
     } catch (error) {
       cloudflareInventoryAvailable = false;
+      cloudflareWorkerSettingsAvailable = false;
       activeCloudflareReadGrant = false;
       readiness.textContent = "وضعیت مجوز قابل دریافت نیست";
       readiness.className = "status-pill status-muted";
       grantButton.disabled = true;
       inventoryButton.disabled = true;
+      settingsButton.disabled = true;
       renderEmpty($("#cloudflare-grant-list"), "فهرست مجوزهای حساب دریافت نشد.");
       message("#cloudflare-access-message", error.message, "error");
       return false;
@@ -3391,6 +3402,41 @@
       message("#cloudflare-access-message", error.message, "error");
     } finally {
       button.disabled = !(cloudflareInventoryAvailable && activeCloudflareReadGrant);
+    }
+  }
+
+  async function inspectCloudflareWorkerSettings(event) {
+    event.preventDefault();
+    if (!cloudflareWorkerSettingsAvailable || !activeCloudflareReadGrant) return;
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    const scriptName = String(new FormData(form).get("script_name") || "").trim();
+    const button = $("#cloudflare-worker-settings-button");
+    const output = $("#cloudflare-worker-settings-result");
+    button.disabled = true;
+    output.textContent = "در حال خواندن فرادادهٔ تنظیمات Worker…";
+    try {
+      const response = await api("/tools/cloudflare.worker.settings.read/invoke", {
+        method: "POST",
+        body: { payload: { script_name: scriptName } },
+      });
+      const settings = response && response.result && response.result.settings;
+      if (!settings || !Array.isArray(settings.bindings)) {
+        throw new Error("پاسخ Gateway با قرارداد فرادادهٔ تنظیمات سازگار نیست.");
+      }
+      output.textContent = JSON.stringify({
+        script_name: scriptName,
+        compatibility_date: settings.compatibility_date,
+        usage_model: settings.usage_model,
+        bindings: settings.bindings,
+      }, null, 2);
+      message("#cloudflare-access-message", "فرادادهٔ تنظیمات Worker دریافت شد؛ هیچ مقدار Binding یا Secret خوانده نشد.", "success");
+    } catch (error) {
+      output.textContent = error.message;
+      await loadCloudflareReadAccess();
+      message("#cloudflare-access-message", error.message, "error");
+    } finally {
+      button.disabled = !(cloudflareWorkerSettingsAvailable && activeCloudflareReadGrant);
     }
   }
 
@@ -3743,6 +3789,7 @@
     loadCloudflareReadAccess();
   });
   $("#cloudflare-inventory-button").addEventListener("click", inspectCloudflareInventory);
+  $("#cloudflare-worker-settings-form").addEventListener("submit", inspectCloudflareWorkerSettings);
   $("#agent-run-form").addEventListener("submit", runAgent);
   $("#agent-queue-button").addEventListener("click", queueAgentRun);
   $("#agent-queued-refresh-button").addEventListener("click", refreshQueuedAgentRun);
