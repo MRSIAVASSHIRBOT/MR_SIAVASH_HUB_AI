@@ -44,7 +44,7 @@ support also matter.
 
 The owner dashboard exposes a manual **Check hardware** action through
 `GET /capabilities/hardware-report`. The API reports the machine running the
-API process (`host_scope=api_process_host`), not necessarily the browser device.
+API process (`host_scope=api_process_runtime`), not necessarily the browser device or the physical host when containerized.
 This distinction is important when the HUB is deployed remotely or inside a
 container. The endpoint is authenticated, read-only, and does not persist or
 transmit the report to any provider. It does not install tools, download models,
