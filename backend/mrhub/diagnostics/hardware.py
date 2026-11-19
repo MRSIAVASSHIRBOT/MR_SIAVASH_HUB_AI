@@ -79,15 +79,74 @@ def _windows_display_adapters() -> list[dict[str, str]]:
                         description = winreg.QueryValueEx(adapter_key, "DriverDesc")[0]
                         provider = winreg.QueryValueEx(adapter_key, "ProviderName")[0]
                     if isinstance(description, str) and description.strip():
+                        vram_bytes: int | None = None
+                        try:
+                            raw_vram = winreg.QueryValueEx(adapter_key, "HardwareInformation.qwMemorySize")[0]
+                            if isinstance(raw_vram, bytes) and 1 <= len(raw_vram) <= 8:
+                                vram_bytes = int.from_bytes(raw_vram, byteorder="little", signed=False)
+                            elif isinstance(raw_vram, int) and raw_vram > 0:
+                                vram_bytes = raw_vram
+                        except (OSError, TypeError, ValueError):
+                            pass
                         adapters.append({
                             "name": description.strip(),
                             "provider": provider.strip() if isinstance(provider, str) else "Unknown",
+                            "vram_bytes": vram_bytes,
+                            "vram_source": "windows_display_driver_registry" if vram_bytes else None,
                         })
                 except OSError:
                     continue
         return adapters
     except (ImportError, OSError):
         return []
+
+
+def _linux_display_adapters(
+    drm_root: Path = Path("/sys/class/drm"),
+) -> list[dict[str, str | int | None]]:
+    """Read GPU identity and dedicated VRAM from kernel-exposed DRM sysfs only."""
+    if sys.platform != "linux":
+        return []
+    vendor_names = {
+        "0x10de": "NVIDIA",
+        "0x1002": "AMD",
+        "0x8086": "Intel",
+        "0x1022": "AMD",
+    }
+    adapters: list[dict[str, str | int | None]] = []
+    try:
+        devices = sorted(drm_root.glob("card[0-9]*/device"))
+    except OSError:
+        return []
+    for device in devices:
+        try:
+            vendor_id = (device / "vendor").read_text(encoding="ascii").strip().lower()
+            device_id = (device / "device").read_text(encoding="ascii").strip().lower()
+        except (OSError, UnicodeError):
+            continue
+        if not vendor_id.startswith("0x") or not device_id.startswith("0x"):
+            continue
+        try:
+            int(vendor_id, 16)
+            int(device_id, 16)
+        except ValueError:
+            continue
+        vram_bytes: int | None = None
+        try:
+            raw_vram = (device / "mem_info_vram_total").read_text(encoding="ascii").strip()
+            parsed_vram = int(raw_vram, 10)
+            if parsed_vram > 0:
+                vram_bytes = parsed_vram
+        except (OSError, UnicodeError, ValueError):
+            pass
+        vendor = vendor_names.get(vendor_id, f"PCI vendor {vendor_id}")
+        adapters.append({
+            "name": f"{vendor} GPU ({vendor_id}:{device_id})",
+            "provider": vendor,
+            "vram_bytes": vram_bytes,
+            "vram_source": "linux_drm_sysfs" if vram_bytes else None,
+        })
+    return adapters
 
 
 def collect_hardware_report() -> dict[str, Any]:
@@ -104,7 +163,7 @@ def collect_hardware_report() -> dict[str, Any]:
         disk_report = {"checked_path": root or ".", "status": "unavailable"}
 
     total_memory, available_memory = _memory_snapshot()
-    adapters = _windows_display_adapters()
+    adapters = _windows_display_adapters() if sys.platform == "win32" else _linux_display_adapters()
     gib = 1024 ** 3
     return {
         "schema_version": 2,
@@ -129,12 +188,12 @@ def collect_hardware_report() -> dict[str, Any]:
         "gpu": {
             "adapters": adapters,
             "status": "detected" if adapters else "not_detected_by_safe_probe",
-            "note": "Adapter names only; dedicated VRAM and compute capability are not measured.",
+            "note": "VRAM is included only when exposed by the local display-driver registry or Linux DRM sysfs; compute capability is not measured.",
         },
         "limitations": [
             "No benchmark or model inference was run.",
             "Available memory is a point-in-time estimate and changes as applications run.",
-            "GPU memory and compute capability are not measured.",
+            "GPU memory may be unavailable when the display driver or kernel does not expose it; compute capability is not measured.",
             "Disk capacity refers to the current working-drive root, not every volume.",
         ],
     }
