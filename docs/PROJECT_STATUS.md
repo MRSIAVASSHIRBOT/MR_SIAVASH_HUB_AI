@@ -1,3 +1,21 @@
+## Current Hub maintenance addendum — 2026-11-19 UTC
+
+This concise current-state record supersedes older snapshots below where they conflict.
+
+### Verified repository changes
+- PR #433 merged the explicit owner-consent video-generation request flow and durable owner-scoped job lifecycle. No generation provider is registered by default; provider-backed generation remains unavailable until the owner explicitly selects and configures a provider.
+- PR #435 merged ADR-0011 documenting the scheduled-agent credential boundary. The scheduled OpenCode/provider workflow was subsequently retired and removed in PR #436, merged as `aca5f198fb6e372436bdbff67aaff7385841b4ee`; do not renew the retired provider credential.
+- Issue #332 is closed as not planned because the workflow was retired. The obsolete Actions secret `MR_SIAVASH_HUB_AI` remains an owner-only deletion task; no secret value was read or changed.
+- PR #439 adds a test-only regression for the read-only hardware diagnostics JSON CLI. PR #440 is reconciling the documentation ledger; both require exact-head checks before merge.
+
+### Remaining owner and acceptance gates
+- Configure and independently verify `main` branch protection/rulesets for the relevant repositories. The connected integration cannot write these settings; do not claim protection is enabled.
+- Complete isolated Cloudflare staging and live acceptance before any production routing change. Do not repurpose GShop production resources or routes.
+- Complete target-device Windows install/upgrade/backup/restore/rollback acceptance on the owner's device.
+- No deployment, production configuration, application data, or repository secrets were changed during this maintenance pass.
+
+---
+
 ## Portfolio maintenance addendum — 2026-11-16 12:14 UTC
 
 This snapshot supersedes the 2026-11-15 repository snapshot below where the values differ. It records GitHub and repository evidence observed during the coordinated maintenance run.
