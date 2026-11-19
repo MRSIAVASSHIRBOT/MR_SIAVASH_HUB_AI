@@ -1,11 +1,14 @@
 """End-to-end tests for queued, encrypted workflow execution."""
 from uuid import UUID
 
+from pydantic import BaseModel
+
 from client_helpers import authenticated_client, run_worker_once
 from mrhub.agents.core import AgentCore
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> None:
@@ -372,3 +375,68 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
     # at one invocation rather than being blindly repeated by a later worker.
     assert recovery_worker.run_once() is None
     assert external_effects == ["publish accepted by remote system"]
+
+
+
+def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeypatch):
+    client = authenticated_client()
+    calls = []
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class ReadOutput(BaseModel):
+        accepted: bool
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read one test resource through an owner grant.",
+            input_model=EmptyInput,
+            output_model=ReadOutput,
+            handler=lambda _payload: calls.append("read") or {"accepted": True},
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda: registry,
+    )
+
+    grant = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert grant.status_code == 200
+    request = {
+        "goal": "Read only while the owner grant is active",
+        "tools": [{"name": "cloudflare.test_read", "payload": {}}],
+    }
+    first = client.post("/agent/workflows", json=request)
+    second = client.post("/agent/workflows", json=request)
+    assert first.status_code == 200 and first.json()["queued"] is True
+    assert second.status_code == 200 and second.json()["queued"] is True
+
+    first_worker = run_worker_once()
+    assert first_worker is not None and first_worker.status.value == "succeeded"
+    assert calls == ["read"]
+
+    revoked = client.delete("/tools/grants/cloudflare.read")
+    assert revoked.status_code == 204
+    second_worker = run_worker_once()
+    assert second_worker is not None and second_worker.status.value == "failed"
+    assert calls == ["read"]
+
+    first_history = client.get(
+        f"/agent/workflows/{first.json()['workflow']['workflow_id']}"
+    )
+    second_history = client.get(
+        f"/agent/workflows/{second.json()['workflow']['workflow_id']}"
+    )
+    assert first_history.json()["status"] == "succeeded"
+    assert second_history.json()["status"] == "failed"

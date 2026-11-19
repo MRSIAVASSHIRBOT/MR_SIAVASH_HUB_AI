@@ -1,6 +1,7 @@
 from uuid import UUID
 
 import pytest
+from pydantic import BaseModel
 
 from client_helpers import authenticated_client, run_worker_once
 from mrhub.agents.core import AgentCore
@@ -8,6 +9,7 @@ from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import WorkerEngine
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 def _workflow_and_task(client):
@@ -205,3 +207,72 @@ def test_cancellation_during_worker_owned_resume_wins_over_success(monkeypatch):
     result = WorkerEngine(repository).get_result(UUID(task_id))
     assert result is not None
     assert result["error_code"] == "cancelled_during_execution"
+
+
+
+def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
+    client = authenticated_client()
+    calls = []
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class ReadOutput(BaseModel):
+        accepted: bool
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read one test resource through an owner grant.",
+            input_model=EmptyInput,
+            output_model=ReadOutput,
+            handler=lambda _payload: calls.append("read") or {"accepted": True},
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda: registry,
+    )
+
+    granted = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert granted.status_code == 200
+    request = {
+        "goal": "Resume only while the owner grant remains active",
+        "tools": [{"name": "cloudflare.test_read", "payload": {}}],
+    }
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200 and created.json()["queued"] is True
+    _interrupt_after_safe_step(monkeypatch)
+
+    workflow_id = created.json()["workflow"]["workflow_id"]
+    repository, _workflow_id, task_id = _workflow_and_task(client)
+    stored = WorkflowRecoveryRepository(repository.database_path).get_run(
+        UUID(workflow_id),
+        owner_user_id="local-owner",
+    )
+    assert stored is not None and stored["status"] == "paused"
+    assert repository.get(UUID(task_id)).status.value == "waiting_approval"
+
+    revoked = client.delete("/tools/grants/cloudflare.read")
+    assert revoked.status_code == 204
+    response = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+
+    assert response.status_code == 409
+    assert calls == []
+    after = WorkflowRecoveryRepository(repository.database_path).get_run(
+        UUID(workflow_id),
+        owner_user_id="local-owner",
+    )
+    assert after is not None and after["status"] == "paused"

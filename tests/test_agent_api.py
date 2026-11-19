@@ -1,8 +1,10 @@
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.main import create_app
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 def test_agent_plan_selects_provider_and_only_plans_tools():
@@ -544,3 +546,58 @@ def test_agent_workflow_list_is_owner_scoped_and_bounded():
     assert "payload" not in body["workflows"][0]
 
     assert client.get("/agent/workflows?limit=101").status_code == 422
+
+
+
+def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
+    client = authenticated_client()
+    calls = []
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class ReadOutput(BaseModel):
+        accepted: bool
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read one test resource through an owner grant.",
+            input_model=EmptyInput,
+            output_model=ReadOutput,
+            handler=lambda _payload: calls.append("read") or {"accepted": True},
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda: registry,
+    )
+    request = {
+        "goal": "Read a Cloudflare resource only with owner permission",
+        "tools": [{"name": "cloudflare.test_read", "payload": {}}],
+    }
+
+    denied = client.post("/agent/execute", json=request)
+    assert denied.status_code == 200
+    assert denied.json()["blocked"] is True
+    assert denied.json()["plan"]["execution_ready"] is False
+    assert calls == []
+
+    granted = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert granted.status_code == 200
+    allowed = client.post("/agent/execute", json=request)
+    assert allowed.status_code == 200
+    assert allowed.json()["execution_completed"] is True
+    assert calls == ["read"]
+
+    revoked = client.delete("/tools/grants/cloudflare.read")
+    assert revoked.status_code == 204
+    denied_after_revoke = client.post("/agent/execute", json=request)
+    assert denied_after_revoke.status_code == 200
+    assert denied_after_revoke.json()["blocked"] is True
+    assert calls == ["read"]
