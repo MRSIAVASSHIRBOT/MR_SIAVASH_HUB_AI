@@ -732,6 +732,48 @@
     }
   }
 
+  async function inspectHostHardware() {
+    const button = $("#hardware-discovery-run");
+    const results = $("#hardware-discovery-results");
+    const limitations = $("#hardware-discovery-limitations");
+    button.disabled = true;
+    message("#hardware-discovery-scope", "در حال اجرای بررسی محلیِ فقط‌خواندنی…");
+    results.replaceChildren();
+    limitations.textContent = "";
+    try {
+      const report = await api("/capabilities/hardware-report");
+      const entries = [
+        ["سیستم‌عامل", report.system && report.system.os ? report.system.os + " " + (report.system.os_release || "") : "نامشخص"],
+        ["پردازنده", report.cpu && report.cpu.processor_label ? report.cpu.processor_label : "نامشخص"],
+        ["هسته‌های منطقی", report.cpu && report.cpu.logical_cores != null ? report.cpu.logical_cores : "نامشخص"],
+        ["RAM کل", report.memory && report.memory.total_gib != null ? report.memory.total_gib + " GiB" : "نامشخص"],
+        ["RAM در دسترس", report.memory && report.memory.available_gib != null ? report.memory.available_gib + " GiB" : "نامشخص"],
+        ["GPU", report.gpu && Array.isArray(report.gpu.adapters) && report.gpu.adapters.length
+          ? report.gpu.adapters.map((item) => item.name).join("، ") : "شناسایی نشد"],
+        ["VRAM", "در بررسی امن فعلی اندازه‌گیری نمی‌شود"],
+        ["فضای آزاد دیسک", report.disk && report.disk.free_bytes != null
+          ? (report.disk.free_bytes / (1024 ** 3)).toFixed(2) + " GiB" : "نامشخص"],
+      ];
+      for (const [title, value] of entries) {
+        const card = element("article", undefined, "status-card");
+        card.append(element("small", title), element("strong", value));
+        results.append(card);
+      }
+      limitations.textContent = Array.isArray(report.limitations) ? report.limitations.join(" · ") : "";
+      message(
+        "#hardware-discovery-scope",
+        report.host_scope === "api_process_host"
+          ? "گزارش مربوط به میزبان اجرای فرایند API است؛ اگر HUB روی سرور دیگری اجرا شود، این مشخصات متعلق به دستگاه مرورگر نیست. گزارش ذخیره یا به Provider ارسال نشد."
+          : "گزارش دریافت شد؛ دامنهٔ میزبان مشخص نیست.",
+        "success"
+      );
+    } catch (error) {
+      message("#hardware-discovery-scope", "بررسی سخت‌افزار ناموفق بود: " + error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function loadOverview() {
     message("#workspace-message", "در حال به‌روزرسانی…");
     // The optional project registry must not block core operator status panels.
@@ -3727,6 +3769,8 @@
       message("#workspace-message", error.message, "error");
     }
   }
+
+  $("#hardware-discovery-run").addEventListener("click", inspectHostHardware);
 
   $("#inference-form").addEventListener("submit", async (event) => {
     event.preventDefault();
