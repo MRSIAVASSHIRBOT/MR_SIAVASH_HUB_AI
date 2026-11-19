@@ -48,6 +48,5 @@ API process (`host_scope=api_process_host`), not necessarily the browser device.
 This distinction is important when the HUB is deployed remotely or inside a
 container. The endpoint is authenticated, read-only, and does not persist or
 transmit the report to any provider. It does not install tools, download models,
-run benchmarks, or perform inference. GPU adapter names may be available on
-Windows, but dedicated VRAM and compute capability remain unknown; model routing
+run benchmarks, or perform inference. GPU adapter names are available on Windows and Linux; dedicated VRAM is reported only when exposed by the Windows display-driver registry or Linux DRM sysfs. Compute capability remains unknown; model routing
 must continue to fail closed when required GPU capacity is unknown.
