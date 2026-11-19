@@ -3328,7 +3328,7 @@
 
   async function saveCloudflareReadGrant(event) {
     event.preventDefault();
-    if (!cloudflareInventoryAvailable) return;
+    if (!(cloudflareInventoryAvailable || cloudflareWorkerSettingsAvailable)) return;
     const form = event.currentTarget;
     const button = $("#cloudflare-grant-submit");
     const expiresInSeconds = Number(new FormData(form).get("expires_in_seconds"));
