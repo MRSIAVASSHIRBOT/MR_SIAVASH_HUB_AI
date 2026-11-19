@@ -27,9 +27,7 @@ Windows display-adapter names where the registry exposes them.
 - No network requests, subprocesses, administrator privileges, model downloads,
   benchmarks, or inference calls are performed.
 - Available RAM is a point-in-time estimate; other applications can change it.
-- GPU probing reads display-adapter names from the Windows display-class
-  registry. It does not inspect dedicated VRAM, CUDA/ROCm support, or compute
-  performance.
+- GPU probing reads adapter identity from the Windows display-class registry or Linux DRM sysfs. Dedicated VRAM is reported only when the driver/kernel exposes it. CUDA/ROCm support and compute performance are not measured.
 - Disk information describes the drive containing the current working
   directory, not every mounted volume.
 - The report is not uploaded or transmitted. Review it before sharing because
@@ -38,3 +36,15 @@ Windows display-adapter names where the registry exposes them.
 A model recommendation must wait until the report is reviewed. RAM alone is
 not sufficient: quantization, context length, CPU throughput, and GPU offload
 support also matter.
+
+
+## Authenticated dashboard discovery
+
+The owner dashboard exposes a manual **Check hardware** action through
+`GET /capabilities/hardware-report`. The API reports the machine running the
+API process (`host_scope=api_process_runtime`), not necessarily the browser device or the physical host when containerized.
+This distinction is important when the HUB is deployed remotely or inside a
+container. The endpoint is authenticated, read-only, and does not persist or
+transmit the report to any provider. It does not install tools, download models,
+run benchmarks, or perform inference. GPU adapter names are available on Windows and Linux; dedicated VRAM is reported only when exposed by the Windows display-driver registry or Linux DRM sysfs. Compute capability remains unknown; model routing
+must continue to fail closed when required GPU capacity is unknown.

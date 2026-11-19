@@ -344,3 +344,9 @@ summary { color: var(--green); cursor: pointer; }
 @media (max-width: 760px) {
   .research-grid { grid-template-columns: 1fr; }
 }
+
+
+#hardware-discovery-results { margin: .8rem 0; }
+#hardware-discovery-results .status-card { min-width: 0; }
+#hardware-discovery-results .status-card strong { overflow-wrap: anywhere; }
+#hardware-discovery-scope { line-height: 1.7; }

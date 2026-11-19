@@ -135,3 +135,34 @@ def test_github_discovery_endpoint_surfaces_safe_not_found_error(monkeypatch):
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "repository_not_found"
+
+
+def test_hardware_report_is_authenticated_read_only_and_not_persisted(monkeypatch):
+    from mrhub.api.routes import capabilities as capabilities_route
+
+    fake_report = {
+        "schema_version": 2,
+        "read_only": True,
+        "system": {"os": "TestOS"},
+        "cpu": {"logical_cores": 8},
+        "memory": {"total_gib": 16, "available_gib": 8},
+        "gpu": {"adapters": [], "status": "not_detected_by_safe_probe"},
+        "limitations": ["VRAM is not measured by this safe probe."],
+    }
+    monkeypatch.setattr(capabilities_route, "collect_hardware_report", lambda: fake_report)
+
+    client = authenticated_client()
+    response = client.get("/capabilities/hardware-report")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["host_scope"] == "api_process_runtime"
+    assert payload["persisted"] is False
+    assert payload["transmitted_to_provider"] is False
+    assert payload["execution"] == "diagnostics_only"
+    assert payload["cpu"]["logical_cores"] == 8
+
+
+def test_hardware_report_requires_authentication():
+    response = TestClient(create_app()).get("/capabilities/hardware-report")
+    assert response.status_code in (401, 403)

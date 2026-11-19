@@ -6,6 +6,7 @@ from mrhub.diagnostics import hardware
 def test_report_is_read_only_and_has_stable_sections(monkeypatch):
     monkeypatch.setattr(hardware, "_memory_snapshot", lambda: (16 * 1024**3, 8 * 1024**3))
     monkeypatch.setattr(hardware, "_windows_display_adapters", list)
+    monkeypatch.setattr(hardware, "_linux_display_adapters", list)
     monkeypatch.setattr(
         hardware.shutil,
         "disk_usage",
@@ -26,6 +27,7 @@ def test_report_is_read_only_and_has_stable_sections(monkeypatch):
 def test_report_handles_unavailable_memory_and_disk(monkeypatch):
     monkeypatch.setattr(hardware, "_memory_snapshot", lambda: (None, None))
     monkeypatch.setattr(hardware, "_windows_display_adapters", list)
+    monkeypatch.setattr(hardware, "_linux_display_adapters", list)
     monkeypatch.setattr(
         hardware.shutil,
         "disk_usage",
@@ -87,7 +89,89 @@ def test_windows_gpu_probe_uses_canonical_registry_path(monkeypatch):
     monkeypatch.setattr(hardware.sys, "platform", "win32")
 
     assert hardware._windows_display_adapters() == [
-        {"name": "NVIDIA Display Adapter", "provider": "NVIDIA"}
+        {
+            "name": "NVIDIA Display Adapter",
+            "provider": "NVIDIA",
+            "vram_bytes": None,
+            "vram_source": None,
+        }
     ]
     assert opened_paths[0] == expected_path
 
+
+
+def test_linux_gpu_probe_reads_only_kernel_sysfs(tmp_path, monkeypatch):
+    monkeypatch.setattr(hardware.sys, "platform", "linux")
+    device = tmp_path / "card0" / "device"
+    device.mkdir(parents=True)
+    (device / "vendor").write_text("0x10de", encoding="ascii")
+    (device / "device").write_text("0x2684", encoding="ascii")
+    (device / "mem_info_vram_total").write_text(str(12 * 1024**3), encoding="ascii")
+
+    adapters = hardware._linux_display_adapters(tmp_path)
+
+    assert len(adapters) == 1
+    assert adapters[0]["provider"] == "NVIDIA"
+    assert adapters[0]["vram_bytes"] == 12 * 1024**3
+    assert adapters[0]["vram_source"] == "linux_drm_sysfs"
+
+
+def test_linux_gpu_probe_handles_missing_vram_without_guessing(tmp_path, monkeypatch):
+    monkeypatch.setattr(hardware.sys, "platform", "linux")
+    device = tmp_path / "card0" / "device"
+    device.mkdir(parents=True)
+    (device / "vendor").write_text("0x8086", encoding="ascii")
+    (device / "device").write_text("0x1234", encoding="ascii")
+
+    adapters = hardware._linux_display_adapters(tmp_path)
+
+    assert len(adapters) == 1
+    assert adapters[0]["vram_bytes"] is None
+    assert adapters[0]["vram_source"] is None
+
+
+def test_windows_gpu_probe_reports_driver_exposed_vram(monkeypatch):
+    import sys
+
+    expected_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+    class FakeKey:
+        def __init__(self, name):
+            self.name = name
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def open_key(_parent, path):
+        return FakeKey(path)
+
+    def enum_key(key, index):
+        if key.name == expected_path and index == 0:
+            return "0000"
+        raise OSError("no more registry keys")
+
+    def query_value(_key, name):
+        if name == "DriverDesc":
+            return "NVIDIA Display Adapter", 0
+        if name == "ProviderName":
+            return "NVIDIA", 0
+        if name == "HardwareInformation.qwMemorySize":
+            return (12 * 1024**3).to_bytes(8, byteorder="little"), 3
+        raise OSError("missing registry value")
+
+    fake_winreg = SimpleNamespace(
+        HKEY_LOCAL_MACHINE=object(),
+        OpenKey=open_key,
+        EnumKey=enum_key,
+        QueryValueEx=query_value,
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg)
+    monkeypatch.setattr(hardware.sys, "platform", "win32")
+
+    adapters = hardware._windows_display_adapters()
+
+    assert adapters[0]["vram_bytes"] == 12 * 1024**3
+    assert adapters[0]["vram_source"] == "windows_display_driver_registry"
