@@ -40,7 +40,7 @@ def test_probe_video_requests_only_bounded_metadata_fields(tmp_path, monkeypatch
             args=command,
             returncode=0,
             stdout=(
-                b'{"format":{"duration":"1.0"},"streams":['
+                b'{"format":{"duration":"1.0","format_name":"mov,mp4,m4a,3gp,3g2,mj2"},"streams":['
                 b'{"codec_type":"video","codec_name":"h264","width":640,'
                 b'"height":360,"avg_frame_rate":"30/1"}]}'
             ),
@@ -54,5 +54,5 @@ def test_probe_video_requests_only_bounded_metadata_fields(tmp_path, monkeypatch
     assert result.metadata_status == "available"
     assert "-show_entries" in captured["command"]
     entries = captured["command"][captured["command"].index("-show_entries") + 1]
-    assert entries == "format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate"
+    assert entries == "format=duration,format_name:stream=codec_type,codec_name,width,height,avg_frame_rate"
     assert captured["command"][captured["command"].index("-max_streams") + 1] == "64"
