@@ -362,3 +362,40 @@ test("gateway logs only authenticated canonical UUIDv4 correlation IDs", async (
     console.log = originalLog;
   }
 });
+
+
+test("structured request logs use an explicit allowlist and never include credentials", async () => {
+  const events = [];
+  const originalLog = console.log;
+  console.log = event => events.push(event);
+  try {
+    const response = await worker.fetch(request("/health", {
+      headers: { "x-correlation-id": "11111111-1111-4111-8111-111111111111" },
+    }), ENV);
+    assert.equal(response.status, 200);
+    const responseText = await response.text();
+    assert.equal(responseText.includes(ENV.GATEWAY_AUTH_TOKEN), false);
+    assert.equal(responseText.includes(ENV.CF_API_TOKEN), false);
+
+    assert.equal(events.length, 1);
+    assert.deepEqual(Object.keys(events[0]).sort(), [
+      "correlation_id",
+      "duration_ms",
+      "event",
+      "operation",
+      "request_id",
+      "status",
+    ]);
+    assert.equal(events[0].event, "cloudflare_gateway_request");
+    assert.equal(events[0].operation, "health");
+    assert.equal(events[0].status, 200);
+    assert.equal(Number.isFinite(events[0].duration_ms), true);
+    assert.equal(events[0].duration_ms >= 0, true);
+    const serialized = JSON.stringify(events[0]).toLowerCase();
+    assert.equal(serialized.includes(ENV.GATEWAY_AUTH_TOKEN.toLowerCase()), false);
+    assert.equal(serialized.includes(ENV.CF_API_TOKEN.toLowerCase()), false);
+    assert.equal(serialized.includes("authorization"), false);
+  } finally {
+    console.log = originalLog;
+  }
+});
