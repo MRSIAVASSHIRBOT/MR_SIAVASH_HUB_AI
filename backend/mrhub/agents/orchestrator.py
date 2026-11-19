@@ -78,7 +78,16 @@ class AgentOrchestrator:
         *,
         should_cancel: Callable[[], bool] | None = None,
         granted_permissions: frozenset[str] = frozenset(),
+        permission_provider: Callable[[], frozenset[str]] | None = None,
     ) -> dict[str, object]:
+        def current_permissions() -> frozenset[str]:
+            if permission_provider is None:
+                return granted_permissions
+            try:
+                return frozenset(permission_provider())
+            except Exception:  # noqa: BLE001 - permission lookup failures must fail closed
+                return frozenset()
+
         transcript: list[dict[str, object]] = []
         total_input_chars = 0
         tool_calls = 0
@@ -118,7 +127,7 @@ class AgentOrchestrator:
                 ),
                 "retrieved_evidence_untrusted": request.retrieved_context,
                 "registered_tools": self.tool_registry.catalog(),
-                "server_granted_permissions": sorted(granted_permissions),
+                "server_granted_permissions": sorted(current_permissions()),
                 "observations": transcript,
             }
             prompt = json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
@@ -272,6 +281,7 @@ class AgentOrchestrator:
                     child_request,
                     should_cancel=should_cancel,
                     granted_permissions=granted_permissions,
+                    permission_provider=permission_provider,
                 )
                 child_tool_calls = int(child_result.get("tool_calls", 0))
                 tool_calls += child_tool_calls
@@ -334,7 +344,7 @@ class AgentOrchestrator:
                 observation = self.tool_registry.invoke(
                     proposal.name,
                     proposal.payload,
-                    granted_permissions=granted_permissions,
+                    granted_permissions=current_permissions(),
                 )
             except LookupError:
                 transcript.append({"turn": turn, "type": "tool_denied", "reason": "not_registered"})
