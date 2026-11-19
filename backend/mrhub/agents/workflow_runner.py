@@ -94,6 +94,7 @@ class AgentWorkflowRunner:
         task: TaskRecord | None = None,
         lease: WorkerLease | None = None,
         lease_lost: Event | None = None,
+        permission_provider: Callable[[], frozenset[str]] | None = None,
     ) -> dict[str, object]:
         """Execute under either a local lease or a WorkerEngine-owned lease.
 
@@ -229,6 +230,7 @@ class AgentWorkflowRunner:
                 on_step=on_step,
                 on_step_result=on_step_result,
                 should_cancel=should_cancel,
+                permission_provider=permission_provider,
             )
             # Close the race between the final in-loop cancellation check and
             # workflow finalization, including workflows with zero tool steps.
@@ -405,6 +407,7 @@ class AgentWorkflowRunner:
         task: TaskRecord | None = None,
         lease: WorkerLease | None = None,
         lease_lost: Event | None = None,
+        permission_provider: Callable[[], frozenset[str]] | None = None,
     ) -> dict[str, object]:
         """Resume a workflow under the pull worker's lease, or a local lease for tests."""
         worker_owned_lease = lease is not None
