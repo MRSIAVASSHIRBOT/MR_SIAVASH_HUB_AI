@@ -811,6 +811,18 @@ class VideoGenerationJobRepository:
             for row in rows
         ]
 
+    def owns_task(self, owner_user_id: str, task_id: UUID) -> bool:
+        """Return whether a generation task is linked to this exact owner."""
+        if not owner_user_id or len(owner_user_id) > 200:
+            return False
+        with self.tasks._connection() as connection:
+            row = connection.execute(
+                """SELECT 1 FROM video_generation_task_links
+                   WHERE task_id = ? AND owner_user_id = ?""",
+                (str(task_id), owner_user_id),
+            ).fetchone()
+        return row is not None
+
     def get(self, owner_user_id: str, generation_id: UUID) -> dict[str, object] | None:
         with self.tasks._connection() as connection:
             row = connection.execute(
