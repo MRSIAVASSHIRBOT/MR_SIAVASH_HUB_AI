@@ -516,3 +516,117 @@ def test_queued_cancellation_is_completed_without_provider_lookup(monkeypatch):
 
     assert result["status"] == "cancelled"
     assert [item[2] for item in handler.jobs.transitions] == ["cancelled"]
+
+
+def test_hosted_provider_is_never_submitted_without_both_consents(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+    from mrhub.video_intelligence.generation import VideoGenerationCapability
+
+    generation_id = uuid4()
+    handler = _handler()
+    handler.jobs.loaded = {
+        "owner_user_id": "owner-1",
+        "generation_id": str(generation_id),
+        "provider": "hosted-fixture",
+        "model": "hosted-v1",
+        "status": "queued",
+        "provider_job_id": None,
+        "request": {
+            "prompt": "approved test prompt",
+            "aspect_ratio": "9:16",
+            "duration_seconds": 10,
+            "resolution": "720p",
+            "remote_processing_approved": True,
+            "remote_spend_approved": False,
+            "max_remote_cost_usd": 1.0,
+        },
+        "cancellation_requested": False,
+    }
+
+    class HostedProvider(LookupOnlyProvider):
+        capability = VideoGenerationCapability(
+            provider="hosted-fixture",
+            model="hosted-v1",
+            local=False,
+            supported_aspect_ratios=("9:16",),
+            max_duration_seconds=30,
+            max_resolution="720p",
+        )
+
+        def estimate_cost_usd(self, _request):
+            return 0.25
+
+    provider = HostedProvider()
+    monkeypatch.setattr(
+        registry_module.video_generation_registry,
+        "get",
+        lambda _provider, _model: provider,
+    )
+
+    with pytest.raises(ValueError, match="remote_consent_required"):
+        handler(
+            SimpleNamespace(task_id=uuid4()),
+            lease=object(),
+            lease_lost=Event(),
+        )
+
+    assert provider.submit_calls == 0
+    assert handler.jobs.transitions[-1][2] == "failed"
+    assert handler.jobs.transitions[-1][3]["error_code"] == "remote_consent_required"
+
+
+def test_hosted_provider_is_never_submitted_above_the_approved_budget(monkeypatch):
+    from mrhub.video_intelligence import generation_registry as registry_module
+    from mrhub.video_intelligence.generation import VideoGenerationCapability
+
+    generation_id = uuid4()
+    handler = _handler()
+    handler.jobs.loaded = {
+        "owner_user_id": "owner-1",
+        "generation_id": str(generation_id),
+        "provider": "hosted-fixture",
+        "model": "hosted-v1",
+        "status": "queued",
+        "provider_job_id": None,
+        "request": {
+            "prompt": "approved test prompt",
+            "aspect_ratio": "9:16",
+            "duration_seconds": 10,
+            "resolution": "720p",
+            "remote_processing_approved": True,
+            "remote_spend_approved": True,
+            "max_remote_cost_usd": 0.10,
+        },
+        "cancellation_requested": False,
+    }
+
+    class HostedProvider(LookupOnlyProvider):
+        capability = VideoGenerationCapability(
+            provider="hosted-fixture",
+            model="hosted-v1",
+            local=False,
+            supported_aspect_ratios=("9:16",),
+            max_duration_seconds=30,
+            max_resolution="720p",
+        )
+
+        def estimate_cost_usd(self, _request):
+            return 0.25
+
+    provider = HostedProvider()
+    monkeypatch.setattr(
+        registry_module.video_generation_registry,
+        "get",
+        lambda _provider, _model: provider,
+    )
+
+    with pytest.raises(ValueError, match="remote_budget_exceeded"):
+        handler(
+            SimpleNamespace(task_id=uuid4()),
+            lease=object(),
+            lease_lost=Event(),
+        )
+
+    assert provider.submit_calls == 0
+    assert handler.jobs.transitions[-1][2] == "failed"
+    assert handler.jobs.transitions[-1][3]["error_code"] == "remote_budget_exceeded"
