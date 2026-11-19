@@ -55,9 +55,19 @@ class AgentCore:
         on_step_result: Callable[[int, str], None] | None = None,
         start_step: int = 2,
         should_cancel: Callable[[], bool] | None = None,
+        granted_permissions: frozenset[str] = frozenset(),
+        permission_provider: Callable[[], frozenset[str]] | None = None,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
-        plan = self.plan(request)
+        def current_permissions() -> frozenset[str]:
+            if permission_provider is None:
+                return granted_permissions
+            try:
+                return frozenset(permission_provider())
+            except Exception:  # noqa: BLE001 - permission lookup failures must fail closed
+                return frozenset()
+
+        plan = self.plan(request, granted_permissions=current_permissions())
         if not plan["execution_ready"]:
             return {
                 "decision_mode": "controlled_tool_execution",
@@ -94,7 +104,9 @@ class AgentCore:
                 on_step(step_number, "running", None)
             try:
                 result = self.tool_registry.invoke(
-                    requested_tool.name, requested_tool.payload
+                    requested_tool.name,
+                    requested_tool.payload,
+                    granted_permissions=current_permissions(),
                 )
             except ToolPolicyError as exc:
                 error_code = (
@@ -164,7 +176,12 @@ class AgentCore:
             "blocked": False,
         }
 
-    def plan(self, request: AgentPlanRequest) -> dict[str, object]:
+    def plan(
+        self,
+        request: AgentPlanRequest,
+        *,
+        granted_permissions: frozenset[str] = frozenset(),
+    ) -> dict[str, object]:
         selection = self.model_router.select(
             ModelRequest(
                 requires_text=request.requires_text,
@@ -214,7 +231,10 @@ class AgentCore:
                 )
                 continue
 
-            decision = self.tool_registry.evaluate_policy(tool.name)
+            decision = self.tool_registry.evaluate_policy(
+                tool.name,
+                granted_permissions=granted_permissions,
+            )
             status = {
                 PolicyDecision.ALLOW: "ready",
                 PolicyDecision.REQUIRE_APPROVAL: "approval_required",
