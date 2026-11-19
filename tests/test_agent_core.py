@@ -339,3 +339,111 @@ def test_agent_core_rejects_a_split_policy_authority():
     router.register_provider(StubProvider())
     with pytest.raises(ValueError, match="same instance"):
         AgentCore(router, ToolRegistry(), policy=PolicyEngine())
+
+
+def test_agent_core_revalidates_owner_grants_before_each_tool_dispatch():
+    from mrhub.tools.registry import ToolRegistry
+
+    calls = []
+    snapshots = [frozenset({"cloudflare.read"}), frozenset()]
+
+    def permission_provider():
+        return snapshots.pop(0)
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read one test resource through an owner grant.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: calls.append("read") or {"accepted": True},
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry, permission_provider=permission_provider)
+
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Read only while the owner grant remains active",
+            tools=[{"name": "cloudflare.test_read", "payload": {}}],
+        )
+    )
+
+    assert response["plan"]["execution_ready"] is True
+    assert response["execution_completed"] is False
+    assert response["blocked"] is True
+    assert response["failed_tool"] == "cloudflare.test_read"
+    assert response["error_code"] == "policy_denied"
+    assert calls == []
+
+
+def test_agent_core_executes_a_read_tool_with_a_live_owner_grant():
+    from mrhub.tools.registry import ToolRegistry
+
+    calls = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read one test resource through an owner grant.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: calls.append("read") or {"accepted": True},
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(
+        router,
+        registry,
+        permission_provider=lambda: frozenset({"cloudflare.read"}),
+    )
+
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Read an owner-approved resource",
+            tools=[{"name": "cloudflare.test_read", "payload": {}}],
+        )
+    )
+
+    assert response["execution_completed"] is True
+    assert response["results"][0]["result"]["accepted"] is True
+    assert calls == ["read"]
+
+
+def test_agent_core_fails_closed_when_owner_grant_lookup_fails():
+    from mrhub.tools.registry import ToolRegistry
+
+    calls = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read one test resource through an owner grant.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: calls.append("read") or {"accepted": True},
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+
+    def unavailable_permissions():
+        raise RuntimeError("permission database unavailable")
+
+    core = AgentCore(router, registry, permission_provider=unavailable_permissions)
+    plan = core.plan(
+        AgentPlanRequest(
+            goal="Deny access when permission lookup is unavailable",
+            tools=[{"name": "cloudflare.test_read", "payload": {}}],
+        )
+    )
+
+    assert plan["execution_ready"] is False
+    assert plan["steps"][1]["decision"] == PolicyDecision.DENY.value
+    assert calls == []
