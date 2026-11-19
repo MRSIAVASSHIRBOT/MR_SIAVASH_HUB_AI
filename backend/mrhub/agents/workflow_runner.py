@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime
 from threading import Event, Thread
 from uuid import UUID, uuid4
