@@ -38,3 +38,16 @@ Windows display-adapter names where the registry exposes them.
 A model recommendation must wait until the report is reviewed. RAM alone is
 not sufficient: quantization, context length, CPU throughput, and GPU offload
 support also matter.
+
+
+## Authenticated dashboard discovery
+
+The owner dashboard exposes a manual **Check hardware** action through
+`GET /capabilities/hardware-report`. The API reports the machine running the
+API process (`host_scope=api_process_host`), not necessarily the browser device.
+This distinction is important when the HUB is deployed remotely or inside a
+container. The endpoint is authenticated, read-only, and does not persist or
+transmit the report to any provider. It does not install tools, download models,
+run benchmarks, or perform inference. GPU adapter names may be available on
+Windows, but dedicated VRAM and compute capability remain unknown; model routing
+must continue to fail closed when required GPU capacity is unknown.
