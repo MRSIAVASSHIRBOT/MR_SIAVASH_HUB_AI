@@ -28,7 +28,7 @@ The resource CTA may politely invite the recipient to follow the page and share 
 - Video generation and the lease-fenced FFmpeg render worker register owner-scoped MP4 assets with the `video_render_cut_v1` profile. A new integration assertion verifies that the actual render-worker asset can be attached to an Instagram Reel draft; campaign creation and dispatch revalidate the same profile.
 - PostZen Default profile has connected Instagram and Telegram accounts. The comment-automation inventory is empty.
 - The in-repository video-generation provider registry is empty by default and currently has no configured provider. Existing local FFmpeg timeline rendering can process source footage, but prompt-to-video generation is not enabled; this remains a separate provider/local-template workstream and must not be described as operational.
-- The scheduled OpenCode development workflow's latest run failed because OpenRouter returned `API key expired` for repository secret `MR_SIAVASH_HUB_AI`. The secret was not read or changed; maintainer rotation is required before scheduled AI development can resume. This failure is separate from application CI.
+- The scheduled OpenCode development workflow has been retired and its third-party provider execution path removed. No credential renewal is required; the obsolete repository secret should be deleted after the removal PR is merged. This is separate from application CI.
 - Current external account credentials, Meta scopes, public media reachability, and real-account publishing have not been verified by this repository audit.
 
 ## Current implementation status (`main`, inspected 2026-11-15)
@@ -85,7 +85,7 @@ The resource CTA may politely invite the recipient to follow the page and share 
 
 1. Integration audit, Reels adapter, signed MP4 media, campaign linkage, and Hub-side reply configuration: merged into `main` and covered by mocked CI.
 2. Re-run and verify CI on the latest documentation commit before considering the documentation refresh complete.
-3. Resolve the expired OpenRouter credential for the scheduled development workflow through repository secret rotation by an authorized maintainer.
+3. After the removal PR is merged, delete the obsolete provider-only GitHub Actions secret; do not rotate or recreate it.
 4. Verify Meta/Instagram and Telegram provider credentials, scopes, channel/account identifiers, and public media reachability without exposing secrets.
 5. Review the exact per-post keyword, final reply copy, public resource URL, target account, and provider scopes before any PostZen automation is created.
 6. Perform one controlled real-account campaign only after explicit approval; reconcile provider delivery outcomes.
