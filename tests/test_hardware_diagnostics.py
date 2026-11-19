@@ -127,7 +127,7 @@ def test_linux_gpu_probe_handles_missing_vram_without_guessing(tmp_path, monkeyp
 def test_windows_gpu_probe_reports_driver_exposed_vram(monkeypatch):
     import sys
 
-    expected_path = r"SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}"
+    expected_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
 
     class FakeKey:
         def __init__(self, name):
