@@ -35,7 +35,7 @@ Exit criteria: module boundaries, trust boundaries, and local runtime assumption
 - [x] Loopback-only Ollama local inference adapter with opt-in activation, bounded requests, health checks, and sanitized errors
 - [x] Read-only host hardware report for local model planning (CPU, total/available memory, disk, and safe GPU-name probe)
 - [x] Conservative RAM resource advisor with explicit model profiles, safety reserve, unknown-data handling, and no inference side effects
-- [x] Explicit opt-in OpenRouter text adapter with origin restriction, bounded requests, sanitized errors, and no silent fallback; general tool-calling providers remain future work
+- [x] Retired and removed the third-party text adapter, its settings, runtime route, scheduled workflow, credential broker, tests, and UI entry points; general tool-calling providers remain future work
 - [x] Minimal self-hosted RTL operator view (vanilla JavaScript, same-origin APIs, restrictive CSP)
 
 Exit criteria: local app starts predictably, health checks pass, policy-gated task records can be submitted, inspected, cancelled, and processed by an explicitly invoked worker. Provider dispatch is explicit and testable; local Ollama inference is available only after explicit configuration, while the stub performs no inference. Automatic background scheduling, multi-process worker coordination, forced interruption of synchronous handlers, and external side effects remain disabled. Stale recovery uses a five-minute threshold and currently assumes a single local worker process. Retry is restricted to the deterministic `demo.echo` handler; interrupted tasks are never automatically replayed.
