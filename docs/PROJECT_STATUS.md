@@ -1,3 +1,23 @@
+## Portfolio maintenance addendum — 2026-11-19 UTC
+
+This is the newest observed Hub maintenance state and supersedes earlier provider-retirement and Hub-main statements below where they conflict.
+
+### Hub provider retirement — verified
+- PR [#436](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/436) merged at 2026-11-19 10:20 UTC as `aca5f198fb6e372436bdbff67aaff7385841b4ee`; this commit is the current `main` head at this observation.
+- All six exact-PR-head checks completed successfully: CI, Backend CI, Windows Launcher Validation, Workflow Security Audit, Defensive Python Scan, and Video Render Integration.
+- The PR removes the retired third-party text provider adapter/configuration/API path, credential broker, scheduled and comment-triggered OpenCode workflows, remote inference UI, related tests, and obsolete operational references. Local Ollama and the explicitly configured Moonshot Kimi integration remain separate.
+- Focused current-main inspection of `.env.example`, `.github/workflows/ci.yml`, `backend/mrhub/web/index.html`, and `backend/mrhub/web/app.js` found no OpenRouter/provider-secret/remote-generation references. This is a targeted verification, not a claim that every historical document or every repository blob was exhaustively searched.
+- The old repository Actions secret is now obsolete and should be deleted by the repository owner at [Actions repository secrets](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/settings/secrets/actions). The connected GitHub integration does not expose secret deletion; no secret value was read or changed.
+- Issue [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) is closed as not planned because the scheduled provider workflow was retired; the credential-expiry incident is no longer an active remediation task.
+- Branch-protection reads remain unavailable to the connected integration (HTTP 403); branch protection must be configured and independently verified by a repository administrator through [Hub branch settings](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/settings/branches).
+
+### Remaining owner-only controls
+- Delete the obsolete repository Actions secret `MR_SIAVASH_HUB_AI`; do not renew or replace it.
+- Configure and verify `main` branch protection for Hub, Website, and EL_AI. Use PR-required changes, required current-head CI/security checks, conversation resolution, no force-push/deletion, and include administrators. Do not require a self-approval when no independent reviewer exists.
+- No deployment, production configuration, application data, or other repository secret was changed.
+
+---
+
 ## Portfolio maintenance addendum — 2026-11-16 12:14 UTC
 
 This snapshot supersedes the 2026-11-15 repository snapshot below where the values differ. It records GitHub and repository evidence observed during the coordinated maintenance run.
