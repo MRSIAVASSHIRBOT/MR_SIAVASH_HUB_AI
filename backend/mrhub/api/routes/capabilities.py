@@ -67,7 +67,7 @@ def get_local_hardware_report(
     """
     return {
         **collect_hardware_report(),
-        "host_scope": "api_process_host",
+        "host_scope": "api_process_runtime",
         "persisted": False,
         "transmitted_to_provider": False,
         "execution": "diagnostics_only",
