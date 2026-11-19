@@ -77,6 +77,7 @@ class AgentOrchestrator:
         request: AgentLoopRequest,
         *,
         should_cancel: Callable[[], bool] | None = None,
+        granted_permissions: frozenset[str] = frozenset(),
     ) -> dict[str, object]:
         transcript: list[dict[str, object]] = []
         total_input_chars = 0
@@ -117,6 +118,7 @@ class AgentOrchestrator:
                 ),
                 "retrieved_evidence_untrusted": request.retrieved_context,
                 "registered_tools": self.tool_registry.catalog(),
+                "server_granted_permissions": sorted(granted_permissions),
                 "observations": transcript,
             }
             prompt = json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
@@ -266,7 +268,11 @@ class AgentOrchestrator:
                 )
                 child_result = AgentOrchestrator(
                     self.model_router, scoped_tools
-                ).run(child_request, should_cancel=should_cancel)
+                ).run(
+                    child_request,
+                    should_cancel=should_cancel,
+                    granted_permissions=granted_permissions,
+                )
                 child_tool_calls = int(child_result.get("tool_calls", 0))
                 tool_calls += child_tool_calls
                 observation = {
@@ -325,7 +331,11 @@ class AgentOrchestrator:
 
             # Every proposal is revalidated and policy checked by the registry.
             try:
-                observation = self.tool_registry.invoke(proposal.name, proposal.payload)
+                observation = self.tool_registry.invoke(
+                    proposal.name,
+                    proposal.payload,
+                    granted_permissions=granted_permissions,
+                )
             except LookupError:
                 transcript.append({"turn": turn, "type": "tool_denied", "reason": "not_registered"})
                 return self._result(
