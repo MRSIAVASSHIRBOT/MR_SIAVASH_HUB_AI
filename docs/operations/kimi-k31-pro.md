@@ -1,6 +1,6 @@
 # Kimi K3.1 Pro Provider
 
-The project includes optional text and single-image adapters for the official Kimi API. They are separate from OpenRouter and local Ollama inference.
+The project includes optional text and single-image adapters for the official Kimi API. They are separate from local Ollama inference.
 
 ## Enable explicitly
 
@@ -23,7 +23,7 @@ After configuration and API restart, use the authenticated endpoint:
 
 For a single image, call `POST /models/generate-kimi-vision` with `{"prompt":"Describe this image","image_data_url":"data:image/png;base64,...","max_output_tokens":512}`. The image must use a JPEG, PNG, or WebP data URL, pass base64 and media-signature validation, and decode to no more than 4 MiB. The endpoint does not fetch external URLs.
 
-Both routes are opt-in and send submitted text and, for the vision route, image bytes to Moonshot. The vision route is an explicit endpoint and is not yet exposed through generic capability-based model selection; the provider catalog currently advertises the shared text capability only. Neither route is invoked by local inference, and neither silently falls back to Ollama, OpenRouter, or the test stub. A failed Kimi request returns a sanitized provider error.
+Both routes are opt-in and send submitted text and, for the vision route, image bytes to Moonshot. The vision route is an explicit endpoint and is not yet exposed through generic capability-based model selection; the provider catalog currently advertises the shared text capability only. Neither route is invoked by local inference, and neither silently falls back to Ollama or the test stub. A failed Kimi request returns a sanitized provider error.
 
 The text endpoint is deliberately single-turn and uses the shared `ProviderRequest` contract (32,000 input characters; the HTTP route caps output at 2,048 tokens). The integration does not expose the model's full 1M-token context, video input, multi-turn preserved reasoning state, or tool execution. Multi-turn support must preserve the complete assistant message, including `reasoning_content`; that is not currently represented by the shared response contract.
 
