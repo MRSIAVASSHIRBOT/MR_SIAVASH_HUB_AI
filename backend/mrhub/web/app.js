@@ -749,8 +749,10 @@
         ["RAM کل", report.memory && report.memory.total_gib != null ? report.memory.total_gib + " GiB" : "نامشخص"],
         ["RAM در دسترس", report.memory && report.memory.available_gib != null ? report.memory.available_gib + " GiB" : "نامشخص"],
         ["GPU", report.gpu && Array.isArray(report.gpu.adapters) && report.gpu.adapters.length
-          ? report.gpu.adapters.map((item) => item.name).join("، ") : "شناسایی نشد"],
-        ["VRAM", "در بررسی امن فعلی اندازه‌گیری نمی‌شود"],
+          ? report.gpu.adapters.map((item) => item.name + (item.vram_bytes != null
+            ? " (" + (item.vram_bytes / (1024 ** 3)).toFixed(1) + " GiB VRAM)" : "")).join("، ") : "شناسایی نشد"],
+        ["وضعیت VRAM", report.gpu && Array.isArray(report.gpu.adapters) && report.gpu.adapters.some((item) => item.vram_bytes != null)
+          ? "مقدار گزارش‌شده توسط درایور/سیستم‌عامل" : "درایور یا سیستم‌عامل مقدار قابل‌اعتماد ارائه نکرد"],
         ["فضای آزاد دیسک", report.disk && report.disk.free_bytes != null
           ? (report.disk.free_bytes / (1024 ** 3)).toFixed(2) + " GiB" : "نامشخص"],
       ];
