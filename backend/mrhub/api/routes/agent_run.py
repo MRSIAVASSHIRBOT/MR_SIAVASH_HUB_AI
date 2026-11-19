@@ -21,6 +21,7 @@ from mrhub.projects.registry import get_project_context
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
@@ -109,18 +110,23 @@ def run_agent(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Agent input exceeds the supported bounds") from exc
 
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    audit = AuditLogger(tasks)
+    granted_permissions = ToolPermissionService(tasks, audit).active_permissions(
+        user.user_id
+    )
     worker_control = WorkerControlRepository(settings.database_path)
     tool_registry = build_tool_registry()
     agent_registry = build_default_agent_registry(tool_registry)
     result = AgentOrchestrator(model_router, tool_registry, agent_registry).run(
         request,
         should_cancel=worker_control.is_stopped,
+        granted_permissions=granted_permissions,
     )
     run_id = str(uuid4())
-    tasks = TaskRepository(settings.database_path)
-    tasks.initialize()
     outcome = "success" if result.get("status") == "completed" else "failure"
-    AuditLogger(tasks).record(
+    audit.record(
         event_type="agent.model_run",
         outcome=outcome,
         subject_type="agent_run",
