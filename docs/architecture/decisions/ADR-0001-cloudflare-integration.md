@@ -24,7 +24,7 @@ The Hub uses a typed, optional, synchronous client for the isolated Cloudflare W
 5. The client validates response envelopes and typed output schemas; errors never include response bodies or credentials.
 6. Worker settings expose binding names and types only. Binding values are never accepted in Hub output models.
 7. The integration is disabled by default and remains unavailable when required configuration is absent.
-8. Tool registration uses the existing ToolRegistry and PolicyEngine. Each Cloudflare tool requires the owner-scoped `cloudflare.read` grant; invocation outcomes are audited using allow-listed metadata and correlation IDs.
+8. Tool registration uses the existing ToolRegistry and PolicyEngine. Each Cloudflare tool requires the owner-scoped `cloudflare.read` grant; invocation outcomes are audited using allow-listed metadata and correlation IDs. The authenticated `agent/run` route resolves active grants from the owner's server-side permission records and revalidates them immediately before every tool dispatch; permission lookup failures fail closed. Grants are never accepted from model output or request payloads. Delegated agents retain their reviewed tool-name scopes, so a grant alone does not expand a specialist's tool catalog.
 
 ### Initial read-only capability set
 

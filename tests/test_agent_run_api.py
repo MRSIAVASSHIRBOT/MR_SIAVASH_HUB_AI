@@ -409,3 +409,144 @@ def test_agent_run_rejects_unknown_project_before_model_provider_selection(monke
     assert response.status_code == 404
     assert response.json()["detail"] == "Project is not enrolled"
     assert calls == []
+
+
+def test_agent_run_uses_only_active_server_side_owner_tool_grants(monkeypatch):
+    from pydantic import BaseModel, ConfigDict
+
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.security.audit import AuditLogger
+    from mrhub.security.tool_permissions import ToolPermissionService
+    from mrhub.tools.builtins import build_tool_registry
+    from mrhub.tools.registry import ToolDefinition
+
+    class SequenceProvider(ScriptedProvider):
+        def __init__(self, outputs):
+            super().__init__(outputs[0])
+            self.outputs = list(outputs)
+
+        def generate(self, request):
+            self.requests.append(request)
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text=self.outputs.pop(0),
+            )
+
+    class EmptyInput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+    class ReadOutput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        value: str
+
+    client = authenticated_client()
+    calls = []
+    registry = build_tool_registry()
+    registry.register(ToolDefinition(
+        name="cloudflare.test_read",
+        description="Read a safe test fixture through an owner-granted capability.",
+        input_model=EmptyInput,
+        output_model=ReadOutput,
+        handler=lambda _: calls.append("read") or {"value": "safe metadata"},
+        risk_class=RiskClass.LOW,
+        required_permissions=frozenset({"cloudflare.read"}),
+    ))
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_tool_registry",
+        lambda: registry,
+    )
+
+    tool_proposal = json.dumps({
+        "type": "tool_call",
+        "name": "cloudflare.test_read",
+        "payload": {},
+    })
+    router = ModelRouter()
+    provider = SequenceProvider([tool_proposal])
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    request_body = {
+        "goal": "Read the approved Cloudflare metadata.",
+        "provider_mode": "local",
+        "include_memory": False,
+        "include_knowledge": False,
+        "max_turns": 1,
+    }
+    denied = client.post("/agent/run", json=request_body)
+    assert denied.status_code == 200
+    assert denied.json()["execution"]["status"] == "tool_denied"
+    assert denied.json()["execution"]["error_code"] == "tool_policy_denied"
+    assert calls == []
+    assert json.loads(provider.requests[0].input_text)["server_granted_permissions"] == []
+
+    grant = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert grant.status_code == 200
+
+    # Revoke during model inference: dispatch must re-read the live owner grant.
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    permission_service = ToolPermissionService(repository, AuditLogger(repository))
+
+    class RevokingProvider(SequenceProvider):
+        def generate(self, request):
+            self.requests.append(request)
+            assert permission_service.revoke("local-owner", "cloudflare.read") is True
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text=self.outputs.pop(0),
+            )
+
+    revoking_provider = RevokingProvider([tool_proposal])
+    revoking_router = ModelRouter()
+    revoking_router.register_provider(revoking_provider)
+    router = revoking_router
+    revoked_during_inference = client.post("/agent/run", json=request_body)
+    assert revoked_during_inference.status_code == 200
+    assert revoked_during_inference.json()["execution"]["status"] == "tool_denied"
+    assert revoked_during_inference.json()["execution"]["error_code"] == "tool_policy_denied"
+    assert json.loads(revoking_provider.requests[0].input_text)["server_granted_permissions"] == [
+        "cloudflare.read"
+    ]
+    assert calls == []
+
+    grant_again = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert grant_again.status_code == 200
+    provider = SequenceProvider([
+        tool_proposal,
+        json.dumps({"type": "final", "answer": "Read completed safely."}),
+    ])
+    router = ModelRouter()
+    router.register_provider(provider)
+    allowed = client.post("/agent/run", json={**request_body, "max_turns": 2})
+    assert allowed.status_code == 200
+    execution = allowed.json()["execution"]
+    assert execution["status"] == "completed"
+    assert execution["tool_calls"] == 1
+    assert execution["trace"][0]["type"] == "tool_observation"
+    assert execution["trace"][0]["tool"] == "cloudflare.test_read"
+    assert calls == ["read"]
+    assert json.loads(provider.requests[1].input_text)["server_granted_permissions"] == [
+        "cloudflare.read"
+    ]
+    assert allowed.json()["external_side_effects_performed"] is False
+
+    revoked = client.delete("/tools/grants/cloudflare.read")
+    assert revoked.status_code == 204
+    provider.outputs = [tool_proposal]
+    denied_after_revoke = client.post("/agent/run", json=request_body)
+    assert denied_after_revoke.status_code == 200
+    assert denied_after_revoke.json()["execution"]["status"] == "tool_denied"
+    assert denied_after_revoke.json()["execution"]["error_code"] == "tool_policy_denied"
+    assert calls == ["read"]
