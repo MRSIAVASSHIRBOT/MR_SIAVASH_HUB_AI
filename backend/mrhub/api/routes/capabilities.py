@@ -18,6 +18,7 @@ from mrhub.capabilities.registry import (
     CapabilityValidationError,
 )
 from mrhub.config import get_settings
+from mrhub.diagnostics.hardware import collect_hardware_report
 from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(
@@ -53,6 +54,24 @@ class CapabilityTransitionRequest(BaseModel):
 
 def get_registry() -> CapabilityRegistry:
     return CapabilityRegistry(get_settings().database_path)
+
+
+@router.get("/hardware-report")
+def get_local_hardware_report(
+    _user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Collect a read-only report from the host running this API process.
+
+    The report is returned to the authenticated owner only; it is not persisted,
+    uploaded, benchmarked, or used to start/install any software.
+    """
+    return {
+        **collect_hardware_report(),
+        "host_scope": "api_process_host",
+        "persisted": False,
+        "transmitted_to_provider": False,
+        "execution": "diagnostics_only",
+    }
 
 
 @router.post("/candidates", status_code=status.HTTP_201_CREATED)
