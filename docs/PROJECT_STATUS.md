@@ -1,4 +1,31 @@
-## Current Hub maintenance addendum — 2026-11-19 UTC
+## Current Hub maintenance addendum — 2026-11-20 UTC
+
+This snapshot supersedes older repository snapshots below where they conflict.
+
+### Verified repository state
+- Current `main`: `5a0b51f95637aac3af5aff2d8e3c74ee04d38641`.
+- PR #439 merged as `03ee72f386904959497116b632b7238a984695fd`; it adds the hardware-diagnostics JSON CLI regression and fixes the Linux FFmpeg integration install path by normalizing unreachable regional Ubuntu HTTP mirrors to the official HTTPS archive with bounded apt work. All 9 exact-head checks passed.
+- PR #440 merged as `4bb72c3951cbb93ba78b80ddb47d9c0e08c46c46`; it reconciles the status ledger and social-growth roadmap. All 9 exact-head checks passed.
+- PR #444 merged as `53a245de1d8dbf9a9069241a34c16b4f1d205084`.
+- PR #445 merged as `5a0b51f95637aac3af5aff2d8e3c74ee04d38641`; it adds owner-facing temporary Cloudflare read-grant and safe metadata-inspection controls. Exact-head validation passed 20/20 checks.
+- The open PR queue was empty at the latest queue scan.
+- On this exact main SHA, the primary post-merge workflow set completed successfully: Backend CI, Python 3.11/3.12 CI, wheel smoke, Linux/Windows real FFmpeg MP4 integration, defensive scan, supply-chain posture, workflow security audit, and Windows launcher validation. A later duplicate Backend CI run was still executing its coverage test at the latest refresh; the primary Backend CI run on this same SHA had succeeded.
+
+### Current architecture/security posture
+- Tool grants are owner-scoped, explicitly allow-listed to `cloudflare.read`, audited, and expire within 24 hours. Agent dispatch re-reads active grants; lookup failures fail closed.
+- Cloudflare integration remains a fixed-route, HTTPS `workers.dev` read-only adapter with redirect rejection, no inherited proxy environment, bounded timeout/response size/item count, strict projected metadata schemas, and sanitized errors.
+- No Cloudflare write operation, production deployment, provider selection, paid generation, model download, D1 row query, or secret-value access occurred during this maintenance pass.
+
+### Outstanding acceptance gates
+- GitHub reports `main.protected=false`. Repository-admin must configure and verify branch protection/rulesets and test enforcement; no settings-write operation is available through the connected integration.
+- A dedicated Hub Cloudflare staging Worker and live acceptance remain outstanding. Existing Website preview and GShop production resources are not substitutes. Provisioning new resources/credentials requires a separate explicit owner-approved scope and cost decision.
+- Provider-backed video generation remains unavailable until the owner explicitly selects and configures a compatible provider. Deterministic FFmpeg rendering is not generative AI.
+- Windows target-device install/upgrade/backup/restore/rollback acceptance remains unrun on the owner's actual device.
+- GShop remains excluded from this project scope.
+
+No deployment, production configuration, application data, repository secrets, Cloudflare resources, or access-control settings were changed during this documentation update.
+
+---
 
 This concise current-state record supersedes older snapshots below where they conflict.
 
