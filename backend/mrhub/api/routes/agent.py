@@ -3,6 +3,7 @@
 import hashlib
 import json
 import sqlite3
+from collections.abc import Callable
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -26,9 +27,22 @@ from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, l
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
+
+
+def _owner_permission_provider(
+    repository: TaskRepository, owner_user_id: str
+) -> Callable[[], frozenset[str]]:
+    """Resolve live grants from the authenticated owner's server-side records."""
+    service = ToolPermissionService(repository, AuditLogger(repository))
+
+    def active_permissions() -> frozenset[str]:
+        return service.active_permissions(owner_user_id)
+
+    return active_permissions
 
 
 class WorkflowReconciliationRequest(BaseModel):
@@ -105,10 +119,16 @@ def discover_agent_capabilities() -> dict[str, object]:
 
 
 @router.post("/plan")
-def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
+def create_agent_plan(
+    request: AgentPlanRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    permission_provider = _owner_permission_provider(tasks, current_user.user_id)
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
-        return core.plan(request)
+        return core.plan(request, granted_permissions=permission_provider())
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
@@ -118,9 +138,12 @@ def create_agent_plan(request: AgentPlanRequest) -> dict[str, object]:
 @router.post("/execute")
 def execute_agent_tools(request: AgentPlanRequest, current_user: Annotated[AuthenticatedUser, Depends(require_user)]) -> dict[str, object]:
     """Run only explicitly requested tools that pass the server policy checks."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    permission_provider = _owner_permission_provider(tasks, current_user.user_id)
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
-        execution = core.execute(request)
+        execution = core.execute(request, permission_provider=permission_provider)
         repository = AgentRunRepository(get_settings().database_path)
         run = repository.record(request.model_dump(mode="json"), execution, owner_user_id=current_user.user_id)
         return {**execution, "run": run}
@@ -175,18 +198,19 @@ def execute_agent_workflow(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
 ) -> dict[str, object]:
     """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    permission_provider = _owner_permission_provider(tasks, current_user.user_id)
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
-        plan = core.plan(request)
+        plan = core.plan(request, granted_permissions=permission_provider())
         request_digest = _workflow_digest(request)
-        settings = get_settings()
         if not plan.get("execution_ready"):
             legacy = AgentWorkflowRepository(settings.database_path)
             workflow = legacy.create(request_digest, plan, owner_user_id=current_user.user_id)
             return {"workflow": workflow, "execution": None}
 
-        tasks = TaskRepository(settings.database_path)
-        tasks.initialize()
         recovery = WorkflowRecoveryRepository(settings.database_path)
         idempotency = IdempotencyRepository(settings.database_path)
         scope = f"agent-workflow:{current_user.user_id}"
@@ -425,9 +449,10 @@ def resume_agent_workflow(
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
+    permission_provider = _owner_permission_provider(tasks, current_user.user_id)
     core = AgentCore(build_model_router(), build_tool_registry())
     try:
-        plan = core.plan(request.request)
+        plan = core.plan(request.request, granted_permissions=permission_provider())
         return AgentWorkflowRunner(tasks, core).queue_resume(
             workflow_id,
             request.request,
