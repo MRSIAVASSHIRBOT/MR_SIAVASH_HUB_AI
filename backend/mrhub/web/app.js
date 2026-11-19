@@ -886,7 +886,7 @@
         redirect: "error",
       }
     );
-    if (response.status === 401 || response.status === 403) endSession();
+    if (response.status === 401) endSession();
     if (!response.ok) {
       throw new Error("دریافت رسانه ناموفق بود (HTTP " + response.status + ")");
     }
@@ -2310,7 +2310,7 @@
       });
       let payload = null;
       try { payload = await response.json(); } catch { payload = null; }
-      if (response.status === 401 || response.status === 403) endSession();
+      if (response.status === 401) endSession();
       if (!response.ok) {
         const detail = payload && payload.detail;
         throw new Error(typeof detail === "string" ? detail : `آپلود ناموفق بود (HTTP ${response.status})`);
