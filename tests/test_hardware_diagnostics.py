@@ -88,7 +88,12 @@ def test_windows_gpu_probe_uses_canonical_registry_path(monkeypatch):
     monkeypatch.setattr(hardware.sys, "platform", "win32")
 
     assert hardware._windows_display_adapters() == [
-        {"name": "NVIDIA Display Adapter", "provider": "NVIDIA"}
+        {
+            "name": "NVIDIA Display Adapter",
+            "provider": "NVIDIA",
+            "vram_bytes": None,
+            "vram_source": None,
+        }
     ]
     assert opened_paths[0] == expected_path
 
