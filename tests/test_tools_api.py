@@ -251,7 +251,11 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert 'id="cloudflare-access-panel"' in html
     assert 'id="cloudflare-grant-submit"' in html
     assert 'id="cloudflare-inventory-button"' in html
+    assert 'id="cloudflare-worker-settings-form"' in html
+    assert 'id="cloudflare-worker-settings-button"' in html
     assert "cloudflare.inventory.snapshot" in script
+    assert "cloudflare.worker.settings.read" in script
+    assert "/tools/cloudflare.worker.settings.read/invoke" in script
     assert "/tools/grants/cloudflare.read" in script
     assert "/tools/cloudflare.inventory.snapshot/invoke" in script
     assert "if (response.status === 401)" in script
