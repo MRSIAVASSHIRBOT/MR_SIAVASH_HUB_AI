@@ -41,10 +41,29 @@ jobs:
           if has_required_ffmpeg; then
             echo "Using the runner-provided FFmpeg and FFprobe binaries."
           else
-            # Prefer Ubuntu's signed packages. Allow transient mirror retries and
-            # enough time for the dependency set on slow hosted-runner mirrors.
-            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install --no-install-recommends -y ffmpeg
+            # GitHub-hosted Ubuntu images can point at a regional EC2 HTTP mirror
+            # that is unreachable from the runner. Normalize that mirror to the
+            # official HTTPS Ubuntu archive while preserving signed apt metadata.
+            sudo python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          candidates = [Path("/etc/apt/sources.list"), *Path("/etc/apt/sources.list.d").glob("*")]
+          for source in candidates:
+              if not source.is_file():
+                  continue
+              original = source.read_text()
+              updated = re.sub(
+                  r"http://[a-z0-9-]+\\.ec2\\.archive\\.ubuntu\\.com/ubuntu",
+                  "https://archive.ubuntu.com/ubuntu",
+                  original,
+              )
+              if updated != original:
+                  source.write_text(updated)
+                  print(f"Normalized Ubuntu archive mirror in {source}")
+          PY
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=30 install --no-install-recommends -y ffmpeg
           fi
 
           command -v ffmpeg
