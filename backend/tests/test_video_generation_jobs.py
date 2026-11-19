@@ -1552,3 +1552,24 @@ def test_cancellation_is_honored_when_worker_claimed_task_before_generation_tran
     assert loaded["status"] == "queued"
     assert loaded["cancellation_requested"] is True
     assert "request" not in loaded
+
+
+def test_generation_task_ownership_is_bound_to_the_linked_owner(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"r" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+
+    assert linked is not None
+    task_id = UUID(linked["task_id"])
+    assert repository.owns_task("owner-a", task_id) is True
+    assert repository.owns_task("owner-b", task_id) is False
+    assert repository.owns_task("", task_id) is False
