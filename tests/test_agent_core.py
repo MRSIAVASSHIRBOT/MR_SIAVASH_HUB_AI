@@ -339,3 +339,54 @@ def test_agent_core_rejects_a_split_policy_authority():
     router.register_provider(StubProvider())
     with pytest.raises(ValueError, match="same instance"):
         AgentCore(router, ToolRegistry(), policy=PolicyEngine())
+
+
+def test_agent_core_uses_owner_grants_and_revalidates_before_each_dispatch():
+    core = make_core()
+    called = []
+    core.tool_registry.register(
+        ToolDefinition(
+            name="cloudflare.test_read",
+            description="Read a safe test fixture through an owner-granted capability.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: called.append(True) or {"accepted": True},
+            risk_class=RiskClass.LOW,
+            required_permissions=frozenset({"cloudflare.read"}),
+        )
+    )
+    request = AgentPlanRequest(
+        goal="Read the approved metadata",
+        tools=[{"name": "cloudflare.test_read", "payload": {}}],
+    )
+
+    assert core.plan(request)["execution_ready"] is False
+    granted = frozenset({"cloudflare.read"})
+    assert core.plan(request, granted_permissions=granted)["execution_ready"] is True
+
+    permission_snapshots = [granted, frozenset()]
+    events = []
+
+    def permission_provider():
+        return permission_snapshots.pop(0)
+
+    revoked = core.execute(
+        request,
+        permission_provider=permission_provider,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+    assert revoked["execution_completed"] is False
+    assert revoked["error_code"] == "policy_denied"
+    assert revoked["failed_tool"] == "cloudflare.test_read"
+    assert called == []
+    assert events == [
+        (2, "running", None),
+        (2, "failed", "policy_denied"),
+    ]
+
+    allowed = core.execute(request, granted_permissions=granted)
+    assert allowed["execution_completed"] is True
+    assert allowed["results"] == [
+        {"tool": "cloudflare.test_read", "result": {"accepted": True}}
+    ]
+    assert called == [True]
