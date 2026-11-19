@@ -1,0 +1,12 @@
+# Isolated Hub staging Worker. Intentionally has no routes or custom domains.
+name = "mr-siavash-hub-gateway-staging"
+main = "src/index.js"
+compatibility_date = "2026-11-20"
+
+# Keep staging isolated on workers.dev; do not enable preview URLs.
+workers_dev = true
+preview_urls = false
+
+# Account/zone IDs and both credentials are intentionally not committed here.
+# Configure CF_ACCOUNT_ID and CF_ZONE_ID as non-secret Worker variables.
+# Configure CF_API_TOKEN and GATEWAY_AUTH_TOKEN as Worker secrets.
