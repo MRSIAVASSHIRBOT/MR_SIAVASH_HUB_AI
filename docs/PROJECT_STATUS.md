@@ -20,7 +20,7 @@ Hub remains authoritative for private memory, tasks, agents, approvals, tool pol
 - Website Gateway's `cloudflare/gateway/package.json` defines Node's built-in test runner and has no external package dependency. Repository CI runs JavaScript tests, OpenAPI validation, isolated SQLite migration checks, Chromium Academy E2E and accessibility/responsive smoke.
 - No committed Python or Node dependency lockfile was found in the inspected active project roots. Reproducible lockfile-based installs remain a follow-up.
 - Website Production Worker remains version 14 (`62e8a337-d804-4748-8bb2-d5e0180ee2f8`) at 100% traffic, annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`. Current Website `main` is 40 commits ahead and 0 behind that source baseline. Issue [#120](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/issues/120) remains open. The delta includes Gateway runtime/tests and migrations 0004/0005; isolated migration tests pass in CI, but live Production D1 migration state was not queried. The Production release workflow is manual, defaults to `deploy=false`, and retains its owner-controlled environment gate.
-- The scheduled Hub Continuous Development workflow remains blocked by `API key expired.`; see [Issue #332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332). The provider credential was not read or changed. [Issue #316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) remains open because default-deny/no-shell controls do not prove OS-level credential isolation.
+- The scheduled Hub Continuous Development and comment-triggered OpenCode workflows are being retired in [PR #436](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/436). Their provider credential and isolation requirements will no longer apply; no credential renewal is required.
 - Branch-protection reads returned HTTP 403 for all three repositories in this run. The last successful recorded state was `main.protected=false`; the current state could not be independently reverified. No access-control settings were changed.
 
 ### Next engineering priorities
@@ -67,7 +67,7 @@ The Hub v1 manifest is the canonical contract. Hub owns private memory, tasks, p
 - No Worker named for Hub or EL_AI was found in the current Cloudflare Worker inventory. This does not establish that EL_AI has no deployment on another platform; live Telegram operation is not verified.
 - The two Python repositories and the website/Gateway tree contain no `uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or Bun lockfile in the inspected tree. Dependency reproducibility remains a foundation gap; evaluate a generated, committed lockfile and exact CI sync before upgrading packages.
 - The provider registry remains empty by default. No production provider, paid service, model download, or provider credential has been selected or enabled.
-- Issues [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) and [#316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) remain owner/security gates. Do not rerun the privileged scheduled publisher until the expired credential is owner-managed and the agent-process isolation decision is accepted.
+- Issues [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) and [#316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) are obsolete for the retired provider workflow; close them after PR #436 is merged.
 
 ### Discovery-only Backlog snapshot
 
@@ -97,11 +97,11 @@ This addendum supersedes older live-status and workflow snapshots below where th
 - Reviewed `main` code baseline: `1b9e0cf4826f898d8042a6da87fd29ee95988ff5`. It is 7 commits ahead of the prior recorded baseline `fcfde61efc504c4204eb6b7c3bb2ea76bf11ee9a`, with no commits behind.
 - Hub PR #365 corrected the Windows display-class registry path and added a mocked `winreg` regression test. It was merged on 2026-11-13; all 12 exact-head checks and all 12 post-merge main checks passed.
 - Hub PR #367 removed HTTPX exception chaining from the then-existing third-party and Kimi provider adapters, so failures no longer retain credential-bearing request context; regression tests cover timeout and transport failures. It was merged on 2026-11-13 after all 12 exact-head checks passed. Post-merge main CI was still running when this snapshot was prepared.
-- The effective scheduled OpenCode default-deny policy validation passed on the reviewed main baseline. The latest scheduled Continuous Development run `43403189626` (2026-11-13) failed at provider authentication with `API key expired.`. Checkout, CLI installation and policy verification succeeded; change detection and patch publication were skipped. No patch was generated.
-- The provider credential was not read, copied, rotated or changed. Owner-managed credential renewal remains required. Issue #316 remains open: current no-shell/default-deny controls reduce tool exposure but do not prove an OS-level credential broker or complete process isolation; the provider-adapter exception fix does not resolve that separate workflow boundary.
+- Historical note: the scheduled OpenCode workflow was previously blocked by provider authentication. That workflow and its provider execution path are removed by PR #436; the old run is not an active project blocker.
+- No provider credential was read, copied, rotated or changed. No credential renewal or process-isolation work is required for the retired workflow; the old security discussion is retained only as historical audit context.
 - GitHub branch metadata reports `main.protected=false`. The available connector has no branch-protection/ruleset write operation, so protection remains an owner action. Issue #304 tracks it.
-- Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issues #332 (expired provider credential) and #316 (provider credential isolation) remain open.
-- The scheduled workflow cadence and security controls were not changed during this review. No secrets, permissions, deployment settings or production resources were modified.
+- Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issues #332 and #316 are pending closure after PR #436.
+- This historical review predates the retirement in PR #436. No secrets, permissions, deployment settings or production resources were modified by that review.
 
 ## Previous status snapshot
 
@@ -117,7 +117,7 @@ Historical scope note: older portfolio snapshots may mention Gshop or other repo
 ## Main baseline and merged hardening
 
 - Main contains the FastAPI/SQLite control-plane baseline, task/job state, cancellation, policy checks, structured audit events, local owner authentication, action-bound approvals, capability-aware model routing, deterministic stub, and opt-in loopback-only Ollama adapter.
-- PR #11 is merged: the OpenCode action is pinned to a specific commit SHA and its prompt requires verified reporting.
+- PR #11 historically pinned the OpenCode action to a specific commit SHA; the associated provider-backed workflows were later retired in PR #436.
 - PR #12 is merged: the historical scheduled code-agent used an explicit third-party model identifier. That provider-specific workflow has since been retired.
 - PR #15 is merged via integration commit `0caa50637800c470b1d52f4ebd2ada78f9196ab8`: it brings worker-owned workflow execution, durable recovery, lease fencing, cancellation handling, worker heartbeat readiness, and the metadata-only capability discovery catalog into `main`. Backend CI and CI passed on integrated head `87438c66f102be5faf62c35391c4dc9cab8a0f3e`, including Python 3.11 and 3.12.
 - PR #16 is merged via squash commit `e91c9d51c258292cf995e2b4fbb6b24469d91718`; its initial regression was superseded by a stronger fault-injection test.
@@ -490,7 +490,7 @@ The RTL operator UI can now submit a render from a completed analysis with a non
 - No operational AI video provider is registered.
 - Real FFmpeg execution is verified on hosted Linux and Windows CI, not on the owner's actual device.
 - Browser/UX acceptance, target Windows install/upgrade/rollback, coordinated restore drill, license/lockfile decisions, and external provider/social acceptance remain open.
-- Continue scheduled workflow triggers and recovery semantics, Discovery source connectors, Memory/Knowledge integrity, defensive-lab advisory inventory, and end-to-end Operator UI coverage.
+- Continue worker-owned workflow execution and recovery semantics, Discovery source connectors, Memory/Knowledge integrity, defensive-lab advisory inventory, and end-to-end Operator UI coverage.
 - Keep the target-device test request deferred until the complete product candidate and acceptance package are ready.
 
 No public release or whole-product completion is claimed.
@@ -515,7 +515,7 @@ This entry supersedes the earlier live-PR snapshot above. Current main at the st
 
 - **PR #235** — bounded worker-cycle content dispatch. A worker cycle is covered by regression tests to execute at most one queued task and dispatch at most one due content schedule; later cycles continue the queue without duplicate dispatch. Merge commit: `d69c02544ec84fd40aa3871dd7c04300cf028f3f`.
 - **PR #237** — clean-destination database and media recovery integration test. It restores a temporary SQLite backup, copies the associated media directory, validates metadata and SHA-256, then verifies owner login, listing, and authenticated byte-for-byte download in a fresh app. Merge commit: `57240dad59c50b7100554f57c5d7adc784428e75`. This is synthetic CI evidence, not a production restore or key-management drill.
-- **PR #239** — scheduled OpenCode workflow handles only the explicit `free-models-per-day` quota error as a warning/no-op; missing secrets and unrelated failures remain non-zero. No paid retry or permission expansion was added. Merge commit: `c5cd2ad114aa558099be6a2cf966df4564031853`.
+- **PR #239** — historically added bounded handling for a free-tier quota response in the scheduled OpenCode workflow. That workflow was subsequently retired in PR #436; no provider quota or credential action remains.
 
 PR #232 was closed without merging; PR #235 is the current-main replacement for its bounded worker-cycle regression coverage. PRs #236 and #238 were closed as superseded attempts; their final verified work is represented by PR #237 and PR #239 respectively.
 
@@ -833,7 +833,7 @@ This section supersedes earlier mainline, PR, Cloudflare, and release observatio
 - The useful GitHub discovery hardening from stale PR #313 was rebuilt on current main and merged as PR #323.
 - The useful Knowledge evaluation endpoint from stale PR #321, the encoded-key test from PR #297, and the Windows wheel/action-pin work from PR #314 were rebuilt on current main and merged as PR #326.
 - PRs #297, #309, #312, #313, #314, #321, #324, and #325 were closed only after their useful changes were merged or their stale documentation/architecture snapshots were confirmed superseded.
-- The only pre-existing open implementation PR at this observation is Draft PR #315, a scheduled-development workflow security proposal; this documentation refresh is tracked separately as PR #327. It remains blocked by Issue #316: provider credential isolation from agent-controlled processes has not been technically demonstrated. Do not manually dispatch the privileged scheduled publisher or merge the Draft proposal based only on static configuration.
+- Historical note: Draft PR #315 and the related scheduled-development security work were superseded by the retirement of the provider-backed workflow in PR #436. No privileged scheduled publisher remains to dispatch.
 
 ### Cloudflare live-state acceptance — read-only inspection
 
@@ -847,7 +847,7 @@ The authenticated Cloudflare inventory returned three Workers: `gahop`, `mr-siav
 
 ### Remaining hard release gates
 
-1. Resolve Issue #316 with a verified credential-isolation boundary and regression evidence before enabling the scheduled privileged development publisher.
+1. Retire the scheduled provider-backed publisher and remove its credential dependency; this is implemented in PR #436 and awaits merge.
 2. Configure and verify repository protection for `main`. The available GitHub integration returned 403 for the branch-protection read endpoint; protection is not claimed as enabled. Issues #304 and #149 remain open.
 3. Complete dedicated Cloudflare staging acceptance; do not attach the Hub gateway to the GShop production route or mutate `gahop`/ `gshop-db`.
 4. Complete the owner-approved payment credential review and exact CORS-origin decision for `gahop`.
@@ -867,7 +867,7 @@ This section supersedes earlier control-center status notes above.
 - PR #329 exact-head verification passed: Backend CI, CI (Python 3.11 and 3.12, including Windows wheel smoke), Defensive Python Scan, and Linux/Windows Video Render Integration.
 - The registry remains owner-authenticated and read-only. The optional registry request is bounded and does not block the core operator overview.
 - MR_SIAVASH_AI and Gshop still show runtime `unknown` and infrastructure `not_configured`. The Hub already contains a typed Cloudflare gateway client and fixed-route Stage 1 Worker source (ADR-0001/0002), but the client is disabled by default and no dedicated Hub gateway Worker appears in the current Cloudflare Worker inventory. The existing `mr-siavash-ai-gateway` and its preview belong to MR_SIAVASH_AI and must not be repurposed; keep `gahop` and the GShop route isolated. No Hub gateway service credential is configured in the backend. Do not infer Worker, Pages, D1, DNS, or deployment health from repository CI.
-- Open PR #315 (scheduled development publisher) remains Draft and blocked by Issue #316 until credential isolation is demonstrated. PR #328 (default-deny OpenCode agent permissions) remains Draft; do not dispatch the privileged scheduled publisher.
+- Historical note: PRs #315 and #328 concerned the retired scheduled provider-backed workflow; PR #436 removes that execution path rather than extending it.
 - No Cloudflare production deployment, DNS change, secret mutation, private repository access, or persistent infrastructure write was performed as part of the control-center work.
 
 ### Remaining accepted-scope work
