@@ -70,6 +70,13 @@ def decide_approval(
     task = repository.get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.task_type == "video.generation":
+        from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+        if not VideoGenerationJobRepository(repository.database_path).owns_task(
+            user.user_id, task_id
+        ):
+            raise HTTPException(status_code=404, detail="Task not found")
     if task.status is not TaskStatus.WAITING_APPROVAL:
         raise HTTPException(status_code=409, detail="Task is not awaiting approval")
     if repository.get_task_approval(task_id) is not None:
@@ -129,8 +136,20 @@ def decide_approval(
 
 
 @router.get("/{task_id}/approval", response_model=ApprovalResponse)
-def get_approval(task_id: UUID) -> ApprovalResponse:
-    record = get_repository().get_task_approval(task_id)
+def get_approval(
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> ApprovalResponse:
+    repository = get_repository()
+    task = repository.get(task_id)
+    if task is not None and task.task_type == "video.generation":
+        from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
+
+        if not VideoGenerationJobRepository(repository.database_path).owns_task(
+            user.user_id, task_id
+        ):
+            raise HTTPException(status_code=404, detail="Approval not found")
+    record = repository.get_task_approval(task_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Approval not found")
     return ApprovalResponse(
