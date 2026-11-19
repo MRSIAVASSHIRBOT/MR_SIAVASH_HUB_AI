@@ -544,3 +544,137 @@ def test_agent_workflow_list_is_owner_scoped_and_bounded():
     assert "payload" not in body["workflows"][0]
 
     assert client.get("/agent/workflows?limit=101").status_code == 422
+
+
+def test_deterministic_agent_routes_use_only_the_authenticated_owner_grant(monkeypatch):
+    from pydantic import BaseModel, ConfigDict
+
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.tools.builtins import build_tool_registry
+    from mrhub.tools.registry import ToolDefinition
+
+    class EmptyInput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+    class ReadOutput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        value: str
+
+    client = authenticated_client()
+    calls = []
+    registry = build_tool_registry()
+    registry.register(ToolDefinition(
+        name="cloudflare.test_read",
+        description="Read a safe test fixture through an owner-granted capability.",
+        input_model=EmptyInput,
+        output_model=ReadOutput,
+        handler=lambda _: calls.append("read") or {"value": "safe metadata"},
+        risk_class=RiskClass.LOW,
+        required_permissions=frozenset({"cloudflare.read"}),
+    ))
+    monkeypatch.setattr("mrhub.api.routes.agent.build_tool_registry", lambda: registry)
+
+    request = {
+        "goal": "Read approved metadata",
+        "tools": [{"name": "cloudflare.test_read", "payload": {}}],
+    }
+    without_grant = client.post("/agent/plan", json=request)
+    assert without_grant.status_code == 200
+    assert without_grant.json()["execution_ready"] is False
+    denied = client.post("/agent/execute", json=request)
+    assert denied.status_code == 200
+    assert denied.json()["blocked"] is True
+    assert calls == []
+
+    grant = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert grant.status_code == 200
+    planned = client.post("/agent/plan", json=request)
+    assert planned.status_code == 200
+    assert planned.json()["execution_ready"] is True
+    executed = client.post("/agent/execute", json=request)
+    assert executed.status_code == 200
+    assert executed.json()["execution_completed"] is True
+    assert executed.json()["results"][0]["result"]["value"] == "safe metadata"
+    assert calls == ["read"]
+
+    revoked = client.delete("/tools/grants/cloudflare.read")
+    assert revoked.status_code == 204
+    after_revoke = client.post("/agent/execute", json=request)
+    assert after_revoke.status_code == 200
+    assert after_revoke.json()["blocked"] is True
+    assert calls == ["read"]
+
+
+def test_durable_worker_revalidates_owner_grant_before_dispatch(monkeypatch):
+    from pydantic import BaseModel, ConfigDict
+
+    from client_helpers import run_worker_once
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.tools.builtins import build_tool_registry
+    from mrhub.tools.registry import ToolDefinition
+
+    class EmptyInput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+    class ReadOutput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        value: str
+
+    client = authenticated_client()
+    calls = []
+    registry = build_tool_registry()
+    registry.register(ToolDefinition(
+        name="cloudflare.test_read",
+        description="Read a safe test fixture through an owner-granted capability.",
+        input_model=EmptyInput,
+        output_model=ReadOutput,
+        handler=lambda _: calls.append("read") or {"value": "safe metadata"},
+        risk_class=RiskClass.LOW,
+        required_permissions=frozenset({"cloudflare.read"}),
+    ))
+    monkeypatch.setattr("mrhub.api.routes.agent.build_tool_registry", lambda: registry)
+    monkeypatch.setattr("mrhub.jobs.workflow_dispatch.build_tool_registry", lambda: registry)
+
+    request = {
+        "goal": "Queue an owner-granted metadata read",
+        "tools": [{"name": "cloudflare.test_read", "payload": {}}],
+    }
+    grant = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert grant.status_code == 200
+    queued = client.post("/agent/workflows", json=request)
+    assert queued.status_code == 200
+    workflow_id = queued.json()["workflow"]["workflow_id"]
+    assert queued.json()["queued"] is True
+
+    # Revocation after enqueue but before worker dispatch must deny the tool.
+    revoked = client.delete("/tools/grants/cloudflare.read")
+    assert revoked.status_code == 204
+    failed_task = run_worker_once()
+    assert failed_task is not None
+    assert failed_task.status.value == "failed"
+    failed_workflow = client.get(f"/agent/workflows/{workflow_id}")
+    assert failed_workflow.status_code == 200
+    assert failed_workflow.json()["status"] == "failed"
+    assert calls == []
+
+    grant_again = client.put(
+        "/tools/grants/cloudflare.read",
+        json={"expires_in_seconds": 600},
+    )
+    assert grant_again.status_code == 200
+    queued_again = client.post("/agent/workflows", json=request)
+    assert queued_again.status_code == 200
+    workflow_id_again = queued_again.json()["workflow"]["workflow_id"]
+    completed_task = run_worker_once()
+    assert completed_task is not None
+    assert completed_task.status.value == "succeeded"
+    completed_workflow = client.get(f"/agent/workflows/{workflow_id_again}")
+    assert completed_workflow.status_code == 200
+    assert completed_workflow.json()["status"] == "succeeded"
+    assert calls == ["read"]
