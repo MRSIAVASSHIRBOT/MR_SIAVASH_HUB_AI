@@ -3285,8 +3285,8 @@
         readiness.className = "status-pill status-muted";
       } else {
         readiness.textContent = activeGrant
-          ? "Gateway آماده · مجوز موقت فعال"
-          : "Gateway آماده · نیازمند مجوز موقت";
+          ? "Gateway پیکربندی شده · مجوز موقت فعال"
+          : "Gateway پیکربندی شده · نیازمند مجوز موقت";
         readiness.className = activeGrant
           ? "status-pill"
           : "status-pill status-warning";
