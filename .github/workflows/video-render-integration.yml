@@ -103,9 +103,27 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install FFmpeg and FFprobe
+        timeout-minutes: 8
         shell: pwsh
         run: |
-          choco install ffmpeg --no-progress -y
+          # Chocolatey Community Feed can intermittently return HTTP 503/504.
+          # Retry the package install with bounded backoff; do not mask a real
+          # installation or PATH failure.
+          $PSNativeCommandUseErrorActionPreference = $false
+          $installed = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install ffmpeg --no-progress -y
+            if ($LASTEXITCODE -eq 0) {
+              $installed = $true
+              break
+            }
+            if ($attempt -lt 3) {
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          if (-not $installed) {
+            throw "FFmpeg installation failed after three Chocolatey attempts"
+          }
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
             throw "FFmpeg was not added to PATH"
           }
