@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import sqlite3
+from math import isfinite
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -100,6 +101,9 @@ class GenerationSubmissionRequest(BaseModel):
     aspect_ratio: str = Field(pattern=r"^(9:16|16:9|1:1|4:5)$")
     duration_seconds: int = Field(ge=3, le=60, strict=True)
     resolution: str = Field(default="720p", pattern=r"^(720p|1080p)$")
+    remote_processing_approved: bool = Field(default=False, strict=True)
+    remote_spend_approved: bool = Field(default=False, strict=True)
+    max_remote_cost_usd: float = Field(default=0, ge=0, le=10_000, allow_inf_nan=False)
 
 
 class PromptCompositionRequest(BaseModel):
@@ -202,8 +206,43 @@ def submit_video_generation(
         aspect_ratio=payload.aspect_ratio,
         duration_seconds=payload.duration_seconds,
         resolution=payload.resolution,
+        remote_processing_approved=payload.remote_processing_approved,
+        remote_spend_approved=payload.remote_spend_approved,
+        max_remote_cost_usd=payload.max_remote_cost_usd,
         idempotency_key=idempotency_key,
     )
+    if not capability.local:
+        if not (payload.remote_processing_approved and payload.remote_spend_approved):
+            raise HTTPException(
+                status_code=403,
+                detail={"code": "remote_consent_required", "execution": "not_started"},
+            )
+        estimator = getattr(provider, "estimate_cost_usd", None)
+        if not callable(estimator):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "remote_cost_unknown", "execution": "not_started"},
+            )
+        try:
+            estimate = estimator(request)
+            if (
+                estimate is None
+                or isinstance(estimate, bool)
+                or not isfinite(float(estimate))
+                or float(estimate) < 0
+            ):
+                raise ValueError("unknown estimate")
+            estimated_cost = float(estimate)
+        except Exception:  # noqa: BLE001 - pricing errors fail closed and remain private
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "remote_cost_unknown", "execution": "not_started"},
+            ) from None
+        if estimated_cost > payload.max_remote_cost_usd:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "remote_budget_exceeded", "execution": "not_started"},
+            )
     jobs = VideoGenerationJobRepository(get_settings().database_path)
     try:
         accepted, created = jobs.submit(
