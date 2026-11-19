@@ -231,7 +231,10 @@
     }
     if (!response.ok) {
       const detail = payload && payload.detail;
-      throw new Error(typeof detail === "string" ? detail : `درخواست ناموفق بود (HTTP ${response.status})`);
+      const fallback = response.status === 403
+        ? "این عملیات به مجوز فعال نیاز دارد."
+        : `درخواست ناموفق بود (HTTP ${response.status})`;
+      throw new Error(typeof detail === "string" ? detail : fallback);
     }
     return payload;
   }
