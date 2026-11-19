@@ -6,7 +6,7 @@ This concise current-state record supersedes older snapshots below where they co
 - PR #433 merged the explicit owner-consent video-generation request flow and durable owner-scoped job lifecycle. No generation provider is registered by default; provider-backed generation remains unavailable until the owner explicitly selects and configures a provider.
 - PR #435 merged ADR-0011 documenting the scheduled-agent credential boundary. The scheduled OpenCode/provider workflow was subsequently retired and removed in PR #436, merged as `aca5f198fb6e372436bdbff67aaff7385841b4ee`; do not renew the retired provider credential.
 - Issue #332 is closed as not planned because the workflow was retired. The obsolete Actions secret `MR_SIAVASH_HUB_AI` remains an owner-only deletion task; no secret value was read or changed.
-- PR #439 adds a test-only regression for the read-only hardware diagnostics JSON CLI. PR #440 is reconciling the documentation ledger; both require exact-head checks before merge.
+- PR #439 adds a regression for the read-only hardware diagnostics JSON CLI and stabilizes Linux FFmpeg CI against the unreachable regional Ubuntu apt mirror; it merged as `03ee72f386904959497116b632b7238a984695fd` after all 9 exact-head checks passed. PR #440 is reconciling the documentation ledger and remains subject to fresh exact-head checks.
 
 ### Remaining owner and acceptance gates
 - Configure and independently verify `main` branch protection/rulesets for the relevant repositories. The connected integration cannot write these settings; do not claim protection is enabled.
