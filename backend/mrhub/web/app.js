@@ -70,6 +70,9 @@
   let videoGenerationHistoryItems = [];
   let videoGenerationHistoryCursor = null;
   let videoGenerationHistoryRequestSequence = 0;
+  let videoGenerationProviders = [];
+  let pendingVideoGenerationKey = sessionStorage.getItem("mrh_video_generation_pending_key");
+  let pendingVideoGenerationFingerprint = sessionStorage.getItem("mrh_video_generation_pending_fingerprint");
   let videoSceneJobItems = [];
   let videoSceneJobCursor = null;
   let videoSceneJobRequestSequence = 0;
@@ -154,6 +157,14 @@
     videoGenerationHistoryRequestSequence += 1;
     videoGenerationHistoryItems = [];
     videoGenerationHistoryCursor = null;
+    videoGenerationProviders = [];
+    pendingVideoGenerationKey = null;
+    pendingVideoGenerationFingerprint = null;
+    sessionStorage.removeItem("mrh_video_generation_pending_key");
+    sessionStorage.removeItem("mrh_video_generation_pending_fingerprint");
+    $("#video-generation-provider-select").replaceChildren(element("option", "ابتدا Provider پیکربندی‌شده را بارگذاری کنید"));
+    $("#video-generation-submit-button").disabled = true;
+    message("#video-generation-submit-message", "");
     activeVideoSceneJobId = null;
     pendingVideoSceneJobKey = null;
     pendingVideoSceneJobFingerprint = null;
@@ -2857,6 +2868,22 @@
     try {
       const payload = await api("/video-intelligence/generation/providers");
       const providers = Array.isArray(payload.providers) ? payload.providers : [];
+      videoGenerationProviders = providers;
+      const providerSelect = $("#video-generation-provider-select");
+      const previousProvider = providerSelect.value;
+      providerSelect.replaceChildren();
+      const placeholder = element("option", providers.length ? "Provider را انتخاب کنید" : "هیچ Providerی پیکربندی نشده است");
+      placeholder.value = "";
+      providerSelect.append(placeholder);
+      for (const provider of providers) {
+        const option = element("option", (provider.provider || "Provider") + " / " + (provider.model || "مدل نامشخص") + (provider.local === true ? " · محلی" : " · راه‌دور"));
+        option.value = provider.provider + "::" + provider.model;
+        providerSelect.append(option);
+      }
+      if (providers.some((provider) => provider.provider + "::" + provider.model === previousProvider)) {
+        providerSelect.value = previousProvider;
+      }
+      $("#video-generation-submit-button").disabled = providers.length === 0;
       const unavailable = payload.generation_available === false
         || payload.reason_code === "provider_unavailable"
         || providers.length === 0;
@@ -2886,6 +2913,93 @@
       message("#video-generation-providers-message", error.message, "error");
     } finally {
       refreshButton.disabled = false;
+    }
+  }
+
+  async function submitVideoGeneration(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitButton = $("#video-generation-submit-button");
+    const values = new FormData(form);
+    const selected = String(values.get("provider") || "");
+    const provider = videoGenerationProviders.find(
+      (item) => item.provider + "::" + item.model === selected
+    );
+    const sourceAssetId = $("#video-prompt-source").value;
+    const promptResult = videoPromptResults.find((item) => item.asset_id === sourceAssetId);
+    const prompt = promptResult && promptResult.prompt;
+    if (!provider || !prompt || !activeVideoAnalysisId || videoPromptAnalysisId !== activeVideoAnalysisId) {
+      message("#video-generation-submit-message", "ابتدا Provider معتبر را انتخاب و Prompt را از تحلیل معنایی فعال تولید کنید.", "error");
+      return;
+    }
+    const durationSeconds = Number(values.get("duration_seconds"));
+    const maxRemoteCost = Number(values.get("max_remote_cost_usd"));
+    if (!Number.isInteger(durationSeconds) || durationSeconds < 3 || durationSeconds > 60
+      || !Number.isFinite(maxRemoteCost) || maxRemoteCost < 0 || maxRemoteCost > 10000) {
+      message("#video-generation-submit-message", "مدت یا سقف هزینه معتبر نیست.", "error");
+      return;
+    }
+    const remoteProcessingApproved = values.get("remote_processing_approved") === "on";
+    const remoteSpendApproved = values.get("remote_spend_approved") === "on";
+    if (provider.local !== true && !(remoteProcessingApproved && remoteSpendApproved)) {
+      message("#video-generation-submit-message", "برای Provider راه‌دور، هر دو رضایت پردازش و هزینه الزامی است.", "error");
+      return;
+    }
+    const request = {
+      analysis_id: activeVideoAnalysisId,
+      provider: provider.provider,
+      model: provider.model,
+      prompt,
+      aspect_ratio: promptResult.aspect_ratio || $("#video-prompt-aspect-ratio").value,
+      duration_seconds: durationSeconds,
+      resolution: String(values.get("resolution") || "720p"),
+      remote_processing_approved: remoteProcessingApproved,
+      remote_spend_approved: remoteSpendApproved,
+      max_remote_cost_usd: maxRemoteCost,
+    };
+    const fingerprint = JSON.stringify(request);
+    if (!pendingVideoGenerationKey || pendingVideoGenerationFingerprint !== fingerprint) {
+      pendingVideoGenerationKey = crypto.randomUUID();
+      pendingVideoGenerationFingerprint = fingerprint;
+      sessionStorage.setItem("mrh_video_generation_pending_key", pendingVideoGenerationKey);
+      sessionStorage.setItem("mrh_video_generation_pending_fingerprint", fingerprint);
+    }
+    submitButton.disabled = true;
+    message("#video-generation-submit-message", "در حال ثبت درخواست؛ هنوز هیچ Providerی اجرا نمی‌شود…");
+    try {
+      const response = await api(
+        "/video-intelligence/analyses/" + encodeURIComponent(activeVideoAnalysisId) + "/generations",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": pendingVideoGenerationKey },
+          body: {
+            provider: request.provider,
+            model: request.model,
+            prompt: request.prompt,
+            aspect_ratio: request.aspect_ratio,
+            duration_seconds: request.duration_seconds,
+            resolution: request.resolution,
+            remote_processing_approved: request.remote_processing_approved,
+            remote_spend_approved: request.remote_spend_approved,
+            max_remote_cost_usd: request.max_remote_cost_usd,
+          },
+        }
+      );
+      pendingVideoGenerationKey = null;
+      pendingVideoGenerationFingerprint = null;
+      sessionStorage.removeItem("mrh_video_generation_pending_key");
+      sessionStorage.removeItem("mrh_video_generation_pending_fingerprint");
+      await loadVideoGenerationHistory();
+      message(
+        "#video-generation-submit-message",
+        "درخواست ثبت شد. Job " + response.generation_id + " اکنون منتظر تأیید مستقل مالک است؛ هیچ Providerی پیش از تأیید اجرا نمی‌شود.",
+        "success"
+      );
+    } catch (error) {
+      // Retain the same idempotency key so a retry cannot create a duplicate job.
+      message("#video-generation-submit-message", error.message + "؛ در تلاش مجدد همان کلید idempotency استفاده می‌شود.", "error");
+    } finally {
+      submitButton.disabled = videoGenerationProviders.length === 0;
     }
   }
 
@@ -3015,6 +3129,36 @@
               : null,
           ].filter(Boolean).join(" · ")
         );
+        if (job.approval_pending === true && job.task_id) {
+          card.append(actionButton("تأیید صریح ارسال به Provider", async () => {
+            const provider = videoGenerationProviders.find(
+              (item) => item.provider === job.provider && item.model === job.model
+            );
+            const remote = provider ? provider.local !== true : true;
+            const confirmation = remote
+              ? "با تأیید این اقدام، Prompt برای Provider راه‌دور انتخاب‌شده ارسال می‌شود و ممکن است هزینه ایجاد شود. رضایت پردازش و سقف هزینهٔ درخواست ثبت شده است. ادامه می‌دهید؟"
+              : "با تأیید این اقدام، درخواست به Provider محلی انتخاب‌شده ارسال می‌شود. ادامه می‌دهید؟";
+            if (!window.confirm(confirmation)) return;
+            const buttons = card.querySelectorAll("button");
+            buttons.forEach((button) => { button.disabled = true; });
+            try {
+              await api("/tasks/" + encodeURIComponent(job.task_id) + "/approval", {
+                method: "POST",
+                body: {
+                  decision: "approved",
+                  reason: remote
+                    ? "Owner explicitly approved selected remote provider with request-scoped processing and spend consent."
+                    : "Owner explicitly approved selected local provider.",
+                },
+              });
+              await loadVideoGenerationHistory();
+              message("#video-generation-history-message", "تأیید مالک ثبت شد؛ Worker اکنون می‌تواند Job را طبق کنترل‌های امنیتی اجرا کند.", "success");
+            } catch (error) {
+              await loadVideoGenerationHistory();
+              message("#video-generation-history-message", error.message, "error");
+            }
+          }));
+        }
         if (["prepared", "queued"].includes(job.status) && !job.cancellation_requested) {
           card.append(actionButton("لغو درخواست", async () => {
             if (!window.confirm("درخواست تولیدی که هنوز به Provider ارسال نشده لغو شود؟")) return;
@@ -3261,6 +3405,7 @@
   $("#refresh-button").addEventListener("click", refreshAll);
 
   $("#video-generation-providers-refresh").addEventListener("click", loadVideoGenerationProviders);
+  $("#video-generation-submit-form").addEventListener("submit", submitVideoGeneration);
   $("#video-generation-route-preview-form").addEventListener("submit", previewVideoGenerationRoute);
   $("#video-generation-history-refresh").addEventListener("click", () => loadVideoGenerationHistory());
   $("#video-generation-history-more").addEventListener("click", () => loadVideoGenerationHistory(true));
