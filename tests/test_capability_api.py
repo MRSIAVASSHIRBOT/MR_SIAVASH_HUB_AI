@@ -156,7 +156,7 @@ def test_hardware_report_is_authenticated_read_only_and_not_persisted(monkeypatc
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["host_scope"] == "api_process_host"
+    assert payload["host_scope"] == "api_process_runtime"
     assert payload["persisted"] is False
     assert payload["transmitted_to_provider"] is False
     assert payload["execution"] == "diagnostics_only"
