@@ -942,8 +942,10 @@ class VideoGenerationJobRepository:
             or metadata.duration_seconds is None
             or metadata.width is None
             or metadata.height is None
+            or metadata.format_name is None
+            or "mp4" not in metadata.format_name.split(",")
         ):
-            raise ValueError("Generated output failed independent media validation")
+            raise ValueError("Generated output failed independent MP4 media validation")
         duration = float(metadata.duration_seconds)
         if (
             duration <= 0
