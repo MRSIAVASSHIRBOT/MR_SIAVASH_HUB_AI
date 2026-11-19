@@ -54,7 +54,7 @@ def _memory_bytes() -> int | None:
     return _memory_snapshot()[0]
 
 
-def _windows_display_adapters() -> list[dict[str, str]]:
+def _windows_display_adapters() -> list[dict[str, str | int | None]]:
     """Read display adapter names from the Windows display-class registry."""
     if sys.platform != "win32":
         return []
@@ -78,7 +78,6 @@ def _windows_display_adapters() -> list[dict[str, str]]:
                     with winreg.OpenKey(root, subkey_name) as adapter_key:
                         description = winreg.QueryValueEx(adapter_key, "DriverDesc")[0]
                         provider = winreg.QueryValueEx(adapter_key, "ProviderName")[0]
-                    if isinstance(description, str) and description.strip():
                         vram_bytes: int | None = None
                         try:
                             raw_vram = winreg.QueryValueEx(adapter_key, "HardwareInformation.qwMemorySize")[0]
@@ -88,6 +87,7 @@ def _windows_display_adapters() -> list[dict[str, str]]:
                                 vram_bytes = raw_vram
                         except (OSError, TypeError, ValueError):
                             pass
+                    if isinstance(description, str) and description.strip():
                         adapters.append({
                             "name": description.strip(),
                             "provider": provider.strip() if isinstance(provider, str) else "Unknown",
