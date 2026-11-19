@@ -27,9 +27,7 @@ Windows display-adapter names where the registry exposes them.
 - No network requests, subprocesses, administrator privileges, model downloads,
   benchmarks, or inference calls are performed.
 - Available RAM is a point-in-time estimate; other applications can change it.
-- GPU probing reads display-adapter names from the Windows display-class
-  registry. It does not inspect dedicated VRAM, CUDA/ROCm support, or compute
-  performance.
+- GPU probing reads adapter identity from the Windows display-class registry or Linux DRM sysfs. Dedicated VRAM is reported only when the driver/kernel exposes it. CUDA/ROCm support and compute performance are not measured.
 - Disk information describes the drive containing the current working
   directory, not every mounted volume.
 - The report is not uploaded or transmitted. Review it before sharing because
