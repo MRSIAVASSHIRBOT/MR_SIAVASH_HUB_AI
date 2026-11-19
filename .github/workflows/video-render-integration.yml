@@ -54,7 +54,7 @@ jobs:
                   continue
               original = source.read_text()
               updated = re.sub(
-                  r"http://[a-z0-9-]+\\.ec2\\.archive\\.ubuntu\\.com/ubuntu",
+                  r"http://[a-z0-9-]+\.ec2\.archive\.ubuntu\.com/ubuntu",
                   "https://archive.ubuntu.com/ubuntu",
                   original,
               )
