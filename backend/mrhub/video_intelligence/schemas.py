@@ -68,6 +68,7 @@ class VideoTechnicalMetadata(BaseModel):
     height: int | None = None
     frame_rate: float | None = None
     codec: str | None = None
+    format_name: str | None = None
     has_audio: bool | None = None
     metadata_status: Literal["available", "ffprobe_unavailable", "probe_failed"]
 
