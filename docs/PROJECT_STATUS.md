@@ -1,20 +1,18 @@
-## Portfolio maintenance addendum — 2026-11-19 UTC
+## Current Hub maintenance addendum — 2026-11-19 UTC
 
-This is the newest observed Hub maintenance state and supersedes earlier provider-retirement and Hub-main statements below where they conflict.
+This concise current-state record supersedes older snapshots below where they conflict.
 
-### Hub provider retirement — verified
-- PR [#436](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/436) merged at 2026-11-19 10:20 UTC as `aca5f198fb6e372436bdbff67aaff7385841b4ee`; this commit is the current `main` head at this observation.
-- All six exact-PR-head checks completed successfully: CI, Backend CI, Windows Launcher Validation, Workflow Security Audit, Defensive Python Scan, and Video Render Integration.
-- The PR removes the retired third-party text provider adapter/configuration/API path, credential broker, scheduled and comment-triggered OpenCode workflows, remote inference UI, related tests, and obsolete operational references. Local Ollama and the explicitly configured Moonshot Kimi integration remain separate.
-- Focused current-main inspection of `.env.example`, `.github/workflows/ci.yml`, `backend/mrhub/web/index.html`, and `backend/mrhub/web/app.js` found no OpenRouter/provider-secret/remote-generation references. This is a targeted verification, not a claim that every historical document or every repository blob was exhaustively searched.
-- The old repository Actions secret is now obsolete and should be deleted by the repository owner at [Actions repository secrets](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/settings/secrets/actions). The connected GitHub integration does not expose secret deletion; no secret value was read or changed.
-- Issue [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) is closed as not planned because the scheduled provider workflow was retired; the credential-expiry incident is no longer an active remediation task.
-- Branch-protection reads remain unavailable to the connected integration (HTTP 403); branch protection must be configured and independently verified by a repository administrator through [Hub branch settings](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/settings/branches).
+### Verified repository changes
+- PR #433 merged the explicit owner-consent video-generation request flow and durable owner-scoped job lifecycle. No generation provider is registered by default; provider-backed generation remains unavailable until the owner explicitly selects and configures a provider.
+- PR #435 merged ADR-0011 documenting the scheduled-agent credential boundary. The scheduled OpenCode/provider workflow was subsequently retired and removed in PR #436, merged as `aca5f198fb6e372436bdbff67aaff7385841b4ee`; do not renew the retired provider credential.
+- Issue #332 is closed as not planned because the workflow was retired. The obsolete Actions secret `MR_SIAVASH_HUB_AI` remains an owner-only deletion task; no secret value was read or changed.
+- PR #439 adds a regression for the read-only hardware diagnostics JSON CLI and stabilizes Linux FFmpeg CI against the unreachable regional Ubuntu apt mirror; it merged as `03ee72f386904959497116b632b7238a984695fd` after all 9 exact-head checks passed. PR #440 is reconciling the documentation ledger and remains subject to fresh exact-head checks.
 
-### Remaining owner-only controls
-- Delete the obsolete repository Actions secret `MR_SIAVASH_HUB_AI`; do not renew or replace it.
-- Configure and verify `main` branch protection for Hub, Website, and EL_AI. Use PR-required changes, required current-head CI/security checks, conversation resolution, no force-push/deletion, and include administrators. Do not require a self-approval when no independent reviewer exists.
-- No deployment, production configuration, application data, or other repository secret was changed.
+### Remaining owner and acceptance gates
+- Configure and independently verify `main` branch protection/rulesets for the relevant repositories. The connected integration cannot write these settings; do not claim protection is enabled.
+- Complete isolated Cloudflare staging and live acceptance before any production routing change. Do not repurpose GShop production resources or routes.
+- Complete target-device Windows install/upgrade/backup/restore/rollback acceptance on the owner's device.
+- No deployment, production configuration, application data, or repository secrets were changed during this maintenance pass.
 
 ---
 
@@ -40,13 +38,13 @@ Hub remains authoritative for private memory, tasks, agents, approvals, tool pol
 - Website Gateway's `cloudflare/gateway/package.json` defines Node's built-in test runner and has no external package dependency. Repository CI runs JavaScript tests, OpenAPI validation, isolated SQLite migration checks, Chromium Academy E2E and accessibility/responsive smoke.
 - No committed Python or Node dependency lockfile was found in the inspected active project roots. Reproducible lockfile-based installs remain a follow-up.
 - Website Production Worker remains version 14 (`62e8a337-d804-4748-8bb2-d5e0180ee2f8`) at 100% traffic, annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`. Current Website `main` is 40 commits ahead and 0 behind that source baseline. Issue [#120](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/issues/120) remains open. The delta includes Gateway runtime/tests and migrations 0004/0005; isolated migration tests pass in CI, but live Production D1 migration state was not queried. The Production release workflow is manual, defaults to `deploy=false`, and retains its owner-controlled environment gate.
-- The scheduled Hub Continuous Development and comment-triggered OpenCode workflows are being retired in [PR #436](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/436). Their provider credential and isolation requirements will no longer apply; no credential renewal is required.
+- The scheduled Hub Continuous Development and comment-triggered OpenCode workflows were removed and merged in [PR #436](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/436) (`aca5f198fb6e372436bdbff67aaff7385841b4ee`). No provider credential renewal or isolation work is required for those retired workflows.
 - Branch-protection reads returned HTTP 403 for all three repositories in this run. The last successful recorded state was `main.protected=false`; the current state could not be independently reverified. No access-control settings were changed.
 
 ### Next engineering priorities
 
 1. Finish and verify all post-merge checks on Hub SHA `57ac03024fa05cf76fc81d10a372944176ef98d6`; investigate any failure before additional runtime work.
-2. Resolve the owner-managed provider credential expiry and independently accept the credential/process-isolation boundary before re-enabling scheduled development.
+2. Remove the unused `MR_SIAVASH_HUB_AI` Actions secret from repository Settings; the retired workflows no longer consume it. Do not renew or replace it.
 3. Review the Website's complete 40-commit source delta, Preview acceptance, migration state, backup/rollback and then obtain explicit owner approval before any Production release.
 4. Have the repository owner configure and verify branch protection and exact-head required checks for all three repositories.
 5. Add reproducible dependency lockfiles and verify clean Linux/Windows installs.
@@ -87,7 +85,7 @@ The Hub v1 manifest is the canonical contract. Hub owns private memory, tasks, p
 - No Worker named for Hub or EL_AI was found in the current Cloudflare Worker inventory. This does not establish that EL_AI has no deployment on another platform; live Telegram operation is not verified.
 - The two Python repositories and the website/Gateway tree contain no `uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or Bun lockfile in the inspected tree. Dependency reproducibility remains a foundation gap; evaluate a generated, committed lockfile and exact CI sync before upgrading packages.
 - The provider registry remains empty by default. No production provider, paid service, model download, or provider credential has been selected or enabled.
-- Issues [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) and [#316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) are obsolete for the retired provider workflow; close them after PR #436 is merged.
+- Issue [#332](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/332) is obsolete after PR #436 merged and is being closed; Issue [#316](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/issues/316) was already closed.
 
 ### Discovery-only Backlog snapshot
 
@@ -120,7 +118,7 @@ This addendum supersedes older live-status and workflow snapshots below where th
 - Historical note: the scheduled OpenCode workflow was previously blocked by provider authentication. That workflow and its provider execution path are removed by PR #436; the old run is not an active project blocker.
 - No provider credential was read, copied, rotated or changed. No credential renewal or process-isolation work is required for the retired workflow; the old security discussion is retained only as historical audit context.
 - GitHub branch metadata reports `main.protected=false`. The available connector has no branch-protection/ruleset write operation, so protection remains an owner action. Issue #304 tracks it.
-- Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issues #332 and #316 are pending closure after PR #436.
+- Pull-request state is intentionally sourced from live GitHub metadata rather than this static ledger; re-check open PRs and exact-head CI before every merge. Issue #332 is obsolete after PR #436 merged; Issue #316 is already closed.
 - This historical review predates the retirement in PR #436. No secrets, permissions, deployment settings or production resources were modified by that review.
 
 ## Previous status snapshot
@@ -384,7 +382,7 @@ The following changes were merged after the previous status entry:
 
 - These merges establish repository changes and exact-head CI evidence; they do not prove a clean Windows install/start/stop/restore on the owner's laptop.
 - The Windows launcher currently requires Python 3.11 and binds the application to loopback. Do not expose it directly to the public internet.
-- The continuous-development workflow still requires a controlled end-to-end run to verify artifact transfer, patch validation, and PR publication. The scheduled model-agent workflow and its provider credential path have since been retired; delete the obsolete provider-only repository secret after the removal PR is merged.
+- The scheduled Continuous Development and comment-triggered OpenCode workflows were removed in PR #436. No provider-backed artifact-transfer or publisher run remains to validate. Delete the now-unused `MR_SIAVASH_HUB_AI` Actions secret; do not renew or replace it.
 - third-party text inference, Telegram/Instagram publishing, OpenClaw/SiaCode execution, and remote code execution remain opt-in or unavailable until separately configured and accepted.
 - Do not claim production readiness until target-device install/upgrade/rollback/backup/restore drills and required provider acceptance tests are recorded.
 
@@ -867,7 +865,7 @@ The authenticated Cloudflare inventory returned three Workers: `gahop`, `mr-siav
 
 ### Remaining hard release gates
 
-1. Retire the scheduled provider-backed publisher and remove its credential dependency; this is implemented in PR #436 and awaits merge.
+1. Retire the scheduled provider-backed publisher and remove its credential dependency; completed and merged in PR #436.
 2. Configure and verify repository protection for `main`. The available GitHub integration returned 403 for the branch-protection read endpoint; protection is not claimed as enabled. Issues #304 and #149 remain open.
 3. Complete dedicated Cloudflare staging acceptance; do not attach the Hub gateway to the GShop production route or mutate `gahop`/ `gshop-db`.
 4. Complete the owner-approved payment credential review and exact CORS-origin decision for `gahop`.
