@@ -38,6 +38,8 @@ class AgentCore:
         model_router: ModelRouter,
         tool_registry: ToolRegistry,
         policy: PolicyEngine | None = None,
+        *,
+        permission_provider: Callable[[], frozenset[str]] | None = None,
     ) -> None:
         self.model_router = model_router
         self.tool_registry = tool_registry
@@ -46,6 +48,16 @@ class AgentCore:
                 "AgentCore policy must be the same instance used by ToolRegistry"
             )
         self.policy = tool_registry.policy
+        self.permission_provider = permission_provider
+
+    def _current_permissions(self) -> frozenset[str]:
+        """Resolve owner grants at the policy boundary; lookup failures deny access."""
+        if self.permission_provider is None:
+            return frozenset()
+        try:
+            return frozenset(self.permission_provider())
+        except Exception:  # noqa: BLE001 - permission lookup failures must fail closed
+            return frozenset()
 
     def execute(
         self,
@@ -94,7 +106,9 @@ class AgentCore:
                 on_step(step_number, "running", None)
             try:
                 result = self.tool_registry.invoke(
-                    requested_tool.name, requested_tool.payload
+                    requested_tool.name,
+                    requested_tool.payload,
+                    granted_permissions=self._current_permissions(),
                 )
             except ToolPolicyError as exc:
                 error_code = (
@@ -214,7 +228,10 @@ class AgentCore:
                 )
                 continue
 
-            decision = self.tool_registry.evaluate_policy(tool.name)
+            decision = self.tool_registry.evaluate_policy(
+                tool.name,
+                granted_permissions=self._current_permissions(),
+            )
             status = {
                 PolicyDecision.ALLOW: "ready",
                 PolicyDecision.REQUIRE_APPROVAL: "approval_required",
