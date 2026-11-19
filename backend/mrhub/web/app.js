@@ -127,6 +127,9 @@
     return node;
   }
 
+  let cloudflareInventoryAvailable = false;
+  let activeCloudflareReadGrant = false;
+
   function setAuthenticated(value) {
     $("#auth-panel").hidden = value;
     $("#workspace").hidden = !value;
@@ -192,6 +195,15 @@
     $("#resource-reply-config-form").reset();
     $("#resource-reply-preview").textContent = "پس از واردکردن لینک عمومی محتوا، پیش‌نمایش پیام اینجا نمایش داده می‌شود.";
     message("#resource-reply-message", "");
+    cloudflareInventoryAvailable = false;
+    activeCloudflareReadGrant = false;
+    $("#cloudflare-grant-list").replaceChildren();
+    $("#cloudflare-readiness").textContent = "بدون نشست";
+    $("#cloudflare-readiness").className = "status-pill status-muted";
+    $("#cloudflare-grant-submit").disabled = true;
+    $("#cloudflare-inventory-button").disabled = true;
+    $("#cloudflare-inventory-result").textContent = "برای مشاهدهٔ Snapshot دوباره وارد شوید.";
+    message("#cloudflare-access-message", "");
     setAuthenticated(false);
   }
 
@@ -210,7 +222,7 @@
     });
     let payload = null;
     try { payload = await response.json(); } catch { payload = null; }
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       if (token && options.auth !== false) endSession();
     }
     if (!response.ok) {
@@ -3209,6 +3221,179 @@
     }
   }
 
+  function renderCloudflareGrant(grant) {
+    const expiresAt = new Date(grant.expires_at);
+    const grantedAt = new Date(grant.granted_at);
+    const expiryLabel = Number.isNaN(expiresAt.getTime())
+      ? String(grant.expires_at || "نامشخص")
+      : expiresAt.toLocaleString("fa-IR");
+    const grantedLabel = Number.isNaN(grantedAt.getTime())
+      ? String(grant.granted_at || "نامشخص")
+      : grantedAt.toLocaleString("fa-IR");
+    const card = recordCard(
+      "cloudflare.read",
+      "فعال تا " + expiryLabel,
+      "اعطا شده: " + grantedLabel + " · شناسه: " + String(grant.grant_id || "نامشخص")
+    );
+    card.append(deleteButton("لغو فوری مجوز", async () => {
+      if (!window.confirm("مجوز موقت خواندن Cloudflare فوراً لغو شود؟")) return;
+      try {
+        await api("/tools/grants/cloudflare.read", { method: "DELETE" });
+        const refreshed = await loadCloudflareReadAccess();
+        message(
+          "#cloudflare-access-message",
+          refreshed ? "مجوز خواندن لغو شد." : "درخواست لغو ثبت شد؛ اما فهرست مجوزها تازه‌سازی نشد.",
+          refreshed ? "success" : "error"
+        );
+      } catch (error) {
+        message("#cloudflare-access-message", error.message, "error");
+      }
+    }));
+    return card;
+  }
+
+  async function loadCloudflareReadAccess() {
+    const grantButton = $("#cloudflare-grant-submit");
+    const inventoryButton = $("#cloudflare-inventory-button");
+    const readiness = $("#cloudflare-readiness");
+    try {
+      const [grantsResult, toolsResult] = await Promise.allSettled([
+        api("/tools/grants"),
+        api("/tools"),
+      ]);
+      if (grantsResult.status !== "fulfilled") throw grantsResult.reason;
+      const grants = Array.isArray(grantsResult.value) ? grantsResult.value : [];
+      const tools = toolsResult.status === "fulfilled" && Array.isArray(toolsResult.value)
+        ? toolsResult.value
+        : [];
+      const activeGrant = grants.find((item) => item.permission === "cloudflare.read") || null;
+      cloudflareInventoryAvailable = tools.some(
+        (item) => item.name === "cloudflare.inventory.snapshot"
+      );
+      activeCloudflareReadGrant = Boolean(activeGrant);
+      renderRecords(
+        "#cloudflare-grant-list",
+        activeGrant ? [activeGrant] : [],
+        renderCloudflareGrant,
+        "هیچ مجوز فعال Cloudflare برای این حساب ثبت نشده است."
+      );
+
+      if (!cloudflareInventoryAvailable) {
+        readiness.textContent = toolsResult.status === "rejected"
+          ? "وضعیت Gateway قابل تأیید نیست"
+          : "Gateway در این محیط پیکربندی نشده است";
+        readiness.className = "status-pill status-muted";
+      } else {
+        readiness.textContent = activeGrant
+          ? "Gateway آماده · مجوز موقت فعال"
+          : "Gateway آماده · نیازمند مجوز موقت";
+        readiness.className = activeGrant
+          ? "status-pill"
+          : "status-pill status-warning";
+      }
+      grantButton.disabled = !cloudflareInventoryAvailable;
+      inventoryButton.disabled = !(cloudflareInventoryAvailable && activeCloudflareReadGrant);
+      if (toolsResult.status === "rejected") {
+        message("#cloudflare-access-message", "فهرست ابزارهای Gateway دریافت نشد؛ هیچ درخواست Cloudflare اجرا نشده است.", "error");
+      } else {
+        message("#cloudflare-access-message", "");
+      }
+      return true;
+    } catch (error) {
+      cloudflareInventoryAvailable = false;
+      activeCloudflareReadGrant = false;
+      readiness.textContent = "وضعیت مجوز قابل دریافت نیست";
+      readiness.className = "status-pill status-muted";
+      grantButton.disabled = true;
+      inventoryButton.disabled = true;
+      renderEmpty($("#cloudflare-grant-list"), "فهرست مجوزهای حساب دریافت نشد.");
+      message("#cloudflare-access-message", error.message, "error");
+      return false;
+    }
+  }
+
+  async function saveCloudflareReadGrant(event) {
+    event.preventDefault();
+    if (!cloudflareInventoryAvailable) return;
+    const form = event.currentTarget;
+    const button = $("#cloudflare-grant-submit");
+    const expiresInSeconds = Number(new FormData(form).get("expires_in_seconds"));
+    if (![600, 3600, 86400].includes(expiresInSeconds)) {
+      message("#cloudflare-access-message", "مدت مجوز انتخاب‌شده معتبر نیست.", "error");
+      return;
+    }
+    if (!window.confirm("مجوز فقط‌خواندنی Cloudflare برای مدت انتخاب‌شده اعطا یا تمدید شود؟")) return;
+    button.disabled = true;
+    try {
+      await api("/tools/grants/cloudflare.read", {
+        method: "PUT",
+        body: { expires_in_seconds: expiresInSeconds },
+      });
+      const refreshed = await loadCloudflareReadAccess();
+      message(
+        "#cloudflare-access-message",
+        refreshed
+          ? "مجوز فقط‌خواندنی اعطا یا تمدید شد؛ انقضای آن در فهرست بالا نمایش داده می‌شود."
+          : "درخواست مجوز ثبت شد؛ اما وضعیت تازهٔ آن قابل دریافت نیست.",
+        refreshed ? "success" : "error"
+      );
+    } catch (error) {
+      message("#cloudflare-access-message", error.message, "error");
+    } finally {
+      button.disabled = !cloudflareInventoryAvailable;
+    }
+  }
+
+  async function inspectCloudflareInventory() {
+    if (!cloudflareInventoryAvailable || !activeCloudflareReadGrant) return;
+    const button = $("#cloudflare-inventory-button");
+    const output = $("#cloudflare-inventory-result");
+    button.disabled = true;
+    output.textContent = "در حال دریافت فرادادهٔ فقط‌خواندنی از Gateway…";
+    try {
+      const response = await api("/tools/cloudflare.inventory.snapshot/invoke", {
+        method: "POST",
+        body: { payload: {} },
+      });
+      const snapshot = response && response.result;
+      if (
+        !snapshot
+        || snapshot.read_only !== true
+        || snapshot.deployment_performed !== false
+        || !Array.isArray(snapshot.workers)
+        || !Array.isArray(snapshot.routes)
+        || !Array.isArray(snapshot.databases)
+      ) {
+        throw new Error("پاسخ Gateway با قرارداد Snapshot فقط‌خواندنی سازگار نیست.");
+      }
+      const limit = 50;
+      const visible = {
+        observed_at: snapshot.observed_at,
+        worker_count: snapshot.worker_count,
+        route_count: snapshot.route_count,
+        database_count: snapshot.database_count,
+        workers: snapshot.workers.slice(0, limit),
+        routes: snapshot.routes.slice(0, limit),
+        databases: snapshot.databases.slice(0, limit),
+      };
+      output.textContent = JSON.stringify(visible, null, 2);
+      if (
+        snapshot.workers.length > limit
+        || snapshot.routes.length > limit
+        || snapshot.databases.length > limit
+      ) {
+        output.textContent += "\nنمایش هر فهرست به ۵۰ مورد محدود شده است.";
+      }
+      message("#cloudflare-access-message", "Snapshot فقط‌خواندنی دریافت شد؛ هیچ منبعی تغییر نکرد.", "success");
+    } catch (error) {
+      output.textContent = error.message;
+      await loadCloudflareReadAccess();
+      message("#cloudflare-access-message", error.message, "error");
+    } finally {
+      button.disabled = !(cloudflareInventoryAvailable && activeCloudflareReadGrant);
+    }
+  }
+
   async function refreshAll() {
     try {
       await Promise.all([
@@ -3225,6 +3410,7 @@
         loadAgentProposalTools(),
         loadAgentProposals(),
         loadResearch(),
+        loadCloudflareReadAccess(),
       ]);
       if (activeVideoSceneJobId) {
         await refreshActiveVideoSceneJob();
@@ -3552,6 +3738,11 @@
   });
   $("#knowledge-list-button").addEventListener("click", () => loadKnowledge().catch((error) => message("#workspace-message", error.message, "error")));
 
+  $("#cloudflare-grant-form").addEventListener("submit", saveCloudflareReadGrant);
+  $("#cloudflare-grants-refresh").addEventListener("click", () => {
+    loadCloudflareReadAccess();
+  });
+  $("#cloudflare-inventory-button").addEventListener("click", inspectCloudflareInventory);
   $("#agent-run-form").addEventListener("submit", runAgent);
   $("#agent-queue-button").addEventListener("click", queueAgentRun);
   $("#agent-queued-refresh-button").addEventListener("click", refreshQueuedAgentRun);
