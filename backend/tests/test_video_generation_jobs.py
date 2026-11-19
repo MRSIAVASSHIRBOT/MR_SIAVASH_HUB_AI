@@ -483,6 +483,7 @@ def test_ambiguous_provider_submission_is_never_retried(tmp_path, monkeypatch, e
     provider = SimpleNamespace(
         capability=SimpleNamespace(
             provider="local",
+            local=True,
             model="renderer-v1",
             max_duration_seconds=60,
             supported_aspect_ratios=["9:16"],
@@ -790,6 +791,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     # catalog changes after the original request has already been accepted.
     provider.capability = SimpleNamespace(
         provider="local",
+        local=True,
         model="renderer-v1",
         max_duration_seconds=5,
         supported_aspect_ratios=["16:9"],
