@@ -2957,7 +2957,22 @@
       remote_spend_approved: remoteSpendApproved,
       max_remote_cost_usd: maxRemoteCost,
     };
-    const fingerprint = JSON.stringify(request);
+    let fingerprint;
+    try {
+      if (!crypto.subtle || typeof crypto.subtle.digest !== "function") {
+        throw new Error("محیط امن مرورگر برای ساخت کلید idempotency در دسترس نیست.");
+      }
+      const fingerprintBytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(JSON.stringify(request))
+      );
+      fingerprint = Array.from(new Uint8Array(fingerprintBytes))
+        .map((value) => value.toString(16).padStart(2, "0"))
+        .join("");
+    } catch {
+      message("#video-generation-submit-message", "امکان ساخت شناسهٔ امن درخواست وجود ندارد؛ ارسال انجام نشد.", "error");
+      return;
+    }
     if (!pendingVideoGenerationKey || pendingVideoGenerationFingerprint !== fingerprint) {
       pendingVideoGenerationKey = crypto.randomUUID();
       pendingVideoGenerationFingerprint = fingerprint;
