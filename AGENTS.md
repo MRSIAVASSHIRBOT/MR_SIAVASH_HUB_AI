@@ -1,4 +1,4 @@
-# OpenCode Repository Guidance
+# Repository Engineering Guidance
 
 ## Mission
 Develop MR_SIAVASH_HUB_AI as a secure, local-first, modular AI workspace. Follow the architecture and roadmap already documented in this repository; do not invent a parallel architecture.
