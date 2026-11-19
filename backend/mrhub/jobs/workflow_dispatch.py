@@ -20,6 +20,8 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
+from mrhub.security.audit import AuditLogger
+from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
 
@@ -77,8 +79,15 @@ class WorkflowWorkerHandler:
         if lease_lost.is_set():
             return self._fail_closed(task, lease, workflow_id, "workflow_lease_lost")
 
+        permission_service = ToolPermissionService(
+            self.repository, AuditLogger(self.repository)
+        )
+
+        def permission_provider() -> frozenset[str]:
+            return permission_service.active_permissions(owner_user_id)
+
         core = AgentCore(build_model_router(), build_tool_registry())
-        plan = core.plan(request)
+        plan = core.plan(request, granted_permissions=permission_provider())
         if not plan.get("execution_ready"):
             return self._fail_closed(
                 task, lease, workflow_id, "workflow_plan_not_executable"
@@ -96,6 +105,7 @@ class WorkflowWorkerHandler:
                     task=task,
                     lease=lease,
                     lease_lost=lease_lost,
+                    permission_provider=permission_provider,
                 )
             except (LookupError, ValueError):
                 return self._fail_closed(
@@ -111,6 +121,7 @@ class WorkflowWorkerHandler:
                 task=task,
                 lease=lease,
                 lease_lost=lease_lost,
+                permission_provider=permission_provider,
             )
         else:
             return self._fail_closed(
