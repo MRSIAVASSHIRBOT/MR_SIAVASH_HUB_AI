@@ -120,8 +120,6 @@ def test_non_pending_task_cannot_be_approved(tmp_path, monkeypatch) -> None:
 
 
 def test_generation_approval_and_decision_are_owner_scoped(tmp_path, monkeypatch):
-    from uuid import uuid4
-
     from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
     from mrhub.video_intelligence.generation_jobs import VideoGenerationJobRepository
 
