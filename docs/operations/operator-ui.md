@@ -22,7 +22,7 @@ The operator dashboard is served by the same FastAPI process at `/ui/`. It has n
 - Create, search, and delete private memory notes.
 - Ingest bounded text/Markdown knowledge documents, search citations, and delete documents.
 - Invoke the local model endpoint explicitly.
-- Invoke OpenRouter only by pressing the separate remote button. This sends the submitted text to a third party and may incur cost; remote inference remains disabled unless explicitly configured.
+- The inference form invokes only the explicitly enabled local Ollama adapter. It never sends text to a third-party provider; if local inference is disabled, the request fails without cloud fallback.
 
 The UI does not expose arbitrary shell execution, arbitrary file paths, or automatic publishing. Workflow resume is queued for the pull worker; no workflow tool is executed in the browser or API request handler.
 

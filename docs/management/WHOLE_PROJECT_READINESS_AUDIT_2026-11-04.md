@@ -32,7 +32,7 @@ These counts describe repository structure and test inventory. They are not evid
 
 | Domain | Current implementation evidence | Remaining delivery and acceptance work |
 |---|---|---|
-| AI Core and providers | Typed provider contracts/registry, deterministic stub, opt-in local Ollama and OpenRouter text adapters, centralized 32,000-character per-provider input guard | Model-specific context/output budgets, provider capability/version matrix, live adapter acceptance and explicit no-fallback behavior |
+| AI Core and providers | Typed provider contracts/registry, deterministic stub, opt-in local Ollama and a third-party text adapter (subsequently retired), centralized 32,000-character per-provider input guard | Model-specific context/output budgets, provider capability/version matrix, live adapter acceptance and explicit no-fallback behavior |
 | Agent system | Bounded orchestration, specialist registry, scoped tools, durable model runs, shared tool budget and sanitized provider-budget failure | Full lifecycle and cancellation semantics for synchronous/external tool side effects; broader failure-injection and multi-worker acceptance |
 | Memory | Owner-scoped CRUD, export, expiry and deletion foundations | Independent content/source verification, deletion/retention drills and end-to-end context-governance acceptance |
 | Knowledge | Owner-scoped sources/documents/chunks, provenance, bounded ingestion, FTS5 retrieval and evaluation | Source-content verification and retrieval-quality evaluation on a representative corpus; vector retrieval only if measured FTS quality warrants it |
@@ -171,7 +171,7 @@ This section supersedes the earlier live-PR snapshot and audited-main pointer ab
 
 - **PR #235** (`d69c02544ec84fd40aa3871dd7c04300cf028f3f`) merged bounded Worker-cycle dispatch regression coverage. A cycle executes at most one queued task and dispatches at most one due scheduled content item; later cycles advance without duplicate publication.
 - **PR #237** (`57240dad59c50b7100554f57c5d7adc784428e75`) merged a clean-destination synthetic recovery integration test. It backs up a temporary SQLite database, restores it to a new location, copies the corresponding media directory, verifies media metadata/hash, then validates fresh-app owner login, listing and authenticated byte-for-byte media download. This does not prove production backup handling, protected key recovery, or a real target-device restore.
-- **PR #239** (`c5cd2ad114aa558099be6a2cf966df4564031853`) merged exact handling of OpenRouter's `free-models-per-day` quota response in the scheduled OpenCode workflow. Only that explicit quota failure becomes a warning/no-op; missing credentials and unrelated failures remain non-zero. No paid retry, workflow permission expansion, or automatic publishing path was introduced.
+- **PR #239** (`c5cd2ad114aa558099be6a2cf966df4564031853`) merged exact handling of the scheduled third-party provider's free-tier quota response in the OpenCode workflow; that workflow has since been retired. Only that explicit quota failure becomes a warning/no-op; missing credentials and unrelated failures remain non-zero. No paid retry, workflow permission expansion, or automatic publishing path was introduced.
 
 PR #232 was closed without merging and superseded by PR #235. PR #236 and PR #238 were closed as superseded attempts; their corrected final work is represented by PR #237 and PR #239 respectively.
 
@@ -233,7 +233,7 @@ Latest main commit: `1c531a97749b26ff05c9efde3944169e1a39b761`.
 
 - **PR #247** (`77bf47a04931f6e629fa8f89400f329c1df462b6`) adds a stable provider contract error and validates response type and provider/model identity at the ModelRouter boundary.
 - **PR #248** (`80253101dee781d698aad1b9cce7451ea1c857f7`) makes the content dispatcher treat the durable `publishing -> published` compare-and-set as the success condition. If recovery/quarantine wins while a provider request is in flight, the late receipt cannot overwrite the durable state or emit the publication-success audit event.
-- **PR #249** (`1c531a97749b26ff05c9efde3944169e1a39b761`) removes the direct-adapter bypass in `POST /models/generate-remote`; the endpoint now uses the remote-only shared router, including its health gate and response identity validation, without Stub or local fallback.
+- **PR #249** (`1c531a97749b26ff05c9efde3944169e1a39b761`) removed the direct-adapter bypass in the legacy remote text-generation endpoint; it then used the remote-only shared router, including its health gate and response identity validation, without Stub or local fallback.
 - **PR #246** refreshed the readiness/status documentation after the preceding NEXUS and MCP work.
 
 All six exact-head checks passed for PRs #247, #248 and #249: Backend CI, Python 3.11 and 3.12 CI, Defensive Python Scan, and real FFmpeg/FFprobe integration on Linux and Windows. PR #246 checks also passed.

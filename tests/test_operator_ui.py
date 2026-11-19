@@ -401,3 +401,19 @@ def test_operator_ui_exposes_source_capture_history_fields():
     assert "source_last_captured_at" in script
     assert "اولین ثبت" in script
     assert "آخرین ثبت" in script
+
+
+def test_operator_ui_exposes_only_local_text_inference_after_remote_adapter_retirement():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == 200
+    assert script.status_code == 200
+    assert "OpenRouter" not in page.text
+    assert 'data-mode="remote"' not in page.text
+    assert 'value="remote"' not in page.text
+    assert "generate-remote" not in script.text
+    assert "OpenRouter" not in script.text
+    assert 'api("/models/generate"' in script.text
+    assert "در حال اجرای مدل محلی" in script.text

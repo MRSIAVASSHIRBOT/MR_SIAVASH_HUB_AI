@@ -162,7 +162,7 @@
       <section class="panel">
         <div class="section-heading">
           <div><p class="eyebrow">MODEL INFERENCE</p><h2>آزمایش مدل</h2></div>
-          <span class="status-pill status-warning">ارسال ابری فقط با انتخاب صریح</span>
+          <span class="status-pill status-muted">فقط Provider محلی</span>
         </div>
         <form id="inference-form" class="stack-form">
           <label>متن ورودی
@@ -170,10 +170,9 @@
           </label>
           <div class="button-row">
             <button class="button button-secondary" type="submit" data-mode="local">اجرای مدل محلی</button>
-            <button class="button button-primary" type="submit" data-mode="remote">ارسال صریح به OpenRouter</button>
           </div>
         </form>
-        <p class="muted">درخواست ابری متن ورودی را به سرویس ثالث می‌فرستد و ممکن است هزینه داشته باشد. این دکمه هیچ‌گاه به‌صورت خودکار اجرا نمی‌شود.</p>
+        <p class="muted">این فرم فقط از Provider محلیِ صریحاً فعال‌شده استفاده می‌کند. اگر مدل محلی فعال نباشد، درخواست بدون fallback ابری ناموفق خواهد بود.</p>
         <pre id="inference-result" class="output-box" aria-live="polite">هنوز درخواستی اجرا نشده است.</pre>
       </section>
 
@@ -192,7 +191,6 @@
           <label>ارائه‌دهندهٔ مدل
             <select name="provider_mode">
               <option value="local">مدل محلی (بدون ارسال به سرویس ابری)</option>
-              <option value="remote">مدل ابری (ارسال صریح به سرویس ثالث)</option>
             </select>
           </label>
           <label>سیاست تازگی اسناد دانشی

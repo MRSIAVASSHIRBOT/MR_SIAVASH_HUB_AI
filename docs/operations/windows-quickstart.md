@@ -32,9 +32,9 @@ The stop script verifies each recorded PID's command line before stopping it. If
 
 ## Configuration boundaries
 - The application binds to 127.0.0.1; do not expose it directly to the public internet.
-- Ollama and OpenRouter inference remain disabled unless explicitly configured.
+- Ollama local inference and Kimi remote inference remain disabled unless explicitly configured. The retired third-party adapter is no longer part of the application.
 - Telegram and Instagram publishing remain disabled unless credentials and provider-side configuration are supplied. Real publishing requires a separate controlled acceptance test.
-- The generated workflow encryption key is not an inference API key. No OpenRouter credential is required to start the application.
+- The generated workflow encryption key is separate from inference credentials. No external provider credential is required to start the application.
 - The launcher currently requires Python 3.11. If only Python 3.12 is installed, use the manual commands in the root README.
 
 ## Troubleshooting

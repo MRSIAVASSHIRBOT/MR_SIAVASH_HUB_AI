@@ -9,26 +9,10 @@ MR_SIAVASH_HUB_AI is independent from the owner's previous repositories. Third-p
 - Cloudflare Security Audit Skill: https://github.com/cloudflare/security-audit-skill — MIT; agent skill rather than a Python library; selected principles are documented below; no upstream scripts or automatic command execution are adopted.
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk — MIT; Python >=3.11; selected for an optional, loopback-only server bridge over the existing Hub ToolRegistry. Reviewed SDK pin: `mcp==2.3.0`.
 - E2B: https://github.com/e2b-dev/e2b — open-source sandbox platform; Python SDK supports Python >=3.11; deferred pending licensing-metadata reconciliation, deployment-cost review, and isolation acceptance (see decision below).
-- Z.ai GLM: https://docs.z.ai/ — hosted model API; compatible with the existing OpenRouter adapter through OpenRouter model IDs; no separate SDK or direct-provider dependency adopted (see decision below).
 
 ## Implemented integration
 
 - MCP Tool Bridge: optional `mcp==2.3.0` extra; separate `mrhub-mcp` process; Streamable HTTP on loopback only; disabled by default. Exposes `hub.list_tools` and `hub.invoke_tool` through the canonical ToolRegistry. The Hub PolicyEngine remains authoritative; the bridge supplies no grants or approval state. See `docs/integrations/mcp-tool-bridge.md`. This is an interoperability bridge for Hub-owned tools, not an MCP client or arbitrary third-party server runtime.
-
-## GLM evaluation — reuse OpenRouter, no new SDK
-
-Z.ai's official API documentation publishes an OpenAI-compatible Chat Completions endpoint at `https://api.z.ai/api/paas/v4`, and documents both its own Python SDK and the OpenAI Python SDK. OpenRouter currently lists Z.ai models, including `z-ai/glm-5.3-flash` and `z-ai/glm-5.3`.
-
-The Hub already has an explicit `OpenRouterProvider` that accepts a configured model identifier and uses the existing `MRH_REMOTE_INFERENCE_API_KEY`, `MRH_REMOTE_INFERENCE_MODEL`, and `MRH_REMOTE_INFERENCE_BASE_URL` settings. Therefore GLM can be selected through the existing OpenRouter route without adding another provider, SDK, credential type, or runtime dependency. Keep `MRH_REMOTE_INFERENCE_ENABLED=false` unless the owner explicitly enables remote inference.
-
-Important capability boundary: the current Hub OpenRouter adapter sends a bounded, non-streaming text chat request and declares text capability only. It does not yet expose GLM-specific reasoning controls, streaming, vision, or function/tool calling. The model's advertised upstream capabilities must not be represented as Hub capabilities until the adapter and its tests implement them.
-
-Decision: do not add `zai-sdk` or a direct Z.ai adapter at this stage. Prefer the already-reviewed OpenRouter path if the owner chooses a GLM model. Before any live request, verify the current model ID, price/quota, provider routing, and data-handling terms; model availability and prices can change, and no free usage is assumed. No live GLM request or billing validation was performed as part of this review.
-
-References:
-- Z.ai API introduction: https://docs.z.ai/api-reference/introduction
-- Z.ai OpenAI Python SDK compatibility: https://docs.z.ai/guides/develop/openai/python
-- OpenRouter Z.ai model catalog: https://openrouter.ai/provider/z-ai
 
 ## E2B sandbox evaluation — deferred
 
@@ -70,7 +54,6 @@ This is a review checklist, not an automated vulnerability scanner or a claim th
 
 - PixelRAG: keep separate until Python-version compatibility and the ML dependency footprint are resolved.
 - E2B: deferred until license metadata, deployment cost, isolation controls, and real-host acceptance are resolved.
-- Direct Z.ai integration: not needed while the existing OpenRouter adapter is sufficient for bounded text chat; reconsider only if direct routing or GLM-specific capabilities are required.
 - Text RAG: evaluate separately; PixelRAG is visually oriented.
 
 ## Adoption gate
@@ -80,12 +63,11 @@ For every upstream, record the canonical URL and revision, license obligations, 
 ## Order
 
 1. Complete a real MCP host acceptance test before enabling the bridge in a deployment.
-2. Keep GLM available only through the existing explicitly enabled OpenRouter adapter until a measured need justifies a direct provider.
-3. Keep E2B deferred until the sandbox threat model, licensing, costs, and real-host acceptance are complete.
-4. Keep Headroom deferred unless an isolated benchmark demonstrates material benefit without destabilizing the existing provider/context stack.
-5. Apply the Cloudflare-derived review checklist to future integrations and security-sensitive changes.
+2. Keep E2B deferred until the sandbox threat model, licensing, costs, and real-host acceptance are complete.
+3. Keep Headroom deferred unless an isolated benchmark demonstrates material benefit without destabilizing the existing provider/context stack.
+4. Apply the Cloudflare-derived review checklist to future integrations and security-sensitive changes.
 
-Headroom, PixelRAG, Cloudflare's audit skill, E2B, and direct Z.ai integration remain candidates or methodology references; MCP is the first implemented optional runtime bridge, subject to host acceptance. GLM can use the existing OpenRouter path without a new integration.
+Headroom, PixelRAG, Cloudflare's audit skill, and E2B remain candidates or methodology references; MCP is the first implemented optional runtime bridge, subject to host acceptance.
 
 ## Local candidate catalog
 

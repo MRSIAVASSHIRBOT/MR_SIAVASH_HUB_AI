@@ -64,7 +64,7 @@ These values are not stored in the SQLite backup and must be managed separately:
 
 - `MRH_WORKFLOW_PAYLOAD_KEY`: the 32-byte URL-safe Base64 key used to decrypt durable encrypted workflow payloads. Losing it makes existing encrypted workflow payloads unrecoverable. Preserve it in a password manager or dedicated secret manager with an independent recovery path.
 - `MRH_PUBLIC_MEDIA_SIGNING_KEY`: used to sign short-lived public media URLs. If it is rotated or lost, previously issued signatures stop validating; issue new URLs after restore.
-- Provider credentials such as `MRH_REMOTE_INFERENCE_API_KEY`, `MRH_TELEGRAM_BOT_TOKEN`, and `MRH_INSTAGRAM_ACCESS_TOKEN`: provision or rotate these through the relevant provider/secret manager after restore. Do not bundle them into the database or media archive.
+- Provider credentials such as `MRH_TELEGRAM_BOT_TOKEN`, and `MRH_INSTAGRAM_ACCESS_TOKEN`: provision or rotate these through the relevant provider/secret manager after restore. Do not bundle them into the database or media archive.
 
 Never commit `.env`, raw keys, access tokens, private certificates, or recovery codes to GitHub. Do not print secrets into logs or support reports.
 
