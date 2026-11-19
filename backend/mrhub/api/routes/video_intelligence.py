@@ -5,8 +5,8 @@ from __future__ import annotations
 import base64
 import binascii
 import sqlite3
-from math import isfinite
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Annotated, Literal
 from uuid import UUID
 
