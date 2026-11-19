@@ -3351,7 +3351,7 @@
     } catch (error) {
       message("#cloudflare-access-message", error.message, "error");
     } finally {
-      button.disabled = !cloudflareInventoryAvailable;
+      button.disabled = !(cloudflareInventoryAvailable || cloudflareWorkerSettingsAvailable);
     }
   }
 
