@@ -255,6 +255,7 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert 'id="cloudflare-worker-settings-button"' in html
     assert "cloudflare.inventory.snapshot" in script
     assert "cloudflare.worker.settings.read" in script
+    assert "if (!(cloudflareInventoryAvailable || cloudflareWorkerSettingsAvailable)) return;" in script
     assert "/tools/cloudflare.worker.settings.read/invoke" in script
     assert "/tools/grants/cloudflare.read" in script
     assert "/tools/cloudflare.inventory.snapshot/invoke" in script
