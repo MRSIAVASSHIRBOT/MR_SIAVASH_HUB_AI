@@ -3937,13 +3937,11 @@
 
   $("#inference-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const submitter = event.submitter;
-    const mode = submitter && submitter.dataset.mode === "remote" ? "remote" : "local";
     const inputText = String(new FormData(event.currentTarget).get("input_text") || "");
     const output = $("#inference-result");
-    output.textContent = mode === "remote" ? "در حال ارسال صریح به OpenRouter…" : "در حال اجرای مدل محلی…";
+    output.textContent = "در حال اجرای مدل محلی…";
     try {
-      const result = await api(mode === "remote" ? "/models/generate-remote" : "/models/generate", {
+      const result = await api("/models/generate", {
         method: "POST",
         body: { input_text: inputText },
       });
