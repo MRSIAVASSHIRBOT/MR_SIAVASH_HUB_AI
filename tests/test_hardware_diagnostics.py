@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 from mrhub.diagnostics import hardware
@@ -46,6 +47,7 @@ def test_report_handles_unavailable_memory_and_disk(monkeypatch):
 def test_windows_gpu_probe_is_empty_off_windows(monkeypatch):
     monkeypatch.setattr(hardware.sys, "platform", "linux")
     assert hardware._windows_display_adapters() == []
+
 
 def test_windows_gpu_probe_uses_canonical_registry_path(monkeypatch):
     import sys
@@ -97,7 +99,6 @@ def test_windows_gpu_probe_uses_canonical_registry_path(monkeypatch):
         }
     ]
     assert opened_paths[0] == expected_path
-
 
 
 def test_linux_gpu_probe_reads_only_kernel_sysfs(tmp_path, monkeypatch):
@@ -175,3 +176,22 @@ def test_windows_gpu_probe_reports_driver_exposed_vram(monkeypatch):
 
     assert adapters[0]["vram_bytes"] == 12 * 1024**3
     assert adapters[0]["vram_source"] == "windows_display_driver_registry"
+
+
+def test_cli_entrypoint_prints_valid_json_and_returns_success(monkeypatch, capsys):
+    expected_report = {
+        "schema_version": 2,
+        "read_only": True,
+        "cpu": {"logical_cores": 8},
+        "memory": {"total_gib": 16, "available_gib": 8},
+        "disk": {"free_bytes": 1024},
+        "gpu": {"status": "not_detected_by_safe_probe", "adapters": []},
+    }
+    monkeypatch.setattr(hardware, "collect_hardware_report", lambda: expected_report)
+
+    exit_code = hardware.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert json.loads(captured.out) == expected_report
+    assert captured.err == ""
