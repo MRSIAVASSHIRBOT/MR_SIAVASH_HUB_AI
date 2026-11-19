@@ -1573,3 +1573,25 @@ def test_generation_task_ownership_is_bound_to_the_linked_owner(
     assert repository.owns_task("owner-a", task_id) is True
     assert repository.owns_task("owner-b", task_id) is False
     assert repository.owns_task("", task_id) is False
+
+
+def test_generation_history_exposes_only_owner_linked_approval_metadata(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "MRH_WORKFLOW_PAYLOAD_KEY",
+        base64.urlsafe_b64encode(b"s" * 32).decode("ascii"),
+    )
+    repository, analysis_id = _repository(tmp_path)
+    accepted, _ = repository.submit(
+        "owner-a", analysis_id, "local", "renderer-v1", _request()
+    )
+    generation_id = UUID(accepted["generation_id"])
+    linked = repository.enqueue("owner-a", generation_id)
+
+    rows = repository.list_for_owner("owner-a")
+
+    assert len(rows) == 1
+    assert rows[0]["task_id"] == linked["task_id"]
+    assert rows[0]["approval_pending"] is True
+    assert repository.list_for_owner("owner-b") == []
