@@ -113,16 +113,15 @@ def run_agent(
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
     audit = AuditLogger(tasks)
-    granted_permissions = ToolPermissionService(tasks, audit).active_permissions(
-        user.user_id
-    )
+    permission_service = ToolPermissionService(tasks, audit)
+    permission_provider = lambda: permission_service.active_permissions(user.user_id)
     worker_control = WorkerControlRepository(settings.database_path)
     tool_registry = build_tool_registry()
     agent_registry = build_default_agent_registry(tool_registry)
     result = AgentOrchestrator(model_router, tool_registry, agent_registry).run(
         request,
         should_cancel=worker_control.is_stopped,
-        granted_permissions=granted_permissions,
+        permission_provider=permission_provider,
     )
     run_id = str(uuid4())
     outcome = "success" if result.get("status") == "completed" else "failure"
