@@ -21,7 +21,6 @@ from mrhub.providers.base import (
 )
 from mrhub.providers.kimi import KimiProvider
 from mrhub.providers.ollama import OllamaProvider
-from mrhub.providers.openrouter import OpenRouterProvider
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.providers.stub import StubProvider
 from mrhub.security.auth import AuthenticatedUser
@@ -59,7 +58,7 @@ def _enforce_kimi_request_limit(owner_id: str) -> None:
 
 def build_model_router(
     *,
-    provider_mode: Literal["all", "local", "remote", "kimi"] = "all",
+    provider_mode: Literal["all", "local", "kimi"] = "all",
     include_stub: bool = True,
     max_timeout_seconds: float | None = None,
 ) -> ModelRouter:
@@ -79,24 +78,6 @@ def build_model_router(
                     min(settings.local_inference_timeout_seconds, max_timeout_seconds)
                     if max_timeout_seconds is not None
                     else settings.local_inference_timeout_seconds
-                ),
-            )
-        )
-    if (
-        provider_mode in {"all", "remote"}
-        and settings.remote_inference_enabled
-        and settings.remote_inference_api_key is not None
-        and settings.remote_inference_model
-    ):
-        model_router.register_provider(
-            OpenRouterProvider(
-                model=settings.remote_inference_model,
-                api_key=settings.remote_inference_api_key.get_secret_value(),
-                base_url=settings.remote_inference_base_url,
-                timeout_seconds=(
-                    min(settings.remote_inference_timeout_seconds, max_timeout_seconds)
-                    if max_timeout_seconds is not None
-                    else settings.remote_inference_timeout_seconds
                 ),
             )
         )
@@ -399,35 +380,6 @@ def generate_kimi_vision(
         raise HTTPException(status_code=503, detail=exc.code) from exc
     except LookupError as exc:
         raise HTTPException(status_code=503, detail="Configured Kimi model is unavailable") from exc
-
-
-@router.post("/generate-remote")
-def generate_remote_model(payload: GenerateModelRequest):
-    """Send one request to explicitly configured remote providers; never fall back."""
-    settings = get_settings()
-    openrouter_enabled = (
-        settings.remote_inference_enabled
-        and settings.remote_inference_api_key is not None
-        and bool(settings.remote_inference_model)
-    )
-    if not openrouter_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="Remote inference is disabled or incompletely configured; no cloud request was made",
-        )
-    try:
-        model_router = build_model_router(provider_mode="remote", include_stub=False)
-        return model_router.generate(
-            ModelRequest(requires_text=True),
-            ProviderRequest(
-                input_text=payload.input_text,
-                max_output_tokens=payload.max_output_tokens,
-            ),
-        )
-    except ProviderError as exc:
-        raise HTTPException(status_code=503, detail=exc.code) from exc
-    except LookupError as exc:
-        raise HTTPException(status_code=503, detail="Configured remote model is unavailable") from exc
 
 
 @router.post("/generate")
