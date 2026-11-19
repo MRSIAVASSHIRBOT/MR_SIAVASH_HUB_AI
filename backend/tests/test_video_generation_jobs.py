@@ -702,6 +702,7 @@ def test_worker_reconciles_unknown_submission_and_registers_completed_output(
     class Provider:
         capability = SimpleNamespace(
             provider="local",
+            local=True,
             model="renderer-v1",
             max_duration_seconds=60,
             supported_aspect_ratios=["9:16"],
