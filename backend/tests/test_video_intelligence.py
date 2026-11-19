@@ -220,7 +220,7 @@ def test_probe_video_bounds_stream_count_and_discards_unneeded_stderr(tmp_path, 
             args=command,
             returncode=0,
             stdout=json.dumps({
-                "format": {"duration": "4.5", "format_name": "mov,mp4,m4a,3gp,3g2,3g2,mj2"},
+                "format": {"duration": "4.5", "format_name": "mov,mp4,m4a,3gp,3g2,mj2"},
                 "streams": [
                     {
                         "codec_type": "video",
