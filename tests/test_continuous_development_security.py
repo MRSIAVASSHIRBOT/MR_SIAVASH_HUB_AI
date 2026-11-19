@@ -83,6 +83,7 @@ def test_effective_policy_is_checked_without_provider_credentials() -> None:
     assert "MODEL: mrhub-openrouter-proxy/cohere/north-mini-code:free" in run_step
     assert 'OPENROUTER_API_KEY="$OPENROUTER_API_KEY" python scripts/ci/openrouter_credential_proxy.py' in run_step
     assert "unset OPENROUTER_API_KEY" in run_step
+    assert run_step.index("unset OPENROUTER_API_KEY") < run_step.index("opencode --pure run")
     assert "OPENROUTER_API_KEY" not in run_step.split("opencode --pure run", maxsplit=1)[1]
     assert "OPENROUTER_API_KEY: ${{ secrets.MR_SIAVASH_HUB_AI }}" in run_step
     assert 'grep -Fq "API key expired."' in run_step
