@@ -764,8 +764,8 @@
       limitations.textContent = Array.isArray(report.limitations) ? report.limitations.join(" · ") : "";
       message(
         "#hardware-discovery-scope",
-        report.host_scope === "api_process_host"
-          ? "گزارش مربوط به میزبان اجرای فرایند API است؛ اگر HUB روی سرور دیگری اجرا شود، این مشخصات متعلق به دستگاه مرورگر نیست. گزارش ذخیره یا به Provider ارسال نشد."
+        report.host_scope === "api_process_runtime"
+          ? "گزارش مربوط به محیط اجرای API است؛ اگر HUB داخل کانتینر یا روی سرور دیگری اجرا شود، این مشخصات الزاماً متعلق به دستگاه مرورگر یا سخت‌افزار میزبان واقعی نیست. گزارش ذخیره یا به Provider ارسال نشد."
           : "گزارش دریافت شد؛ دامنهٔ میزبان مشخص نیست.",
         "success"
       );
