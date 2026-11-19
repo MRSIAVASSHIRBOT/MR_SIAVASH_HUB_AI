@@ -1,18 +1,32 @@
-## Current Hub maintenance addendum — 2026-11-19 UTC
+## Current Hub maintenance addendum — 2026-11-20 UTC
 
-This concise current-state record supersedes older snapshots below where they conflict.
+This snapshot supersedes older repository snapshots below where they conflict.
 
-### Verified repository changes
-- PR #433 merged the explicit owner-consent video-generation request flow and durable owner-scoped job lifecycle. No generation provider is registered by default; provider-backed generation remains unavailable until the owner explicitly selects and configures a provider.
-- PR #435 merged ADR-0011 documenting the scheduled-agent credential boundary. The scheduled OpenCode/provider workflow was subsequently retired and removed in PR #436, merged as `aca5f198fb6e372436bdbff67aaff7385841b4ee`; do not renew the retired provider credential.
-- Issue #332 is closed as not planned because the workflow was retired. The obsolete Actions secret `MR_SIAVASH_HUB_AI` remains an owner-only deletion task; no secret value was read or changed.
-- PR #439 adds a regression for the read-only hardware diagnostics JSON CLI and stabilizes Linux FFmpeg CI against the unreachable regional Ubuntu apt mirror; it merged as `03ee72f386904959497116b632b7238a984695fd` after all 9 exact-head checks passed. PR #440 reconciled the documentation ledger and social-growth roadmap; it merged as `4bb72c3951cbb93ba78b80ddb47d9c0e08c46c46` after all 9 exact-head checks passed.
+### Verified repository state
+- Current `main`: `c08897ea8125e9dd7e0e6cb5065add863d43c497` (PR #446 merged).
+- PR #439 merged as `03ee72f386904959497116b632b7238a984695fd`; all 9 exact-head checks passed.
+- PR #440 merged as `4bb72c3951cbb93ba78b80ddb47d9c0e08c46c46`; all 9 exact-head checks passed.
+- PR #444 merged as `53a245de1d8dbf9a9069241a34c16b4f1d205084`.
+- PR #445 merged as `5a0b51f95637aac3af5aff2d8e3c74ee04d38641`; exact-head validation passed 20/20 checks.
+- PR #446 merged as `c08897ea8125e9dd7e0e6cb5065add863d43c497`; it adds a dedicated `mr-siavash-hub-gateway-staging` Wrangler configuration isolated to `workers.dev`, with preview URLs disabled and no routes, custom domains, account IDs, or credentials. This is configuration in source only; no Worker was deployed.
+- Post-merge workflows for #446 are still running on the exact merge SHA at this checkpoint. Completed checks observed so far include PowerShell parsing and workflow security audit; all other checks remain pending. Do not mark main green until every exact-SHA check completes.
+- PR #447 was based on the pre-#446 main SHA and is now stale/non-mergeable. Its documentation change is being refreshed on a branch created from the new main; do not merge the stale PR.
 
-### Remaining owner and acceptance gates
-- Configure and independently verify `main` branch protection/rulesets for the relevant repositories. The connected integration cannot write these settings; do not claim protection is enabled.
-- Complete isolated Cloudflare staging and live acceptance before any production routing change. Do not repurpose GShop production resources or routes.
-- Complete target-device Windows install/upgrade/backup/restore/rollback acceptance on the owner's device.
-- No deployment, production configuration, application data, or repository secrets were changed during this maintenance pass.
+### Current architecture/security posture
+- Tool grants are owner-scoped, explicitly allow-listed to `cloudflare.read`, audited, and expire within 24 hours. Agent dispatch re-reads active grants; lookup failures fail closed.
+- Cloudflare integration remains a fixed-route, HTTPS `workers.dev` read-only adapter with redirect rejection, no inherited proxy environment, bounded timeout/response size/item count, strict projected metadata schemas, and sanitized errors.
+- The new staging Wrangler file does not grant credentials or create routes. Live staging provisioning/acceptance remains separate and gated.
+- No Cloudflare write operation, production deployment, provider selection, paid generation, model download, D1 row query, or secret-value access occurred during this maintenance pass.
+
+### Outstanding acceptance gates
+- GitHub reports `main.protected=false`. Repository-admin must configure and independently verify branch protection/rulesets and test enforcement; no settings-write operation is available through the connected integration.
+- A dedicated Hub Cloudflare staging Worker and live acceptance remain outstanding. Provisioning new resources/credentials requires owner-approved scope and cost decisions. Do not repurpose Website or GShop production resources.
+- Provider-backed video generation remains unavailable until the owner explicitly selects and configures a compatible provider. Deterministic FFmpeg rendering is not generative AI.
+- Windows target-device install/upgrade/backup/restore/rollback acceptance remains unrun on the owner's actual device.
+- GShop remains excluded from this project scope.
+
+No deployment, production configuration, application data, repository secrets, Cloudflare resources, or access-control settings were changed during this documentation update.
+
 
 ---
 
