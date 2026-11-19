@@ -26,7 +26,7 @@ Hub remains authoritative for private memory, tasks, agents, approvals, tool pol
 ### Next engineering priorities
 
 1. Finish and verify all post-merge checks on Hub SHA `57ac03024fa05cf76fc81d10a372944176ef98d6`; investigate any failure before additional runtime work.
-2. Resolve the owner-managed provider credential expiry and independently accept the credential/process-isolation boundary before re-enabling scheduled development.
+2. The scheduled provider-backed development workflow has been retired in PR #436; no credential renewal or process-isolation acceptance is required for that removed workflow.
 3. Review the Website's complete 40-commit source delta, Preview acceptance, migration state, backup/rollback and then obtain explicit owner approval before any Production release.
 4. Have the repository owner configure and verify branch protection and exact-head required checks for all three repositories.
 5. Add reproducible dependency lockfiles and verify clean Linux/Windows installs.
@@ -364,7 +364,7 @@ The following changes were merged after the previous status entry:
 
 - These merges establish repository changes and exact-head CI evidence; they do not prove a clean Windows install/start/stop/restore on the owner's laptop.
 - The Windows launcher currently requires Python 3.11 and binds the application to loopback. Do not expose it directly to the public internet.
-- The continuous-development workflow still requires a controlled end-to-end run to verify artifact transfer, patch validation, and PR publication. The scheduled model-agent workflow and its provider credential path have since been retired; delete the obsolete provider-only repository secret after the removal PR is merged.
+- The scheduled Continuous Development and comment-triggered OpenCode workflows are removed by PR #436. No provider-backed artifact-transfer or publisher run remains to validate; after merge, delete the now-unused repository secret `MR_SIAVASH_HUB_AI`.
 - third-party text inference, Telegram/Instagram publishing, OpenClaw/SiaCode execution, and remote code execution remain opt-in or unavailable until separately configured and accepted.
 - Do not claim production readiness until target-device install/upgrade/rollback/backup/restore drills and required provider acceptance tests are recorded.
 
