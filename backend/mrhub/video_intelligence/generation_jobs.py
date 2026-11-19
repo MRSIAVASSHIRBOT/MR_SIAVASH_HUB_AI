@@ -796,13 +796,13 @@ class VideoGenerationJobRepository:
         parameters: list[object] = [owner_user_id]
         if before_created_at is not None and before_generation_id is not None:
             query += (
-                " AND (created_at < ? OR "
-                "(created_at = ? AND generation_id < ?))"
+                " AND (j.created_at < ? OR "
+                "(j.created_at = ? AND j.generation_id < ?))"
             )
             parameters.extend(
                 [before_created_at, before_created_at, str(before_generation_id)]
             )
-        query += " ORDER BY created_at DESC, generation_id DESC LIMIT ?"
+        query += " ORDER BY j.created_at DESC, j.generation_id DESC LIMIT ?"
         parameters.append(limit)
 
         with self.tasks._connection() as connection:
