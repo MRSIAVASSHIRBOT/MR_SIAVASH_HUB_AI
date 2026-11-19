@@ -527,6 +527,7 @@ class AgentWorkflowRunner:
                     on_step_result=on_step_result,
                     start_step=start_step,
                     should_cancel=should_cancel,
+                    permission_provider=permission_provider,
                 )
 
             if not execution.get("cancelled") and should_cancel():
