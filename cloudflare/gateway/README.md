@@ -42,7 +42,7 @@ Do not reuse the token used by the ChatGPT Cloudflare connector. The connector c
 - Eight-second provider timeout, 1 MiB response cap, bounded pagination and item limits.
 - Redirects, non-JSON responses, malformed envelopes, and provider failures fail closed.
 - Sanitized error codes; no upstream response body or credential is returned.
-- Structured request logs contain only request ID, operation name, status, and duration.
+- Structured request logs contain only the event name, request ID, validated correlation ID (or null), fixed operation name, status, and duration; authorization headers, tokens, URLs, query strings, and provider response bodies are excluded.
 - Responses use \`Cache-Control: no-store\`, a deny-by-default Content Security Policy, anti-framing headers, restrictive Permissions Policy, and no CORS grant.
 
 ## Deployment boundary
