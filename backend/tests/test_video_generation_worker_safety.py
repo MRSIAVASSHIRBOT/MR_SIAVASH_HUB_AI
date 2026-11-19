@@ -30,7 +30,7 @@ class RecordingJobs:
 
 
 class LookupOnlyProvider:
-    capability = SimpleNamespace(provider="fixture", model="fixture-v1")
+    capability = SimpleNamespace(provider="fixture", model="fixture-v1", local=True)
 
     def __init__(self, *, lookup_result=None, lookup_error=None, status_result=None):
         self.lookup_result = lookup_result
@@ -447,6 +447,7 @@ def test_worker_observes_a_cancellation_requested_during_provider_submission(
     class AcceptedThenCancelledProvider(LookupOnlyProvider):
         capability = SimpleNamespace(
             provider="fixture",
+            local=True,
             model="fixture-v1",
             max_duration_seconds=30,
             max_resolution="720p",
