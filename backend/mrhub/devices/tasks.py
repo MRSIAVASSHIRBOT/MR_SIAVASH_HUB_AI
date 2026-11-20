@@ -50,6 +50,22 @@ class DeviceTaskRepository:
         return datetime.now(UTC)
 
     @staticmethod
+    def _reconcile(connection: sqlite3.Connection, *, device_id: str, now_text: str) -> None:
+        connection.execute(
+            """UPDATE personal_device_tasks
+               SET status='expired',completed_at=?,result_code='expired'
+               WHERE device_id=? AND status='queued' AND expires_at<=?""",
+            (now_text, device_id, now_text),
+        )
+        connection.execute(
+            """UPDATE personal_device_tasks
+               SET status='delivery_unknown',completed_at=?,result_code='delivery_unknown'
+               WHERE device_id=? AND status='claimed'
+                 AND (lease_expires_at<=? OR expires_at<=?)""",
+            (now_text, device_id, now_text, now_text),
+        )
+
+    @staticmethod
     def _audit(
         connection: sqlite3.Connection,
         *,
@@ -165,6 +181,14 @@ class DeviceTaskRepository:
                     raise DeviceTaskError("Idempotency key was already used for different task data")
                 return self._serialize(existing)
 
+            pending_count = connection.execute(
+                """SELECT COUNT(*) FROM personal_device_tasks
+                   WHERE device_id=? AND status IN ('queued','claimed')""",
+                (device_id,),
+            ).fetchone()[0]
+            if pending_count >= 100:
+                raise DeviceTaskError("Device task queue is full; wait for pending tasks to finish")
+
             connection.execute(
                 """INSERT INTO personal_device_tasks (
                     task_id,owner_user_id,device_id,action,payload_json,idempotency_key,
@@ -198,18 +222,7 @@ class DeviceTaskRepository:
         now_text = now.isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
-                """UPDATE personal_device_tasks
-                   SET status='expired',completed_at=?,result_code='expired'
-                   WHERE device_id=? AND status='queued' AND expires_at<=?""",
-                (now_text, device_id, now_text),
-            )
-            connection.execute(
-                """UPDATE personal_device_tasks
-                   SET status='delivery_unknown',completed_at=?,result_code='delivery_unknown'
-                   WHERE device_id=? AND status='claimed' AND lease_expires_at<=?""",
-                (now_text, device_id, now_text),
-            )
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
             row = connection.execute(
                 """SELECT t.* FROM personal_device_tasks t
                    JOIN personal_devices d ON d.device_id=t.device_id
@@ -329,6 +342,11 @@ class DeviceTaskRepository:
         now = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            self._reconcile(
+                connection,
+                device_id=device_id,
+                now_text=now,
+            )
             row = connection.execute(
                 """SELECT status FROM personal_device_tasks
                    WHERE owner_user_id=? AND device_id=? AND task_id=?""",
@@ -361,6 +379,12 @@ class DeviceTaskRepository:
 
     def list_owner_tasks(self, *, owner_user_id: str, device_id: str) -> list[dict[str, object]]:
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._reconcile(
+                connection,
+                device_id=device_id,
+                now_text=self._now().isoformat(),
+            )
             rows = connection.execute(
                 """SELECT * FROM personal_device_tasks
                    WHERE owner_user_id=? AND device_id=?
