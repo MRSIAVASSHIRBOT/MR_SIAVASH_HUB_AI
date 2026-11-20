@@ -60,8 +60,12 @@ def run_agent(
         if selected_project is None:
             raise HTTPException(status_code=404, detail="Project is not enrolled")
 
+    # The public Agent API uses the stable "remote" mode while the provider
+    # registry names its remote adapter "kimi". Translate at this boundary so
+    # remote requests can never silently produce an empty provider catalog.
+    provider_mode = "local" if payload.provider_mode == "local" else "kimi"
     model_router = build_model_router(
-        provider_mode=payload.provider_mode,
+        provider_mode=provider_mode,
         include_stub=False,
         max_timeout_seconds=30.0,
     )
