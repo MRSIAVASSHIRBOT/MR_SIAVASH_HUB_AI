@@ -97,6 +97,8 @@ class DevicePairingRepository:
             raise DevicePairingError("Device platform or label is invalid")
         if not scopes or not scopes.issubset(self.ALLOWED_SCOPES):
             raise DevicePairingError("Requested device scopes are invalid")
+        if "device.heartbeat" not in scopes:
+            raise DevicePairingError("Every paired device must include device.heartbeat")
         now = self._now()
         expires_at = now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS)
         code = secrets.token_urlsafe(32)
