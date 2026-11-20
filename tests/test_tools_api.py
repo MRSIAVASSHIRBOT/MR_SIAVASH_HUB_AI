@@ -17,9 +17,14 @@ def test_tool_catalog_is_authenticated_and_exposes_contracts():
     response = client.get("/tools")
     assert response.status_code == 200
     catalog = response.json()
-    assert [item["name"] for item in catalog] == ["text.echo"]
-    assert catalog[0]["input_schema"]["properties"]["text"]["maxLength"] == 500
-    assert catalog[0]["external_side_effect"] is False
+    names = {item["name"] for item in catalog}
+    assert names == {"text.echo", "device.registry.list", "device.app_launch.submit"}
+    echo = next(item for item in catalog if item["name"] == "text.echo")
+    assert echo["input_schema"]["properties"]["text"]["maxLength"] == 500
+    assert echo["external_side_effect"] is False
+    app_launch = next(item for item in catalog if item["name"] == "device.app_launch.submit")
+    assert set(app_launch["required_permissions"]) == {"device.registry.read", "device.app_launch"}
+    assert app_launch["risk_class"] == "low"
 
 
 def test_tool_invoke_executes_only_registered_safe_tool():
@@ -262,3 +267,97 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert "if (response.status === 401)" in script
     assert "این عملیات به مجوز فعال نیاز دارد." in script
     assert "response.status === 401 || response.status === 403" not in script
+
+
+def _pair_windows_device(client, scopes=None):
+    from uuid import uuid4
+
+    device_id = str(uuid4())
+    scopes = scopes or ["device.heartbeat", "app.launch"]
+    challenge = client.post("/devices/pairing-challenges", json={
+        "device_id": device_id,
+        "platform": "windows",
+        "label": "Agent test device",
+        "advertised_capabilities": ["device.heartbeat", "app.launch"],
+        "scopes": scopes,
+    })
+    assert challenge.status_code == 201
+    exchanged = client.post("/devices/pair", json={
+        "pairing_code": challenge.json()["pairing_code"],
+        "device_id": device_id,
+        "agent_version": "0.2.0",
+        "os_version": "Windows 11",
+    })
+    assert exchanged.status_code == 200
+    return device_id
+
+
+def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
+    from mrhub.devices.tasks import DeviceTaskRepository
+    from mrhub.tools.builtins import build_tool_registry
+
+    client = authenticated_client()
+    device_id = _pair_windows_device(client)
+    registry = build_tool_registry(owner_user_id="local-owner")
+
+    listed_denied = client.post("/tools/device.registry.list/invoke", json={"payload": {}})
+    assert listed_denied.status_code == 403
+
+    assert client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600}).status_code == 200
+    listed = client.post("/tools/device.registry.list/invoke", json={"payload": {}})
+    assert listed.status_code == 200
+    summaries = listed.json()["result"]["devices"]
+    assert len(summaries) == 1
+    assert summaries[0]["device_id"] == device_id
+    assert summaries[0]["granted_scopes"] == ["device.heartbeat", "app.launch"]
+    assert "access_token" not in str(summaries)
+
+    payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "b631e9a0-a3bc-4df7-a7ef-2e4c96ff9c99",
+    }
+    denied_launch = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert denied_launch.status_code == 403
+
+    assert client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600}).status_code == 200
+    monkeypatch_result = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert monkeypatch_result.status_code == 200
+    result = monkeypatch_result.json()["result"]
+    assert result["task"]["status"] == "queued"
+    assert result["task"]["action"] == "app.launch"
+    assert result["task"]["app"] == "notepad"
+    assert result["idempotent_replay"] is False
+
+    replay = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert replay.status_code == 200
+    assert replay.json()["result"]["task"]["task_id"] == result["task"]["task_id"]
+    assert replay.json()["result"]["idempotent_replay"] is True
+
+    repository = DeviceTaskRepository(get_settings().database_path)
+    rows = repository.list_for_owner(owner_user_id="local-owner", device_id=device_id)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "queued"
+
+
+def test_agent_device_tool_rejects_device_without_app_launch_scope():
+    client = authenticated_client()
+    device_id = _pair_windows_device(client, scopes=["device.heartbeat"])
+    client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
+    client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
+
+    response = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
+        }
+    })
+    assert response.status_code == 502
+    assert response.json()["detail"]["reason"] == "Tool execution failed"
+
+    from mrhub.devices.tasks import DeviceTaskRepository
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert tasks == []
