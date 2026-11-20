@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
-from mrhub.devices.tasks import DeviceTaskNotFound, DeviceTaskRepository
+from mrhub.devices.tasks import DeviceTaskNotFound, DeviceTaskPermissionError, DeviceTaskRepository
 from mrhub.main import create_app
 
 
@@ -506,7 +506,7 @@ def test_model_device_task_creation_rechecks_active_owner_grants_atomically(tmp_
 
     revoked = client.delete("/tools/grants/device.app_launch")
     assert revoked.status_code == 200
-    with pytest.raises(Exception) as denied:
+    with pytest.raises(DeviceTaskPermissionError) as denied:
         repository.create(
             **common,
             idempotency_key="owner-grant-atomic-deny-001",
