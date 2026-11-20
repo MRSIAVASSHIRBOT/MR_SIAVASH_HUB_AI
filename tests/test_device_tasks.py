@@ -211,6 +211,16 @@ def test_screen_capture_requires_explicit_confirmation_and_scope(tmp_path, monke
     assert confirmed.status_code == 201
     assert confirmed.json()["task"]["required_scope"] == "screen.capture"
     assert confirmed.json()["task"]["owner_confirmed"] is True
+    delayed = _submit(
+        client,
+        device_id,
+        action="screen.capture",
+        app=None,
+        key="screen-capture-delayed-001",
+        confirm_sensitive_action=True,
+        scheduled_at=(datetime.now(UTC) + timedelta(minutes=6)).isoformat(),
+    )
+    assert delayed.status_code == 422
     get_settings.cache_clear()
 
 
