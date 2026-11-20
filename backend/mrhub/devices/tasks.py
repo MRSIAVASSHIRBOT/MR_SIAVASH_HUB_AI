@@ -453,7 +453,16 @@ class DeviceTaskRepository:
     def get_for_owner(
         self, *, owner_user_id: str, device_id: str, task_id: str
     ) -> dict[str, object] | None:
+        now_text = self._now().isoformat()
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            device = connection.execute(
+                "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
+                (owner_user_id, device_id),
+            ).fetchone()
+            if device is None:
+                return None
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
             row = connection.execute(
                 """SELECT * FROM personal_device_tasks
                    WHERE owner_user_id=? AND device_id=? AND task_id=?""",
@@ -467,6 +476,13 @@ class DeviceTaskRepository:
         now_text = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            device = connection.execute(
+                "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
+                (owner_user_id, device_id),
+            ).fetchone()
+            if device is None:
+                return None
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
             row = connection.execute(
                 """SELECT * FROM personal_device_tasks
                    WHERE owner_user_id=? AND device_id=? AND task_id=?""",
