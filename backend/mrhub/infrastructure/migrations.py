@@ -1366,12 +1366,12 @@ MIGRATIONS = (
                     'queued','claimed','reported_succeeded','reported_failed',
                     'cancelled','expired','unknown_outcome'
                 )),
-                request_digest TEXT NOT NULL CHECK (length(request_digest)=64),
-                idempotency_key_hash TEXT NOT NULL CHECK (length(idempotency_key_hash)=64),
+                request_digest TEXT NOT NULL CHECK (length(request_digest)=64 AND request_digest NOT GLOB '*[^0-9a-f]*'),
+                idempotency_key_hash TEXT NOT NULL CHECK (length(idempotency_key_hash)=64 AND idempotency_key_hash NOT GLOB '*[^0-9a-f]*'),
                 timeout_seconds INTEGER NOT NULL CHECK (timeout_seconds BETWEEN 5 AND 60),
                 scheduled_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
-                lease_token_hash TEXT,
+                lease_token_hash TEXT CHECK (lease_token_hash IS NULL OR (length(lease_token_hash)=64 AND lease_token_hash NOT GLOB '*[^0-9a-f]*')),
                 lease_expires_at TEXT,
                 error_code TEXT CHECK (error_code IS NULL OR error_code IN (
                     'app_not_available','permission_denied','timeout','execution_failed'
@@ -1384,9 +1384,12 @@ MIGRATIONS = (
                 claimed_at TEXT,
                 completed_at TEXT,
                 UNIQUE(owner_user_id,idempotency_key_hash),
+                CHECK (expires_at > scheduled_at),
                 CHECK (
                     (action='app.launch' AND required_scope='app.launch'
                      AND json_valid(parameters_json)
+                     AND json_type(parameters_json)='object'
+                     AND json_remove(parameters_json,'$.app')='{}'
                      AND json_type(parameters_json,'$.app')='text'
                      AND json_extract(parameters_json,'$.app') IN
                          ('notepad','calculator','explorer','browser','chatgpt'))
