@@ -972,30 +972,30 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
     connection.execute(
         """INSERT INTO personal_device_tasks (
             task_id,owner_user_id,device_id,action,parameters_json,required_scope,
-            status,request_digest,idempotency_key,timeout_seconds,expires_at,
-            created_at,updated_at
+            status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
+            owner_confirmed,created_at,updated_at
         ) VALUES ('task-1','owner-1',?,'app.launch','{"app":"notepad"}','app.launch',
-                  'queued',?,'launch-test-0001',30,?,?,?)""",
+                  'queued',?,'a',30,?,?,0,?,?)""",
         ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "a" * 64, now, now, now),
     )
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute(
             """INSERT INTO personal_device_tasks (
                 task_id,owner_user_id,device_id,action,parameters_json,required_scope,
-                status,request_digest,idempotency_key,timeout_seconds,expires_at,
-                created_at,updated_at
+                status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
+                owner_confirmed,created_at,updated_at
             ) VALUES ('task-2','owner-1',?,'app.launch','{"app":"powershell"}','app.launch',
-                      'queued',?,'launch-test-0002',30,?,?,?)""",
+                      'queued',?,'b',30,?,?,0,?,?)""",
             ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "b" * 64, now, now, now),
         )
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute(
             """INSERT INTO personal_device_tasks (
                 task_id,owner_user_id,device_id,action,parameters_json,required_scope,
-                status,request_digest,idempotency_key,timeout_seconds,expires_at,
-                created_at,updated_at
+                status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
+                owner_confirmed,created_at,updated_at
             ) VALUES ('task-3','owner-1',?,'app.launch','{"app":"notepad"}','app.launch',
-                      'claimed',?,'launch-test-0003',30,?,?,?)""",
+                      'claimed',?,'c',30,?,?,0,?,?)""",
             ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "c" * 64, now, now, now),
         )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
