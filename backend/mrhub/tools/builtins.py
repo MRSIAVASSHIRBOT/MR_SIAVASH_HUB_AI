@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
+from mrhub.security.policy import PolicyDecision
 from mrhub.devices.pairing import DevicePairingRepository
 from mrhub.devices.tasks import DeviceTaskRepository
 from mrhub.integrations.cloudflare import (
@@ -20,7 +21,7 @@ from mrhub.integrations.cloudflare import (
     WorkerSummary,
     build_cloudflare_gateway_client,
 )
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ToolDefinition, ToolPolicyError, ToolRegistry
 
 
 class EchoToolInput(BaseModel):
@@ -238,14 +239,25 @@ def _register_device_tools(
             None,
         )
         if selected is None or selected["status"] != "active":
-            raise ValueError("Selected owner device is not active.")
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Selected owner device is not active.",
+            )
+        if "app.launch" not in selected["granted_scopes"]:
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Selected owner device lacks the app.launch scope.",
+            )
         supported_aliases = {
             "windows": {"notepad", "calculator", "explorer", "browser", "chatgpt"},
             "android": {"browser", "chatgpt"},
             "browser": set(),
         }
         if request.app not in supported_aliases.get(str(selected["platform"]), set()):
-            raise ValueError("Selected application is not supported on this device platform.")
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Selected application is not supported on this device platform.",
+            )
 
         task, created = DeviceTaskRepository(database_path).create(
             owner_user_id=owner_user_id,
