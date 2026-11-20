@@ -167,7 +167,7 @@ The repository's continuous execution, evidence-based reporting, pull-request in
 
 ## Personal device task dispatch (pending review)
 
-The current device-dispatch implementation branch proposes a narrow Hub-owned task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed screenshot capture. Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
+The current device-dispatch implementation branch proposes a narrow Hub-owned task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed near-term screenshot capture (maximum five-minute scheduling horizon and 300-second TTL). Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
 
 - Owner API: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks/{task_id}`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
 - Device API: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
