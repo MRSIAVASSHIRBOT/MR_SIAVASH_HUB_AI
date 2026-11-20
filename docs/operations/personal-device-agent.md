@@ -52,10 +52,22 @@ A future device task must include a task ID, device ID, action name, schema-vali
 - Local companion logs exclude credentials and captured content.
 - Every operation has cancellation and timeout semantics before production use.
 
-## Local development
+## Standalone Windows MVP
 
-The first Windows companion must bind locally by default, authenticate to the Hub, and expose no unauthenticated network listener. Remote operation is disabled until a separate transport and deployment review is complete.
+The separate [MR_SIAVASH_EL_AGENT repository](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) contains the first local Windows companion MVP. It provides a loopback-only API, local bearer-token authentication, explicit screenshot capture, a fixed application-launch allowlist, and SQLite-backed scheduled app launches. It deliberately does not yet pair with Hub, share Hub memory, or accept remote commands.
+
+Use the companion's own README for installation and operation. Its local API token is not a Hub credential and must never be forwarded through the public website or a network tunnel.
+
+## Hub integration sequence
+
+1. Pairing challenge and owner-scoped device registry.
+2. Hashed short-lived device credentials, scopes, listing, and revocation.
+3. Authenticated heartbeat and audit events.
+4. Hub-issued bounded task dispatch, cancellation, expiry, and outcome verification.
+5. Replace the MVP's standalone local token with Hub pairing only after the secure enrollment flow is implemented and tested.
 
 ## Current status
 
-The architecture decision and typed contract foundation are being introduced first. Device enrollment, token lifecycle, heartbeat API, Windows companion, screenshot, application launch, scheduler integration, Android companion, and browser extension must not be described as implemented until code, tests, and live acceptance evidence exist.
+- Architecture decision and typed contracts: merged into Hub main.
+- Standalone Windows MVP: implemented in the separate repository; CI and real Windows acceptance are pending.
+- Hub pairing, registry, heartbeat API, task dispatch, shared memory, Android companion, and browser extension: planned, not yet implemented.

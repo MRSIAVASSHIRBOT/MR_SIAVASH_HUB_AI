@@ -1,6 +1,6 @@
 # ADR-0011 — Personal Device Agent Control Plane
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Owners:** MR_SIAVASH_HUB_AI / MR_SIAVASH_EL_AGENT
 - **Related systems:** MR_SIAVASH_EL_AI, MR_SIAVASH_AI
