@@ -884,3 +884,56 @@ def test_migration_history_with_a_gap_fails_closed(tmp_path):
     with pytest.raises(MigrationError, match="strictly increasing"):
         SchemaMigrator(connection).migrate()
     connection.close()
+
+
+
+def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
+    tmp_path, monkeypatch
+):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "device-heartbeat-v50.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:49])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:49]
+    ]
+
+    now = "2026-11-20T00:00:00+00:00"
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
+        (now,),
+    )
+    connection.execute(
+        """INSERT INTO personal_devices (
+            device_id, owner_user_id, platform, label, agent_version, os_version,
+            advertised_capabilities_json, scopes_json, status, created_at,
+            last_seen_at, revoked_at
+        ) VALUES (?, 'owner-1', 'windows', 'Workstation', '0.1.0', 'Windows 11',
+                  '[]', '["device.heartbeat"]', 'active', ?, ?, NULL)""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", now, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [50]
+    row = connection.execute(
+        """SELECT runtime_state, app_uptime_seconds, last_task_id
+           FROM personal_devices WHERE device_id = ?""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",),
+    ).fetchone()
+    assert tuple(row) == ("unknown", 0, None)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE personal_devices SET runtime_state='untrusted' WHERE device_id=?",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE personal_devices SET app_uptime_seconds=31536001 WHERE device_id=?",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",),
+        )
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
