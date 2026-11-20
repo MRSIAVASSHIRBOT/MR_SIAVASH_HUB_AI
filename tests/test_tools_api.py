@@ -363,6 +363,42 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     assert rows[0]["status"] == "queued"
 
 
+def test_agent_device_tool_denies_if_owner_grant_is_revoked_before_atomic_enqueue(monkeypatch):
+    from mrhub.devices.tasks import DeviceTaskRepository
+
+    client = authenticated_client()
+    device_id = _pair_device(client)
+    for permission in ("device.registry.read", "device.app_launch"):
+        granted = client.put(
+            f"/tools/grants/{permission}",
+            json={"expires_in_seconds": 600},
+        )
+        assert granted.status_code == 200
+
+    original_create = DeviceTaskRepository.create
+
+    def revoke_before_enqueue(repository, **kwargs):
+        revoked = client.delete("/tools/grants/device.app_launch")
+        assert revoked.status_code == 204
+        return original_create(repository, **kwargs)
+
+    monkeypatch.setattr(DeviceTaskRepository, "create", revoke_before_enqueue)
+    response = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "9bce5f6c-0b42-4c41-9d18-4c9aef8a3210",
+        }
+    })
+    assert response.status_code == 403
+    assert response.json()["detail"]["decision"] == "deny"
+
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert tasks == []
+
+
 def test_agent_device_tool_rejects_device_without_app_launch_scope():
     client = authenticated_client()
     device_id = _pair_device(client, scopes=["device.heartbeat"])

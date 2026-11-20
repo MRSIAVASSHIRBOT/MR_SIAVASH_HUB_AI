@@ -9,7 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.config import get_settings
 from mrhub.devices.pairing import DevicePairingRepository
-from mrhub.devices.tasks import DeviceTaskRepository
+from mrhub.devices.tasks import (
+    DeviceTaskNotFound,
+    DeviceTaskPermissionError,
+    DeviceTaskRepository,
+)
 from mrhub.domain.tasks import RiskClass
 from mrhub.integrations.cloudflare import (
     BindingMetadata,
@@ -259,22 +263,35 @@ def _register_device_tools(
                 "Selected application is not supported on this device platform.",
             )
 
-        task, created = DeviceTaskRepository(database_path).create(
-            owner_user_id=owner_user_id,
-            device_id=str(request.device_id),
-            action="app.launch",
-            app=request.app,
-            required_scope="app.launch",
-            idempotency_key=str(request.idempotency_key),
-            owner_confirmed=False,
-            scheduled_at=request.scheduled_at,
-            expires_in_seconds=request.expires_in_seconds,
-            timeout_seconds=request.timeout_seconds,
-            required_owner_permissions=frozenset({
-                "device.registry.read",
-                "device.app_launch",
-            }),
-        )
+        try:
+            task, created = DeviceTaskRepository(database_path).create(
+                owner_user_id=owner_user_id,
+                device_id=str(request.device_id),
+                action="app.launch",
+                app=request.app,
+                required_scope="app.launch",
+                idempotency_key=str(request.idempotency_key),
+                owner_confirmed=False,
+                scheduled_at=request.scheduled_at,
+                expires_in_seconds=request.expires_in_seconds,
+                timeout_seconds=request.timeout_seconds,
+                required_owner_permissions=frozenset({
+                    "device.registry.read",
+                    "device.app_launch",
+                }),
+            )
+        except DeviceTaskPermissionError:
+            # The grant may be revoked after the orchestrator's policy snapshot.
+            # Preserve the denial semantics from the atomic enqueue re-check.
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Owner or device authorization changed before dispatch.",
+            ) from None
+        except DeviceTaskNotFound:
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Selected owner device is no longer active.",
+            ) from None
         # Do not expose internal queue metadata, idempotency hashes, timing
         # diagnostics, or database-only fields to the model/tool transcript.
         return {
