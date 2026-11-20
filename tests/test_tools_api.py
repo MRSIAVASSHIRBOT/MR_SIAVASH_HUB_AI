@@ -375,12 +375,20 @@ def test_agent_device_tool_denies_if_owner_grant_is_revoked_before_atomic_enqueu
         )
         assert granted.status_code == 200
 
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.security.audit import AuditLogger
+    from mrhub.security.tool_permissions import ToolPermissionService
+
+    permission_repository = TaskRepository(get_settings().database_path)
+    permission_service = ToolPermissionService(
+        permission_repository,
+        AuditLogger(permission_repository),
+    )
     original_create = DeviceTaskRepository.create
 
-    def revoke_before_enqueue(repository, **kwargs):
-        revoked = client.delete("/tools/grants/device.app_launch")
-        assert revoked.status_code == 204
-        return original_create(repository, **kwargs)
+    def revoke_before_enqueue(device_repository, **kwargs):
+        assert permission_service.revoke("local-owner", "device.app_launch") is True
+        return original_create(device_repository, **kwargs)
 
     monkeypatch.setattr(DeviceTaskRepository, "create", revoke_before_enqueue)
     response = client.post("/tools/device.app_launch.submit/invoke", json={
