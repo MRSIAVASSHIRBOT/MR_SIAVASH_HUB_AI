@@ -1,27 +1,40 @@
-"""Owner-authorized, idempotent, bounded device task dispatch."""
+"""Owner-scoped, bounded dispatch of allow-listed tasks to paired devices."""
+
 from __future__ import annotations
 
+import hashlib
 import json
+import secrets
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 
 class DeviceTaskError(ValueError):
-    """Raised when a device task violates owner, scope, or lifecycle policy."""
+    """Base error for invalid device task operations."""
 
 
-ALLOWED_APP_ALIASES = frozenset({"notepad", "calculator", "explorer", "browser", "chatgpt"})
-SUCCESS_CODES = frozenset({"launched"})
-FAILURE_CODES = frozenset({"launch_failed", "app_not_available", "unsupported_platform"})
-LEASE_SECONDS = 60
-MAX_SCHEDULE_AHEAD_SECONDS = 30 * 24 * 60 * 60
+class DeviceTaskNotFound(DeviceTaskError):
+    """The device or task is not owned by the authenticated owner."""
+
+
+class DeviceTaskPermissionError(DeviceTaskError):
+    """The device has not been granted the required action scope."""
+
+
+class DeviceTaskConflict(DeviceTaskError):
+    """The requested task transition is not valid in its current state."""
 
 
 class DeviceTaskRepository:
+    """Persist only bounded task metadata; never persist credentials or raw output."""
+
+    MAX_PENDING_PER_DEVICE = 100
+    MAX_SCHEDULE_AHEAD_SECONDS = 30 * 24 * 60 * 60
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
 
@@ -50,55 +63,35 @@ class DeviceTaskRepository:
         return datetime.now(UTC)
 
     @staticmethod
-    def _reconcile(connection: sqlite3.Connection, *, device_id: str, now_text: str) -> None:
-        expired = connection.execute(
-            """SELECT task_id,owner_user_id FROM personal_device_tasks
-               WHERE device_id=? AND status='queued' AND expires_at<=?""",
-            (device_id, now_text),
-        ).fetchall()
-        for row in expired:
-            connection.execute(
-                """UPDATE personal_device_tasks
-                   SET status='expired',completed_at=?,result_code='expired'
-                   WHERE task_id=? AND status='queued'""",
-                (now_text, row["task_id"]),
-            )
-            DeviceTaskRepository._audit(
-                connection,
-                event_type="device.task_expired",
-                outcome="failure",
-                owner_user_id=row["owner_user_id"],
-                device_id=device_id,
-                actor_type="system",
-                actor_id="device_task_reconciler",
-                task_id=row["task_id"],
-                metadata={"reason_code": "task_expiry_elapsed"},
-            )
+    def _hash(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
-        unknown = connection.execute(
-            """SELECT task_id,owner_user_id FROM personal_device_tasks
-               WHERE device_id=? AND status='claimed'
-                 AND (lease_expires_at<=? OR expires_at<=?)""",
-            (device_id, now_text, now_text),
-        ).fetchall()
-        for row in unknown:
-            connection.execute(
-                """UPDATE personal_device_tasks
-                   SET status='delivery_unknown',completed_at=?,result_code='delivery_unknown'
-                   WHERE task_id=? AND status='claimed'""",
-                (now_text, row["task_id"]),
-            )
-            DeviceTaskRepository._audit(
-                connection,
-                event_type="device.task_delivery_unknown",
-                outcome="failure",
-                owner_user_id=row["owner_user_id"],
-                device_id=device_id,
-                actor_type="system",
-                actor_id="device_task_reconciler",
-                task_id=row["task_id"],
-                metadata={"reason_code": "claim_lease_elapsed"},
-            )
+    @staticmethod
+    def _digest(value: dict[str, object]) -> str:
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _serialize(row: sqlite3.Row) -> dict[str, object]:
+        parameters = json.loads(row["parameters_json"])
+        status = row["status"]
+        return {
+            "task_id": row["task_id"],
+            "device_id": row["device_id"],
+            "action": row["action"],
+            "app": parameters.get("app"),
+            "required_scope": row["required_scope"],
+            "status": status,
+            "created_at": row["created_at"],
+            "scheduled_at": row["scheduled_at"],
+            "expires_at": row["expires_at"],
+            "attempt_count": row["attempt_count"],
+            "timeout_seconds": row["timeout_seconds"],
+            "duration_ms": row["duration_ms"],
+            "error_code": row["error_code"],
+            "outcome_verified": False if status in {"reported_succeeded", "reported_failed"} else None,
+            "owner_confirmed": bool(row["owner_confirmed"]),
+        }
 
     @staticmethod
     def _audit(
@@ -106,325 +99,484 @@ class DeviceTaskRepository:
         *,
         event_type: str,
         outcome: str,
+        task_id: str,
         owner_user_id: str,
-        device_id: str,
         actor_type: str,
         actor_id: str,
-        task_id: str,
-        metadata: dict[str, object],
+        action: str,
+        required_scope: str,
+        reason_code: str,
     ) -> None:
+        metadata = json.dumps(
+            {
+                "correlation_id": task_id,
+                "action": action,
+                "required_scope": required_scope,
+                "reason_code": reason_code,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         connection.execute(
             """INSERT INTO audit_events (
                 event_id,event_type,outcome,subject_type,subject_id,
                 actor_type,actor_id,created_at,metadata_json
             ) VALUES (?,?,?,?,?,?,?,?,?)""",
             (
-                str(uuid4()), event_type, outcome, "personal_device_task", task_id,
-                actor_type, actor_id, datetime.now(UTC).isoformat(),
-                json.dumps(metadata, separators=(",", ":"), sort_keys=True),
+                str(uuid4()), event_type, outcome, "device_task", task_id,
+                actor_type, actor_id, datetime.now(UTC).isoformat(), metadata,
             ),
         )
 
-    @staticmethod
-    def _serialize(row: sqlite3.Row) -> dict[str, object]:
-        payload = json.loads(row["payload_json"])
-        return {
-            "task_id": row["task_id"],
-            "device_id": row["device_id"],
-            "action": row["action"],
-            "app_alias": payload["app_alias"],
-            "status": row["status"],
-            "idempotency_key": row["idempotency_key"],
-            "created_at": row["created_at"],
-            "scheduled_at": row["available_at"],
-            "expires_at": row["expires_at"],
-            "claimed_at": row["claimed_at"],
-            "lease_expires_at": row["lease_expires_at"],
-            "completed_at": row["completed_at"],
-            "result_code": row["result_code"],
-            "attempt_count": row["attempt_count"],
-        }
+    def _reconcile(self, connection: sqlite3.Connection, *, device_id: str, now_text: str) -> None:
+        expired_queued = connection.execute(
+            """SELECT task_id,action,required_scope FROM personal_device_tasks
+               WHERE device_id=? AND status='queued' AND expires_at<=?""",
+            (device_id, now_text),
+        ).fetchall()
+        for row in expired_queued:
+            connection.execute(
+                """UPDATE personal_device_tasks
+                   SET status='expired',updated_at=?,completed_at=?
+                   WHERE task_id=? AND status='queued'""",
+                (now_text, now_text, row["task_id"]),
+            )
+            self._audit(
+                connection,
+                event_type="device.task_expired",
+                outcome="expired",
+                task_id=row["task_id"],
+                owner_user_id="",
+                actor_type="system",
+                actor_id="hub",
+                action=row["action"],
+                required_scope=row["required_scope"],
+                reason_code="task_ttl_elapsed",
+            )
 
-    def create_owner_task(
+        expired_claims = connection.execute(
+            """SELECT task_id,action,required_scope FROM personal_device_tasks
+               WHERE device_id=? AND status='claimed'
+                 AND (lease_expires_at<=? OR expires_at<=?)""",
+            (device_id, now_text, now_text),
+        ).fetchall()
+        for row in expired_claims:
+            connection.execute(
+                """UPDATE personal_device_tasks
+                   SET status='unknown_outcome',lease_token_hash=NULL,
+                       lease_expires_at=NULL,updated_at=?,completed_at=?
+                   WHERE task_id=? AND status='claimed'""",
+                (now_text, now_text, row["task_id"]),
+            )
+            self._audit(
+                connection,
+                event_type="device.task_unknown_outcome",
+                outcome="unknown_outcome",
+                task_id=row["task_id"],
+                owner_user_id="",
+                actor_type="system",
+                actor_id="hub",
+                action=row["action"],
+                required_scope=row["required_scope"],
+                reason_code="lease_expired_no_replay",
+            )
+
+    def create(
         self,
         *,
         owner_user_id: str,
         device_id: str,
-        app_alias: str,
+        action: str,
+        app: str | None,
+        required_scope: str,
         idempotency_key: str,
-        scheduled_at: datetime,
-        expires_in_seconds: int = 300,
-    ) -> dict[str, object]:
-        try:
-            task_key = str(UUID(idempotency_key))
-        except (ValueError, TypeError) as exc:
-            raise DeviceTaskError("Idempotency key must be a UUID") from exc
-        try:
-            canonical_device_id = str(UUID(device_id))
-        except (ValueError, TypeError) as exc:
-            raise DeviceTaskError("Device identifier is invalid") from exc
-        if canonical_device_id != device_id.lower():
-            raise DeviceTaskError("Device identifier is invalid")
-        if not owner_user_id or app_alias not in ALLOWED_APP_ALIASES:
-            raise DeviceTaskError("Owner or application alias is invalid")
-        if (
-            isinstance(expires_in_seconds, bool)
-            or not isinstance(expires_in_seconds, int)
-            or not 30 <= expires_in_seconds <= 86_400
-        ):
-            raise DeviceTaskError("Task expiry must be between 30 and 86400 seconds")
-        if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
-            raise DeviceTaskError("Scheduled time must include a timezone offset")
-
+        owner_confirmed: bool,
+        scheduled_at: datetime | None,
+        expires_in_seconds: int,
+        timeout_seconds: int,
+    ) -> tuple[dict[str, object], bool]:
         now = self._now()
-        scheduled = scheduled_at.astimezone(UTC)
-        if scheduled < now - timedelta(seconds=30) or scheduled > now + timedelta(seconds=MAX_SCHEDULE_AHEAD_SECONDS):
-            raise DeviceTaskError("Scheduled time must be now or within the next 30 days")
-        expires = scheduled + timedelta(seconds=expires_in_seconds)
-        if expires <= now:
-            raise DeviceTaskError("Task expiry must be in the future")
-
-        task_id = str(uuid4())
-        created_at = now.isoformat()
-        available_at = scheduled.isoformat()
-        expires_at = expires.isoformat()
-        payload_json = json.dumps({"app_alias": app_alias}, separators=(",", ":"), sort_keys=True)
-
+        if scheduled_at is None:
+            scheduled = now
+            digest_scheduled_at = None
+        else:
+            if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
+                raise DeviceTaskError("Scheduled time must include a timezone offset")
+            scheduled = scheduled_at.astimezone(UTC)
+            digest_scheduled_at = scheduled.isoformat()
+        parameters = {"app": app} if app is not None else {}
+        request_digest = self._digest(
+            {
+                "device_id": device_id,
+                "action": action,
+                "app": app,
+                "required_scope": required_scope,
+                "owner_confirmed": owner_confirmed,
+                "scheduled_at": digest_scheduled_at,
+                "expires_in_seconds": expires_in_seconds,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             device = connection.execute(
-                "SELECT status,scopes_json FROM personal_devices WHERE owner_user_id=? AND device_id=?",
-                (owner_user_id, device_id),
+                """SELECT owner_user_id,status,scopes_json
+                   FROM personal_devices WHERE device_id=?""",
+                (device_id,),
             ).fetchone()
-            if device is None or device["status"] != "active":
-                raise DeviceTaskError("Active owner device not found")
-            if "app.launch" not in json.loads(device["scopes_json"]):
-                raise DeviceTaskError("Device does not have the app.launch scope")
-            self._reconcile(connection, device_id=device_id, now_text=now.isoformat())
+            if device is None or device["owner_user_id"] != owner_user_id:
+                raise DeviceTaskNotFound("Active owner device not found")
+            if device["status"] != "active":
+                raise DeviceTaskNotFound("Active owner device not found")
+            if required_scope not in json.loads(device["scopes_json"]):
+                raise DeviceTaskPermissionError("Device lacks the required action scope")
 
+            self._reconcile(connection, device_id=device_id, now_text=now.isoformat())
             existing = connection.execute(
                 """SELECT * FROM personal_device_tasks
-                   WHERE owner_user_id=? AND device_id=? AND idempotency_key=?""",
-                (owner_user_id, device_id, task_key),
+                   WHERE owner_user_id=? AND idempotency_key_hash=?""",
+                (owner_user_id, self._hash(idempotency_key)),
             ).fetchone()
             if existing is not None:
-                if (
-                    existing["action"] != "launch_app"
-                    or existing["payload_json"] != payload_json
-                    or existing["available_at"] != available_at
-                    or existing["expires_at"] != expires_at
-                ):
-                    raise DeviceTaskError("Idempotency key was already used for different task data")
-                return self._serialize(existing)
+                if existing["request_digest"] != request_digest:
+                    raise DeviceTaskConflict("Idempotency key was already used for another request")
+                return self._serialize(existing), False
+
+            if (
+                scheduled < now - timedelta(seconds=30)
+                or scheduled > now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
+            ):
+                raise DeviceTaskError("Scheduled time must be now or within the next 30 days")
+            expires_at = scheduled + timedelta(seconds=expires_in_seconds)
+            if expires_at <= now:
+                raise DeviceTaskError("Task expiry must be in the future")
+            if action == "screen.capture" and (
+                scheduled > now + timedelta(minutes=5) or expires_in_seconds > 300
+            ):
+                raise DeviceTaskError("Sensitive screenshot tasks must be confirmed for near-term execution")
 
             pending_count = connection.execute(
                 """SELECT COUNT(*) FROM personal_device_tasks
                    WHERE device_id=? AND status IN ('queued','claimed')""",
                 (device_id,),
             ).fetchone()[0]
-            if pending_count >= 100:
-                raise DeviceTaskError("Device task queue is full; wait for pending tasks to finish")
+            if pending_count >= self.MAX_PENDING_PER_DEVICE:
+                raise DeviceTaskConflict("Device task queue is full")
 
+            task_id = str(uuid4())
             connection.execute(
                 """INSERT INTO personal_device_tasks (
-                    task_id,owner_user_id,device_id,action,payload_json,idempotency_key,
-                    status,created_at,available_at,expires_at,claimed_at,lease_expires_at,
-                    completed_at,result_code,attempt_count
-                ) VALUES (?,?,?,?,?,?,'queued',?,?,?,NULL,NULL,NULL,NULL,0)""",
+                    task_id,owner_user_id,device_id,action,parameters_json,required_scope,
+                    status,request_digest,idempotency_key_hash,timeout_seconds,scheduled_at,expires_at,
+                    lease_token_hash,lease_expires_at,error_code,duration_ms,owner_confirmed,
+                    attempt_count,created_at,updated_at,claimed_at,completed_at
+                ) VALUES (?,?,?,?,?,?, 'queued',?,?,?,?,?,NULL,NULL,NULL,NULL,?,0,?,?,NULL,NULL)""",
                 (
-                    task_id, owner_user_id, device_id, "launch_app", payload_json,
-                    task_key, created_at, available_at, expires_at,
+                    task_id, owner_user_id, device_id, action,
+                    json.dumps(parameters, sort_keys=True, separators=(",", ":")),
+                    required_scope, request_digest, self._hash(idempotency_key), timeout_seconds,
+                    scheduled.isoformat(), expires_at.isoformat(), int(owner_confirmed),
+                    now.isoformat(), now.isoformat(),
                 ),
             )
             self._audit(
                 connection,
-                event_type="device.task_created",
-                outcome="success",
+                event_type="device.task_submitted",
+                outcome="queued",
+                task_id=task_id,
                 owner_user_id=owner_user_id,
-                device_id=device_id,
                 actor_type="owner",
                 actor_id=owner_user_id,
-                task_id=task_id,
-                metadata={"action": "launch_app", "app_alias": app_alias},
+                action=action,
+                required_scope=required_scope,
+                reason_code=("owner_confirmed_sensitive_action" if owner_confirmed else "owner_submitted"),
             )
             row = connection.execute(
                 "SELECT * FROM personal_device_tasks WHERE task_id=?",
                 (task_id,),
             ).fetchone()
-        return self._serialize(row)
+        return self._serialize(row), True
 
-    def claim_next(self, *, owner_user_id: str, device_id: str) -> dict[str, object] | None:
+    def claim(
+        self,
+        *,
+        owner_user_id: str,
+        device_id: str,
+        granted_scopes: frozenset[str],
+    ) -> dict[str, object] | None:
         now = self._now()
         now_text = now.isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self._reconcile(connection, device_id=device_id, now_text=now_text)
-            row = connection.execute(
-                """SELECT t.* FROM personal_device_tasks t
-                   JOIN personal_devices d ON d.device_id=t.device_id
-                   WHERE t.owner_user_id=? AND t.device_id=? AND d.status='active'
-                     AND t.status='queued' AND t.available_at<=? AND t.expires_at>?
-                   ORDER BY t.available_at,t.created_at,t.task_id LIMIT 1""",
-                (owner_user_id, device_id, now_text, now_text),
+            device = connection.execute(
+                """SELECT status,owner_user_id FROM personal_devices WHERE device_id=?""",
+                (device_id,),
             ).fetchone()
-            if row is None:
+            if device is None or device["owner_user_id"] != owner_user_id or device["status"] != "active":
+                raise DeviceTaskNotFound("Active paired device not found")
+
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
+
+            active = connection.execute(
+                """SELECT 1 FROM personal_device_tasks
+                   WHERE device_id=? AND status='claimed' AND lease_expires_at>? LIMIT 1""",
+                (device_id, now_text),
+            ).fetchone()
+            if active is not None:
                 return None
-            lease_expiry = min(now + timedelta(seconds=LEASE_SECONDS), datetime.fromisoformat(row["expires_at"]))
+
+            candidates = connection.execute(
+                """SELECT * FROM personal_device_tasks
+                   WHERE owner_user_id=? AND device_id=? AND status='queued'
+                     AND scheduled_at<=? AND expires_at>?
+                   ORDER BY scheduled_at ASC,created_at ASC,task_id ASC LIMIT 20""",
+                (owner_user_id, device_id, now_text, now_text),
+            ).fetchall()
+            selected = next(
+                (row for row in candidates if row["required_scope"] in granted_scopes),
+                None,
+            )
+            if selected is None:
+                return None
+
+            lease_token = secrets.token_urlsafe(32)
+            lease_expires = min(
+                now + timedelta(seconds=selected["timeout_seconds"]),
+                datetime.fromisoformat(selected["expires_at"]),
+            )
             updated = connection.execute(
                 """UPDATE personal_device_tasks
-                   SET status='claimed',claimed_at=?,lease_expires_at=?,attempt_count=attempt_count+1
-                   WHERE task_id=? AND status='queued'""",
-                (now_text, lease_expiry.isoformat(), row["task_id"]),
+                   SET status='claimed',lease_token_hash=?,lease_expires_at=?,
+                       claimed_at=?,updated_at=?,attempt_count=1
+                   WHERE task_id=? AND status='queued' AND attempt_count=0""",
+                (
+                    self._hash(lease_token), lease_expires.isoformat(),
+                    now_text, now_text, selected["task_id"],
+                ),
             )
             if updated.rowcount != 1:
                 return None
             self._audit(
                 connection,
                 event_type="device.task_claimed",
-                outcome="success",
+                outcome="claimed",
+                task_id=selected["task_id"],
                 owner_user_id=owner_user_id,
-                device_id=device_id,
                 actor_type="device",
                 actor_id=device_id,
-                task_id=row["task_id"],
-                metadata={"action": row["action"]},
+                action=selected["action"],
+                required_scope=selected["required_scope"],
+                reason_code="device_claimed",
             )
-            claimed = connection.execute(
+            row = connection.execute(
                 "SELECT * FROM personal_device_tasks WHERE task_id=?",
-                (row["task_id"],),
+                (selected["task_id"],),
             ).fetchone()
-        return self._serialize(claimed)
+        return {
+            "task": self._serialize(row),
+            "lease_token": lease_token,
+            "lease_expires_at": lease_expires.isoformat(),
+        }
 
-    def complete_device_task(
+    def report_outcome(
         self,
         *,
+        owner_user_id: str,
         device_id: str,
         task_id: str,
+        lease_token: str,
         outcome: str,
-        result_code: str,
-    ) -> dict[str, object]:
-        try:
-            task_uuid = str(UUID(task_id))
-        except (ValueError, TypeError) as exc:
-            raise DeviceTaskError("Task identifier is invalid") from exc
-        if (outcome == "succeeded" and result_code not in SUCCESS_CODES) or (
-            outcome == "failed" and result_code not in FAILURE_CODES
-        ):
-            raise DeviceTaskError("Task outcome or result code is invalid")
-        if outcome not in {"succeeded", "failed"}:
-            raise DeviceTaskError("Task outcome is invalid")
-
-        now = self._now()
-        now_text = now.isoformat()
+        error_code: str | None,
+        duration_ms: int,
+    ) -> dict[str, object] | None:
+        now_text = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                """SELECT * FROM personal_device_tasks WHERE task_id=? AND device_id=?""",
-                (task_uuid, device_id),
+                """SELECT * FROM personal_device_tasks
+                   WHERE task_id=? AND owner_user_id=? AND device_id=?""",
+                (task_id, owner_user_id, device_id),
             ).fetchone()
-            if row is None:
-                raise DeviceTaskError("Task not found for this device")
-            if row["status"] != "claimed":
-                raise DeviceTaskError("Task is not in a claimable completion state")
-            if row["lease_expires_at"] <= now_text or row["expires_at"] <= now_text:
+            if row is None or row["status"] != "claimed":
+                return None
+            if row["lease_expires_at"] <= now_text:
                 connection.execute(
                     """UPDATE personal_device_tasks
-                       SET status='delivery_unknown',completed_at=?,result_code='delivery_unknown'
+                       SET status='unknown_outcome',lease_token_hash=NULL,
+                           lease_expires_at=NULL,updated_at=?,completed_at=?
                        WHERE task_id=? AND status='claimed'""",
-                    (now_text, task_uuid),
+                    (now_text, now_text, task_id),
                 )
                 self._audit(
                     connection,
-                    event_type="device.task_delivery_unknown",
-                    outcome="failure",
-                    owner_user_id=row["owner_user_id"],
-                    device_id=device_id,
+                    event_type="device.task_unknown_outcome",
+                    outcome="unknown_outcome",
+                    task_id=task_id,
+                    owner_user_id=owner_user_id,
                     actor_type="device",
                     actor_id=device_id,
-                    task_id=task_uuid,
-                    metadata={"reason_code": "lease_expired"},
+                    action=row["action"],
+                    required_scope=row["required_scope"],
+                    reason_code="late_outcome_after_lease",
                 )
-                unknown = connection.execute(
-                    "SELECT * FROM personal_device_tasks WHERE task_id=?",
-                    (task_uuid,),
-                ).fetchone()
-                return self._serialize(unknown)
-            updated = connection.execute(
+                return None
+            if not secrets.compare_digest(row["lease_token_hash"], self._hash(lease_token)):
+                return None
+
+            status = "reported_succeeded" if outcome == "succeeded" else "reported_failed"
+            connection.execute(
                 """UPDATE personal_device_tasks
-                   SET status=?,completed_at=?,result_code=?
-                   WHERE task_id=? AND device_id=? AND status='claimed'""",
-                (outcome, now_text, result_code, task_uuid, device_id),
+                   SET status=?,lease_token_hash=NULL,lease_expires_at=NULL,
+                       error_code=?,duration_ms=?,updated_at=?,completed_at=?
+                   WHERE task_id=? AND status='claimed'""",
+                (status, error_code, duration_ms, now_text, now_text, task_id),
             )
-            if updated.rowcount != 1:
-                raise DeviceTaskError("Task completion was already recorded")
             self._audit(
                 connection,
-                event_type="device.task_completed",
-                outcome=outcome,
-                owner_user_id=row["owner_user_id"],
-                device_id=device_id,
+                event_type="device.task_outcome_reported",
+                outcome=status,
+                task_id=task_id,
+                owner_user_id=owner_user_id,
                 actor_type="device",
                 actor_id=device_id,
-                task_id=task_uuid,
-                metadata={"result_code": result_code},
+                action=row["action"],
+                required_scope=row["required_scope"],
+                reason_code=error_code or "device_reported_success",
             )
-            completed = connection.execute(
+            updated = connection.execute(
                 "SELECT * FROM personal_device_tasks WHERE task_id=?",
-                (task_uuid,),
+                (task_id,),
             ).fetchone()
-        return self._serialize(completed)
+        return self._serialize(updated)
 
-    def cancel_owner_task(self, *, owner_user_id: str, device_id: str, task_id: str) -> str | None:
-        now = self._now().isoformat()
+
+
+    def list_for_owner(
+        self, *, owner_user_id: str, device_id: str, limit: int = 100
+    ) -> list[dict[str, object]]:
+        bounded_limit = max(1, min(limit, 100))
+        now_text = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self._reconcile(
-                connection,
-                device_id=device_id,
-                now_text=now,
-            )
+            device = connection.execute(
+                "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
+                (owner_user_id, device_id),
+            ).fetchone()
+            if device is None:
+                raise DeviceTaskNotFound("Device task not found")
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
+            rows = connection.execute(
+                """SELECT * FROM personal_device_tasks
+                   WHERE owner_user_id=? AND device_id=?
+                   ORDER BY created_at DESC,task_id DESC LIMIT ?""",
+                (owner_user_id, device_id, bounded_limit),
+            ).fetchall()
+        return [self._serialize(row) for row in rows]
+
+    def get_for_owner(
+        self, *, owner_user_id: str, device_id: str, task_id: str
+    ) -> dict[str, object] | None:
+        now_text = self._now().isoformat()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            device = connection.execute(
+                "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
+                (owner_user_id, device_id),
+            ).fetchone()
+            if device is None:
+                return None
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
             row = connection.execute(
-                """SELECT status FROM personal_device_tasks
+                """SELECT * FROM personal_device_tasks
+                   WHERE owner_user_id=? AND device_id=? AND task_id=?""",
+                (owner_user_id, device_id, task_id),
+            ).fetchone()
+        return self._serialize(row) if row is not None else None
+
+    def cancel_for_owner(
+        self, *, owner_user_id: str, device_id: str, task_id: str
+    ) -> dict[str, object] | None:
+        now_text = self._now().isoformat()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            device = connection.execute(
+                "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
+                (owner_user_id, device_id),
+            ).fetchone()
+            if device is None:
+                return None
+            self._reconcile(connection, device_id=device_id, now_text=now_text)
+            row = connection.execute(
+                """SELECT * FROM personal_device_tasks
                    WHERE owner_user_id=? AND device_id=? AND task_id=?""",
                 (owner_user_id, device_id, task_id),
             ).fetchone()
             if row is None:
                 return None
             if row["status"] != "queued":
-                return row["status"]
-            updated = connection.execute(
+                raise DeviceTaskConflict("Only queued device tasks can be cancelled safely")
+            connection.execute(
                 """UPDATE personal_device_tasks
-                   SET status='cancelled',completed_at=?,result_code='cancelled'
-                   WHERE owner_user_id=? AND device_id=? AND task_id=? AND status='queued'""",
-                (now, owner_user_id, device_id, task_id),
+                   SET status='cancelled',updated_at=?,completed_at=?
+                   WHERE task_id=? AND status='queued'""",
+                (now_text, now_text, task_id),
             )
-            if updated.rowcount != 1:
-                return "changed"
             self._audit(
                 connection,
                 event_type="device.task_cancelled",
-                outcome="success",
+                outcome="cancelled",
+                task_id=task_id,
                 owner_user_id=owner_user_id,
-                device_id=device_id,
                 actor_type="owner",
                 actor_id=owner_user_id,
-                task_id=task_id,
-                metadata={"reason_code": "owner_cancelled_before_claim"},
+                action=row["action"],
+                required_scope=row["required_scope"],
+                reason_code="owner_cancelled_before_claim",
             )
-            return "cancelled"
+            updated = connection.execute(
+                "SELECT * FROM personal_device_tasks WHERE task_id=?",
+                (task_id,),
+            ).fetchone()
+        return self._serialize(updated)
 
-    def list_owner_tasks(self, *, owner_user_id: str, device_id: str) -> list[dict[str, object]]:
-        with self._connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            self._reconcile(
-                connection,
-                device_id=device_id,
-                now_text=self._now().isoformat(),
+    def revoke_device_tasks(
+        self, connection: sqlite3.Connection, *, device_id: str, now_text: str
+    ) -> None:
+        """Cancel queued work and fence claimed work when the owner revokes a device."""
+        rows = connection.execute(
+            """SELECT task_id,owner_user_id,action,required_scope,status
+               FROM personal_device_tasks
+               WHERE device_id=? AND status IN ('queued','claimed')""",
+            (device_id,),
+        ).fetchall()
+        for row in rows:
+            next_status = "cancelled" if row["status"] == "queued" else "unknown_outcome"
+            reason_code = (
+                "device_revoked_before_claim"
+                if next_status == "cancelled"
+                else "device_revoked_after_claim"
             )
-            rows = connection.execute(
-                """SELECT * FROM personal_device_tasks
-                   WHERE owner_user_id=? AND device_id=?
-                   ORDER BY created_at DESC,task_id DESC LIMIT 100""",
-                (owner_user_id, device_id),
-            ).fetchall()
-        return [self._serialize(row) for row in rows]
+            connection.execute(
+                """UPDATE personal_device_tasks
+                   SET status=?,lease_token_hash=NULL,lease_expires_at=NULL,
+                       updated_at=?,completed_at=?
+                   WHERE task_id=? AND status IN ('queued','claimed')""",
+                (next_status, now_text, now_text, row["task_id"]),
+            )
+            self._audit(
+                connection,
+                event_type=(
+                    "device.task_cancelled"
+                    if next_status == "cancelled"
+                    else "device.task_unknown_outcome"
+                ),
+                outcome=next_status,
+                task_id=row["task_id"],
+                owner_user_id=row["owner_user_id"],
+                actor_type="owner",
+                actor_id=row["owner_user_id"],
+                action=row["action"],
+                required_scope=row["required_scope"],
+                reason_code=reason_code,
+            )
+

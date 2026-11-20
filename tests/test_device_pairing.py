@@ -151,3 +151,17 @@ def test_expired_pairing_challenge_can_be_reissued_for_same_unpaired_device(tmp_
     assert replacement.status_code == 201
     assert replacement.json()["device_id"] == payload["device_id"]
     get_settings.cache_clear()
+
+def test_pairing_requires_heartbeat_scope(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    challenge = client.post("/devices/pairing-challenges", json={
+        "device_id": str(uuid4()),
+        "platform": "windows",
+        "label": "PC",
+        "advertised_capabilities": ["app.launch"],
+        "scopes": ["app.launch"],
+    })
+    assert challenge.status_code == 422
+    assert "device.heartbeat" in challenge.json()["detail"]
+    get_settings.cache_clear()
+

@@ -542,3 +542,44 @@ def test_orchestrator_reports_cancellation_when_provider_fails_after_stop():
     assert result["tool_calls"] == 0
     assert result["tools_executed"] is False
     assert len(provider.requests) == 1
+
+def test_default_registry_exposes_bounded_read_only_specialists():
+    tools = build_tool_registry()
+    registry = build_default_agent_registry(tools)
+    for name in ("security_reviewer", "quality_evaluator", "workflow_planner"):
+        profile = registry.get(name)
+        assert profile.max_turns == 3
+        assert profile.allowed_tools == frozenset()
+        assert registry.scoped_tools(name, tools).catalog() == []
+
+
+def test_orchestrator_can_delegate_result_review_to_quality_evaluator():
+    orchestrator, provider = make_orchestrator(
+        [
+            json.dumps({
+                "type": "delegate",
+                "agent": "quality_evaluator",
+                "goal": "Evaluate the supplied result against the acceptance criteria.",
+            }),
+            json.dumps({
+                "type": "final",
+                "answer": "One criterion is not evidenced; do not mark the task complete.",
+            }),
+            json.dumps({
+                "type": "final",
+                "answer": "The result is partial because one acceptance criterion is unverified.",
+            }),
+        ],
+        with_agents=True,
+    )
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Evaluate the result.",
+            retrieved_context='{"acceptance":"all tests pass","evidence":"backend tests only"}',
+        )
+    )
+    assert result["status"] == "completed"
+    assert result["trace"][0]["agent"] == "quality_evaluator"
+    assert result["trace"][0]["observation_is_untrusted_data"] is True
+    assert "Classify each criterion as passed, failed, not run, or unknown" in provider.requests[1].input_text
+

@@ -90,6 +90,14 @@ def test_application_database_backup_restores_owner_login(tmp_path, monkeypatch)
     assert manifest["sqlite_integrity"] == "ok"
     result = restore_database(backup, restored)
     assert result["restored"] is True
+    with sqlite3.connect(restored) as restored_db:
+        tables = {
+            row[0]
+            for row in restored_db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+    assert "personal_device_tasks" in tables
 
     monkeypatch.setenv("MRH_DATABASE_PATH", str(restored))
     get_settings.cache_clear()

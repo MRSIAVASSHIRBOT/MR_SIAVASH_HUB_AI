@@ -54,22 +54,28 @@ A future device task must include a task ID, device ID, action name, schema-vali
 
 ## Standalone Windows MVP
 
-The separate [MR_SIAVASH_EL_AGENT repository](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) contains the first local Windows companion MVP. It provides a loopback-only API, local bearer-token authentication, explicit screenshot capture, a fixed application-launch allowlist, and SQLite-backed scheduled app launches. It deliberately does not yet pair with Hub, share Hub memory, or accept remote commands.
+The separate [MR_SIAVASH_EL_AGENT repository](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) contains the local Windows companion MVP. It provides a loopback-only API, local bearer-token authentication, explicit screenshot capture, a fixed application-launch allowlist, SQLite-backed scheduled app launches, and owner-initiated Hub pairing with the `device.heartbeat` scope. It sends minimal outbound heartbeat metadata only; it does not yet accept Hub-issued remote tasks or share Hub memory.
 
 Use the companion's own README for installation and operation. Its local API token is not a Hub credential and must never be forwarded through the public website or a network tunnel.
 
 ## Hub integration sequence
 
-1. Owner-created single-use pairing, the owner-scoped device registry, hashed short-lived credentials, scoped access, listing, revocation, authenticated heartbeat, and pairing/revocation audit events are implemented in Hub `main`.
-2. Persisted heartbeat diagnostics are proposed in [PR #456](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/456); they remain non-authoritative and do not indicate task success.
-3. Implement Hub-issued bounded task dispatch, acknowledgement, cancellation, expiry, idempotency, and verified outcomes.
-4. Integrate the Windows companion with Hub pairing only after its enrollment client, credential-vault storage, renewal, and revocation behavior are implemented and tested. Its standalone local token is not interchangeable with a Hub credential.
-5. Shared Hub memory, Android companion, and browser extension remain separate future milestones.
+1. Owner-created single-use pairing, owner-scoped device registry, hashed short-lived credentials, scoped access, listing, revocation, and authenticated heartbeat are merged into Hub `main`.
+2. Migration 50 persists bounded heartbeat runtime diagnostics. PR #456 merged as [`ba0cc727`](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/commit/ba0cc7278cc94badfaeb0ef566023cd80112f6fb). Heartbeat metadata is device-reported diagnostics, not proof of task execution.
+3. Migration 51 and the current task-dispatch PR add scheduled, owner-scoped, idempotent tasks; one-at-a-time device claims; short-lived hashed leases; bounded action schemas; explicit screenshot confirmation; audit events; queue limits; cancellation before claim; expiry and revocation fencing.
+4. The initial remote action set is only `app.launch` for a fixed application allowlist and explicitly confirmed `screen.capture`. Arbitrary shell, file paths, URLs, keystrokes, and model-authored executable payloads are not accepted.
+5. Device outcomes are recorded as `reported_succeeded` or `reported_failed` with `outcome_verified=false`. An expired claim or revoked device becomes `unknown_outcome` and is never automatically replayed.
+6. Integrate the Windows companion only after its Hub enrollment client, secure credential-vault storage, renewal, task polling/claim, outcome reporting, and revocation behavior are implemented and tested. Its standalone local token is not interchangeable with a Hub credential.
+7. Shared Hub memory, Android companion, and browser extension remain separate milestones.
 
 ## Current status
 
 - Architecture decision and typed contracts: merged into Hub main.
 - Hub pairing registry, single-use challenge exchange, hashed access/refresh credentials, scoped heartbeat authentication, owner listing/revocation, and audit events: merged into Hub main.
-- Bounded heartbeat runtime metadata persistence: proposed in PR #456; exact-head CI is required before merge.
-- Standalone Windows MVP: implemented in the separate repository; hosted CI passed on `98e77d4b9ef0684e60281297891c5d22ddb60749` ([run 44726855003](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44726855003)); live Windows install/upgrade/backup/restore/rollback acceptance remains pending.
-- Hub task dispatch, shared memory, Android companion, and browser extension: not yet implemented.
+- Migration 50 heartbeat runtime metadata: merged as `ba0cc727`; exact PR-head checks passed and post-merge Backend CI passed.
+- Bounded device task dispatch: proposed in Draft PR #460 at head `24428ebc8890c71bf384eceb9db83a525117d5cd`. Exact-head hosted CI passed: Python 3.11/3.12 and Backend CI each reported 1,349 passed / 2 skipped; Windows backup/device regression reported 58 passed with one non-fatal Starlette/httpx TestClient deprecation warning; Windows wheel, launcher, FFmpeg, workflow-security, and defensive-scan checks passed. The PR remains unmerged pending scope review and the separate companion task consumer.
+- The dispatch API is not yet exposed through AgentOrchestrator tools. Do not let model output self-approve screenshot capture or directly authorize device actions; an approval-aware adapter and EL_AGENT client are separate gates.
+- Standalone Windows MVP: current companion `main` `8c17bbcdadad5c380dcc64df25c355bc46a3f206` passed its Windows/Linux Python 3.11/3.12 CI matrix. It supports Hub pairing and heartbeat only; live Windows install/upgrade/backup/restore/rollback acceptance and remote task polling/outcome reporting remain pending.
+- Hub staging Worker: no `mr-siavash-hub-gateway-staging` Worker is deployed. The isolated source config is not a deployment. Deployment needs a dedicated least-privilege provider token and a separate Hub-to-gateway bearer secret in the Hub server-side secret store; never reuse the ChatGPT Cloudflare connector credential.
+- Shared Hub memory is owner-scoped and supports export/deletion, FTS5 retrieval, provenance and freshness metadata. Dreaming remains a read-only duplicate-review proposal process; it does not silently rewrite or delete memory.
+- Android companion and browser extension: not yet implemented.

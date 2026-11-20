@@ -9,6 +9,7 @@ on:
     paths:
       - "scripts/**"
       - "backend/**"
+      - "tests/**"
       - "pyproject.toml"
       - ".env.example"
       - ".github/workflows/windows-launcher-validation.yml"
@@ -21,7 +22,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate PowerShell launcher syntax
@@ -78,6 +79,31 @@ jobs:
               & .\scripts\stop-local.ps1
             }
           }
+
+
+
+  windows-backup-and-device-regression:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # v4
+        with:
+          persist-credentials: false
+      - name: Install project and test runner into a clean Python 3.11 environment
+        shell: pwsh
+        run: |
+          py -3.11 -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw "Virtual environment creation failed." }
+          & .\.venv\Scripts\python.exe -m pip install --disable-pip-version-check -e . pytest
+          if ($LASTEXITCODE -ne 0) { throw "Project and pytest installation failed." }
+      - name: Verify migrations, device authorization, task dispatch, and database backup/restore
+        shell: pwsh
+        env:
+          MRH_DATABASE_PATH: ${{ runner.temp }}\mrhub-device-regression.sqlite3
+        run: |
+          & .\.venv\Scripts\python.exe -m pytest tests/test_migrations.py tests/test_device_pairing.py tests/test_device_tasks.py tests/test_backup_restore.py
+          if ($LASTEXITCODE -ne 0) { throw "Windows database and device regression tests failed." }
 
   failed-startup-cleanup:
     runs-on: windows-latest

@@ -1351,6 +1351,77 @@ MIGRATIONS = (
             "ALTER TABLE personal_devices ADD COLUMN last_task_id TEXT",
         ),
     ),
+    Migration.build(
+        51,
+        "bounded_personal_device_task_dispatch",
+        (
+            """CREATE TABLE IF NOT EXISTS personal_device_tasks (
+                task_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                device_id TEXT NOT NULL REFERENCES personal_devices(device_id) ON DELETE CASCADE,
+                action TEXT NOT NULL CHECK (action IN ('app.launch','screen.capture')),
+                parameters_json TEXT NOT NULL,
+                required_scope TEXT NOT NULL CHECK (required_scope IN ('app.launch','screen.capture')),
+                status TEXT NOT NULL CHECK (status IN (
+                    'queued','claimed','reported_succeeded','reported_failed',
+                    'cancelled','expired','unknown_outcome'
+                )),
+                request_digest TEXT NOT NULL CHECK (length(request_digest)=64 AND request_digest NOT GLOB '*[^0-9a-f]*'),
+                idempotency_key_hash TEXT NOT NULL CHECK (length(idempotency_key_hash)=64 AND idempotency_key_hash NOT GLOB '*[^0-9a-f]*'),
+                timeout_seconds INTEGER NOT NULL CHECK (timeout_seconds BETWEEN 5 AND 60),
+                scheduled_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                lease_token_hash TEXT CHECK (lease_token_hash IS NULL OR (length(lease_token_hash)=64 AND lease_token_hash NOT GLOB '*[^0-9a-f]*')),
+                lease_expires_at TEXT,
+                error_code TEXT CHECK (error_code IS NULL OR error_code IN (
+                    'app_not_available','permission_denied','timeout','execution_failed'
+                )),
+                duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms BETWEEN 0 AND 60000),
+                owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK (owner_confirmed IN (0,1)),
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 1),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                claimed_at TEXT,
+                completed_at TEXT,
+                UNIQUE(owner_user_id,idempotency_key_hash),
+                CHECK (expires_at > scheduled_at),
+                CHECK (
+                    (action='app.launch' AND required_scope='app.launch'
+                     AND json_valid(parameters_json)
+                     AND json_type(parameters_json)='object'
+                     AND json_remove(parameters_json,'$.app')='{}'
+                     AND json_type(parameters_json,'$.app')='text'
+                     AND json_extract(parameters_json,'$.app') IN
+                         ('notepad','calculator','explorer','browser','chatgpt'))
+                    OR
+                    (action='screen.capture' AND required_scope='screen.capture'
+                     AND parameters_json='{}' AND owner_confirmed=1)
+                ),
+                CHECK (
+                    (status='queued' AND attempt_count=0)
+                    OR (status='claimed' AND attempt_count=1)
+                    OR (status NOT IN ('queued','claimed'))
+                ),
+                CHECK (
+                    (status='claimed' AND lease_token_hash IS NOT NULL AND lease_expires_at IS NOT NULL)
+                    OR
+                    (status<>'claimed' AND lease_token_hash IS NULL AND lease_expires_at IS NULL)
+                ),
+                CHECK (
+                    (status='reported_succeeded' AND error_code IS NULL AND duration_ms IS NOT NULL)
+                    OR (status='reported_failed' AND error_code IS NOT NULL AND duration_ms IS NOT NULL)
+                    OR (status NOT IN ('reported_succeeded','reported_failed')
+                        AND error_code IS NULL AND duration_ms IS NULL)
+                ),
+                CHECK (
+                    (status IN ('queued','claimed') AND completed_at IS NULL)
+                    OR (status NOT IN ('queued','claimed') AND completed_at IS NOT NULL)
+                )
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_device_tasks_device_status_created ON personal_device_tasks(device_id,status,scheduled_at,created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_device_tasks_owner_created ON personal_device_tasks(owner_user_id,created_at)",
+        ),
+    ),
 )
 
 

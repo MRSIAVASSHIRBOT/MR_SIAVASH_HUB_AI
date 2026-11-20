@@ -1,10 +1,15 @@
-from datetime import UTC, datetime, timedelta
+from __future__ import annotations
+
+import hashlib
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
+from mrhub.devices.tasks import DeviceTaskNotFound, DeviceTaskRepository
 from mrhub.main import create_app
 
 
@@ -21,188 +26,445 @@ def _owner_client(tmp_path, monkeypatch):
     return client, database_path
 
 
-def _paired_device(client, scopes=None):
-    payload = {
-        "device_id": str(uuid4()),
+def _paired_device(client, *, scopes=None):
+    device_id = str(uuid4())
+    requested_scopes = scopes or [
+        "device.heartbeat",
+        "app.launch",
+        "screen.capture",
+    ]
+    challenge = client.post("/devices/pairing-challenges", json={
+        "device_id": device_id,
         "platform": "windows",
-        "label": "Windows task dispatch test",
-        "advertised_capabilities": ["device.heartbeat", "app.launch"],
-        "scopes": scopes or ["device.heartbeat", "app.launch"],
-    }
-    challenge = client.post("/devices/pairing-challenges", json=payload)
+        "label": "Windows companion",
+        "advertised_capabilities": ["device.heartbeat", "app.launch", "screen.capture"],
+        "scopes": requested_scopes,
+    })
     assert challenge.status_code == 201
-    exchange = client.post("/devices/pair", json={
+    exchanged = client.post("/devices/pair", json={
         "pairing_code": challenge.json()["pairing_code"],
-        "device_id": payload["device_id"],
-        "agent_version": "0.2.0",
+        "device_id": device_id,
+        "agent_version": "0.1.0",
         "os_version": "Windows 11",
     })
-    assert exchange.status_code == 200
-    return payload["device_id"], exchange.json()
-
-
-def _device_headers(device_id, tokens):
-    return {
+    assert exchanged.status_code == 200
+    tokens = exchanged.json()
+    headers = {
         "Authorization": f"Bearer {tokens['access_token']}",
         "X-Device-ID": device_id,
     }
+    return device_id, headers
 
 
-def _create_task(client, device_id, *, app_alias="chatgpt", key=None, scheduled_at=None, expires=300):
-    return client.post(f"/devices/{device_id}/tasks", json={
-        "action": "launch_app",
-        "app_alias": app_alias,
-        "idempotency_key": key or str(uuid4()),
-        "scheduled_at": scheduled_at or datetime.now(UTC).isoformat(),
-        "expires_in_seconds": expires,
-    })
+def _submit(client, device_id, *, action="app.launch", app="notepad", key=None, **extra):
+    payload = {"action": action, **extra}
+    if app is not None:
+        payload["app"] = app
+    headers = {"Idempotency-Key": key or f"device-task-{uuid4()}"}
+    return client.post(f"/devices/{device_id}/tasks", headers=headers, json=payload)
 
 
-def test_owner_task_create_is_scoped_and_idempotent(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
-    device_id, _tokens = _paired_device(client)
-    key = str(uuid4())
-    run_at = datetime.now(UTC).isoformat()
-    first = _create_task(client, device_id, key=key, scheduled_at=run_at)
-    second = _create_task(client, device_id, key=key, scheduled_at=run_at)
-    assert first.status_code == 201
-    assert second.status_code == 201
-    assert first.json()["task"]["task_id"] == second.json()["task"]["task_id"]
-    conflict = _create_task(client, device_id, app_alias="notepad", key=key, scheduled_at=run_at)
-    assert conflict.status_code == 409
-    assert client.get(f"/devices/{device_id}/tasks").json()["count"] == 1
-    get_settings.cache_clear()
-
-
-def test_owner_cannot_dispatch_to_device_without_app_launch_scope(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
-    device_id, _tokens = _paired_device(client, scopes=["device.heartbeat"])
-    response = _create_task(client, device_id)
-    assert response.status_code == 403
-    get_settings.cache_clear()
-
-
-def test_device_claims_only_due_task_and_reports_verified_outcome(tmp_path, monkeypatch):
+def test_owner_can_submit_scheduled_task_and_device_claims_it_once(tmp_path, monkeypatch):
     client, database_path = _owner_client(tmp_path, monkeypatch)
-    device_id, tokens = _paired_device(client)
+    device_id, device_headers = _paired_device(client)
     future = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
-    created = _create_task(client, device_id, scheduled_at=future)
-    assert created.status_code == 201
-    headers = _device_headers(device_id, tokens)
-    not_due = client.post("/devices/tasks/claim", headers=headers)
+    submitted = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="launch-notepad-0001",
+        scheduled_at=future,
+    )
+    assert submitted.status_code == 201
+    task = submitted.json()["task"]
+    assert task["status"] == "queued"
+    assert task["required_scope"] == "app.launch"
+    assert task["scheduled_at"] == future
+
+    not_due = client.post("/devices/tasks/claim", headers=device_headers)
     assert not_due.status_code == 200
     assert not_due.json()["task"] is None
 
     with sqlite3.connect(database_path) as db:
         db.execute(
-            "UPDATE personal_device_tasks SET available_at=? WHERE task_id=?",
-            ("2000-01-01T00:00:00+00:00", created.json()["task"]["task_id"]),
+            "UPDATE personal_device_tasks SET scheduled_at=? WHERE task_id=?",
+            ("2000-01-01T00:00:00+00:00", task["task_id"]),
         )
-    claimed = client.post("/devices/tasks/claim", headers=headers)
-    task = claimed.json()["task"]
-    assert task["status"] == "claimed"
-    assert task["app_alias"] == "chatgpt"
-    assert task["attempt_count"] == 1
-
-    completed = client.post(f"/devices/tasks/{task['task_id']}/complete", headers=headers, json={
-        "outcome": "succeeded", "result_code": "launched",
-    })
-    assert completed.status_code == 200
-    assert completed.json()["task"]["status"] == "succeeded"
-    assert client.post(f"/devices/tasks/{task['task_id']}/complete", headers=headers, json={
-        "outcome": "succeeded", "result_code": "launched",
-    }).status_code == 409
-
-    listed = client.get(f"/devices/{device_id}/tasks").json()["tasks"]
-    assert listed[0]["result_code"] == "launched"
-    with sqlite3.connect(database_path) as db:
-        events = {row[0] for row in db.execute(
-            "SELECT event_type FROM audit_events WHERE subject_id=?",
-            (task["task_id"],),
-        )}
-    assert {"device.task_created", "device.task_claimed", "device.task_completed"}.issubset(events)
+    claimed = client.post("/devices/tasks/claim", headers=device_headers)
+    envelope = claimed.json()
+    assert envelope["task"]["task_id"] == task["task_id"]
+    assert envelope["task"]["attempt_count"] == 1
+    assert len(envelope["lease_token"]) >= 40
+    assert client.post("/devices/tasks/claim", headers=device_headers).json()["task"] is None
     get_settings.cache_clear()
 
 
-def test_claimed_task_is_not_replayed_after_lease_expiry(tmp_path, monkeypatch):
+def test_idempotency_is_owner_scoped_hashed_and_rejects_payload_reuse(tmp_path, monkeypatch):
     client, database_path = _owner_client(tmp_path, monkeypatch)
-    device_id, tokens = _paired_device(client)
-    created = _create_task(client, device_id)
-    headers = _device_headers(device_id, tokens)
-    claimed = client.post("/devices/tasks/claim", headers=headers).json()["task"]
+    device_id, _ = _paired_device(client)
+    key = "launch-idempotent-0001"
+    scheduled_at = datetime.now(UTC).isoformat()
+    first = _submit(client, device_id, app="calculator", key=key, scheduled_at=scheduled_at)
+    replay = _submit(client, device_id, app="calculator", key=key, scheduled_at=scheduled_at)
+    conflict = _submit(client, device_id, app="notepad", key=key, scheduled_at=scheduled_at)
+    other_device, _ = _paired_device(client)
+    cross_device_reuse = _submit(
+        client,
+        other_device,
+        app="calculator",
+        key=key,
+        scheduled_at=scheduled_at,
+    )
+    assert first.status_code == 201
+    assert replay.status_code == 200
+    assert replay.json()["task"]["task_id"] == first.json()["task"]["task_id"]
+    assert conflict.status_code == 409
+    assert cross_device_reuse.status_code == 409
+
+    with sqlite3.connect(database_path) as db:
+        stored = db.execute(
+            "SELECT idempotency_key_hash FROM personal_device_tasks WHERE task_id=?",
+            (first.json()["task"]["task_id"],),
+        ).fetchone()[0]
+        columns = {row[1] for row in db.execute("PRAGMA table_info(personal_device_tasks)")}
+    assert len(stored) == 64
+    assert key not in stored
+    assert "idempotency_key" not in columns
+    get_settings.cache_clear()
+
+
+def test_idempotency_replays_default_and_elapsed_schedule_requests(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    fixed_now = datetime(2026, 11, 20, 12, 30, tzinfo=UTC)
+    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: fixed_now))
+
+    default_first = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="idempotency-default-time-001",
+    )
+    explicit_first = _submit(
+        client,
+        device_id,
+        app="calculator",
+        key="idempotency-explicit-time-001",
+        scheduled_at=fixed_now.isoformat(),
+    )
+    assert default_first.status_code == 201
+    assert explicit_first.status_code == 201
+
+    later_now = fixed_now + timedelta(minutes=2)
+    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: later_now))
+    default_replay = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="idempotency-default-time-001",
+    )
+    explicit_replay = _submit(
+        client,
+        device_id,
+        app="calculator",
+        key="idempotency-explicit-time-001",
+        scheduled_at=fixed_now.isoformat(),
+    )
+
+    assert default_replay.status_code == 200
+    assert explicit_replay.status_code == 200
+    assert default_replay.json()["task"]["task_id"] == default_first.json()["task"]["task_id"]
+    assert explicit_replay.json()["task"]["task_id"] == explicit_first.json()["task"]["task_id"]
+    get_settings.cache_clear()
+
+
+def test_device_scope_and_owner_boundaries_are_enforced(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, device_headers = _paired_device(client, scopes=["device.heartbeat"])
+    denied = _submit(client, device_id, app="notepad", key="no-action-scope-001")
+    assert denied.status_code == 403
+    assert client.post("/devices/tasks/claim", headers=device_headers).json()["task"] is None
+
+    repository = DeviceTaskRepository(database_path)
+    with pytest.raises(DeviceTaskNotFound):
+        repository.create(
+            owner_user_id="another-owner",
+            device_id=device_id,
+            action="app.launch",
+            app="notepad",
+            required_scope="app.launch",
+            idempotency_key="another-owner-key-001",
+            owner_confirmed=False,
+            scheduled_at=datetime.now(UTC),
+            expires_in_seconds=300,
+            timeout_seconds=30,
+        )
+    get_settings.cache_clear()
+
+
+def test_arbitrary_actions_and_unbounded_parameters_are_rejected(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    invalid_action = _submit(
+        client,
+        device_id,
+        action="shell.execute",
+        app=None,
+        key="shell-execute-0001",
+        command="whoami",
+    )
+    invalid_app = _submit(
+        client,
+        device_id,
+        app="powershell",
+        key="unapproved-app-0001",
+    )
+    extra = _submit(
+        client,
+        device_id,
+        action="screen.capture",
+        app=None,
+        key="extra-field-000001",
+        screenshot_destination="https://example.invalid",
+        confirm_sensitive_action=True,
+    )
+    assert invalid_action.status_code == 422
+    assert invalid_app.status_code == 422
+    assert extra.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_screen_capture_requires_explicit_confirmation_and_scope(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    unconfirmed = _submit(
+        client,
+        device_id,
+        action="screen.capture",
+        app=None,
+        key="screen-capture-00001",
+    )
+    confirmed = _submit(
+        client,
+        device_id,
+        action="screen.capture",
+        app=None,
+        key="screen-capture-00002",
+        confirm_sensitive_action=True,
+    )
+    assert unconfirmed.status_code == 422
+    assert confirmed.status_code == 201
+    assert confirmed.json()["task"]["required_scope"] == "screen.capture"
+    assert confirmed.json()["task"]["owner_confirmed"] is True
+    delayed = _submit(
+        client,
+        device_id,
+        action="screen.capture",
+        app=None,
+        key="screen-capture-delayed-001",
+        confirm_sensitive_action=True,
+        scheduled_at=(datetime.now(UTC) + timedelta(minutes=6)).isoformat(),
+    )
+    assert delayed.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_outcome_requires_the_claim_lease_and_remains_unverified(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, device_headers = _paired_device(client)
+    submitted = _submit(client, device_id, app="calculator", key="launch-result-000001")
+    task_id = submitted.json()["task"]["task_id"]
+    claimed = client.post("/devices/tasks/claim", headers=device_headers).json()
+    with sqlite3.connect(database_path) as db:
+        stored_lease_hash = db.execute(
+            "SELECT lease_token_hash FROM personal_device_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()[0]
+    assert stored_lease_hash == hashlib.sha256(claimed["lease_token"].encode()).hexdigest()
+    assert claimed["lease_token"] not in stored_lease_hash
+
+    rejected = client.post(
+        f"/devices/tasks/{task_id}/complete",
+        headers=device_headers,
+        json={
+            "lease_token": "incorrect-lease-token-value-000000000000",
+            "outcome": "succeeded",
+        },
+    )
+    accepted = client.post(
+        f"/devices/tasks/{task_id}/complete",
+        headers=device_headers,
+        json={
+            "lease_token": claimed["lease_token"],
+            "outcome": "succeeded",
+            "duration_ms": 250,
+        },
+    )
+    duplicate = client.post(
+        f"/devices/tasks/{task_id}/complete",
+        headers=device_headers,
+        json={
+            "lease_token": claimed["lease_token"],
+            "outcome": "succeeded",
+            "duration_ms": 250,
+        },
+    )
+    owner_view = client.get(f"/devices/{device_id}/tasks/{task_id}")
+    assert rejected.status_code == 409
+    assert accepted.status_code == 200
+    assert accepted.json()["task"]["status"] == "reported_succeeded"
+    assert accepted.json()["task"]["outcome_verified"] is False
+    assert duplicate.status_code == 409
+    assert owner_view.json()["task"]["status"] == "reported_succeeded"
+    with sqlite3.connect(database_path) as db:
+        audit_rows = db.execute(
+            "SELECT event_type,metadata_json FROM audit_events WHERE subject_id=?",
+            (task_id,),
+        ).fetchall()
+    event_types = {row[0] for row in audit_rows}
+    audit_metadata = " ".join(row[1] for row in audit_rows)
+    assert {
+        "device.task_submitted",
+        "device.task_claimed",
+        "device.task_outcome_reported",
+    }.issubset(event_types)
+    assert claimed["lease_token"] not in audit_metadata
+    assert "launch-result-000001" not in audit_metadata
+    get_settings.cache_clear()
+
+
+def test_expired_claim_becomes_unknown_outcome_and_is_never_replayed(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, device_headers = _paired_device(client)
+    submitted = _submit(client, device_id, app="notepad", key="launch-expiry-000001")
+    task_id = submitted.json()["task"]["task_id"]
+    claimed = client.post("/devices/tasks/claim", headers=device_headers).json()
     with sqlite3.connect(database_path) as db:
         db.execute(
             "UPDATE personal_device_tasks SET lease_expires_at=? WHERE task_id=?",
-            ("2000-01-01T00:00:00+00:00", claimed["task_id"]),
+            ("2000-01-01T00:00:00+00:00", task_id),
         )
-    completed = client.post(f"/devices/tasks/{claimed['task_id']}/complete", headers=headers, json={
-        "outcome": "succeeded", "result_code": "launched",
-    })
-    assert completed.status_code == 200
-    assert completed.json()["task"]["status"] == "delivery_unknown"
-    assert client.post("/devices/tasks/claim", headers=headers).json()["task"] is None
+    late = client.post(
+        f"/devices/tasks/{task_id}/complete",
+        headers=device_headers,
+        json={"lease_token": claimed["lease_token"], "outcome": "succeeded"},
+    )
+    owner_view = client.get(f"/devices/{device_id}/tasks/{task_id}")
+    assert late.status_code == 409
+    assert owner_view.json()["task"]["status"] == "unknown_outcome"
+    with sqlite3.connect(database_path) as db:
+        completed_at = db.execute(
+            "SELECT completed_at FROM personal_device_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()[0]
+    assert completed_at is not None
+    assert client.post("/devices/tasks/claim", headers=device_headers).json()["task"] is None
     get_settings.cache_clear()
 
 
 def test_owner_can_cancel_queued_task_but_not_claimed_task(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
-    device_id, tokens = _paired_device(client)
-    queued = _create_task(client, device_id).json()["task"]
-    cancelled = client.delete(f"/devices/{device_id}/tasks/{queued['task_id']}")
+    device_id, device_headers = _paired_device(client)
+    queued = _submit(client, device_id, app="notepad", key="launch-cancel-queued-001")
+    cancelled = client.delete(f"/devices/{device_id}/tasks/{queued.json()['task']['task_id']}")
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
 
-    claimed_task = _create_task(client, device_id).json()["task"]
-    headers = _device_headers(device_id, tokens)
-    claimed = client.post("/devices/tasks/claim", headers=headers).json()["task"]
-    assert claimed["task_id"] == claimed_task["task_id"]
-    denied = client.delete(f"/devices/{device_id}/tasks/{claimed['task_id']}")
-    assert denied.status_code == 409
-    assert "only queued tasks" in denied.json()["detail"]
+    active = _submit(client, device_id, app="calculator", key="launch-cancel-active-001")
+    claimed = client.post("/devices/tasks/claim", headers=device_headers).json()
+    assert claimed["task"]["task_id"] == active.json()["task"]["task_id"]
+    refused = client.delete(f"/devices/{device_id}/tasks/{claimed['task']['task_id']}")
+    assert refused.status_code == 409
     get_settings.cache_clear()
 
 
-def test_device_scope_is_required_for_claim_and_completion(tmp_path, monkeypatch):
+def test_device_revocation_cancels_queued_and_fences_claimed_tasks(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
-    device_id, tokens = _paired_device(client, scopes=["device.heartbeat"])
-    headers = _device_headers(device_id, tokens)
-    assert client.post("/devices/tasks/claim", headers=headers).status_code == 403
-    get_settings.cache_clear()
-
-
-def test_revocation_cancels_queued_tasks_and_marks_claimed_unknown(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
-    device_id, tokens = _paired_device(client)
-    queued = _create_task(client, device_id).json()["task"]
-    claimed_task = _create_task(client, device_id, app_alias="notepad").json()["task"]
-    headers = _device_headers(device_id, tokens)
-    claimed = client.post("/devices/tasks/claim", headers=headers).json()["task"]
-    assert claimed["task_id"] == queued["task_id"]
+    device_id, device_headers = _paired_device(client)
+    claimed_task = _submit(client, device_id, app="notepad", key="revoke-claimed-task-001")
+    queued_task = _submit(client, device_id, app="calculator", key="revoke-queued-task-001")
+    claim = client.post("/devices/tasks/claim", headers=device_headers).json()
+    assert claim["task"]["task_id"] == claimed_task.json()["task"]["task_id"]
 
     revoked = client.delete(f"/devices/{device_id}")
     assert revoked.status_code == 200
-    tasks = {item["task_id"]: item for item in client.get(f"/devices/{device_id}/tasks").json()["tasks"]}
-    assert tasks[queued["task_id"]]["status"] == "delivery_unknown"
-    assert tasks[claimed_task["task_id"]]["status"] == "cancelled"
+    tasks = client.get(f"/devices/{device_id}/tasks").json()["tasks"]
+    statuses = {task["task_id"]: task["status"] for task in tasks}
+    assert statuses[claimed_task.json()["task"]["task_id"]] == "unknown_outcome"
+    assert statuses[queued_task.json()["task"]["task_id"]] == "cancelled"
+    assert client.post("/devices/tasks/claim", headers=device_headers).status_code == 401
     get_settings.cache_clear()
 
 
-def test_queued_task_expiry_is_reconciled_and_audited(tmp_path, monkeypatch):
-    client, database_path = _owner_client(tmp_path, monkeypatch)
-    device_id, _tokens = _paired_device(client)
-    created = _create_task(client, device_id).json()["task"]
-    with sqlite3.connect(database_path) as db:
-        db.execute(
-            "UPDATE personal_device_tasks SET expires_at=? WHERE task_id=?",
-            ("2000-01-01T00:00:00+00:00", created["task_id"]),
+def test_device_queue_is_bounded_per_device(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    scheduled_at = (datetime.now(UTC) + timedelta(minutes=2)).isoformat()
+    for index in range(100):
+        response = _submit(
+            client,
+            device_id,
+            app="notepad",
+            key=f"queue-limit-{index:04d}",
+            scheduled_at=scheduled_at,
         )
-    listed = client.get(f"/devices/{device_id}/tasks").json()["tasks"]
-    assert listed[0]["status"] == "expired"
-    assert listed[0]["result_code"] == "expired"
-    with sqlite3.connect(database_path) as db:
-        event = db.execute(
-            "SELECT event_type FROM audit_events WHERE subject_id=? AND event_type='device.task_expired'",
-            (created["task_id"],),
-        ).fetchone()
-    assert event is not None
+        assert response.status_code == 201
+    full = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="queue-limit-overflow",
+        scheduled_at=scheduled_at,
+    )
+    assert full.status_code == 409
     get_settings.cache_clear()
+
+def test_schedule_requires_timezone_and_has_a_bounded_horizon(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    naive = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="schedule-naive-00001",
+        scheduled_at="2026-11-20T12:00:00",
+    )
+    too_far = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="schedule-too-far-0001",
+        scheduled_at=(datetime.now(UTC) + timedelta(days=31)).isoformat(),
+    )
+    too_long = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="schedule-too-long-001",
+        expires_in_seconds=86_401,
+    )
+    assert naive.status_code == 422
+    assert too_far.status_code == 422
+    assert too_long.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_tasks_are_isolated_between_two_paired_devices(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    first_device, first_headers = _paired_device(client)
+    _second_device, second_headers = _paired_device(client)
+    submitted = _submit(
+        client,
+        first_device,
+        app="notepad",
+        key="device-isolation-task-001",
+    )
+    assert submitted.status_code == 201
+
+    wrong_device_claim = client.post("/devices/tasks/claim", headers=second_headers)
+    right_device_claim = client.post("/devices/tasks/claim", headers=first_headers)
+    assert wrong_device_claim.status_code == 200
+    assert wrong_device_claim.json()["task"] is None
+    assert right_device_claim.json()["task"]["task_id"] == submitted.json()["task"]["task_id"]
+    get_settings.cache_clear()
+
