@@ -30,6 +30,10 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         row["name"] for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
     }
     assert "cancellation_requested_at" in generation_columns
+    device_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(personal_devices)")
+    }
+    assert {"runtime_state", "app_uptime_seconds", "last_task_id"} <= device_columns
     assert {
         "attempt_count", "recovered_at", "next_attempt_at",
         "lease_owner", "lease_expires_at", "heartbeat_at", "execution_token",
@@ -45,7 +49,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
-        "resource_reply_configs", "research_sources", "video_scene_jobs",
+        "resource_reply_configs", "research_sources", "video_scene_jobs", "personal_devices",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -750,7 +754,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
