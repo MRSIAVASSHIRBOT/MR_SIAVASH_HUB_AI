@@ -130,3 +130,16 @@ def test_device_pairing_rejects_unknown_scopes_and_unexpected_fields(tmp_path, m
     })
     assert bad_field.status_code == 422
     get_settings.cache_clear()
+
+def test_expired_pairing_challenge_can_be_reissued_for_same_unpaired_device(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload, _challenge = _create_challenge(client)
+    with sqlite3.connect(database_path) as db:
+        db.execute(
+            "UPDATE personal_device_pairing_challenges SET expires_at=? WHERE device_id=?",
+            ("2000-01-01T00:00:00+00:00", payload["device_id"]),
+        )
+    replacement = client.post("/devices/pairing-challenges", json=payload)
+    assert replacement.status_code == 201
+    assert replacement.json()["device_id"] == payload["device_id"]
+    get_settings.cache_clear()
