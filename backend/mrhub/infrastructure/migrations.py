@@ -1367,7 +1367,7 @@ MIGRATIONS = (
                     'cancelled','expired','unknown_outcome'
                 )),
                 request_digest TEXT NOT NULL CHECK (length(request_digest)=64),
-                idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 128),
+                idempotency_key_hash TEXT NOT NULL CHECK (length(idempotency_key_hash)=64),
                 timeout_seconds INTEGER NOT NULL CHECK (timeout_seconds BETWEEN 5 AND 60),
                 expires_at TEXT NOT NULL,
                 lease_token_hash TEXT,
@@ -1376,11 +1376,12 @@ MIGRATIONS = (
                     'app_not_available','permission_denied','timeout','execution_failed'
                 )),
                 duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms BETWEEN 0 AND 60000),
+                owner_confirmed INTEGER NOT NULL DEFAULT 0 CHECK (owner_confirmed IN (0,1)),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 claimed_at TEXT,
                 completed_at TEXT,
-                UNIQUE(owner_user_id,idempotency_key),
+                UNIQUE(owner_user_id,idempotency_key_hash),
                 CHECK (
                     (action='app.launch' AND required_scope='app.launch'
                      AND json_valid(parameters_json)
@@ -1389,7 +1390,7 @@ MIGRATIONS = (
                          ('notepad','calculator','explorer','browser','chatgpt'))
                     OR
                     (action='screen.capture' AND required_scope='screen.capture'
-                     AND parameters_json='{}')
+                     AND parameters_json='{}' AND owner_confirmed=1)
                 ),
                 CHECK (
                     (status='claimed' AND lease_token_hash IS NOT NULL AND lease_expires_at IS NOT NULL)
