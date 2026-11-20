@@ -7,8 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from mrhub.api.device_auth import require_device_scope
 from mrhub.api.dependencies import require_user
+from mrhub.api.device_auth import require_device_scope
 from mrhub.config import get_settings
 from mrhub.devices.contracts import DeviceCapability, DeviceHeartbeatRequest, DevicePlatform
 from mrhub.devices.pairing import DeviceIdentity, DevicePairingError, DevicePairingRepository
@@ -33,7 +33,7 @@ class PairingChallengeRequest(BaseModel):
 
     device_id: UUID
     platform: DevicePlatform
-    label: str = Field(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$")
+    label: str = Field(min_length=1, max_length=64, pattern=r"^[^\\x00-\\x1f\\x7f]+$")
     advertised_capabilities: list[DeviceCapability] = Field(default_factory=list, max_length=16)
     scopes: list[DeviceScope] = Field(default_factory=lambda: ["device.heartbeat"], min_length=1, max_length=8)
 
