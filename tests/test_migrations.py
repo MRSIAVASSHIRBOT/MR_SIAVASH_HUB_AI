@@ -674,6 +674,26 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
         "SELECT campaign_id FROM content_campaigns WHERE campaign_id = 'campaign-1'"
     ).fetchone()["campaign_id"] == "campaign-1"
     connection.commit()
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """INSERT INTO personal_device_tasks (
+                task_id,owner_user_id,device_id,action,parameters_json,required_scope,
+                status,request_digest,idempotency_key_hash,timeout_seconds,scheduled_at,
+                expires_at,created_at,updated_at
+            ) VALUES ('task-extra','owner-1',?,'app.launch',
+                      '{"app":"notepad","command":"untrusted"}','app.launch',
+                      'queued',?,?,30,?,?,?,?)""",
+            (
+                "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",
+                "3" * 64,
+                "4" * 64,
+                now,
+                now,
+                now,
+                now,
+            ),
+        )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
 
