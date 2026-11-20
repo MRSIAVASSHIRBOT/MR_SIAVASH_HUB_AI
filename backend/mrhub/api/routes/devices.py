@@ -5,13 +5,21 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.api.device_auth import require_device_scope
 from mrhub.config import get_settings
 from mrhub.devices.contracts import DeviceCapability, DeviceHeartbeatRequest, DevicePlatform
 from mrhub.devices.pairing import DeviceIdentity, DevicePairingError, DevicePairingRepository
+from mrhub.devices.tasks import (
+    DeviceTaskConflict,
+    DeviceTaskNotFound,
+    DeviceTaskPermissionError,
+    DeviceTaskRepository,
+)
+from mrhub.domain.tasks import RiskClass
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 from mrhub.security.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/devices", tags=["personal-devices"])
@@ -52,9 +60,50 @@ class DeviceRefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=40, max_length=256)
     device_id: UUID
 
+class DeviceTaskCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action: Literal["app.launch", "screen.capture"]
+    app: Literal["notepad", "calculator", "explorer", "browser", "chatgpt"] | None = None
+    timeout_seconds: int = Field(default=30, ge=5, le=60, strict=True)
+    expires_in_seconds: int = Field(default=300, ge=60, le=900, strict=True)
+    confirm_sensitive_action: bool = False
+
+    @model_validator(mode="after")
+    def validate_action_parameters(self):
+        if self.action == "app.launch" and self.app is None:
+            raise ValueError("app.launch requires an allow-listed app")
+        if self.action == "screen.capture" and self.app is not None:
+            raise ValueError("screen.capture does not accept app parameters")
+        if self.action == "screen.capture" and not self.confirm_sensitive_action:
+            raise ValueError("screen.capture requires explicit owner confirmation")
+        return self
+
+
+class DeviceTaskOutcomeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    lease_token: str = Field(min_length=40, max_length=128)
+    outcome: Literal["succeeded", "failed"]
+    error_code: Literal[
+        "app_not_available", "permission_denied", "timeout", "execution_failed"
+    ] | None = None
+    duration_ms: int = Field(default=0, ge=0, le=60_000, strict=True)
+
+    @model_validator(mode="after")
+    def validate_outcome(self):
+        if self.outcome == "succeeded" and self.error_code is not None:
+            raise ValueError("Successful outcomes cannot include an error code")
+        if self.outcome == "failed" and self.error_code is None:
+            raise ValueError("Failed outcomes require a bounded error code")
+        return self
+
 
 def get_device_repository() -> DevicePairingRepository:
     return DevicePairingRepository(get_settings().database_path)
+
+def get_device_task_repository() -> DeviceTaskRepository:
+    return DeviceTaskRepository(get_settings().database_path)
 
 
 @router.post("/pairing-challenges", status_code=status.HTTP_201_CREATED)
@@ -154,3 +203,109 @@ def device_heartbeat(
         "app_uptime_seconds": payload.app_uptime_seconds,
         "last_task_id": str(payload.last_task_id) if payload.last_task_id else None,
     }
+
+@router.post("/{device_id}/tasks", status_code=status.HTTP_201_CREATED)
+def submit_device_task(
+    device_id: UUID,
+    payload: DeviceTaskCreateRequest,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
+) -> dict[str, object]:
+    required_scope = "app.launch" if payload.action == "app.launch" else "screen.capture"
+    risk_class = RiskClass.LOW if payload.action == "app.launch" else RiskClass.HIGH
+    decision = PolicyEngine().evaluate(ActionRequest(
+        action=f"device.{payload.action}",
+        risk_class=risk_class,
+        user_approved=payload.confirm_sensitive_action,
+    ))
+    if decision.decision is not PolicyDecision.ALLOW:
+        raise HTTPException(status_code=403, detail="Device action requires explicit owner confirmation")
+    try:
+        task, created = get_device_task_repository().create(
+            owner_user_id=user.user_id,
+            device_id=str(device_id),
+            action=payload.action,
+            app=payload.app,
+            required_scope=required_scope,
+            idempotency_key=idempotency_key,
+            expires_in_seconds=payload.expires_in_seconds,
+            timeout_seconds=payload.timeout_seconds,
+        )
+    except DeviceTaskNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DeviceTaskPermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except DeviceTaskConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return task if created else {**task, "idempotent_replay": True}
+
+
+@router.post("/tasks/claim")
+def claim_device_task(
+    identity: Annotated[DeviceIdentity, Depends(require_device_scope("device.heartbeat"))],
+) -> dict[str, object]:
+    try:
+        claimed = get_device_task_repository().claim(
+            owner_user_id=identity.owner_user_id,
+            device_id=identity.device_id,
+            granted_scopes=identity.scopes,
+        )
+    except DeviceTaskNotFound as exc:
+        raise HTTPException(status_code=401, detail="Paired device is no longer active") from exc
+    return claimed if claimed is not None else {"task": None}
+
+
+@router.post("/tasks/{task_id}/outcome")
+def report_device_task_outcome(
+    task_id: UUID,
+    payload: DeviceTaskOutcomeRequest,
+    identity: Annotated[DeviceIdentity, Depends(require_device_scope("device.heartbeat"))],
+) -> dict[str, object]:
+    result = get_device_task_repository().report_outcome(
+        owner_user_id=identity.owner_user_id,
+        device_id=identity.device_id,
+        task_id=str(task_id),
+        lease_token=payload.lease_token,
+        outcome=payload.outcome,
+        error_code=payload.error_code,
+        duration_ms=payload.duration_ms,
+    )
+    if result is None:
+        raise HTTPException(status_code=409, detail="Task lease is invalid, expired, or no longer active")
+    return result
+
+
+@router.get("/{device_id}/tasks/{task_id}")
+def get_device_task(
+    device_id: UUID,
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    result = get_device_task_repository().get_for_owner(
+        owner_user_id=user.user_id,
+        device_id=str(device_id),
+        task_id=str(task_id),
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Device task not found")
+    return result
+
+
+@router.delete("/{device_id}/tasks/{task_id}")
+def cancel_device_task(
+    device_id: UUID,
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    try:
+        result = get_device_task_repository().cancel_for_owner(
+            owner_user_id=user.user_id,
+            device_id=str(device_id),
+            task_id=str(task_id),
+        )
+    except DeviceTaskConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Device task not found")
+    return result
+
