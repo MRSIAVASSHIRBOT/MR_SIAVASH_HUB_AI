@@ -194,6 +194,7 @@ class DeviceTaskRepository:
         scheduled_at: datetime | None,
         expires_in_seconds: int,
         timeout_seconds: int,
+        required_owner_permissions: frozenset[str] = frozenset(),
     ) -> tuple[dict[str, object], bool]:
         now = self._now()
         if scheduled_at is None:
@@ -230,6 +231,19 @@ class DeviceTaskRepository:
                 raise DeviceTaskNotFound("Active owner device not found")
             if required_scope not in json.loads(device["scopes_json"]):
                 raise DeviceTaskPermissionError("Device lacks the required action scope")
+
+            # Re-check owner grants inside the same write transaction as task creation.
+            # This closes the revoke-after-policy-snapshot race for model-driven dispatch.
+            for permission in sorted(required_owner_permissions):
+                active_grant = connection.execute(
+                    """SELECT 1 FROM tool_permission_grants
+                       WHERE owner_user_id=? AND permission=? AND expires_at>?""",
+                    (owner_user_id, permission, now.isoformat()),
+                ).fetchone()
+                if active_grant is None:
+                    raise DeviceTaskPermissionError(
+                        "Owner lacks an active grant for the requested device action"
+                    )
 
             self._reconcile(connection, device_id=device_id, now_text=now.isoformat())
             existing = connection.execute(
