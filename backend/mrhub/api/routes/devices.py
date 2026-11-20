@@ -14,7 +14,6 @@ from mrhub.devices.contracts import DeviceCapability, DeviceHeartbeatRequest, De
 from mrhub.devices.pairing import DeviceIdentity, DevicePairingError, DevicePairingRepository
 from mrhub.security.auth import AuthenticatedUser
 
-
 router = APIRouter(prefix="/devices", tags=["personal-devices"])
 DeviceScope = Literal[
     "device.heartbeat",
