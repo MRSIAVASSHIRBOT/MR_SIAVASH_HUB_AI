@@ -44,7 +44,7 @@ class DeviceDescriptor(BaseModel):
     platform: DevicePlatform
     label: str = Field(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$")
     agent_version: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9.+_-]+$")
-    os_version: str = Field(default="unknown", min_length=1, max_length=64)
+    os_version: str = Field(default="unknown", min_length=1, max_length=64, pattern=r"^[^\\x00-\\x1f\\x7f]+$")
     advertised_capabilities: list[DeviceCapability] = Field(default_factory=list, max_length=16)
 
     @field_validator("advertised_capabilities")
