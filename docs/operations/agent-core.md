@@ -201,3 +201,24 @@ delegated specialist is propagated to the parent run rather than being converted
 into a successful continuation. Provider adapters must continue to enforce
 their own bounded request timeouts; the orchestrator runtime budget remains an
 additional post-call guard, not a hard thread interruption mechanism.
+
+## Reviewed specialist profiles
+
+The server-defined registry now includes `aria_architect`, `knowledge_synthesizer`,
+`text_helper`, `security_reviewer`, `quality_evaluator`, and `workflow_planner`.
+The security, quality, and workflow specialists are read-only profiles with no
+tool grants and a maximum of three turns. They analyze only supplied context,
+preserve evidence boundaries, and cannot authorize or execute actions.
+Delegated output remains untrusted data and shares the parent run's overall
+runtime, input, tool-call, and delegation budgets.
+
+Candidate profiles submitted through the proposal workflow are validated
+against existing tools but are not registered or activated. Activation remains
+a separate owner-reviewed operation. The model cannot create a tool, grant a
+permission, or activate a specialist by emitting a proposal.
+
+The new personal-device task API is not yet exposed as an AgentOrchestrator
+tool. An approval-aware adapter and the EL_AGENT claim/outcome client must be
+completed before natural-language agent runs can dispatch device actions.
+Sensitive screenshot actions must never be self-approved by a model.
+
