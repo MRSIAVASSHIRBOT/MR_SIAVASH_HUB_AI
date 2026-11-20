@@ -326,3 +326,53 @@ def test_device_queue_is_bounded_per_device(tmp_path, monkeypatch):
     )
     assert full.status_code == 409
     get_settings.cache_clear()
+
+def test_schedule_requires_timezone_and_has_a_bounded_horizon(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    naive = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="schedule-naive-00001",
+        scheduled_at="2026-11-20T12:00:00",
+    )
+    too_far = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="schedule-too-far-0001",
+        scheduled_at=(datetime.now(UTC) + timedelta(days=31)).isoformat(),
+    )
+    too_long = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="schedule-too-long-001",
+        expires_in_seconds=86_401,
+    )
+    assert naive.status_code == 422
+    assert too_far.status_code == 422
+    assert too_long.status_code == 422
+    get_settings.cache_clear()
+
+
+def test_tasks_are_isolated_between_two_paired_devices(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    first_device, first_headers = _paired_device(client)
+    second_device, second_headers = _paired_device(client)
+    submitted = _submit(
+        client,
+        first_device,
+        app="notepad",
+        key="device-isolation-task-001",
+    )
+    assert submitted.status_code == 201
+
+    wrong_device_claim = client.post("/devices/tasks/claim", headers=second_headers)
+    right_device_claim = client.post("/devices/tasks/claim", headers=first_headers)
+    assert wrong_device_claim.status_code == 200
+    assert wrong_device_claim.json()["task"] is None
+    assert right_device_claim.json()["task"]["task_id"] == submitted.json()["task"]["task_id"]
+    get_settings.cache_clear()
+
