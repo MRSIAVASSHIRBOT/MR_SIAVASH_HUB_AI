@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -210,6 +211,13 @@ def test_outcome_requires_the_claim_lease_and_remains_unverified(tmp_path, monke
     submitted = _submit(client, device_id, app="calculator", key="launch-result-000001")
     task_id = submitted.json()["task"]["task_id"]
     claimed = client.post("/devices/tasks/claim", headers=device_headers).json()
+    with sqlite3.connect(database_path) as db:
+        stored_lease_hash = db.execute(
+            "SELECT lease_token_hash FROM personal_device_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()[0]
+    assert stored_lease_hash == hashlib.sha256(claimed["lease_token"].encode()).hexdigest()
+    assert claimed["lease_token"] not in stored_lease_hash
 
     rejected = client.post(
         f"/devices/tasks/{task_id}/complete",
