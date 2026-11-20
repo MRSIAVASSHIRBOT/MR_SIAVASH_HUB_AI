@@ -919,7 +919,7 @@ This snapshot supersedes earlier Hub `main` and device-agent status statements w
 ### Hub main and exact-SHA checks
 
 - Current Hub `main`: `688955f055b5a152d2dc03ca9d249a2781ba5a41` (PR #450 and PR #452 merged).
-- PR #450 exact head `978898099d180127b0a283a76d6b42d9ec46840d` passed all 9 observed PR-head checks. It adds non-authoritative device descriptor/heartbeat contracts, ADR-0011, the device-agent operations guide, and contract tests. Device-reported capabilities remain descriptive and never grant permission.
+- PR #450 exact head `978898099d180127b0a283a76d6b42d9ec46840d` had 20 observed check-run records, all completed successfully; the records include duplicate reruns of several jobs. It adds non-authoritative device descriptor/heartbeat contracts, ADR-0011, the device-agent operations guide, and contract tests. Device-reported capabilities remain descriptive and never grant permission.
 - PR #452 exact head `b09156edd324343a69c1094be9f9db5cde3a8152` passed all 9 observed PR-head checks. It accepts ADR-0011 and links the standalone Windows companion while explicitly keeping Hub pairing and shared memory unimplemented.
 - On post-merge `main` SHA `688955f...`, all 13 observed check-run records completed successfully: Python 3.11/3.12 tests, Windows wheel smoke for both versions, Linux/Windows FFmpeg integration, runtime smoke, PowerShell parsing, failed-startup cleanup, Defensive Python Scan, Workflow Security Audit, and supply-chain posture.
 
