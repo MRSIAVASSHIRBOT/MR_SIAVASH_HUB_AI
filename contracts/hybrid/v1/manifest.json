@@ -85,6 +85,13 @@
         "purpose": "List only tasks owned by the paired client, with bounded cursor pagination and optional status filtering."
       },
       {
+        "method": "POST",
+        "path": "/integrations/telegram/agent/plan-preview",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tasks:create",
+        "purpose": "Generate a bounded, owner-scoped AI plan preview without creating tasks, invoking tools, or starting execution; local inference is the default and remote Kimi requires explicit selection."
+      },
+      {
         "method": "GET",
         "path": "/integrations/telegram/tasks/{task_id}",
         "auth_mode": "paired_bearer",
