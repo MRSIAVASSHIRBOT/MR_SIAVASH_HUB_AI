@@ -108,7 +108,11 @@ class DeviceTaskRepository:
             task_key = str(UUID(idempotency_key))
         except (ValueError, TypeError) as exc:
             raise DeviceTaskError("Idempotency key must be a UUID") from exc
-        if str(UUID(device_id)) != device_id.lower():
+        try:
+            canonical_device_id = str(UUID(device_id))
+        except (ValueError, TypeError) as exc:
+            raise DeviceTaskError("Device identifier is invalid") from exc
+        if canonical_device_id != device_id.lower():
             raise DeviceTaskError("Device identifier is invalid")
         if not owner_user_id or app_alias not in ALLOWED_APP_ALIASES:
             raise DeviceTaskError("Owner or application alias is invalid")
@@ -280,7 +284,22 @@ class DeviceTaskRepository:
                        WHERE task_id=? AND status='claimed'""",
                     (now_text, task_uuid),
                 )
-                raise DeviceTaskError("Task lease expired; delivery outcome is unknown")
+                self._audit(
+                    connection,
+                    event_type="device.task_delivery_unknown",
+                    outcome="failure",
+                    owner_user_id=row["owner_user_id"],
+                    device_id=device_id,
+                    actor_type="device",
+                    actor_id=device_id,
+                    task_id=task_uuid,
+                    metadata={"reason_code": "lease_expired"},
+                )
+                unknown = connection.execute(
+                    "SELECT * FROM personal_device_tasks WHERE task_id=?",
+                    (task_uuid,),
+                ).fetchone()
+                return self._serialize(unknown)
             updated = connection.execute(
                 """UPDATE personal_device_tasks
                    SET status=?,completed_at=?,result_code=?
