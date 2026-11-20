@@ -270,6 +270,10 @@ def _register_device_tools(
             scheduled_at=request.scheduled_at,
             expires_in_seconds=request.expires_in_seconds,
             timeout_seconds=request.timeout_seconds,
+            required_owner_permissions=frozenset({
+                "device.registry.read",
+                "device.app_launch",
+            }),
         )
         # Do not expose internal queue metadata, idempotency hashes, timing
         # diagnostics, or database-only fields to the model/tool transcript.
