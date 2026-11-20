@@ -90,6 +90,9 @@ def test_device_heartbeat_requires_scope_and_owner_can_revoke(tmp_path, monkeypa
         "last_task_id": "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",
     })
     assert heartbeat.status_code == 200
+    assert heartbeat.json()["runtime_state"] == "busy"
+    assert heartbeat.json()["app_uptime_seconds"] == 60
+    assert heartbeat.json()["last_task_id"] == "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4"
     device = client.get("/devices").json()["devices"][0]
     assert device["last_seen_at"] is not None
     assert device["runtime_state"] == "busy"
