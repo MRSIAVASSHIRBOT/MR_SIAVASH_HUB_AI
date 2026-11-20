@@ -550,3 +550,34 @@ def test_agent_run_uses_only_active_server_side_owner_tool_grants(monkeypatch):
     assert denied_after_revoke.json()["execution"]["status"] == "tool_denied"
     assert denied_after_revoke.json()["execution"]["error_code"] == "tool_policy_denied"
     assert calls == ["read"]
+
+
+def test_agent_run_maps_remote_mode_to_registered_kimi_provider(monkeypatch):
+    client = authenticated_client()
+    captured = {}
+
+    def build_router(**kwargs):
+        captured.update(kwargs)
+        return ModelRouter()
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        build_router,
+    )
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Use the explicitly selected remote provider.",
+            "provider_mode": "remote",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+
+    assert response.status_code == 503
+    assert captured == {
+        "provider_mode": "kimi",
+        "include_stub": False,
+        "max_timeout_seconds": 30.0,
+    }
