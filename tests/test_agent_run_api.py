@@ -590,15 +590,6 @@ def test_agent_run_can_queue_only_owner_granted_and_device_scoped_app_launch(mon
             "idempotency_key": "c9b5d7c2-56ad-4b17-8c91-8ae2102f3eb5",
         },
     })
-    provider = ScriptedProvider(json.dumps({
-        "type": "final",
-        "answer": "The launch request was queued for the paired workstation.",
-    }))
-    provider.outputs = [proposal, json.dumps({
-        "type": "final",
-        "answer": "The launch request was queued for the paired workstation.",
-    })]
-
     class SequenceProvider(ScriptedProvider):
         def generate(self, request):
             self.requests.append(request)
@@ -644,4 +635,4 @@ def test_agent_run_can_queue_only_owner_granted_and_device_scoped_app_launch(mon
     )
     assert len(tasks) == 1
     assert tasks[0]["status"] == "queued"
-    assert tasks[0]["app_alias"] if "app_alias" in tasks[0] else tasks[0]["app"] == "notepad"
+    assert tasks[0]["app"] == "notepad"
