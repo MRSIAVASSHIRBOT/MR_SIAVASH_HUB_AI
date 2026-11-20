@@ -10,6 +10,8 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.main import create_app
 from mrhub.memory.repository import MemoryRepository
+from mrhub.providers.base import ProviderHealth, ProviderRequest, ProviderResponse
+from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
 
 
 def _owner_client(tmp_path, monkeypatch):
@@ -1521,4 +1523,128 @@ def test_telegram_video_scene_submission_is_denied_without_video_analyze_scope(
         },
     )
     assert denied.status_code == 403
+    get_settings.cache_clear()
+
+
+class _PlanPreviewProvider:
+    descriptor = ModelDescriptor(
+        provider="test-local",
+        model="plan-preview",
+        capability=ModelCapability(text=True),
+        available=True,
+        local=True,
+        priority=1,
+    )
+
+    def __init__(self, output: str):
+        self.output = output
+        self.requests: list[ProviderRequest] = []
+
+    def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.requests.append(request)
+        return ProviderResponse(
+            provider=self.descriptor.provider,
+            model=self.descriptor.model,
+            output_text=self.output,
+        )
+
+    def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
+        return ProviderHealth(available=True, reason_code="test_ready")
+
+
+def test_telegram_agent_plan_preview_is_owner_scoped_and_non_executing(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(
+        client, scopes=["tasks:create"]
+    )
+    tokens = _exchange(client, payload, challenge).json()
+    provider = _PlanPreviewProvider(
+        '{"steps":[{"description":"مرحله نخست"},{"description":"مرحله دوم"}]}'
+    )
+    router = ModelRouter()
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.telegram_integration.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    response = client.post(
+        "/integrations/telegram/agent/plan-preview",
+        json={"goal": "ساخت یک ابزار کوچک و آزمایش آن", "provider_mode": "local"},
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["steps"]) == 2
+    assert body["provider"] == "test-local"
+    assert body["execution_started"] is False
+    assert body["tasks_created"] == 0
+    assert "ساخت یک ابزار کوچک و آزمایش آن" in provider.requests[0].input_text
+    assert "untrusted data" in provider.requests[0].input_text
+    get_settings.cache_clear()
+
+
+def test_telegram_agent_plan_preview_requires_task_creation_scope(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["status:read"])
+    tokens = _exchange(client, payload, challenge).json()
+
+    response = client.post(
+        "/integrations/telegram/agent/plan-preview",
+        json={"goal": "Create a safe plan"},
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 403
+    get_settings.cache_clear()
+
+
+def test_telegram_agent_plan_preview_maps_remote_to_kimi_without_fallback(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["tasks:create"])
+    tokens = _exchange(client, payload, challenge).json()
+    captured = {}
+
+    def build_router(**kwargs):
+        captured.update(kwargs)
+        return ModelRouter()
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.telegram_integration.build_model_router",
+        build_router,
+    )
+
+    response = client.post(
+        "/integrations/telegram/agent/plan-preview",
+        json={"goal": "Create a plan", "provider_mode": "remote"},
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 503
+    assert captured["provider_mode"] == "kimi"
+    assert captured["include_stub"] is False
+    get_settings.cache_clear()
+
+
+def test_telegram_agent_plan_preview_rejects_invalid_provider_output(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_pairing(client, scopes=["tasks:create"])
+    tokens = _exchange(client, payload, challenge).json()
+    provider = _PlanPreviewProvider('{"steps":[{"description":"only one"}]}')
+    router = ModelRouter()
+    router.register_provider(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.telegram_integration.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    response = client.post(
+        "/integrations/telegram/agent/plan-preview",
+        json={"goal": "Create a plan"},
+        headers=_bot_headers(tokens),
+    )
+
+    assert response.status_code == 502
+    assert "invalid plan" in response.json()["detail"]
     get_settings.cache_clear()
