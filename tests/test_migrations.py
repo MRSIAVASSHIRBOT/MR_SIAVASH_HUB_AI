@@ -1,5 +1,6 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
 
 import pytest
 
@@ -624,7 +625,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -756,7 +757,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -969,7 +970,7 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
     )
     connection.commit()
 
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:51])
     assert SchemaMigrator(connection).migrate() == [51]
     connection.execute(
         """INSERT INTO personal_device_tasks (
@@ -1064,3 +1065,60 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
 
+
+
+def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "device-tool-permissions-v52.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:51])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:51]
+    ]
+
+    now = "2026-11-20T00:00:00+00:00"
+    expires = "2026-11-20T01:00:00+00:00"
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
+        (now,),
+    )
+    connection.execute(
+        """INSERT INTO tool_permission_grants (
+            grant_id, owner_user_id, permission, granted_at, expires_at
+        ) VALUES ('12345678-1234-5678-1234-567812345678',
+                  'owner-1','cloudflare.read',?,?)""",
+        (now, expires),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [52]
+
+    existing = connection.execute(
+        "SELECT permission, granted_at, expires_at FROM tool_permission_grants "
+        "WHERE owner_user_id='owner-1'"
+    ).fetchone()
+    assert dict(existing) == {
+        "permission": "cloudflare.read",
+        "granted_at": now,
+        "expires_at": expires,
+    }
+
+    for permission in ("device.registry.read", "device.app_launch"):
+        connection.execute(
+            """INSERT INTO tool_permission_grants (
+                grant_id, owner_user_id, permission, granted_at, expires_at
+            ) VALUES (?, 'owner-1', ?, ?, ?)""",
+            (str(uuid4()), permission, now, expires),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """INSERT INTO tool_permission_grants (
+                grant_id, owner_user_id, permission, granted_at, expires_at
+            ) VALUES (?, 'owner-1', 'device.shell', ?, ?)""",
+            (str(uuid4()), now, expires),
+        )
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
