@@ -6,10 +6,10 @@ import hashlib
 import json
 import secrets
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterator
 from uuid import uuid4
 
 
