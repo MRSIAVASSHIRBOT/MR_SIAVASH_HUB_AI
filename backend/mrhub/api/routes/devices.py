@@ -32,7 +32,7 @@ class PairingChallengeRequest(BaseModel):
 
     device_id: UUID
     platform: DevicePlatform
-    label: str = Field(min_length=1, max_length=64, pattern=r"^[^\\x00-\\x1f\\x7f]+$")
+    label: str = Field(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$")
     advertised_capabilities: list[DeviceCapability] = Field(default_factory=list, max_length=16)
     scopes: list[DeviceScope] = Field(default_factory=lambda: ["device.heartbeat"], min_length=1, max_length=8)
 
