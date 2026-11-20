@@ -51,9 +51,9 @@ Hub remains authoritative for private memory, tasks, agents, approvals, tool pol
 - EL_AI declares HTTPX and Keyring, with pytest/pytest-asyncio/Ruff for development; CI runs Python 3.11 and 3.12.
 - Website Gateway's `cloudflare/gateway/package.json` defines Node's built-in test runner and has no external package dependency. Repository CI runs JavaScript tests, OpenAPI validation, isolated SQLite migration checks, Chromium Academy E2E and accessibility/responsive smoke.
 - No committed Python or Node dependency lockfile was found in the inspected active project roots. Reproducible lockfile-based installs remain a follow-up.
-- Website Production Worker remains version 14 (`62e8a337-d804-4748-8bb2-d5e0180ee2f8`) at 100% traffic, annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`. Current Website `main` is 40 commits ahead and 0 behind that source baseline. Issue [#120](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/issues/120) remains open. The delta includes Gateway runtime/tests and migrations 0004/0005; isolated migration tests pass in CI, but live Production D1 migration state was not queried. The Production release workflow is manual, defaults to `deploy=false`, and retains its owner-controlled environment gate.
+- The last recorded read-only Website Production inventory reported Worker version 14 (`62e8a337-d804-4748-8bb2-d5e0180ee2f8`) at 100% traffic, annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`; Cloudflare was not re-read in this checkpoint. Current Website `main` `42fc965f4d22755007ce706151ae85556ddfe9d0` is 55 commits ahead and 0 behind that source baseline by GitHub compare. This is source drift, not deployment evidence. Issue [#120](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/issues/120) remains open. The delta includes Gateway runtime/tests and migrations 0004/0005; isolated migration tests pass in CI, but live Production D1 migration state and current Worker version were not queried. The Production release workflow is manual-only, defaults to `deploy=false`, and retains its owner-controlled environment gate.
 - The scheduled Hub Continuous Development and comment-triggered OpenCode workflows were removed and merged in [PR #436](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/436) (`aca5f198fb6e372436bdbff67aaff7385841b4ee`). No provider credential renewal or isolation work is required for those retired workflows.
-- Branch-protection reads returned HTTP 403 for all three repositories in this run. The last successful recorded state was `main.protected=false`; the current state could not be independently reverified. No access-control settings were changed.
+- Fresh GitHub branch metadata on 2026-11-20 reports `main.protected=false` for Hub, Website, and EL_AI; required-status-check enforcement is off with no required contexts/checks. No branch-protection, ruleset, or access-control setting was changed.
 
 ### Next engineering priorities
 
@@ -931,21 +931,21 @@ This checkpoint records the current engineering branch work separately from merg
 - The queue includes timezone-aware scheduling, per-device pending limits, hashed idempotency keys and claim leases, one active claim per device, explicit device scopes, audit events, queued-task cancellation, expiry, and revocation fencing.
 - Expired claims become `unknown_outcome` and are not automatically replayed. Device-reported outcomes are labelled `reported_succeeded` / `reported_failed` with `outcome_verified=false`.
 - Device-task submission/claim is not yet exposed as an autonomous AgentOrchestrator tool. A separate approval-aware tool adapter and the EL_AGENT client are required before natural-language requests can dispatch device actions; the model must never self-approve screenshots or other sensitive operations.
-- Exact-head CI is still required. This branch is not merged or deployed, and the Windows companion does not yet implement the Hub task claim/outcome client.
+- Exact-head PR checks passed on `24428ebc8890c71bf384eceb9db83a525117d5cd`: Python 3.11 and 3.12 each reported 1,349 passed / 2 skipped; Backend CI reported the same; Windows wheel smoke, Linux/Windows FFmpeg integration, Workflow Security Audit, Defensive Python Scan, PowerShell parse, failed-startup cleanup, runtime smoke, and Windows backup/device regression passed (58 passed, 1 non-fatal Starlette/httpx TestClient deprecation warning). The PR remains Draft and unmerged pending scope review; it is Hub-side only, not a live device integration.
 
 ### Staging, security, and recovery
 
-- `cloudflare/gateway/wrangler.toml` defines the isolated `mr-siavash-hub-gateway-staging` Worker with no routes or custom domains. Read-only Cloudflare inventory on 2026-11-20 showed that this Worker is not deployed.
+- `cloudflare/gateway/wrangler.toml` defines the isolated `mr-siavash-hub-gateway-staging` Worker with no routes or custom domains. The last recorded read-only Cloudflare inventory earlier on 2026-11-20 showed that this Worker was not deployed; this checkpoint did not re-query Cloudflare, so that is a last-recorded observation rather than fresh verification.
 - Deployment requires `CF_ACCOUNT_ID`, `CF_ZONE_ID`, a dedicated least-privilege `CF_API_TOKEN`, and a separate `GATEWAY_AUTH_TOKEN`; the matching `MRH_CLOUDFLARE_GATEWAY_BASE_URL` and `MRH_CLOUDFLARE_GATEWAY_TOKEN` must be configured in the Hub server-side secret store. The ChatGPT connector credential must not be reused. No Cloudflare resource, route, DNS record, secret, or production environment was changed.
 - Backup/restore helpers, checksums, integrity checks, and automated tests exist. The target Windows machine restore drill and protected media/encryption-key backup procedure remain unverified.
-- GitHub branch protection/ruleset state remains unverified because the connected integration returned HTTP 403 for the read endpoint. No protection setting was changed.
+- Fresh GitHub branch metadata reports `protected=false` for all three main branches, with required-check enforcement off and no required contexts. No protection setting was changed.
 - No live Windows task execution, Telegram action, Instagram publishing, or Production deployment was performed in this checkpoint.
 
 ### Remaining release gates
 
-1. Pass exact-head Backend CI, full CI, Windows wheel smoke, defensive scan, FFmpeg integration, and security checks for the device-dispatch branch.
-2. Review and merge only after checks pass; close/supersede duplicate task-dispatch and stale documentation PRs after their useful changes are included.
-3. Deploy the dedicated staging Worker after its four configuration values and the Hub-side secret are securely configured; run authenticated staging acceptance.
-4. Complete the EL_AGENT enrollment, secure credential storage, task polling, and outcome-reporting client.
-5. Perform target-Windows installation, task execution, backup/restore, upgrade, and rollback acceptance.
+1. Keep PR #460 Draft until its device-task changes and specialist-profile changes are separated or its combined scope is explicitly accepted; the exact-head checks above are green, but the current branch is not merged or deployed.
+2. Complete the separate EL_AGENT enrollment, secure credential storage, task polling/claim, outcome reporting, and revocation client; the current companion supports Hub pairing and heartbeat only.
+3. Perform target-Windows installation, task execution, backup/restore, upgrade, and rollback acceptance.
+4. Deploy the dedicated staging Worker only after its four configuration values and the Hub-side secret are securely configured; run authenticated staging acceptance.
+5. Keep the public Website Production release gate closed until fresh Worker/D1 inventory, migration/backup/rollback verification, exact-candidate Preview acceptance, and explicit owner approval.
 6. Run end-to-end tests for multi-device isolation, approvals, memory access, specialist delegation, cancellation, timeouts, and audit provenance.

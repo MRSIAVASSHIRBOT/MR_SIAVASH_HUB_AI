@@ -54,7 +54,7 @@ A future device task must include a task ID, device ID, action name, schema-vali
 
 ## Standalone Windows MVP
 
-The separate [MR_SIAVASH_EL_AGENT repository](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) contains the first local Windows companion MVP. It provides a loopback-only API, local bearer-token authentication, explicit screenshot capture, a fixed application-launch allowlist, and SQLite-backed scheduled app launches. It deliberately does not yet pair with Hub, share Hub memory, or accept remote commands.
+The separate [MR_SIAVASH_EL_AGENT repository](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) contains the local Windows companion MVP. It provides a loopback-only API, local bearer-token authentication, explicit screenshot capture, a fixed application-launch allowlist, SQLite-backed scheduled app launches, and owner-initiated Hub pairing with the `device.heartbeat` scope. It sends minimal outbound heartbeat metadata only; it does not yet accept Hub-issued remote tasks or share Hub memory.
 
 Use the companion's own README for installation and operation. Its local API token is not a Hub credential and must never be forwarded through the public website or a network tunnel.
 
@@ -73,9 +73,9 @@ Use the companion's own README for installation and operation. Its local API tok
 - Architecture decision and typed contracts: merged into Hub main.
 - Hub pairing registry, single-use challenge exchange, hashed access/refresh credentials, scoped heartbeat authentication, owner listing/revocation, and audit events: merged into Hub main.
 - Migration 50 heartbeat runtime metadata: merged as `ba0cc727`; exact PR-head checks passed and post-merge Backend CI passed.
-- Bounded device task dispatch: being developed against the existing test-first branch state; migration 51, strict action/scope checks, scheduling, idempotency, queue cap, lease expiry, owner listing/cancellation, and revocation fencing require exact-head hosted CI before merge.
+- Bounded device task dispatch: proposed in Draft PR #460 at head `24428ebc8890c71bf384eceb9db83a525117d5cd`. Exact-head hosted CI passed: Python 3.11/3.12 and Backend CI each reported 1,349 passed / 2 skipped; Windows backup/device regression reported 58 passed with one non-fatal Starlette/httpx TestClient deprecation warning; Windows wheel, launcher, FFmpeg, workflow-security, and defensive-scan checks passed. The PR remains unmerged pending scope review and the separate companion task consumer.
 - The dispatch API is not yet exposed through AgentOrchestrator tools. Do not let model output self-approve screenshot capture or directly authorize device actions; an approval-aware adapter and EL_AGENT client are separate gates.
-- Standalone Windows MVP: implemented in the separate repository; live Windows install/upgrade/backup/restore/rollback acceptance remains pending.
+- Standalone Windows MVP: current companion `main` `8c17bbcdadad5c380dcc64df25c355bc46a3f206` passed its Windows/Linux Python 3.11/3.12 CI matrix. It supports Hub pairing and heartbeat only; live Windows install/upgrade/backup/restore/rollback acceptance and remote task polling/outcome reporting remain pending.
 - Hub staging Worker: no `mr-siavash-hub-gateway-staging` Worker is deployed. The isolated source config is not a deployment. Deployment needs a dedicated least-privilege provider token and a separate Hub-to-gateway bearer secret in the Hub server-side secret store; never reuse the ChatGPT Cloudflare connector credential.
 - Shared Hub memory is owner-scoped and supports export/deletion, FTS5 retrieval, provenance and freshness metadata. Dreaming remains a read-only duplicate-review proposal process; it does not silently rewrite or delete memory.
 - Android companion and browser extension: not yet implemented.
