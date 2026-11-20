@@ -67,7 +67,7 @@ class DeviceTaskCreateRequest(BaseModel):
     app: Literal["notepad", "calculator", "explorer", "browser", "chatgpt"] | None = None
     timeout_seconds: int = Field(default=30, ge=5, le=60, strict=True)
     expires_in_seconds: int = Field(default=300, ge=60, le=900, strict=True)
-    confirm_sensitive_action: bool = False
+    confirm_sensitive_action: bool = Field(default=False, strict=True)
 
     @model_validator(mode="after")
     def validate_action_parameters(self):
@@ -229,6 +229,7 @@ def submit_device_task(
             app=payload.app,
             required_scope=required_scope,
             idempotency_key=idempotency_key,
+            owner_confirmed=payload.confirm_sensitive_action,
             expires_in_seconds=payload.expires_in_seconds,
             timeout_seconds=payload.timeout_seconds,
         )
