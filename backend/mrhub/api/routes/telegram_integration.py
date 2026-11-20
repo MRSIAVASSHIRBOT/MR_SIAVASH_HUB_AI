@@ -1370,8 +1370,8 @@ def preview_telegram_agent_plan(
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Planning provider returned an invalid plan") from exc
 
-    _tasks_repository()
-    AuditLogger(_tasks_repository()).record(
+    repository = _tasks_repository()
+    AuditLogger(repository).record(
         event_type="telegram.agent_plan_previewed",
         outcome="success",
         subject_type="agent_plan",
