@@ -115,7 +115,7 @@ def test_device_heartbeat_requires_scope_and_owner_can_revoke(tmp_path, monkeypa
 
 def test_device_refresh_rotates_credentials_and_revokes_device_on_replay(tmp_path, monkeypatch):
     client, database_path = _owner_client(tmp_path, monkeypatch)
-    payload, challenge = _create_challenge(client)
+    payload, challenge = _create_challenge(client, scopes=["device.heartbeat", "app.launch"])
     tokens = _exchange(client, payload, challenge).json()
     body = {"refresh_token": tokens["refresh_token"], "device_id": payload["device_id"]}
 
