@@ -40,6 +40,7 @@ class DevicePairingRepository:
     ACCESS_TTL_SECONDS = 15 * 60
     REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60
     CHALLENGE_TTL_SECONDS = 5 * 60
+    MAX_PENDING_CHALLENGES_PER_OWNER = 10
 
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
@@ -104,6 +105,13 @@ class DevicePairingRepository:
         code = secrets.token_urlsafe(32)
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            # Expired pairing codes are no longer usable; prune them while the
+            # owner-scoped challenge registry is already write-locked.
+            connection.execute(
+                """DELETE FROM personal_device_pairing_challenges
+                   WHERE owner_user_id=? AND expires_at<=?""",
+                (owner_user_id, now.isoformat()),
+            )
             existing = connection.execute(
                 "SELECT 1 FROM personal_devices WHERE device_id=?",
                 (device_id,),
@@ -117,6 +125,15 @@ class DevicePairingRepository:
             ).fetchone()
             if pending is not None and pending["expires_at"] > now.isoformat():
                 raise DevicePairingError("A pairing challenge for this device is already pending")
+            pending_count = connection.execute(
+                """SELECT COUNT(*) FROM personal_device_pairing_challenges
+                   WHERE owner_user_id=? AND consumed_at IS NULL AND expires_at>?""",
+                (owner_user_id, now.isoformat()),
+            ).fetchone()[0]
+            if pending_count >= self.MAX_PENDING_CHALLENGES_PER_OWNER:
+                raise DevicePairingError(
+                    "Owner has too many pending device pairing challenges"
+                )
             connection.execute(
                 "DELETE FROM personal_device_pairing_challenges WHERE device_id=?",
                 (device_id,),
@@ -177,37 +194,95 @@ class DevicePairingRepository:
 
     def refresh(self, *, refresh_token: str, device_id: str) -> dict[str, object]:
         now = self._now()
+        now_text = now.isoformat()
         access = secrets.token_urlsafe(32)
         next_refresh = secrets.token_urlsafe(48)
         access_expiry = now + timedelta(seconds=self.ACCESS_TTL_SECONDS)
         refresh_expiry = now + timedelta(seconds=self.REFRESH_TTL_SECONDS)
+        reuse_detected = False
+        scopes: list[str] = []
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                """SELECT t.device_id,t.expires_at,t.revoked_at,d.status,d.scopes_json
+                """SELECT t.device_id,t.expires_at,t.revoked_at,d.status,d.scopes_json,d.owner_user_id
                    FROM personal_device_tokens t JOIN personal_devices d ON d.device_id=t.device_id
                    WHERE t.token_hash=? AND t.token_type='refresh'""",
                 (self._hash(refresh_token),),
             ).fetchone()
-            if (row is None or row["device_id"] != device_id or row["revoked_at"] is not None
-                or row["expires_at"] <= now.isoformat() or row["status"] != "active"):
+            if (
+                row is None
+                or row["device_id"] != device_id
+                or row["expires_at"] <= now_text
+                or row["status"] != "active"
+            ):
                 raise DevicePairingError("Refresh credential is invalid, expired, or revoked")
-            updated = connection.execute(
-                "UPDATE personal_device_tokens SET revoked_at=? WHERE token_hash=? AND token_type='refresh' AND revoked_at IS NULL",
-                (now.isoformat(),self._hash(refresh_token)),
+
+            if row["revoked_at"] is not None:
+                # A rotated refresh token was presented again. Revoke the entire
+                # device credential set so a stolen token cannot silently win a race.
+                connection.execute(
+                    """UPDATE personal_devices SET status='revoked',revoked_at=?
+                       WHERE device_id=? AND status='active'""",
+                    (now_text, device_id),
+                )
+                connection.execute(
+                    """UPDATE personal_device_tokens SET revoked_at=?
+                       WHERE device_id=? AND revoked_at IS NULL""",
+                    (now_text, device_id),
+                )
+                task_table = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='personal_device_tasks'"
+                ).fetchone()
+                if task_table is not None:
+                    from mrhub.devices.tasks import DeviceTaskRepository
+
+                    DeviceTaskRepository(self.database_path).revoke_device_tasks(
+                        connection,
+                        device_id=device_id,
+                        now_text=now_text,
+                        actor_type="device_security",
+                        actor_id="hub",
+                    )
+                self._audit(
+                    connection,
+                    event_type="device.refresh_reuse_detected",
+                    owner_user_id=row["owner_user_id"],
+                    device_id=device_id,
+                    actor_type="device_security",
+                )
+                reuse_detected = True
+            else:
+                updated = connection.execute(
+                    """UPDATE personal_device_tokens SET revoked_at=?
+                       WHERE token_hash=? AND token_type='refresh' AND revoked_at IS NULL""",
+                    (now_text, self._hash(refresh_token)),
+                )
+                if updated.rowcount != 1:
+                    raise DevicePairingError("Refresh credential has already been rotated")
+                connection.executemany(
+                    """INSERT INTO personal_device_tokens (
+                        token_hash,device_id,token_type,expires_at,created_at,revoked_at
+                    ) VALUES (?,?,?,?,?,NULL)""",
+                    [
+                        (self._hash(access), device_id, "access", access_expiry.isoformat(), now_text),
+                        (self._hash(next_refresh), device_id, "refresh", refresh_expiry.isoformat(), now_text),
+                    ],
+                )
+                scopes = json.loads(row["scopes_json"])
+
+        if reuse_detected:
+            raise DevicePairingError(
+                "Refresh credential reuse detected; device credentials were revoked"
             )
-            if updated.rowcount != 1:
-                raise DevicePairingError("Refresh credential has already been rotated")
-            connection.executemany(
-                """INSERT INTO personal_device_tokens (token_hash,device_id,token_type,expires_at,created_at,revoked_at)
-                   VALUES (?,?,?,?,?,NULL)""",
-                [(self._hash(access),device_id,"access",access_expiry.isoformat(),now.isoformat()),
-                 (self._hash(next_refresh),device_id,"refresh",refresh_expiry.isoformat(),now.isoformat())],
-            )
-            scopes = json.loads(row["scopes_json"])
-        return {"device_id":device_id,"access_token":access,"token_type":"bearer",
-                "expires_in":self.ACCESS_TTL_SECONDS,"refresh_token":next_refresh,
-                "refresh_expires_in":self.REFRESH_TTL_SECONDS,"scopes":scopes}
+        return {
+            "device_id": device_id,
+            "access_token": access,
+            "token_type": "bearer",
+            "expires_in": self.ACCESS_TTL_SECONDS,
+            "refresh_token": next_refresh,
+            "refresh_expires_in": self.REFRESH_TTL_SECONDS,
+            "scopes": scopes,
+        }
 
     def authenticate(self, *, access_token: str, device_id: str) -> DeviceIdentity | None:
         now = self._now().isoformat()
