@@ -60,16 +60,25 @@ Use the companion's own README for installation and operation. Its local API tok
 
 ## Hub integration sequence
 
-1. Owner-created single-use pairing, the owner-scoped device registry, hashed short-lived credentials, scoped access, listing, revocation, authenticated heartbeat, and pairing/revocation audit events are implemented in Hub `main`.
-2. Persisted heartbeat diagnostics are proposed in [PR #456](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/456); they remain non-authoritative and do not indicate task success.
-3. Implement Hub-issued bounded task dispatch, acknowledgement, cancellation, expiry, idempotency, and verified outcomes.
-4. Integrate the Windows companion with Hub pairing only after its enrollment client, credential-vault storage, renewal, and revocation behavior are implemented and tested. Its standalone local token is not interchangeable with a Hub credential.
-5. Shared Hub memory, Android companion, and browser extension remain separate future milestones.
+1. Owner-created single-use pairing, owner-scoped device registry, hashed short-lived credentials, scoped access, listing, revocation, and authenticated heartbeat are merged into Hub `main`.
+2. Migration 50 persists bounded heartbeat runtime diagnostics. PR #456 was merged as [`ba0cc727`](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/commit/ba0cc7278cc94badfaeb0ef566023cd80112f6fb). Heartbeat data remains device-reported diagnostics, not proof of task execution.
+3. The current device-task-dispatch branch adds an allow-listed task queue, owner-bound idempotency, short leases, device-scope checks, explicit confirmation for screenshots, cancellation before claim, expiry, and self-reported outcomes. It is not available on `main` until its PR and exact-head CI pass.
+4. Integrate the Windows companion only after its enrollment client, secure credential-vault storage, renewal, task claim/outcome protocol, and revocation behavior are implemented and tested. Its standalone local token is not interchangeable with a Hub credential.
+5. Shared Hub memory, Android companion, and browser extension remain separate milestones.
+
+## Device task safety contract
+
+The initial remote action set is deliberately limited to `app.launch` for the fixed applications `notepad`, `calculator`, `explorer`, `browser`, and `chatgpt`, plus `screen.capture` after explicit owner confirmation. Arbitrary shell commands, arbitrary URLs, arbitrary file paths, and model-authored executable payloads are not accepted.
+
+The Hub checks the owner's active device registration and the exact granted scope before queuing. A device claims one task at a time using a short-lived random lease; only its hash is stored. A task whose lease expires becomes `unknown_outcome` and is never automatically replayed. Owners can cancel queued tasks; a claimed task returns a conflict because remote cancellation cannot yet be guaranteed. Device completion is recorded as `reported_succeeded` or `reported_failed`, with `outcome_verified=false`: a device report is not independent proof that the requested operation occurred.
 
 ## Current status
 
 - Architecture decision and typed contracts: merged into Hub main.
 - Hub pairing registry, single-use challenge exchange, hashed access/refresh credentials, scoped heartbeat authentication, owner listing/revocation, and audit events: merged into Hub main.
-- Bounded heartbeat runtime metadata persistence: proposed in PR #456; exact-head CI is required before merge.
+- Migration 50 heartbeat runtime metadata: merged as `ba0cc727`; exact PR-head checks passed. Post-merge CI was still running at the last check.
+- Bounded device task dispatch: implementation branch `feat/device-task-dispatch-20261120`; migration 51 and API/repository/tests are in progress and require full hosted CI before merge.
 - Standalone Windows MVP: implemented in the separate repository; hosted CI passed on `98e77d4b9ef0684e60281297891c5d22ddb60749` ([run 44726855003](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44726855003)); live Windows install/upgrade/backup/restore/rollback acceptance remains pending.
-- Hub task dispatch, shared memory, Android companion, and browser extension: not yet implemented.
+- Staging Worker configuration exists in source, but no `mr-siavash-hub-gateway-staging` Worker is deployed. Deployment and authenticated acceptance require the owner's dedicated least-privilege Cloudflare API token and separate Hub-to-gateway bearer secret; the ChatGPT Cloudflare connector credential must not be reused.
+- Shared Hub memory is implemented with owner scoping, export/deletion, FTS5 retrieval, provenance and review metadata. Dreaming currently produces read-only duplicate-review proposals; it does not automatically rewrite or delete memory.
+- Android companion and browser extension: not yet implemented.
