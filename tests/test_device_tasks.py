@@ -102,9 +102,10 @@ def test_idempotency_is_owner_scoped_hashed_and_rejects_payload_reuse(tmp_path, 
     client, database_path = _owner_client(tmp_path, monkeypatch)
     device_id, _ = _paired_device(client)
     key = "launch-idempotent-0001"
-    first = _submit(client, device_id, app="calculator", key=key)
-    replay = _submit(client, device_id, app="calculator", key=key)
-    conflict = _submit(client, device_id, app="notepad", key=key)
+    scheduled_at = datetime.now(UTC).isoformat()
+    first = _submit(client, device_id, app="calculator", key=key, scheduled_at=scheduled_at)
+    replay = _submit(client, device_id, app="calculator", key=key, scheduled_at=scheduled_at)
+    conflict = _submit(client, device_id, app="notepad", key=key, scheduled_at=scheduled_at)
     assert first.status_code == 201
     assert replay.status_code == 200
     assert replay.json()["task"]["task_id"] == first.json()["task"]["task_id"]
