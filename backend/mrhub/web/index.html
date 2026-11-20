@@ -201,6 +201,63 @@
         </div>
       </section>
 
+      <section class="panel device-agent-panel" id="device-agent-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">PERSONAL DEVICE CONTROL</p><h2>دسترسی Agent به دستگاه‌ها</h2></div>
+          <span id="device-agent-readiness" class="status-pill status-muted">پس از ورود بررسی می‌شود</span>
+        </div>
+        <p class="muted">دو مجوز مالک جداگانه لازم است: مشاهدهٔ فهرست دستگاه‌ها و صف‌کردن اجرای یک برنامهٔ مجاز. هر مجوز زمان‌دار است؛ دستگاه نیز باید جداگانه Scope مربوط به app.launch را داشته باشد. این پنل Screenshot، Shell، فایل‌ها یا کنترل پنهان دستگاه را ارائه نمی‌کند.</p>
+
+        <form id="device-agent-grant-form" class="stack-form">
+          <label>مدت مجوز مالک
+            <select name="expires_in_seconds">
+              <option value="600" selected>۱۰ دقیقه</option>
+              <option value="3600">۱ ساعت</option>
+              <option value="86400">۲۴ ساعت</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button id="device-registry-grant-button" class="button button-secondary" type="button" disabled>اعطای مجوز مشاهدهٔ دستگاه‌ها</button>
+            <button id="device-app-launch-grant-button" class="button button-secondary" type="button" disabled>اعطای مجوز صف‌کردن اجرای برنامه</button>
+            <button id="device-agent-grants-refresh" class="button button-quiet" type="button">تازه‌سازی مجوزها</button>
+          </div>
+        </form>
+        <p id="device-agent-access-message" class="message" role="status" aria-live="polite"></p>
+        <div id="device-agent-grant-list" class="record-list" aria-live="polite">
+          <p class="muted">برای مشاهدهٔ مجوزها وارد شوید.</p>
+        </div>
+
+        <div class="section-heading section-heading-spaced">
+          <div><p class="eyebrow">PAIRED DEVICE REGISTRY</p><h3>دستگاه‌های Pair شده</h3></div>
+          <button id="device-registry-refresh-button" class="button button-quiet" type="button" disabled>به‌روزرسانی فهرست</button>
+        </div>
+        <div id="device-agent-device-list" class="record-list" aria-live="polite">
+          <p class="muted">برای بارگذاری دستگاه‌ها ابتدا مجوز مشاهده را فعال کنید.</p>
+        </div>
+
+        <div class="workflow-tools">
+          <div class="section-heading">
+            <div><p class="eyebrow">OWNER-CONFIRMED APP LAUNCH</p><h3>صف‌کردن بازکردن برنامه</h3></div>
+          </div>
+          <p class="muted">پیش از ارسال، دستگاه و برنامه دقیقاً نمایش داده می‌شوند. درخواست پس از ارسال وارد صف Hub می‌شود؛ اجرای واقعی فقط پس از دریافت Lease توسط دستگاه و گزارش نتیجه مشخص خواهد شد.</p>
+          <form id="device-app-launch-form" class="stack-form">
+            <label>دستگاه
+              <select id="device-app-launch-device" name="device_id" required disabled>
+                <option value="">ابتدا فهرست دستگاه‌ها را بارگذاری کنید</option>
+              </select>
+            </label>
+            <label>برنامهٔ مجاز
+              <select id="device-app-launch-alias" name="app" required disabled>
+                <option value="">ابتدا دستگاه را انتخاب کنید</option>
+              </select>
+            </label>
+            <button id="device-app-launch-submit" class="button button-primary" type="submit" disabled>تأیید و صف‌کردن درخواست</button>
+          </form>
+          <p id="device-app-launch-message" class="message" role="status" aria-live="polite"></p>
+          <pre id="device-app-launch-result" class="output-box" aria-live="polite">هنوز درخواستی برای دستگاه ارسال نشده است.</pre>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="section-heading">
           <div><p class="eyebrow">MODEL INFERENCE</p><h2>آزمایش مدل</h2></div>
