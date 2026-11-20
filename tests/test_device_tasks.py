@@ -62,12 +62,13 @@ def test_owner_task_create_is_scoped_and_idempotent(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
     device_id, _tokens = _paired_device(client)
     key = str(uuid4())
-    first = _create_task(client, device_id, key=key)
-    second = _create_task(client, device_id, key=key)
+    run_at = datetime.now(UTC).isoformat()
+    first = _create_task(client, device_id, key=key, scheduled_at=run_at)
+    second = _create_task(client, device_id, key=key, scheduled_at=run_at)
     assert first.status_code == 201
     assert second.status_code == 201
     assert first.json()["task"]["task_id"] == second.json()["task"]["task_id"]
-    conflict = _create_task(client, device_id, app_alias="notepad", key=key)
+    conflict = _create_task(client, device_id, app_alias="notepad", key=key, scheduled_at=run_at)
     assert conflict.status_code == 409
     assert client.get(f"/devices/{device_id}/tasks").json()["count"] == 1
     get_settings.cache_clear()
