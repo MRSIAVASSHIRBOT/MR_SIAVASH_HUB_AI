@@ -69,5 +69,5 @@ Use the companion's own README for installation and operation. Its local API tok
 ## Current status
 
 - Architecture decision and typed contracts: merged into Hub main.
-- Standalone Windows MVP: implemented in the separate repository; CI and real Windows acceptance are pending.
+- Standalone Windows MVP: implemented in the separate repository; automated CI passed on `MR_SIAVASSHIRBOT/MR_SIAVASH_EL_AGENT` main commit `98e77d4b9ef0684e60281297891c5d22ddb60749` ([CI run](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44726855003)); live Windows acceptance on the owner's device remains pending.
 - Hub pairing, registry, heartbeat API, task dispatch, shared memory, Android companion, and browser extension: planned, not yet implemented.
