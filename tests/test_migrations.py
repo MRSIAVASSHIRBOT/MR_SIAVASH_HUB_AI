@@ -1,6 +1,6 @@
 import sqlite3
-from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
 
 import pytest
 
