@@ -92,7 +92,7 @@ def device_heartbeat(
     identity: Annotated[DeviceIdentity, Depends(require_device_scope("device.heartbeat"))],
 ) -> dict[str, object]:
     updated = get_device_repository().heartbeat(
-        device_id=identity.device_id,agent_version=payload.agent_version,os_version="unknown"
+        device_id=identity.device_id,agent_version=payload.agent_version
     )
     if not updated:
         raise HTTPException(status_code=401,detail="Device is no longer active")
