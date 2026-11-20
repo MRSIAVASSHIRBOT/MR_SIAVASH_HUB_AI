@@ -294,7 +294,6 @@ def _pair_device(client, *, platform="windows", scopes=None):
 
 def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     from mrhub.devices.tasks import DeviceTaskRepository
-    from mrhub.tools.builtins import build_tool_registry
 
     client = authenticated_client()
     device_id = _pair_device(client)
