@@ -1295,6 +1295,49 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_video_scene_jobs_source_asset ON video_scene_jobs(source_asset_id)",
         ),
     ),
+    Migration.build(
+        49,
+        "owner_scoped_personal_device_pairing",
+        (
+            """CREATE TABLE IF NOT EXISTS personal_device_pairing_challenges (
+                challenge_hash TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                device_id TEXT NOT NULL UNIQUE,
+                platform TEXT NOT NULL CHECK (platform IN ('windows','android','browser')),
+                label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 64),
+                advertised_capabilities_json TEXT NOT NULL,
+                scopes_json TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                consumed_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_device_pairing_owner_created ON personal_device_pairing_challenges(owner_user_id, created_at)",
+            """CREATE TABLE IF NOT EXISTS personal_devices (
+                device_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                platform TEXT NOT NULL CHECK (platform IN ('windows','android','browser')),
+                label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 64),
+                agent_version TEXT NOT NULL,
+                os_version TEXT NOT NULL,
+                advertised_capabilities_json TEXT NOT NULL,
+                scopes_json TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('active','revoked')),
+                created_at TEXT NOT NULL,
+                last_seen_at TEXT,
+                revoked_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_personal_devices_owner_status ON personal_devices(owner_user_id, status, created_at DESC)",
+            """CREATE TABLE IF NOT EXISTS personal_device_tokens (
+                token_hash TEXT PRIMARY KEY,
+                device_id TEXT NOT NULL REFERENCES personal_devices(device_id) ON DELETE CASCADE,
+                token_type TEXT NOT NULL CHECK (token_type IN ('access','refresh')),
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                revoked_at TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_personal_device_tokens_device ON personal_device_tokens(device_id, token_type)",
+        ),
+    ),
 )
 
 
