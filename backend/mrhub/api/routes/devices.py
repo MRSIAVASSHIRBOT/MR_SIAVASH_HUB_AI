@@ -141,6 +141,9 @@ def device_heartbeat(
     updated = get_device_repository().heartbeat(
         device_id=identity.device_id,
         agent_version=payload.agent_version,
+        runtime_state=payload.runtime_state,
+        app_uptime_seconds=payload.app_uptime_seconds,
+        last_task_id=str(payload.last_task_id) if payload.last_task_id else None,
     )
     if not updated:
         raise HTTPException(status_code=401, detail="Device is no longer active")
@@ -148,4 +151,6 @@ def device_heartbeat(
         "device_id": identity.device_id,
         "status": "ok",
         "runtime_state": payload.runtime_state,
+        "app_uptime_seconds": payload.app_uptime_seconds,
+        "last_task_id": str(payload.last_task_id) if payload.last_task_id else None,
     }

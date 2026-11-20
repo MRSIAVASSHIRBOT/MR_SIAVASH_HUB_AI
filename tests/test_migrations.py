@@ -30,6 +30,10 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         row["name"] for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
     }
     assert "cancellation_requested_at" in generation_columns
+    device_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(personal_devices)")
+    }
+    assert {"runtime_state", "app_uptime_seconds", "last_task_id"} <= device_columns
     assert {
         "attempt_count", "recovered_at", "next_attempt_at",
         "lease_owner", "lease_expires_at", "heartbeat_at", "execution_token",
@@ -45,7 +49,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "kimi_request_events", "telegram_pairing_challenges", "telegram_clients",
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
-        "resource_reply_configs", "research_sources", "video_scene_jobs",
+        "resource_reply_configs", "research_sources", "video_scene_jobs", "personal_devices",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -619,7 +623,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -750,7 +754,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -879,4 +883,57 @@ def test_migration_history_with_a_gap_fails_closed(tmp_path):
 
     with pytest.raises(MigrationError, match="strictly increasing"):
         SchemaMigrator(connection).migrate()
+    connection.close()
+
+
+
+def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
+    tmp_path, monkeypatch
+):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "device-heartbeat-v50.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:49])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:49]
+    ]
+
+    now = "2026-11-20T00:00:00+00:00"
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
+        (now,),
+    )
+    connection.execute(
+        """INSERT INTO personal_devices (
+            device_id, owner_user_id, platform, label, agent_version, os_version,
+            advertised_capabilities_json, scopes_json, status, created_at,
+            last_seen_at, revoked_at
+        ) VALUES (?, 'owner-1', 'windows', 'Workstation', '0.1.0', 'Windows 11',
+                  '[]', '["device.heartbeat"]', 'active', ?, ?, NULL)""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", now, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [50]
+    row = connection.execute(
+        """SELECT runtime_state, app_uptime_seconds, last_task_id
+           FROM personal_devices WHERE device_id = ?""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",),
+    ).fetchone()
+    assert tuple(row) == ("unknown", 0, None)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE personal_devices SET runtime_state='untrusted' WHERE device_id=?",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE personal_devices SET app_uptime_seconds=31536001 WHERE device_id=?",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",),
+        )
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()

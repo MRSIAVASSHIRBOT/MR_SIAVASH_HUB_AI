@@ -86,10 +86,18 @@ def test_device_heartbeat_requires_scope_and_owner_can_revoke(tmp_path, monkeypa
     tokens = _exchange(client, payload, challenge).json()
     headers = _device_headers(tokens, payload["device_id"])
     heartbeat = client.post("/devices/heartbeat", headers=headers, json={
-        "agent_version": "0.1.1", "runtime_state": "ready", "app_uptime_seconds": 60,
+        "agent_version": "0.1.1", "runtime_state": "busy", "app_uptime_seconds": 60,
+        "last_task_id": "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",
     })
     assert heartbeat.status_code == 200
-    assert client.get("/devices").json()["devices"][0]["last_seen_at"] is not None
+    assert heartbeat.json()["runtime_state"] == "busy"
+    assert heartbeat.json()["app_uptime_seconds"] == 60
+    assert heartbeat.json()["last_task_id"] == "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4"
+    device = client.get("/devices").json()["devices"][0]
+    assert device["last_seen_at"] is not None
+    assert device["runtime_state"] == "busy"
+    assert device["app_uptime_seconds"] == 60
+    assert device["last_task_id"] == "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4"
 
     denied = client.post("/devices/heartbeat", headers={
         **headers, "X-Device-ID": str(uuid4())
