@@ -929,6 +929,7 @@ This checkpoint records the current engineering branch work separately from merg
 - Initial actions are limited to allow-listed application launch and explicitly owner-confirmed screenshot capture.
 - The queue includes timezone-aware scheduling, per-device pending limits, hashed idempotency keys and claim leases, one active claim per device, explicit device scopes, audit events, queued-task cancellation, expiry, and revocation fencing.
 - Expired claims become `unknown_outcome` and are not automatically replayed. Device-reported outcomes are labelled `reported_succeeded` / `reported_failed` with `outcome_verified=false`.
+- Device-task submission/claim is not yet exposed as an autonomous AgentOrchestrator tool. A separate approval-aware tool adapter and the EL_AGENT client are required before natural-language requests can dispatch device actions; the model must never self-approve screenshots or other sensitive operations.
 - Exact-head CI is still required. This branch is not merged or deployed, and the Windows companion does not yet implement the Hub task claim/outcome client.
 
 ### Staging, security, and recovery
