@@ -269,6 +269,32 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert "response.status === 401 || response.status === 403" not in script
 
 
+def test_dashboard_exposes_owner_granted_device_controls_without_automatic_execution():
+    client = authenticated_client()
+    html = client.get("/ui").text
+    script = client.get("/ui/app.js").text
+
+    for element_id in (
+        "device-agent-panel",
+        "device-registry-grant-button",
+        "device-app-launch-grant-button",
+        "device-agent-grants-refresh",
+        "device-registry-refresh-button",
+        "device-app-launch-form",
+        "device-app-launch-submit",
+        "device-app-launch-result",
+    ):
+        assert f'id="{element_id}"' in html
+
+    assert '"/tools/device.registry.list/invoke"' in script
+    assert '"/tools/device.app_launch.submit/invoke"' in script
+    assert '"/tools/grants/" + encodeURIComponent(permission)' in script
+    assert "crypto.randomUUID()" in script
+    assert "window.confirm(" in script
+    assert "اجرای برنامه هنوز تأیید نشده است" in script
+    assert "device.screen_capture" not in script
+
+
 def _pair_device(client, *, platform="windows", scopes=None):
     from uuid import uuid4
 
