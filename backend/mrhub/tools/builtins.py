@@ -259,7 +259,18 @@ def _register_device_tools(
             expires_in_seconds=request.expires_in_seconds,
             timeout_seconds=request.timeout_seconds,
         )
-        return {"task": task, "idempotent_replay": not created}
+        # Do not expose internal queue metadata, idempotency hashes, timing
+        # diagnostics, or database-only fields to the model/tool transcript.
+        return {
+            "task": {
+                key: task[key]
+                for key in (
+                    "task_id", "device_id", "action", "app", "required_scope",
+                    "status", "scheduled_at", "expires_at", "owner_confirmed",
+                )
+            },
+            "idempotent_replay": not created,
+        }
 
     registry.register(
         ToolDefinition(
@@ -470,7 +481,6 @@ def build_tool_registry(*, correlation_id: str | None = None, owner_user_id: str
 
     # Disabled or incomplete configuration never creates a partially usable tool.
     # The gateway factory fails closed when enabled configuration is invalid.
-    settings = get_settings()
     client = (
         build_cloudflare_gateway_client(settings)
         if correlation_id is None
