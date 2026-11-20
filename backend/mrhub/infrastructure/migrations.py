@@ -1422,6 +1422,35 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_device_tasks_owner_created ON personal_device_tasks(owner_user_id,created_at)",
         ),
     ),
+    Migration.build(
+        52,
+        "expand_owner_tool_permissions_for_personal_devices",
+        (
+            """CREATE TABLE tool_permission_grants_new (
+                grant_id TEXT PRIMARY KEY CHECK (length(grant_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                permission TEXT NOT NULL CHECK (
+                    permission IN (
+                        'cloudflare.read',
+                        'device.registry.read',
+                        'device.app_launch'
+                    )
+                ),
+                granted_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                CHECK (expires_at > granted_at),
+                UNIQUE(owner_user_id, permission)
+            )""",
+            """INSERT INTO tool_permission_grants_new (
+                grant_id, owner_user_id, permission, granted_at, expires_at
+            )
+            SELECT grant_id, owner_user_id, permission, granted_at, expires_at
+            FROM tool_permission_grants""",
+            "DROP TABLE tool_permission_grants",
+            "ALTER TABLE tool_permission_grants_new RENAME TO tool_permission_grants",
+            "CREATE INDEX IF NOT EXISTS idx_tool_permission_grants_owner_expiry ON tool_permission_grants(owner_user_id, expires_at)",
+        ),
+    ),
 )
 
 
