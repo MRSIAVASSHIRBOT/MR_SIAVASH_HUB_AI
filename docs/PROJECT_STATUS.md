@@ -908,3 +908,32 @@ This section supersedes earlier control-center status notes above.
 2. Add independently configured runtime probes for MR_SIAVASH_AI and Gshop only when their exact health contracts are known; otherwise keep them unknown.
 3. Add explainable risk summaries only from verified CI, runtime, and infrastructure observations.
 4. Keep all action proposals separate from monitoring and require fresh action-bound owner approval for production changes.
+
+
+---
+
+## Coordinated device-agent and maintenance checkpoint — 2026-11-20 UTC
+
+This snapshot supersedes earlier Hub `main` and device-agent status statements where they differ. It records GitHub evidence only; it is not a live deployment or target-device acceptance report.
+
+### Hub main and exact-SHA checks
+
+- Current Hub `main`: `688955f055b5a152d2dc03ca9d249a2781ba5a41` (PR #450 and PR #452 merged).
+- PR #450 exact head `978898099d180127b0a283a76d6b42d9ec46840d` passed all 9 observed PR-head checks. It adds non-authoritative device descriptor/heartbeat contracts, ADR-0011, the device-agent operations guide, and contract tests. Device-reported capabilities remain descriptive and never grant permission.
+- PR #452 exact head `b09156edd324343a69c1094be9f9db5cde3a8152` passed all 9 observed PR-head checks. It accepts ADR-0011 and links the standalone Windows companion while explicitly keeping Hub pairing and shared memory unimplemented.
+- On post-merge `main` SHA `688955f...`, all 13 observed check-run records completed successfully: Python 3.11/3.12 tests, Windows wheel smoke for both versions, Linux/Windows FFmpeg integration, runtime smoke, PowerShell parsing, failed-startup cleanup, Defensive Python Scan, Workflow Security Audit, and supply-chain posture.
+
+### Standalone Windows companion dependency
+
+- The separate `MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT` repository is outside this three-repository set and was inspected read-only because Hub PR #452 links to it.
+- Its current `main` is `98e77d4b9ef0684e60281297891c5d22ddb60749`; hosted CI run 44726855003 completed successfully. The code and README describe a loopback-only local API, local bearer token, explicit screenshot capture, fixed application-launch allowlist, and SQLite-backed scheduled app launches.
+- The standalone companion does not yet pair with Hub, share Hub memory, or accept remote commands. Live Windows acceptance on the owner's device remains pending. Its local API token is not a Hub credential and must never be forwarded through the public Website Gateway or a tunnel.
+
+### Staging, providers, and owner gates
+
+- The dedicated Hub staging Wrangler configuration remains source-only. No Worker, route, custom domain, DNS, Access policy, database, or secret was provisioned or changed.
+- Provider-backed video generation remains unavailable until the owner selects and configures a compatible provider; deterministic FFmpeg rendering is not generative AI.
+- The connected GitHub integration returned HTTP 403 for branch-protection reads. Current protection state could not be independently verified in this pass; no branch-protection or access-control setting was changed.
+- Windows install/upgrade/backup/restore/rollback acceptance on the owner's actual device remains outstanding. GShop remains explicitly out of scope.
+
+No local test suite, live device action, Cloudflare write, production deployment, D1 row query, secret-value read, or access-control mutation was performed for this checkpoint. Test claims above refer only to the cited hosted GitHub Actions runs and exact SHAs.
