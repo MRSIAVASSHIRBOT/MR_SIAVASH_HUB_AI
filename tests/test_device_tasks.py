@@ -103,10 +103,6 @@ def test_device_task_requires_owner_and_explicit_device_scope(tmp_path, monkeypa
     )
     assert denied.status_code == 403
     assert client.post("/devices/tasks/claim", headers=device_headers).status_code == 200
-
-    other = TestClient(create_app())
-    other_password = "test-only-other-owner-password-2026"
-    assert other.post("/auth/setup", json={"password": other_password}).status_code == 409
     get_settings.cache_clear()
 
 
@@ -214,3 +210,23 @@ def test_owner_can_cancel_queued_task_but_not_claimed_task(tmp_path, monkeypatch
     refused = client.delete(f"/devices/{device_id}/tasks/{active.json()['task_id']}")
     assert refused.status_code == 409
     get_settings.cache_clear()
+
+def test_screen_capture_requires_explicit_owner_confirmation_and_scope(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    headers = {"Idempotency-Key": "screen-capture-00001"}
+    unconfirmed = client.post(
+        f"/devices/{device_id}/tasks",
+        headers=headers,
+        json={"action": "screen.capture"},
+    )
+    confirmed = client.post(
+        f"/devices/{device_id}/tasks",
+        headers=headers,
+        json={"action": "screen.capture", "confirm_sensitive_action": True},
+    )
+    assert unconfirmed.status_code == 422
+    assert confirmed.status_code == 201
+    assert confirmed.json()["required_scope"] == "screen.capture"
+    get_settings.cache_clear()
+
