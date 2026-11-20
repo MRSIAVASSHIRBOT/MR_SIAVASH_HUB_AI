@@ -86,7 +86,7 @@ class DeviceTaskRepository:
             (
                 str(uuid4()), event_type, outcome, "personal_device_task", task_id,
                 actor_type, actor_id, datetime.now(UTC).isoformat(),
-                json.dumps(metadata, separators=(",", ":"), sort_keys=True),
+                json.dumps({"owner_user_id": owner_user_id, **metadata}, separators=(",", ":"), sort_keys=True),
             ),
         )
 
