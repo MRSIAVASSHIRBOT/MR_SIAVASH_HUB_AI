@@ -64,7 +64,7 @@ def _submit(client, device_id, *, action="app.launch", app="notepad", key=None, 
 
 
 def test_owner_can_submit_scheduled_task_and_device_claims_it_once(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
+    client, database_path = _owner_client(tmp_path, monkeypatch)
     device_id, device_headers = _paired_device(client)
     future = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
     submitted = _submit(
