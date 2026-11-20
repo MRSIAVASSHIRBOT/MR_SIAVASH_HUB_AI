@@ -164,3 +164,17 @@ The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools`
 ## Engineering governance
 
 The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
+
+
+## Personal device task dispatch
+
+The personal-device API supports a deliberately narrow remote task contract. An authenticated owner can enqueue only `launch_app` for a fixed application alias (Notepad, Calculator, Explorer, the default browser, or the fixed ChatGPT URL), and only when the paired device was explicitly granted the `app.launch` scope. The device claims work using its scoped device token and reports a bounded result code.
+
+- Owner API: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
+- Device API: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
+- Every task requires a UUID idempotency key, a timezone-aware schedule, and a bounded expiry.
+- Only one claim is issued. If the claim lease expires before a result is recorded, the task becomes `delivery_unknown` and is never automatically replayed.
+- Owners can cancel queued tasks; claimed tasks cannot be safely cancelled. Revoking a device cancels queued tasks and marks claimed tasks as delivery-unknown.
+- Arbitrary shell commands, executable paths, caller-supplied URLs, keystrokes, file reads, and general-purpose remote control are not part of this contract.
+
+This queue is a task-delivery primitive, not proof that a requested external workflow completed. Device outcomes are bounded execution reports and should be treated as operational evidence only.
