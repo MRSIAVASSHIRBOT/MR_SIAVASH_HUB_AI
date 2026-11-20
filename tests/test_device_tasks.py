@@ -133,6 +133,51 @@ def test_idempotency_is_owner_scoped_hashed_and_rejects_payload_reuse(tmp_path, 
     get_settings.cache_clear()
 
 
+def test_idempotency_replays_default_and_elapsed_schedule_requests(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    fixed_now = datetime(2026, 11, 20, 12, 30, tzinfo=UTC)
+    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: fixed_now))
+
+    default_first = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="idempotency-default-time-001",
+    )
+    explicit_first = _submit(
+        client,
+        device_id,
+        app="calculator",
+        key="idempotency-explicit-time-001",
+        scheduled_at=fixed_now.isoformat(),
+    )
+    assert default_first.status_code == 201
+    assert explicit_first.status_code == 201
+
+    later_now = fixed_now + timedelta(minutes=2)
+    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: later_now))
+    default_replay = _submit(
+        client,
+        device_id,
+        app="notepad",
+        key="idempotency-default-time-001",
+    )
+    explicit_replay = _submit(
+        client,
+        device_id,
+        app="calculator",
+        key="idempotency-explicit-time-001",
+        scheduled_at=fixed_now.isoformat(),
+    )
+
+    assert default_replay.status_code == 200
+    assert explicit_replay.status_code == 200
+    assert default_replay.json()["task"]["task_id"] == default_first.json()["task"]["task_id"]
+    assert explicit_replay.json()["task"]["task_id"] == explicit_first.json()["task"]["task_id"]
+    get_settings.cache_clear()
+
+
 def test_device_scope_and_owner_boundaries_are_enforced(tmp_path, monkeypatch):
     client, database_path = _owner_client(tmp_path, monkeypatch)
     device_id, device_headers = _paired_device(client, scopes=["device.heartbeat"])
@@ -307,6 +352,12 @@ def test_expired_claim_becomes_unknown_outcome_and_is_never_replayed(tmp_path, m
     owner_view = client.get(f"/devices/{device_id}/tasks/{task_id}")
     assert late.status_code == 409
     assert owner_view.json()["task"]["status"] == "unknown_outcome"
+    with sqlite3.connect(database_path) as db:
+        completed_at = db.execute(
+            "SELECT completed_at FROM personal_device_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()[0]
+    assert completed_at is not None
     assert client.post("/devices/tasks/claim", headers=device_headers).json()["task"] is None
     get_settings.cache_clear()
 

@@ -191,26 +191,19 @@ class DeviceTaskRepository:
         required_scope: str,
         idempotency_key: str,
         owner_confirmed: bool,
-        scheduled_at: datetime,
+        scheduled_at: datetime | None,
         expires_in_seconds: int,
         timeout_seconds: int,
     ) -> tuple[dict[str, object], bool]:
         now = self._now()
-        if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
-            raise DeviceTaskError("Scheduled time must include a timezone offset")
-        scheduled = scheduled_at.astimezone(UTC)
-        if (
-            scheduled < now - timedelta(seconds=30)
-            or scheduled > now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
-        ):
-            raise DeviceTaskError("Scheduled time must be now or within the next 30 days")
-        expires_at = scheduled + timedelta(seconds=expires_in_seconds)
-        if expires_at <= now:
-            raise DeviceTaskError("Task expiry must be in the future")
-        if action == "screen.capture" and (
-            scheduled > now + timedelta(minutes=5) or expires_in_seconds > 300
-        ):
-            raise DeviceTaskError("Sensitive screenshot tasks must be confirmed for near-term execution")
+        if scheduled_at is None:
+            scheduled = now
+            digest_scheduled_at = None
+        else:
+            if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
+                raise DeviceTaskError("Scheduled time must include a timezone offset")
+            scheduled = scheduled_at.astimezone(UTC)
+            digest_scheduled_at = scheduled.isoformat()
         parameters = {"app": app} if app is not None else {}
         request_digest = self._digest(
             {
@@ -219,7 +212,7 @@ class DeviceTaskRepository:
                 "app": app,
                 "required_scope": required_scope,
                 "owner_confirmed": owner_confirmed,
-                "scheduled_at": scheduled.isoformat(),
+                "scheduled_at": digest_scheduled_at,
                 "expires_in_seconds": expires_in_seconds,
                 "timeout_seconds": timeout_seconds,
             }
@@ -248,6 +241,19 @@ class DeviceTaskRepository:
                 if existing["request_digest"] != request_digest:
                     raise DeviceTaskConflict("Idempotency key was already used for another request")
                 return self._serialize(existing), False
+
+            if (
+                scheduled < now - timedelta(seconds=30)
+                or scheduled > now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
+            ):
+                raise DeviceTaskError("Scheduled time must be now or within the next 30 days")
+            expires_at = scheduled + timedelta(seconds=expires_in_seconds)
+            if expires_at <= now:
+                raise DeviceTaskError("Task expiry must be in the future")
+            if action == "screen.capture" and (
+                scheduled > now + timedelta(minutes=5) or expires_in_seconds > 300
+            ):
+                raise DeviceTaskError("Sensitive screenshot tasks must be confirmed for near-term execution")
 
             pending_count = connection.execute(
                 """SELECT COUNT(*) FROM personal_device_tasks
@@ -350,6 +356,18 @@ class DeviceTaskRepository:
             )
             if updated.rowcount != 1:
                 return None
+            self._audit(
+                connection,
+                event_type="device.task_claimed",
+                outcome="claimed",
+                task_id=selected["task_id"],
+                owner_user_id=owner_user_id,
+                actor_type="device",
+                actor_id=device_id,
+                action=selected["action"],
+                required_scope=selected["required_scope"],
+                reason_code="device_claimed",
+            )
             row = connection.execute(
                 "SELECT * FROM personal_device_tasks WHERE task_id=?",
                 (selected["task_id"],),
@@ -385,9 +403,9 @@ class DeviceTaskRepository:
                 connection.execute(
                     """UPDATE personal_device_tasks
                        SET status='unknown_outcome',lease_token_hash=NULL,
-                           lease_expires_at=NULL,updated_at=?
+                           lease_expires_at=NULL,updated_at=?,completed_at=?
                        WHERE task_id=? AND status='claimed'""",
-                    (now_text, task_id),
+                    (now_text, now_text, task_id),
                 )
                 self._audit(
                     connection,

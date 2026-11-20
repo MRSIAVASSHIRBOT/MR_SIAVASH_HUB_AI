@@ -1,7 +1,7 @@
 """Owner pairing, registry, heartbeat, and revocation for personal devices."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -68,15 +68,15 @@ class DeviceTaskCreateRequest(BaseModel):
 
     action: Literal["app.launch", "screen.capture"]
     app: Literal["notepad", "calculator", "explorer", "browser", "chatgpt"] | None = None
-    scheduled_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    scheduled_at: datetime | None = None
     expires_in_seconds: int = Field(default=300, ge=60, le=86_400, strict=True)
     timeout_seconds: int = Field(default=30, ge=5, le=60, strict=True)
     confirm_sensitive_action: bool = Field(default=False, strict=True)
 
     @field_validator("scheduled_at")
     @classmethod
-    def require_timezone(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("scheduled_at must include a timezone offset")
         return value
 
