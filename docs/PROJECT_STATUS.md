@@ -908,3 +908,42 @@ This section supersedes earlier control-center status notes above.
 2. Add independently configured runtime probes for MR_SIAVASH_AI and Gshop only when their exact health contracts are known; otherwise keep them unknown.
 3. Add explainable risk summaries only from verified CI, runtime, and infrastructure observations.
 4. Keep all action proposals separate from monitoring and require fresh action-bound owner approval for production changes.
+
+---
+
+## Hub stabilization and bounded device dispatch — 2026-11-20 UTC
+
+This checkpoint records the current engineering branch work separately from merged `main` and live infrastructure.
+
+### Merged baseline
+
+- Current Hub `main` at branch creation: `9336e6e94421594d6da7b9a8ea32bcc2604dd533`.
+- PR #456 merged migration 50 as `ba0cc7278cc94badfaeb0ef566023cd80112f6fb`, persisting bounded heartbeat runtime metadata. All 20 observed exact-PR-head checks passed; post-merge Backend CI and security checks passed.
+- Device pairing remains owner-scoped, uses single-use enrollment, hashed/revocable access and refresh credentials, explicit scopes, authenticated heartbeats, owner listing/revocation, and audit events.
+- Decision policy, bounded agent orchestration, specialist registry, durable workflow leases/fencing, safe retry/cancellation/recovery, owner-scoped FTS5 memory, provenance metadata, export/deletion, and read-only Dreaming proposals are already present in the merged codebase. Dreaming does not automatically rewrite or delete memory.
+
+### Current device-task implementation branch
+
+- Branch: `feat/device-task-dispatch-final-20261120`.
+- Migration 51 adds an owner/device-scoped task queue with strict action and state constraints.
+- Initial actions are limited to allow-listed application launch and explicitly owner-confirmed screenshot capture.
+- The queue includes timezone-aware scheduling, per-device pending limits, hashed idempotency keys and claim leases, one active claim per device, explicit device scopes, audit events, queued-task cancellation, expiry, and revocation fencing.
+- Expired claims become `unknown_outcome` and are not automatically replayed. Device-reported outcomes are labelled `reported_succeeded` / `reported_failed` with `outcome_verified=false`.
+- Exact-head CI is still required. This branch is not merged or deployed, and the Windows companion does not yet implement the Hub task claim/outcome client.
+
+### Staging, security, and recovery
+
+- `cloudflare/gateway/wrangler.toml` defines the isolated `mr-siavash-hub-gateway-staging` Worker with no routes or custom domains. Read-only Cloudflare inventory on 2026-11-20 showed that this Worker is not deployed.
+- Deployment requires `CF_ACCOUNT_ID`, `CF_ZONE_ID`, a dedicated least-privilege `CF_API_TOKEN`, and a separate `GATEWAY_AUTH_TOKEN`; the matching `MRH_CLOUDFLARE_GATEWAY_BASE_URL` and `MRH_CLOUDFLARE_GATEWAY_TOKEN` must be configured in the Hub server-side secret store. The ChatGPT connector credential must not be reused. No Cloudflare resource, route, DNS record, secret, or production environment was changed.
+- Backup/restore helpers, checksums, integrity checks, and automated tests exist. The target Windows machine restore drill and protected media/encryption-key backup procedure remain unverified.
+- GitHub branch protection/ruleset state remains unverified because the connected integration returned HTTP 403 for the read endpoint. No protection setting was changed.
+- No live Windows task execution, Telegram action, Instagram publishing, or Production deployment was performed in this checkpoint.
+
+### Remaining release gates
+
+1. Pass exact-head Backend CI, full CI, Windows wheel smoke, defensive scan, FFmpeg integration, and security checks for the device-dispatch branch.
+2. Review and merge only after checks pass; close/supersede duplicate task-dispatch and stale documentation PRs after their useful changes are included.
+3. Deploy the dedicated staging Worker after its four configuration values and the Hub-side secret are securely configured; run authenticated staging acceptance.
+4. Complete the EL_AGENT enrollment, secure credential storage, task polling, and outcome-reporting client.
+5. Perform target-Windows installation, task execution, backup/restore, upgrade, and rollback acceptance.
+6. Run end-to-end tests for multi-device isolation, approvals, memory access, specialist delegation, cancellation, timeouts, and audit provenance.
