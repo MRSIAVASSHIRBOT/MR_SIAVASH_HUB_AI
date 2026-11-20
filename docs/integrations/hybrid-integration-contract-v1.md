@@ -35,8 +35,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 | `status:read` | Read paired client status |
 | `tasks:read` | Read own tasks and cursor-paginated task event history |
 | `tasks:result` | Read own bounded terminal task result |
-| `tasks:create` | Submit tasks subject to Hub policy and idempotency |
-| `tasks:create` | Generate a bounded 2–8 step AI plan preview; no task is created or executed until the separate task-submission flow |
+| `tasks:create` | Submit tasks subject to Hub policy and idempotency; generate a bounded 2–8 step AI plan preview that creates or executes no task until the separate submission flow |
 | `tasks:cancel` | Cancel own queued or approval-waiting task |
 | `memory:search` | Search and inspect active owner-scoped memory entries |\n| `memory:write` | Explicitly approve one selected active memory entry; no content edits or deletion |\n| `video:read` | Read the non-secret provider catalog, own bounded generation/render history, up to five storyboard-draft summaries, individual generation/render status, and verified private MP4 downloads |\n| `video:render` | Submit a saved owner-owned renderer-compatible draft to the deterministic local FFmpeg queue |\n| `video:cancel` | Cancel own local FFmpeg renders or prepared/queued provider generations before provider submission |
 
