@@ -374,7 +374,7 @@ def test_schedule_requires_timezone_and_has_a_bounded_horizon(tmp_path, monkeypa
 def test_tasks_are_isolated_between_two_paired_devices(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
     first_device, first_headers = _paired_device(client)
-    second_device, second_headers = _paired_device(client)
+    _second_device, second_headers = _paired_device(client)
     submitted = _submit(
         client,
         first_device,
