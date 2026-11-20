@@ -50,6 +50,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
         "resource_reply_configs", "research_sources", "video_scene_jobs", "personal_devices",
+        "personal_device_tasks",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -623,7 +624,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -754,7 +755,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -916,7 +917,7 @@ def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
     )
     connection.commit()
 
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:50])
     assert SchemaMigrator(connection).migrate() == [50]
     row = connection.execute(
         """SELECT runtime_state, app_uptime_seconds, last_task_id
@@ -937,3 +938,66 @@ def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
         )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
+
+def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "device-task-v51.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:50])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:50]
+    ]
+
+    now = "2026-11-20T00:00:00+00:00"
+    connection.execute(
+        "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
+        "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
+        (now,),
+    )
+    connection.execute(
+        """INSERT INTO personal_devices (
+            device_id, owner_user_id, platform, label, agent_version, os_version,
+            advertised_capabilities_json, scopes_json, status, created_at,
+            last_seen_at, revoked_at, runtime_state, app_uptime_seconds, last_task_id
+        ) VALUES (?, 'owner-1', 'windows', 'Workstation', '0.1.0', 'Windows 11',
+                  '[]', '["device.heartbeat","app.launch"]', 'active', ?, ?, NULL,
+                  'ready', 10, NULL)""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", now, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [51]
+    connection.execute(
+        """INSERT INTO personal_device_tasks (
+            task_id,owner_user_id,device_id,action,parameters_json,required_scope,
+            status,request_digest,idempotency_key,timeout_seconds,expires_at,
+            created_at,updated_at
+        ) VALUES ('task-1','owner-1',?,'app.launch','{"app":"notepad"}','app.launch',
+                  'queued',?,'launch-test-0001',30,?,?,?)""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "a" * 64, now, now, now),
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """INSERT INTO personal_device_tasks (
+                task_id,owner_user_id,device_id,action,parameters_json,required_scope,
+                status,request_digest,idempotency_key,timeout_seconds,expires_at,
+                created_at,updated_at
+            ) VALUES ('task-2','owner-1',?,'app.launch','{"app":"powershell"}','app.launch',
+                      'queued',?,'launch-test-0002',30,?,?,?)""",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "b" * 64, now, now, now),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """INSERT INTO personal_device_tasks (
+                task_id,owner_user_id,device_id,action,parameters_json,required_scope,
+                status,request_digest,idempotency_key,timeout_seconds,expires_at,
+                created_at,updated_at
+            ) VALUES ('task-3','owner-1',?,'app.launch','{"app":"notepad"}','app.launch',
+                      'claimed',?,'launch-test-0003',30,?,?,?)""",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "c" * 64, now, now, now),
+        )
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
+
