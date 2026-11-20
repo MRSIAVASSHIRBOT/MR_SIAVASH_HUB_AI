@@ -498,3 +498,45 @@ class DeviceTaskRepository:
                 (task_id,),
             ).fetchone()
         return self._serialize(updated)
+
+    def revoke_device_tasks(
+        self, connection: sqlite3.Connection, *, device_id: str, now_text: str
+    ) -> None:
+        """Cancel queued work and fence claimed work when the owner revokes a device."""
+        rows = connection.execute(
+            """SELECT task_id,owner_user_id,action,required_scope,status
+               FROM personal_device_tasks
+               WHERE device_id=? AND status IN ('queued','claimed')""",
+            (device_id,),
+        ).fetchall()
+        for row in rows:
+            next_status = "cancelled" if row["status"] == "queued" else "unknown_outcome"
+            reason_code = (
+                "device_revoked_before_claim"
+                if next_status == "cancelled"
+                else "device_revoked_after_claim"
+            )
+            connection.execute(
+                """UPDATE personal_device_tasks
+                   SET status=?,lease_token_hash=NULL,lease_expires_at=NULL,
+                       updated_at=?,completed_at=?
+                   WHERE task_id=? AND status IN ('queued','claimed')""",
+                (next_status, now_text, now_text, row["task_id"]),
+            )
+            self._audit(
+                connection,
+                event_type=(
+                    "device.task_cancelled"
+                    if next_status == "cancelled"
+                    else "device.task_unknown_outcome"
+                ),
+                outcome=next_status,
+                task_id=row["task_id"],
+                owner_user_id=row["owner_user_id"],
+                actor_type="owner",
+                actor_id=row["owner_user_id"],
+                action=row["action"],
+                required_scope=row["required_scope"],
+                reason_code=reason_code,
+            )
+
