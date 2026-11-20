@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
@@ -208,6 +208,7 @@ def device_heartbeat(
 def submit_device_task(
     device_id: UUID,
     payload: DeviceTaskCreateRequest,
+    response: Response,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)],
 ) -> dict[str, object]:
@@ -237,7 +238,10 @@ def submit_device_task(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except DeviceTaskConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return task if created else {**task, "idempotent_replay": True}
+    if not created:
+        response.status_code = status.HTTP_200_OK
+        return {**task, "idempotent_replay": True}
+    return task
 
 
 @router.post("/tasks/claim")
