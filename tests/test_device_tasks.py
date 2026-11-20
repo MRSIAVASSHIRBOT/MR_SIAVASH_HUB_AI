@@ -205,7 +205,7 @@ def test_screen_capture_requires_explicit_confirmation_and_scope(tmp_path, monke
 
 
 def test_outcome_requires_the_claim_lease_and_remains_unverified(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
+    client, database_path = _owner_client(tmp_path, monkeypatch)
     device_id, device_headers = _paired_device(client)
     submitted = _submit(client, device_id, app="calculator", key="launch-result-000001")
     task_id = submitted.json()["task"]["task_id"]
@@ -244,6 +244,20 @@ def test_outcome_requires_the_claim_lease_and_remains_unverified(tmp_path, monke
     assert accepted.json()["task"]["outcome_verified"] is False
     assert duplicate.status_code == 409
     assert owner_view.json()["task"]["status"] == "reported_succeeded"
+    with sqlite3.connect(database_path) as db:
+        audit_rows = db.execute(
+            "SELECT event_type,metadata_json FROM audit_events WHERE subject_id=?",
+            (task_id,),
+        ).fetchall()
+    event_types = {row[0] for row in audit_rows}
+    audit_metadata = " ".join(row[1] for row in audit_rows)
+    assert {
+        "device.task_submitted",
+        "device.task_claimed",
+        "device.task_outcome_reported",
+    }.issubset(event_types)
+    assert claimed["lease_token"] not in audit_metadata
+    assert "launch-result-000001" not in audit_metadata
     get_settings.cache_clear()
 
 
