@@ -107,10 +107,19 @@ def test_idempotency_is_owner_scoped_hashed_and_rejects_payload_reuse(tmp_path, 
     first = _submit(client, device_id, app="calculator", key=key, scheduled_at=scheduled_at)
     replay = _submit(client, device_id, app="calculator", key=key, scheduled_at=scheduled_at)
     conflict = _submit(client, device_id, app="notepad", key=key, scheduled_at=scheduled_at)
+    other_device, _ = _paired_device(client)
+    cross_device_reuse = _submit(
+        client,
+        other_device,
+        app="calculator",
+        key=key,
+        scheduled_at=scheduled_at,
+    )
     assert first.status_code == 201
     assert replay.status_code == 200
     assert replay.json()["task"]["task_id"] == first.json()["task"]["task_id"]
     assert conflict.status_code == 409
+    assert cross_device_reuse.status_code == 409
 
     with sqlite3.connect(database_path) as db:
         stored = db.execute(
