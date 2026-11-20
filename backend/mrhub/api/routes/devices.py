@@ -38,12 +38,17 @@ class PairingChallengeRequest(BaseModel):
 
 
 class PairingExchangeRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     pairing_code: str = Field(min_length=40, max_length=128)
     device_id: UUID
     agent_version: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9.+_-]+$")
-    os_version: str = Field(default="unknown", min_length=1, max_length=64)
+    os_version: str = Field(
+        default="unknown",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[^\x00-\x1f\x7f]+$",
+    )
 
 
 class DeviceRefreshRequest(BaseModel):
