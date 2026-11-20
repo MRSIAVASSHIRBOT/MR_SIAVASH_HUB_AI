@@ -109,6 +109,7 @@ class DeviceTaskRepository:
     ) -> None:
         metadata = json.dumps(
             {
+                "correlation_id": task_id,
                 "action": action,
                 "required_scope": required_scope,
                 "reason_code": reason_code,
