@@ -1343,7 +1343,7 @@ def preview_telegram_agent_plan(
         {
             "instructions": (
                 "Create a practical, sequential task plan. Return only one JSON object "
-                "matching {\\"steps\\":[{\\"description\\":string}, ...]}. "
+                "with a top-level steps array; each item must contain only one description string. "
                 "Use 2 to 8 concise Persian steps, each no longer than 400 characters. "
                 "Do not include tools, code execution, credentials, hidden actions, or "
                 "claims that work has already been performed. The plan is a proposal only. "
