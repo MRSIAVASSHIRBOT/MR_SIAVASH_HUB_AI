@@ -1,11 +1,15 @@
 """Scoped authentication for paired personal device companions."""
 from __future__ import annotations
+
 from typing import Annotated
+
 from fastapi import Depends, Header, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+
 from mrhub.api.dependencies import bearer_scheme
 from mrhub.config import get_settings
 from mrhub.devices.pairing import DeviceIdentity, DevicePairingRepository
+
 
 def require_device_scope(scope: str):
     def dependency(
@@ -22,4 +26,5 @@ def require_device_scope(scope: str):
         if scope not in identity.scopes:
             raise HTTPException(status_code=403, detail="Device lacks the required scope")
         return identity
+
     return dependency
