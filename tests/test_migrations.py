@@ -952,6 +952,7 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
     ]
 
     now = "2026-11-20T00:00:00+00:00"
+    later = "2026-11-20T00:05:00+00:00"
     connection.execute(
         "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
         "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
@@ -1019,7 +1020,7 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
                 "e" * 64,
                 "f" * 64,
                 now,
-                now,
+                later,
                 now,
                 now,
             ),
@@ -1037,7 +1038,7 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
                 "1" * 64,
                 "2" * 64,
                 now,
-                now,
+                later,
                 now,
                 now,
             ),
