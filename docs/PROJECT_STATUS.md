@@ -921,6 +921,7 @@ This checkpoint records the current engineering branch work separately from merg
 - PR #456 merged migration 50 as `ba0cc7278cc94badfaeb0ef566023cd80112f6fb`, persisting bounded heartbeat runtime metadata. All 20 observed exact-PR-head checks passed; post-merge Backend CI and security checks passed.
 - Device pairing remains owner-scoped, uses single-use enrollment, hashed/revocable access and refresh credentials, explicit scopes, authenticated heartbeats, owner listing/revocation, and audit events.
 - Decision policy, bounded agent orchestration, specialist registry, durable workflow leases/fencing, safe retry/cancellation/recovery, owner-scoped FTS5 memory, provenance metadata, export/deletion, and read-only Dreaming proposals are already present in the merged codebase. Dreaming does not automatically rewrite or delete memory.
+- The default specialist catalog now includes six reviewed profiles: architecture, knowledge synthesis, text helper, defensive security review, quality evaluation, and workflow planning. The three new reviewers are read-only with no tool grants; proposals still require owner-reviewed activation.
 
 ### Current device-task implementation branch
 
