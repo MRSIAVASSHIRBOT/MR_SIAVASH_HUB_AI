@@ -36,6 +36,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 | `tasks:read` | Read own tasks and cursor-paginated task event history |
 | `tasks:result` | Read own bounded terminal task result |
 | `tasks:create` | Submit tasks subject to Hub policy and idempotency |
+| `tasks:create` | Generate a bounded 2–8 step AI plan preview; no task is created or executed until the separate task-submission flow |
 | `tasks:cancel` | Cancel own queued or approval-waiting task |
 | `memory:search` | Search and inspect active owner-scoped memory entries |\n| `memory:write` | Explicitly approve one selected active memory entry; no content edits or deletion |\n| `video:read` | Read the non-secret provider catalog, own bounded generation/render history, up to five storyboard-draft summaries, individual generation/render status, and verified private MP4 downloads |\n| `video:render` | Submit a saved owner-owned renderer-compatible draft to the deterministic local FFmpeg queue |\n| `video:cancel` | Cancel own local FFmpeg renders or prepared/queued provider generations before provider submission |
 
@@ -45,6 +46,7 @@ The Hub API is rooted at `/integrations/telegram`. The exact methods, paths, aut
 - Task history: 1–50 events per page; cursor maximum 512 characters.
 - Terminal task result: maximum 32 KiB encoded response.
 - Task creation requires the `Idempotency-Key` header.
+- AI plan preview accepts a goal of at most 1,000 characters and returns 2–8 validated steps; it invokes no tools and creates no tasks. Local inference is the default; remote Kimi is explicit and rate-limited.
 - A task result is unavailable until the task reaches a terminal state.
 - Task cancellation is limited to tasks that remain queued or waiting for owner approval.\n- Video-generation history is limited to 1–20 records per page; its cursor is limited to 512 characters. Responses omit provider job IDs and private asset IDs.\n- Telegram render-draft listing is capped at five summaries and omits source asset IDs, renderer timeline bodies, and filesystem paths.
 - Telegram render history is limited to 1–20 owner-scoped records per page; the cursor is limited to 512 characters.
