@@ -103,11 +103,22 @@ class DevicePairingRepository:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT 1 FROM personal_devices WHERE device_id=? UNION SELECT 1 FROM personal_device_pairing_challenges WHERE device_id=?",
-                (device_id,device_id),
+                "SELECT 1 FROM personal_devices WHERE device_id=?",
+                (device_id,),
             ).fetchone()
             if existing is not None:
                 raise DevicePairingError("This device identifier has already been registered")
+            pending = connection.execute(
+                """SELECT expires_at FROM personal_device_pairing_challenges
+                   WHERE device_id=? AND consumed_at IS NULL""",
+                (device_id,),
+            ).fetchone()
+            if pending is not None and pending["expires_at"] > now.isoformat():
+                raise DevicePairingError("A pairing challenge for this device is already pending")
+            connection.execute(
+                "DELETE FROM personal_device_pairing_challenges WHERE device_id=?",
+                (device_id,),
+            )
             connection.execute(
                 """INSERT INTO personal_device_pairing_challenges (
                     challenge_hash,owner_user_id,device_id,platform,label,
