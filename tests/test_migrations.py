@@ -902,7 +902,6 @@ def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
     ]
 
     now = "2026-11-20T00:00:00+00:00"
-    later = "2026-11-20T00:05:00+00:00"
     connection.execute(
         "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
         "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
