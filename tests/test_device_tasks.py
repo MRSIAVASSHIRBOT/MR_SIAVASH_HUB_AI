@@ -84,7 +84,7 @@ def test_owner_can_submit_scheduled_task_and_device_claims_it_once(tmp_path, mon
     assert not_due.status_code == 200
     assert not_due.json()["task"] is None
 
-    with sqlite3.connect(client.app.state.settings.database_path) as db:
+    with sqlite3.connect(database_path) as db:
         db.execute(
             "UPDATE personal_device_tasks SET scheduled_at=? WHERE task_id=?",
             ("2000-01-01T00:00:00+00:00", task["task_id"]),
@@ -123,13 +123,13 @@ def test_idempotency_is_owner_scoped_hashed_and_rejects_payload_reuse(tmp_path, 
 
 
 def test_device_scope_and_owner_boundaries_are_enforced(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
+    client, database_path = _owner_client(tmp_path, monkeypatch)
     device_id, device_headers = _paired_device(client, scopes=["device.heartbeat"])
     denied = _submit(client, device_id, app="notepad", key="no-action-scope-001")
     assert denied.status_code == 403
     assert client.post("/devices/tasks/claim", headers=device_headers).json()["task"] is None
 
-    repository = DeviceTaskRepository(client.app.state.settings.database_path)
+    repository = DeviceTaskRepository(database_path)
     with pytest.raises(DeviceTaskNotFound):
         repository.create(
             owner_user_id="another-owner",
