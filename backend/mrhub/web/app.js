@@ -4,6 +4,14 @@
   const $ = (selector) => document.querySelector(selector);
   const tokenKey = "mrh_session_token";
   let token = sessionStorage.getItem(tokenKey);
+  let deviceAgentToolsAvailable = {
+    registry: false,
+    appLaunch: false,
+  };
+  let deviceAgentGrants = [];
+  let deviceAgentDevices = [];
+  let pendingDeviceLaunchKey = null;
+  let pendingDeviceLaunchFingerprint = null;
   let mediaAssetsCache = [];
   let activeModelRunWorkflowId = null;
   let pendingModelRunIdempotencyKey = null;
@@ -208,6 +216,27 @@
     $("#cloudflare-inventory-result").textContent = "برای مشاهدهٔ Snapshot دوباره وارد شوید.";
     $("#cloudflare-worker-settings-result").textContent = "برای مشاهدهٔ تنظیمات دوباره وارد شوید.";
     message("#cloudflare-access-message", "");
+    deviceAgentToolsAvailable = { registry: false, appLaunch: false };
+    deviceAgentGrants = [];
+    deviceAgentDevices = [];
+    pendingDeviceLaunchKey = null;
+    pendingDeviceLaunchFingerprint = null;
+    $("#device-agent-readiness").textContent = "بدون نشست";
+    $("#device-agent-readiness").className = "status-pill status-muted";
+    $("#device-registry-grant-button").disabled = true;
+    $("#device-app-launch-grant-button").disabled = true;
+    $("#device-agent-grants-refresh").disabled = true;
+    $("#device-registry-refresh-button").disabled = true;
+    $("#device-agent-grant-list").replaceChildren();
+    $("#device-agent-device-list").replaceChildren();
+    $("#device-app-launch-device").replaceChildren(element("option", "برای مشاهدهٔ دستگاه‌ها وارد شوید"));
+    $("#device-app-launch-alias").replaceChildren(element("option", "ابتدا دستگاه را انتخاب کنید"));
+    $("#device-app-launch-device").disabled = true;
+    $("#device-app-launch-alias").disabled = true;
+    $("#device-app-launch-submit").disabled = true;
+    $("#device-app-launch-result").textContent = "برای صف‌کردن درخواست دوباره وارد شوید.";
+    message("#device-agent-access-message", "");
+    message("#device-app-launch-message", "");
     setAuthenticated(false);
   }
 
@@ -3228,6 +3257,349 @@
     }
   }
 
+  const DEVICE_TOOL_PERMISSIONS = [
+    "device.registry.read",
+    "device.app_launch",
+  ];
+
+  function devicePermissionLabel(permission) {
+    return permission === "device.registry.read"
+      ? "مشاهدهٔ دستگاه‌های Pair شده"
+      : permission === "device.app_launch"
+        ? "صف‌کردن بازکردن برنامهٔ مجاز"
+        : permission;
+  }
+
+  function renderDeviceAgentGrant(grant) {
+    const expiresAt = new Date(grant.expires_at);
+    const grantedAt = new Date(grant.granted_at);
+    const expiryLabel = Number.isNaN(expiresAt.getTime())
+      ? String(grant.expires_at || "نامشخص")
+      : expiresAt.toLocaleString("fa-IR");
+    const grantedLabel = Number.isNaN(grantedAt.getTime())
+      ? String(grant.granted_at || "نامشخص")
+      : grantedAt.toLocaleString("fa-IR");
+    const card = recordCard(
+      devicePermissionLabel(grant.permission),
+      "فعال تا " + expiryLabel,
+      "اعطا شده: " + grantedLabel
+    );
+    card.append(deleteButton("لغو فوری مجوز", async () => {
+      if (!window.confirm("این مجوز دستگاه فوراً لغو شود؟")) return;
+      try {
+        await api("/tools/grants/" + encodeURIComponent(grant.permission), { method: "DELETE" });
+        const refreshed = await loadDeviceAgentAccess();
+        message(
+          "#device-agent-access-message",
+          refreshed ? "مجوز دستگاه لغو شد." : "درخواست لغو ارسال شد، اما وضعیت تازه قابل تأیید نیست.",
+          refreshed ? "success" : "error"
+        );
+      } catch (error) {
+        message("#device-agent-access-message", error.message, "error");
+      }
+    }));
+    return card;
+  }
+
+  function renderDeviceAgentDevice(device) {
+    const platformLabel = device.platform === "windows"
+      ? "Windows"
+      : device.platform === "android" ? "Android" : String(device.platform || "نامشخص");
+    const scopes = Array.isArray(device.granted_scopes) ? device.granted_scopes : [];
+    const lastSeen = device.last_seen_at
+      ? new Date(device.last_seen_at).toLocaleString("fa-IR")
+      : "هنوز Heartbeat ثبت نشده";
+    const card = recordCard(
+      String(device.label || "بدون برچسب") + " · " + platformLabel,
+      "وضعیت: " + String(device.status || "unknown") + " · Runtime: " + String(device.runtime_state || "unknown"),
+      "Device ID: " + String(device.device_id || "") + " · Scopeها: " + scopes.join(", ") + " · آخرین Heartbeat: " + lastSeen
+    );
+    return card;
+  }
+
+  function appendSelectOption(select, label, value) {
+    const option = document.createElement("option");
+    option.textContent = label;
+    option.value = value;
+    select.append(option);
+  }
+
+  function updateDeviceAppLaunchOptions() {
+    const deviceSelect = $("#device-app-launch-device");
+    const appSelect = $("#device-app-launch-alias");
+    const submitButton = $("#device-app-launch-submit");
+    const selectedDevice = deviceAgentDevices.find(
+      (item) => item.device_id === deviceSelect.value
+    ) || null;
+    const hasRegistryGrant = deviceAgentGrants.some(
+      (item) => item.permission === "device.registry.read"
+    );
+    const hasLaunchGrant = deviceAgentGrants.some(
+      (item) => item.permission === "device.app_launch"
+    );
+    const available = deviceAgentToolsAvailable.registry && deviceAgentToolsAvailable.appLaunch;
+    const ownerAuthorized = hasRegistryGrant && hasLaunchGrant && available;
+    const deviceReady = Boolean(
+      selectedDevice &&
+      selectedDevice.status === "active" &&
+      Array.isArray(selectedDevice.granted_scopes) &&
+      selectedDevice.granted_scopes.includes("app.launch")
+    );
+    const aliases = selectedDevice && selectedDevice.platform === "windows"
+      ? ["notepad", "calculator", "explorer", "browser", "chatgpt"]
+      : selectedDevice && selectedDevice.platform === "android"
+        ? ["chatgpt", "browser"]
+        : [];
+
+    const previous = appSelect.value;
+    appSelect.replaceChildren();
+    if (!selectedDevice) {
+      appendSelectOption(appSelect, "ابتدا دستگاه را انتخاب کنید", "");
+    } else if (!deviceReady) {
+      appendSelectOption(appSelect, "این دستگاه Scope مربوط به app.launch را ندارد", "");
+    } else if (!aliases.length) {
+      appendSelectOption(appSelect, "برای این پلتفرم برنامه‌ای در فهرست مجاز نیست", "");
+    } else {
+      appendSelectOption(appSelect, "انتخاب برنامهٔ مجاز", "");
+      for (const alias of aliases) appendSelectOption(appSelect, alias, alias);
+      if (aliases.includes(previous)) appSelect.value = previous;
+    }
+    deviceSelect.disabled = !hasRegistryGrant || !deviceAgentToolsAvailable.registry || !deviceAgentDevices.length;
+    appSelect.disabled = !deviceReady || !aliases.length;
+    submitButton.disabled = !ownerAuthorized || !deviceReady || !appSelect.value;
+  }
+
+  async function loadDeviceRegistry() {
+    const refreshButton = $("#device-registry-refresh-button");
+    const hasRegistryGrant = deviceAgentGrants.some(
+      (item) => item.permission === "device.registry.read"
+    );
+    if (!deviceAgentToolsAvailable.registry || !hasRegistryGrant) {
+      deviceAgentDevices = [];
+      renderEmpty($("#device-agent-device-list"), "برای مشاهدهٔ دستگاه‌ها، مجوز موقت مشاهده را فعال کنید.");
+      $("#device-app-launch-device").replaceChildren(element("option", "ابتدا مجوز مشاهده را فعال کنید"));
+      $("#device-app-launch-alias").replaceChildren(element("option", "ابتدا دستگاه را انتخاب کنید"));
+      updateDeviceAppLaunchOptions();
+      return false;
+    }
+
+    refreshButton.disabled = true;
+    message("#device-agent-access-message", "در حال دریافت فهرست دستگاه‌های متعلق به این حساب…");
+    try {
+      const response = await api("/tools/device.registry.list/invoke", {
+        method: "POST",
+        body: { payload: {} },
+      });
+      const result = response && response.result;
+      if (!result || !Array.isArray(result.devices)) {
+        throw new Error("پاسخ فهرست دستگاه‌ها نامعتبر است؛ هیچ عملیاتی اجرا نشد.");
+      }
+      deviceAgentDevices = result.devices.slice(0, 100);
+      renderRecords(
+        "#device-agent-device-list",
+        deviceAgentDevices,
+        renderDeviceAgentDevice,
+        "هیچ دستگاهی برای این حساب Pair نشده است."
+      );
+
+      const deviceSelect = $("#device-app-launch-device");
+      const previous = deviceSelect.value;
+      deviceSelect.replaceChildren();
+      appendSelectOption(deviceSelect, "انتخاب دستگاه", "");
+      for (const device of deviceAgentDevices.filter((item) => item.status === "active")) {
+        const label = String(device.label || device.platform) + " · " + String(device.platform);
+        appendSelectOption(deviceSelect, label, String(device.device_id));
+      }
+      if (deviceAgentDevices.some((item) => item.device_id === previous && item.status === "active")) {
+        deviceSelect.value = previous;
+      }
+      updateDeviceAppLaunchOptions();
+      message(
+        "#device-agent-access-message",
+        deviceAgentDevices.length + " دستگاه در فهرست مالک دریافت شد؛ هیچ اعتبارنامه‌ای نمایش داده نشده است.",
+        "success"
+      );
+      return true;
+    } catch (error) {
+      deviceAgentDevices = [];
+      renderEmpty($("#device-agent-device-list"), "فهرست دستگاه‌ها دریافت نشد.");
+      $("#device-app-launch-device").replaceChildren(element("option", "فهرست دستگاه‌ها در دسترس نیست"));
+      updateDeviceAppLaunchOptions();
+      message("#device-agent-access-message", error.message, "error");
+      return false;
+    } finally {
+      refreshButton.disabled = !deviceAgentGrants.some(
+        (item) => item.permission === "device.registry.read"
+      );
+    }
+  }
+
+  async function loadDeviceAgentAccess() {
+    const registryGrantButton = $("#device-registry-grant-button");
+    const launchGrantButton = $("#device-app-launch-grant-button");
+    const refreshButton = $("#device-agent-grants-refresh");
+    const readiness = $("#device-agent-readiness");
+    refreshButton.disabled = true;
+    try {
+      const [grantsResult, toolsResult] = await Promise.allSettled([
+        api("/tools/grants"),
+        api("/tools"),
+      ]);
+      if (grantsResult.status !== "fulfilled") throw grantsResult.reason;
+      const grants = Array.isArray(grantsResult.value) ? grantsResult.value : [];
+      const tools = toolsResult.status === "fulfilled" && Array.isArray(toolsResult.value)
+        ? toolsResult.value
+        : [];
+      deviceAgentToolsAvailable = {
+        registry: tools.some((item) => item.name === "device.registry.list"),
+        appLaunch: tools.some((item) => item.name === "device.app_launch.submit"),
+      };
+      deviceAgentGrants = grants.filter(
+        (item) => DEVICE_TOOL_PERMISSIONS.includes(item.permission)
+      );
+      renderRecords(
+        "#device-agent-grant-list",
+        deviceAgentGrants,
+        renderDeviceAgentGrant,
+        "هیچ مجوز فعال دستگاه برای این حساب ثبت نشده است."
+      );
+
+      const hasRegistry = deviceAgentGrants.some((item) => item.permission === "device.registry.read");
+      const hasLaunch = deviceAgentGrants.some((item) => item.permission === "device.app_launch");
+      const toolsAvailable = deviceAgentToolsAvailable.registry && deviceAgentToolsAvailable.appLaunch;
+      if (!toolsAvailable) {
+        readiness.textContent = "ابزارهای دستگاه در دسترس نیستند";
+        readiness.className = "status-pill status-muted";
+      } else if (hasRegistry && hasLaunch) {
+        readiness.textContent = "هر دو مجوز مالک فعال‌اند";
+        readiness.className = "status-pill";
+      } else {
+        readiness.textContent = "نیازمند مجوز مالک";
+        readiness.className = "status-pill status-warning";
+      }
+      registryGrantButton.disabled = !toolsAvailable;
+      launchGrantButton.disabled = !toolsAvailable;
+      refreshButton.disabled = false;
+      if (toolsResult.status === "rejected") {
+        message("#device-agent-access-message", "کاتالوگ ابزارهای دستگاه دریافت نشد؛ هیچ عملیاتی صف نشد.", "error");
+        deviceAgentToolsAvailable = { registry: false, appLaunch: false };
+      }
+      await loadDeviceRegistry();
+      return true;
+    } catch (error) {
+      deviceAgentToolsAvailable = { registry: false, appLaunch: false };
+      deviceAgentGrants = [];
+      deviceAgentDevices = [];
+      readiness.textContent = "وضعیت مجوز قابل دریافت نیست";
+      readiness.className = "status-pill status-muted";
+      registryGrantButton.disabled = true;
+      launchGrantButton.disabled = true;
+      refreshButton.disabled = true;
+      renderEmpty($("#device-agent-grant-list"), "فهرست مجوزهای دستگاه دریافت نشد.");
+      renderEmpty($("#device-agent-device-list"), "فهرست دستگاه‌ها دریافت نشد.");
+      updateDeviceAppLaunchOptions();
+      message("#device-agent-access-message", error.message, "error");
+      return false;
+    }
+  }
+
+  async function saveDeviceAgentGrant(permission) {
+    if (!DEVICE_TOOL_PERMISSIONS.includes(permission)) return;
+    const form = $("#device-agent-grant-form");
+    const expiresInSeconds = Number(new FormData(form).get("expires_in_seconds"));
+    if (![600, 3600, 86400].includes(expiresInSeconds)) {
+      message("#device-agent-access-message", "مدت مجوز انتخاب‌شده معتبر نیست.", "error");
+      return;
+    }
+    const button = permission === "device.registry.read"
+      ? $("#device-registry-grant-button")
+      : $("#device-app-launch-grant-button");
+    if (!window.confirm(
+      permission === "device.registry.read"
+        ? "اجازهٔ مشاهدهٔ فرادادهٔ دستگاه‌های Pair شده برای مدت انتخاب‌شده اعطا شود؟"
+        : "اجازهٔ صف‌کردن بازکردن برنامه‌های مجاز روی دستگاه‌های دارای Scope app.launch برای مدت انتخاب‌شده اعطا شود؟"
+    )) return;
+    button.disabled = true;
+    try {
+      await api("/tools/grants/" + encodeURIComponent(permission), {
+        method: "PUT",
+        body: { expires_in_seconds: expiresInSeconds },
+      });
+      await loadDeviceAgentAccess();
+      message(
+        "#device-agent-access-message",
+        "مجوز مالک ثبت یا تمدید شد. اجرای دستگاه همچنان به Scope مستقل همان دستگاه نیاز دارد.",
+        "success"
+      );
+    } catch (error) {
+      message("#device-agent-access-message", error.message, "error");
+    } finally {
+      updateDeviceAppLaunchOptions();
+    }
+  }
+
+  async function submitDeviceAppLaunch(event) {
+    event.preventDefault();
+    const deviceId = $("#device-app-launch-device").value;
+    const app = $("#device-app-launch-alias").value;
+    const device = deviceAgentDevices.find((item) => item.device_id === deviceId);
+    if (!device || device.status !== "active" || !app
+      || !deviceAgentToolsAvailable.registry || !deviceAgentToolsAvailable.appLaunch
+      || !deviceAgentGrants.some((item) => item.permission === "device.registry.read")
+      || !deviceAgentGrants.some((item) => item.permission === "device.app_launch")
+      || !Array.isArray(device.granted_scopes) || !device.granted_scopes.includes("app.launch")) {
+      message("#device-app-launch-message", "دستگاه یا مجوز لازم معتبر نیست؛ درخواست ارسال نشد.", "error");
+      return;
+    }
+    const fingerprint = deviceId + ":" + app;
+    if (!pendingDeviceLaunchKey || pendingDeviceLaunchFingerprint !== fingerprint) {
+      pendingDeviceLaunchKey = crypto.randomUUID();
+      pendingDeviceLaunchFingerprint = fingerprint;
+    }
+    if (!window.confirm(
+      "فقط درخواست بازکردن «" + app + "» روی دستگاه «" +
+      String(device.label || device.platform) + "» به Hub صف شود؟ اجرای واقعی بعداً توسط دستگاه گزارش خواهد شد."
+    )) return;
+
+    const button = $("#device-app-launch-submit");
+    const output = $("#device-app-launch-result");
+    button.disabled = true;
+    message("#device-app-launch-message", "در حال ثبت درخواست در صف Hub…");
+    try {
+      const response = await api("/tools/device.app_launch.submit/invoke", {
+        method: "POST",
+        body: {
+          payload: {
+            device_id: deviceId,
+            app,
+            idempotency_key: pendingDeviceLaunchKey,
+          },
+        },
+      });
+      const result = response && response.result;
+      const task = result && result.task;
+      if (!task || !task.task_id || task.status !== "queued") {
+        throw new Error("Hub درخواست را به‌صورت صف‌شده تأیید نکرد؛ وضعیت را بررسی کنید.");
+      }
+      output.textContent = [
+        "درخواست با موفقیت در صف Hub ثبت شد؛ اجرای برنامه هنوز تأیید نشده است.",
+        "Task ID: " + String(task.task_id),
+        "Device ID: " + String(task.device_id),
+        "App: " + String(task.app),
+        "Status: " + String(task.status),
+        "Idempotent replay: " + String(Boolean(result.idempotent_replay)),
+      ].join("\n");
+      pendingDeviceLaunchKey = null;
+      pendingDeviceLaunchFingerprint = null;
+      message("#device-app-launch-message", "درخواست صف شد. نتیجهٔ اجرا باید از گزارش دستگاه تأیید شود.", "success");
+    } catch (error) {
+      message("#device-app-launch-message", error.message, "error");
+      output.textContent = "نتیجهٔ درخواست نامشخص است. برای جلوگیری از ثبت تکراری، Retry همین انتخاب از کلید idempotency موجود استفاده می‌کند.\n" + error.message;
+    } finally {
+      updateDeviceAppLaunchOptions();
+    }
+  }
+
   function renderCloudflareGrant(grant) {
     const expiresAt = new Date(grant.expires_at);
     const grantedAt = new Date(grant.granted_at);
@@ -3460,6 +3832,7 @@
         loadAgentProposals(),
         loadResearch(),
         loadCloudflareReadAccess(),
+        loadDeviceAgentAccess(),
       ]);
       if (activeVideoSceneJobId) {
         await refreshActiveVideoSceneJob();
@@ -3787,7 +4160,15 @@
   });
   $("#knowledge-list-button").addEventListener("click", () => loadKnowledge().catch((error) => message("#workspace-message", error.message, "error")));
 
-  $("#cloudflare-grant-form").addEventListener("submit", saveCloudflareReadGrant);
+  $("#device-registry-grant-button").addEventListener("click", () => saveDeviceAgentGrant("device.registry.read"));
+  $("#device-app-launch-grant-button").addEventListener("click", () => saveDeviceAgentGrant("device.app_launch"));
+  $("#device-agent-grants-refresh").addEventListener("click", () => loadDeviceAgentAccess());
+  $("#device-registry-refresh-button").addEventListener("click", () => loadDeviceRegistry());
+  $("#device-app-launch-device").addEventListener("change", updateDeviceAppLaunchOptions);
+  $("#device-app-launch-alias").addEventListener("change", updateDeviceAppLaunchOptions);
+  $("#device-app-launch-form").addEventListener("submit", submitDeviceAppLaunch);
+
+    $("#cloudflare-grant-form").addEventListener("submit", saveCloudflareReadGrant);
   $("#cloudflare-grants-refresh").addEventListener("click", () => {
     loadCloudflareReadAccess();
   });
