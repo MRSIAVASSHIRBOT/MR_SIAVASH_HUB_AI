@@ -539,7 +539,7 @@ def test_durable_model_run_preserves_approval_required_without_side_effect(monke
     ))
     monkeypatch.setattr(
         "mrhub.jobs.model_run_dispatch.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     submitted = client.post(
