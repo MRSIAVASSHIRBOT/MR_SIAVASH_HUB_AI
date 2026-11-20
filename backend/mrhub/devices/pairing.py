@@ -213,13 +213,13 @@ class DevicePairingRepository:
         return DeviceIdentity(row["owner_user_id"],row["device_id"],row["platform"],row["label"],
                               frozenset(json.loads(row["scopes_json"])))
 
-    def heartbeat(self, *, device_id: str, agent_version: str, os_version: str) -> bool:
+    def heartbeat(self, *, device_id: str, agent_version: str) -> bool:
         now = self._now().isoformat()
         with self._connection() as connection:
             result = connection.execute(
-                """UPDATE personal_devices SET last_seen_at=?,agent_version=?,os_version=?
+                """UPDATE personal_devices SET last_seen_at=?,agent_version=?
                    WHERE device_id=? AND status='active'""",
-                (now,agent_version,os_version,device_id),
+                (now,agent_version,device_id),
             )
             return result.rowcount == 1
 
