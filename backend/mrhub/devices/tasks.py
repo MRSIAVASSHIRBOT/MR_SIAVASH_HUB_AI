@@ -207,6 +207,10 @@ class DeviceTaskRepository:
         expires_at = scheduled + timedelta(seconds=expires_in_seconds)
         if expires_at <= now:
             raise DeviceTaskError("Task expiry must be in the future")
+        if action == "screen.capture" and (
+            scheduled > now + timedelta(minutes=5) or expires_in_seconds > 300
+        ):
+            raise DeviceTaskError("Sensitive screenshot tasks must be confirmed for near-term execution")
         parameters = {"app": app} if app is not None else {}
         request_digest = self._digest(
             {
