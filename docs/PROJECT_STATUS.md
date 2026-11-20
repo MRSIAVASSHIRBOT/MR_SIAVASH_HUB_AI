@@ -914,26 +914,33 @@ This section supersedes earlier control-center status notes above.
 
 ## Coordinated device-agent and maintenance checkpoint — 2026-11-20 UTC
 
-This snapshot supersedes earlier Hub `main` and device-agent status statements where they differ. It records GitHub evidence only; it is not a live deployment or target-device acceptance report.
+This checkpoint reflects the latest inspected GitHub state at 12:45 UTC. It is repository evidence only, not a live deployment or owner-device acceptance report.
 
-### Hub main and exact-SHA checks
+### Hub main and device control-plane delivery
 
-- Current Hub `main`: `688955f055b5a152d2dc03ca9d249a2781ba5a41` (PR #450 and PR #452 merged).
-- PR #450 exact head `978898099d180127b0a283a76d6b42d9ec46840d` had 20 observed check-run records, all completed successfully; the records include duplicate reruns of several jobs. It adds non-authoritative device descriptor/heartbeat contracts, ADR-0011, the device-agent operations guide, and contract tests. Device-reported capabilities remain descriptive and never grant permission.
-- PR #452 exact head `b09156edd324343a69c1094be9f9db5cde3a8152` passed all 9 observed PR-head checks. It accepts ADR-0011 and links the standalone Windows companion while explicitly keeping Hub pairing and shared memory unimplemented.
-- On post-merge `main` SHA `688955f...`, all 13 observed check-run records completed successfully: Python 3.11/3.12 tests, Windows wheel smoke for both versions, Linux/Windows FFmpeg integration, runtime smoke, PowerShell parsing, failed-startup cleanup, Defensive Python Scan, Workflow Security Audit, and supply-chain posture.
+- Current Hub `main`: `46d16151c92c79b783bee078138d30cc1092485d`.
+- PR #450 (contract foundation) merged as `b11604950f6214ad15725f5ed43c98a9ef6e000a`; all six observed PR workflows passed on exact head `978898099d180127b0a283a76d6b42d9ec46840d`.
+- PR #452 (accepted ADR and standalone companion roadmap link) merged as `688955f055b5a152d2dc03ca9d249a2781ba5a41`; all five observed PR workflows passed on exact head `b09156edd324343a69c1094be9f9db5cde3a8152`.
+- PR #453 (owner-scoped device pairing registry, hashed/revocable credentials, scoped device authentication, and heartbeat API) merged as `46d16151c92c79b783bee078138d30cc1092485d`; all six observed PR workflows passed on exact head `11aa8202918b6ae60a046fea966cc9a05e3f1cfe`.
+- All seven observed push workflows on current Hub `main` completed successfully: CI, Backend CI, Windows Launcher Validation, Video Render Integration, Workflow Security Audit, Defensive Python Scan, and OpenSSF Scorecard.
+- PR #456 proposes migration 50 and persistence of bounded heartbeat runtime metadata. Its first Backend CI run failed because one historical migration test still expected versions 40–49 after adding version 50. That assertion has been corrected on the PR branch; the rerun for updated head `e033b66678595c010be5b334ca2bc905f893f2ca` was still in progress at this checkpoint. Do not merge until all exact-head checks pass.
+
+Device-reported capabilities remain descriptive only. Heartbeat runtime state, uptime, and optional last-task UUID are self-reported diagnostics, not proof of task execution or completion. Hub task dispatch, acknowledgement, cancellation, expiry, and outcome verification remain unimplemented.
 
 ### Standalone Windows companion dependency
 
-- The separate `MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT` repository is outside this three-repository set and was inspected read-only because Hub PR #452 links to it.
-- Its current `main` is `98e77d4b9ef0684e60281297891c5d22ddb60749`; hosted CI run 44726855003 completed successfully. The code and README describe a loopback-only local API, local bearer token, explicit screenshot capture, fixed application-launch allowlist, and SQLite-backed scheduled app launches.
-- The standalone companion does not yet pair with Hub, share Hub memory, or accept remote commands. Live Windows acceptance on the owner's device remains pending. Its local API token is not a Hub credential and must never be forwarded through the public Website Gateway or a tunnel.
+- The separate `MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT` repository is outside this three-repository scope and was inspected read-only because Hub ADR-0011 references it.
+- Its latest observed `main` is `cd7ab54e83831c0c368b37b6bf3afd9373b62886`. Latest CI run [44730401161](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44730401161) failed in all four Python/OS matrix jobs during test collection: `tests/test_hub.py` imports `el_agent.hub`, but that module is not exported by the current package. The failure is an import error, not a test assertion.
+- An earlier companion CI run `44730230448` passed on commit `3a1b1bdf5e4b48fcda7979ba44d9de69983ba072`; that earlier success does not override the newer failing main-head run.
+- The standalone MVP remains loopback-only with its own local token and must not forward that token to Hub, the public Website Gateway, or a tunnel. Live Windows install/upgrade/backup/restore/rollback acceptance remains pending.
 
-### Staging, providers, and owner gates
+### Cross-repository state and owner gates
 
+- Website `main` is `d444fed420a047ba35b6734b77ce0e045b4624fe`; exact GitHub compare from the last recorded Production source annotation `1616545a2e204cb378e2c824299412ca20ef598b` reports 53 commits ahead and 0 behind. Website main push workflows observed on this exact SHA succeeded. This is GitHub source evidence, not a fresh Cloudflare deployment or D1 migration check.
+- EL_AI `main` is `eaec2637b9d4027d22bb0b5c8accd9065ca89d9c`; CI for Python 3.11/3.12, Workflow Security Audit, and OpenSSF Scorecard succeeded. No bot token is configured and live Telegram acceptance remains unverified.
 - The dedicated Hub staging Wrangler configuration remains source-only. No Worker, route, custom domain, DNS, Access policy, database, or secret was provisioned or changed.
 - Provider-backed video generation remains unavailable until the owner selects and configures a compatible provider; deterministic FFmpeg rendering is not generative AI.
-- The connected GitHub integration returned HTTP 403 for branch-protection reads. Current protection state could not be independently verified in this pass; no branch-protection or access-control setting was changed.
-- Windows install/upgrade/backup/restore/rollback acceptance on the owner's actual device remains outstanding. GShop remains explicitly out of scope.
+- Branch-protection reads returned HTTP 403 for all three repositories; the rulesets endpoint returned an empty list. Protection status therefore remains unverified in this pass. No branch-protection or access-control setting was changed.
+- GShop remains explicitly out of scope.
 
-No local test suite, live device action, Cloudflare write, production deployment, D1 row query, secret-value read, or access-control mutation was performed for this checkpoint. Test claims above refer only to the cited hosted GitHub Actions runs and exact SHAs.
+No local test suite, live device action, Cloudflare write, production deployment, D1 row query, secret-value read, or access-control mutation was performed for this checkpoint. All test claims above refer only to the cited hosted GitHub Actions runs and exact SHAs.
