@@ -908,3 +908,36 @@ This section supersedes earlier control-center status notes above.
 2. Add independently configured runtime probes for MR_SIAVASH_AI and Gshop only when their exact health contracts are known; otherwise keep them unknown.
 3. Add explainable risk summaries only from verified CI, runtime, and infrastructure observations.
 4. Keep all action proposals separate from monitoring and require fresh action-bound owner approval for production changes.
+
+
+---
+
+## Device-agent checkpoint after heartbeat persistence merge — 2026-11-20 UTC
+
+This is a GitHub-source checkpoint only. It does not claim live Windows acceptance, a production deployment, or a Cloudflare change.
+
+### Hub implementation and validation
+
+- Current Hub `main`: `ba0cc7278cc94badfaeb0ef566023cd80112f6fb`.
+- PR #450 established typed device contracts and ADR-0011; exact-head checks passed.
+- PR #452 accepted the device-agent architecture decision and linked the standalone Windows MVP; exact-head checks passed.
+- PR #453 merged owner-scoped pairing challenges, hashed access/refresh credentials, scoped device authentication, listing/revocation, and authenticated heartbeat.
+- PR #456 merged bounded heartbeat metadata persistence in migration 50. The exact PR head `e033b66678595c010be5b334ca2bc905f893f2ca` passed all six observed workflows. The initial Backend CI failure was caused by a historical migration test omitting version 50 from its expected sequence; that test was corrected before the successful exact-head run.
+- Post-merge checks on `ba0cc7278cc94badfaeb0ef566023cd80112f6fb`: Workflow Security Audit, Defensive Python Scan, OpenSSF Scorecard, Windows Launcher Validation, and Video Render Integration succeeded. CI and Backend CI were still in progress when this checkpoint was written.
+
+Heartbeat `runtime_state`, `app_uptime_seconds`, and optional `last_task_id` are bounded, self-reported operational metadata. They are not proof that a task was dispatched, executed, or completed. Hub task dispatch, acknowledgement, cancellation, expiry, idempotency, and outcome verification remain future work.
+
+### Standalone companion dependency
+
+- The separate `MR_SIAVASH_EL_AGENT` repository is outside this three-repository scope and was inspected read-only because Hub documentation references it.
+- Its latest observed `main` is `cd7ab54e83831c0c368b37b6bf3afd9373b62886`.
+- Latest CI run [44730401161](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44730401161) failed in all four Python/OS matrix jobs during collection: `tests/test_hub.py` imports `el_agent.hub`, which is not importable from the current package. This is a test-collection import error. An earlier successful run on an older SHA does not establish current-main health.
+- The standalone companion's local bearer token is not a Hub credential and must not be forwarded through the public Website Gateway or a network tunnel. Live Windows acceptance remains pending.
+
+### Coordinated repository state
+
+- Website `main`: `d444fed420a047ba35b6734b77ce0e045b4624fe`; GitHub compare from the last recorded Production source annotation reports 53 ahead and 0 behind. Exact-main Gateway CI, Quality, Workflow Security Audit, OpenSSF Scorecard, Preview smoke, and Gateway smoke succeeded. Cloudflare and Production D1 were not re-read during this checkpoint.
+- EL_AI `main`: `eaec2637b9d4027d22bb0b5c8accd9065ca89d9c`; CI on Python 3.11/3.12, Workflow Security Audit, and OpenSSF Scorecard succeeded. No bot token is configured; live Telegram acceptance remains unverified.
+- Branch-protection reads returned HTTP 403 for all three requested repositories; rulesets reads returned empty lists. Protection status is not verified. No branch-protection or access-control setting was changed.
+- No Worker deployment, D1 migration, application-row query, route/DNS change, secret read/write, or live device action was performed.
+
