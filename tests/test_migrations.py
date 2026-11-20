@@ -917,7 +917,7 @@ def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
     )
     connection.commit()
 
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:50])
     assert SchemaMigrator(connection).migrate() == [50]
     row = connection.execute(
         """SELECT runtime_state, app_uptime_seconds, last_task_id
