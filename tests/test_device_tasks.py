@@ -484,8 +484,10 @@ def test_model_device_task_creation_rechecks_active_owner_grants_atomically(tmp_
 
     repository = DeviceTaskRepository(database_path)
     required = frozenset({"device.registry.read", "device.app_launch"})
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
     common = {
-        "owner_user_id": "owner",
+        "owner_user_id": owner_user_id,
         "device_id": device_id,
         "action": "app.launch",
         "app": "notepad",
@@ -505,7 +507,7 @@ def test_model_device_task_creation_rechecks_active_owner_grants_atomically(tmp_
     assert allowed["status"] == "queued"
 
     revoked = client.delete("/tools/grants/device.app_launch")
-    assert revoked.status_code == 200
+    assert revoked.status_code == 204
     with pytest.raises(DeviceTaskPermissionError) as denied:
         repository.create(
             **common,
