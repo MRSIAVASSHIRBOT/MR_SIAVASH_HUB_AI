@@ -1406,6 +1406,16 @@ MIGRATIONS = (
                     (status='claimed' AND lease_token_hash IS NOT NULL AND lease_expires_at IS NOT NULL)
                     OR
                     (status<>'claimed' AND lease_token_hash IS NULL AND lease_expires_at IS NULL)
+                ),
+                CHECK (
+                    (status='reported_succeeded' AND error_code IS NULL AND duration_ms IS NOT NULL)
+                    OR (status='reported_failed' AND error_code IS NOT NULL AND duration_ms IS NOT NULL)
+                    OR (status NOT IN ('reported_succeeded','reported_failed')
+                        AND error_code IS NULL AND duration_ms IS NULL)
+                ),
+                CHECK (
+                    (status IN ('queued','claimed') AND completed_at IS NULL)
+                    OR (status NOT IN ('queued','claimed') AND completed_at IS NOT NULL)
                 )
             )""",
             "CREATE INDEX IF NOT EXISTS idx_device_tasks_device_status_created ON personal_device_tasks(device_id,status,scheduled_at,created_at)",
