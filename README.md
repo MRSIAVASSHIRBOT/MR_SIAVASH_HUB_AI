@@ -164,3 +164,17 @@ The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools`
 ## Engineering governance
 
 The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
+
+## Personal device task dispatch (pending review)
+
+The current device-dispatch implementation branch proposes a narrow Hub-owned task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed screenshot capture. Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
+
+- Owner API: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks/{task_id}`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
+- Device API: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
+- The device receives one short-lived claim lease. Only a hash is persisted; an expired lease becomes `unknown_outcome` and is never replayed automatically.
+- Completion is recorded as a device-reported result, not independent proof: `reported_succeeded` / `reported_failed`, with `outcome_verified=false`.
+- Queue size is bounded per device. Queued work can be cancelled; claimed work cannot be represented as safely cancelled. Device revocation cancels queued tasks and fences claimed tasks as unknown outcome.
+- Arbitrary shell commands, caller-provided executable paths, URLs, unrestricted file access, keystroke capture, and model-authored executable payloads are not supported.
+
+This section describes the proposed branch behavior; it is not a statement that the API is already deployed or that the Windows companion has integrated the protocol.
+
