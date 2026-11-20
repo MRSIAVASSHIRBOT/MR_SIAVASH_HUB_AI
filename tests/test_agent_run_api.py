@@ -316,7 +316,7 @@ def test_agent_run_exposes_approval_required_without_invoking_external_tool(monk
     ))
     monkeypatch.setattr(
         "mrhub.api.routes.agent_run.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     response = client.post(
@@ -454,7 +454,7 @@ def test_agent_run_uses_only_active_server_side_owner_tool_grants(monkeypatch):
     ))
     monkeypatch.setattr(
         "mrhub.api.routes.agent_run.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     tool_proposal = json.dumps({
