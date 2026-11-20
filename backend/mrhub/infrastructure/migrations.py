@@ -1350,8 +1350,7 @@ MIGRATIONS = (
                CHECK (app_uptime_seconds BETWEEN 0 AND 31536000)""",
             "ALTER TABLE personal_devices ADD COLUMN last_task_id TEXT",
         ),
-    ),,
-
+    ),
     Migration.build(
         51,
         "bounded_personal_device_task_dispatch",
