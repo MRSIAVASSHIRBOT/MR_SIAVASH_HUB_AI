@@ -975,8 +975,8 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
             status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
             owner_confirmed,created_at,updated_at
         ) VALUES ('task-1','owner-1',?,'app.launch','{"app":"notepad"}','app.launch',
-                  'queued',?,'a',30,?,?,0,?,?)""",
-        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "a" * 64, now, now, now),
+                  'queued',?,?,30,?,?,0,?,?)""",
+        ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "a" * 64, "d" * 64, now, now, now),
     )
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute(
@@ -985,8 +985,8 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
                 status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
                 owner_confirmed,created_at,updated_at
             ) VALUES ('task-2','owner-1',?,'app.launch','{"app":"powershell"}','app.launch',
-                      'queued',?,'b',30,?,?,0,?,?)""",
-            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "b" * 64, now, now, now),
+                      'queued',?,?,30,?,?,0,?,?)""",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "b" * 64, "e" * 64, now, now, now),
         )
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute(
@@ -995,8 +995,8 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
                 status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
                 owner_confirmed,created_at,updated_at
             ) VALUES ('task-3','owner-1',?,'app.launch','{"app":"notepad"}','app.launch',
-                      'claimed',?,'c',30,?,?,0,?,?)""",
-            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "c" * 64, now, now, now),
+                      'claimed',?,?,30,?,?,0,?,?)""",
+            ("a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4", "c" * 64, "f" * 64, now, now, now),
         )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
