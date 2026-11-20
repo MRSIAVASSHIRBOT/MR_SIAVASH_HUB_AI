@@ -85,6 +85,7 @@ class DeviceTaskRepository:
             "duration_ms": row["duration_ms"],
             "error_code": row["error_code"],
             "outcome_verified": False if status in {"reported_succeeded", "reported_failed"} else None,
+            "owner_confirmed": bool(row["owner_confirmed"]),
         }
 
     @staticmethod
@@ -130,6 +131,7 @@ class DeviceTaskRepository:
         app: str | None,
         required_scope: str,
         idempotency_key: str,
+        owner_confirmed: bool,
         expires_in_seconds: int,
         timeout_seconds: int,
     ) -> tuple[dict[str, object], bool]:
@@ -141,6 +143,7 @@ class DeviceTaskRepository:
                 "action": action,
                 "app": app,
                 "required_scope": required_scope,
+                "owner_confirmed": owner_confirmed,
                 "expires_in_seconds": expires_in_seconds,
                 "timeout_seconds": timeout_seconds,
             }
@@ -161,8 +164,8 @@ class DeviceTaskRepository:
 
             existing = connection.execute(
                 """SELECT * FROM personal_device_tasks
-                   WHERE owner_user_id=? AND idempotency_key=?""",
-                (owner_user_id, idempotency_key),
+                   WHERE owner_user_id=? AND idempotency_key_hash=?""",
+                (owner_user_id, self._hash(idempotency_key)),
             ).fetchone()
             if existing is not None:
                 if existing["request_digest"] != request_digest:
@@ -173,15 +176,15 @@ class DeviceTaskRepository:
             connection.execute(
                 """INSERT INTO personal_device_tasks (
                     task_id,owner_user_id,device_id,action,parameters_json,required_scope,
-                    status,request_digest,idempotency_key,timeout_seconds,expires_at,
-                    lease_token_hash,lease_expires_at,error_code,duration_ms,
+                    status,request_digest,idempotency_key_hash,timeout_seconds,expires_at,
+                    lease_token_hash,lease_expires_at,error_code,duration_ms,owner_confirmed,
                     created_at,updated_at,claimed_at,completed_at
-                ) VALUES (?,?,?,?,?,?, 'queued',?,?,?,?,NULL,NULL,NULL,NULL,?,?,NULL,NULL)""",
+                ) VALUES (?,?,?,?,?,?, 'queued',?,?,?,?,NULL,NULL,NULL,NULL,?,?,?,NULL,NULL)""",
                 (
                     task_id, owner_user_id, device_id, action,
                     json.dumps(parameters, sort_keys=True, separators=(",", ":")),
-                    required_scope, request_digest, idempotency_key, timeout_seconds,
-                    expires_at.isoformat(), now.isoformat(), now.isoformat(),
+                    required_scope, request_digest, self._hash(idempotency_key), timeout_seconds,
+                    expires_at.isoformat(), int(owner_confirmed), now.isoformat(), now.isoformat(),
                 ),
             )
             self._audit(
@@ -194,7 +197,7 @@ class DeviceTaskRepository:
                 actor_id=owner_user_id,
                 action=action,
                 required_scope=required_scope,
-                reason_code="owner_submitted",
+                reason_code=("owner_confirmed_sensitive_action" if owner_confirmed else "owner_submitted"),
             )
             row = connection.execute(
                 "SELECT * FROM personal_device_tasks WHERE task_id=?",
