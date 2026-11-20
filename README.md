@@ -176,5 +176,18 @@ The current device-dispatch implementation branch proposes a narrow Hub-owned ta
 - Queue size is bounded per device. Queued work can be cancelled; claimed work cannot be represented as safely cancelled. Device revocation cancels queued tasks and fences claimed tasks as unknown outcome.
 - Arbitrary shell commands, caller-provided executable paths, URLs, unrestricted file access, keystroke capture, and model-authored executable payloads are not supported.
 
-This section describes the proposed branch behavior; it is not a statement that the API is already deployed or that the Windows companion has integrated the protocol.
+The Hub API is merged to `main`. The companion integration is tracked separately in EL_AGENT PR #8 and remains blocked on a live Staging deployment and physical-device acceptance.
+
+## Model-driven device tools — owner-authorized, time-limited
+
+The Agent tool registry exposes two device tools only inside an authenticated owner's context:
+
+- `device.registry.list` requires the owner's `device.registry.read` grant. It returns that owner's paired-device metadata and granted scopes, never access or refresh credentials.
+- `device.app_launch.submit` requires both `device.registry.read` and `device.app_launch` owner grants, plus the selected paired device's exact `app.launch` scope. It queues only an allow-listed app alias; it does not claim that an app was opened.
+- Owner grants use the existing grant API: `PUT /tools/grants/device.registry.read` and `PUT /tools/grants/device.app_launch`, each with `expires_in_seconds` from 60 to 86,400. Use `GET /tools/grants` to inspect and `DELETE /tools/grants/{permission}` to revoke.
+- Device-side scope is separate from the owner's Hub permission. The device must have been paired with `app.launch`; an owner grant cannot manufacture a missing device scope.
+- The tool applies platform-specific aliases: Windows supports the five existing fixed aliases; Android supports only ChatGPT and browser. No arbitrary commands, executable paths, URLs, screenshots, file access, shell or browser form submission are exposed to the model.
+- Direct and durable Agent runs both read the active owner grants at each tool decision, so expiry or revocation during inference is enforced before action dispatch.
+
+This tool integration is source code under review in the Hub device-agent tools PR; it does not mean the Hub Staging Worker is deployed or a physical device has completed a live task round-trip.
 
