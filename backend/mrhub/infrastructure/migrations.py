@@ -1338,6 +1338,19 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_personal_device_tokens_device ON personal_device_tokens(device_id, token_type)",
         ),
     ),
+    Migration.build(
+        50,
+        "persist_personal_device_heartbeat_runtime",
+        (
+            """ALTER TABLE personal_devices
+               ADD COLUMN runtime_state TEXT NOT NULL DEFAULT 'unknown'
+               CHECK (runtime_state IN ('unknown','ready','busy','degraded'))""",
+            """ALTER TABLE personal_devices
+               ADD COLUMN app_uptime_seconds INTEGER NOT NULL DEFAULT 0
+               CHECK (app_uptime_seconds BETWEEN 0 AND 31536000)""",
+            "ALTER TABLE personal_devices ADD COLUMN last_task_id TEXT",
+        ),
+    ),
 )
 
 
