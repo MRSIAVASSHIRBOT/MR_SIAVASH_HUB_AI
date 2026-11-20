@@ -269,14 +269,14 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert "response.status === 401 || response.status === 403" not in script
 
 
-def _pair_windows_device(client, scopes=None):
+def _pair_device(client, *, platform="windows", scopes=None):
     from uuid import uuid4
 
     device_id = str(uuid4())
     scopes = scopes or ["device.heartbeat", "app.launch"]
     challenge = client.post("/devices/pairing-challenges", json={
         "device_id": device_id,
-        "platform": "windows",
+        "platform": platform,
         "label": "Agent test device",
         "advertised_capabilities": ["device.heartbeat", "app.launch"],
         "scopes": scopes,
@@ -297,9 +297,7 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     from mrhub.tools.builtins import build_tool_registry
 
     client = authenticated_client()
-    device_id = _pair_windows_device(client)
-    registry = build_tool_registry(owner_user_id="local-owner")
-
+    device_id = _pair_device(client)
     listed_denied = client.post("/tools/device.registry.list/invoke", json={"payload": {}})
     assert listed_denied.status_code == 403
 
@@ -342,7 +340,7 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
 
 def test_agent_device_tool_rejects_device_without_app_launch_scope():
     client = authenticated_client()
-    device_id = _pair_windows_device(client, scopes=["device.heartbeat"])
+    device_id = _pair_device(client, scopes=["device.heartbeat"])
     client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
     client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
 
@@ -353,11 +351,38 @@ def test_agent_device_tool_rejects_device_without_app_launch_scope():
             "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
         }
     })
-    assert response.status_code == 502
-    assert response.json()["detail"]["reason"] == "Tool execution failed"
+    assert response.status_code == 403
+    assert response.json()["detail"]["decision"] == "deny"
 
     from mrhub.devices.tasks import DeviceTaskRepository
     tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
         owner_user_id="local-owner", device_id=device_id
     )
     assert tasks == []
+
+
+def test_agent_device_tool_enforces_platform_specific_app_aliases():
+    client = authenticated_client()
+    device_id = _pair_device(client, platform="android")
+    client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
+    client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
+
+    unsupported = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "a4e4a0cf-fbbd-4d82-b870-8d752f519304",
+        }
+    })
+    assert unsupported.status_code == 403
+    assert unsupported.json()["detail"]["decision"] == "deny"
+
+    supported = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "chatgpt",
+            "idempotency_key": "f5d63d78-fde6-4e9f-9136-7d0634ddc3d2",
+        }
+    })
+    assert supported.status_code == 200
+    assert supported.json()["result"]["task"]["app"] == "chatgpt"
