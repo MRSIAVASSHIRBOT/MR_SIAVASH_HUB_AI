@@ -6,6 +6,7 @@ Device-reported capabilities are descriptive only. Authorization is owned by Hub
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -43,7 +44,7 @@ class DeviceDescriptor(BaseModel):
     platform: DevicePlatform
     label: str = Field(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$")
     agent_version: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9.+_-]+$")
-    os_version: str = Field(default="unknown", min_length=1, max_length=64)
+    os_version: str = Field(default="unknown", min_length=1, max_length=64, pattern=r"^[^\\x00-\\x1f\\x7f]+$")
     advertised_capabilities: list[DeviceCapability] = Field(default_factory=list, max_length=16)
 
     @field_validator("advertised_capabilities")
@@ -62,8 +63,8 @@ class DeviceHeartbeatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
     agent_version: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9.+_-]+$")
-    runtime_state: str = Field(default="ready", pattern=r"^(ready|busy|degraded)$")
-    app_uptime_seconds: int = Field(ge=0, le=31_536_000)
+    runtime_state: Literal["ready", "busy", "degraded"] = "ready"
+    app_uptime_seconds: int = Field(ge=0, le=31_536_000, strict=True)
     last_task_id: UUID | None = None
 
 
