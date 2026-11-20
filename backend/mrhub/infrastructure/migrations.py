@@ -1338,6 +1338,37 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_personal_device_tokens_device ON personal_device_tokens(device_id, token_type)",
         ),
     ),
+    Migration.build(
+        50,
+        "owner_scoped_idempotent_device_task_dispatch",
+        (
+            """CREATE TABLE IF NOT EXISTS personal_device_tasks (
+                task_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                device_id TEXT NOT NULL REFERENCES personal_devices(device_id) ON DELETE CASCADE,
+                action TEXT NOT NULL CHECK (action IN ('launch_app')),
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN (
+                    'queued','claimed','succeeded','failed','cancelled','expired','delivery_unknown'
+                )),
+                created_at TEXT NOT NULL,
+                available_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                claimed_at TEXT,
+                lease_expires_at TEXT,
+                completed_at TEXT,
+                result_code TEXT CHECK (result_code IS NULL OR result_code IN (
+                    'launched','launch_failed','app_not_available','unsupported_platform',
+                    'cancelled','expired','delivery_unknown'
+                )),
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 1),
+                UNIQUE(owner_user_id,device_id,idempotency_key)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_personal_device_tasks_claim ON personal_device_tasks(device_id,status,available_at,created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_personal_device_tasks_owner ON personal_device_tasks(owner_user_id,device_id,created_at DESC)",
+        ),
+    ),
 )
 
 
