@@ -56,6 +56,7 @@ def test_grant_renewal_replaces_expiry_without_duplicate_rows(tmp_path):
     ("permission", "expiry"),
     [
         ("cloudflare.write", 3600),
+        ("device.shell", 3600),
         ("cloudflare.read", 59),
         ("cloudflare.read", 86_401),
         ("cloudflare.read", True),
@@ -115,3 +116,24 @@ def test_database_constraint_rejects_permissions_outside_the_explicit_allowlist(
                 "2999-01-01T00:00:00+00:00",
             ),
         )
+
+
+def test_device_tool_grants_are_owner_scoped_expiring_and_independently_revocable(tmp_path):
+    repository = _repository(tmp_path)
+    service = ToolPermissionService(repository, AuditLogger(repository))
+
+    service.grant("owner-a", "device.registry.read", 600)
+    service.grant("owner-a", "device.app_launch", 900)
+    service.grant("owner-b", "device.registry.read", 1200)
+
+    assert service.active_permissions("owner-a") == frozenset({
+        "device.registry.read", "device.app_launch"
+    })
+    assert service.active_permissions("owner-b") == frozenset({"device.registry.read"})
+
+    assert service.revoke("owner-a", "device.app_launch") is True
+    assert service.active_permissions("owner-a") == frozenset({"device.registry.read"})
+    assert service.active_permissions("owner-b") == frozenset({"device.registry.read"})
+
+    with pytest.raises(ValueError):
+        service.grant("owner-a", "device.shell", 600)
