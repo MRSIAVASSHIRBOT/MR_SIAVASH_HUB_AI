@@ -127,7 +127,7 @@ def test_device_claims_only_due_task_and_reports_verified_outcome(tmp_path, monk
 def test_claimed_task_is_not_replayed_after_lease_expiry(tmp_path, monkeypatch):
     client, database_path = _owner_client(tmp_path, monkeypatch)
     device_id, tokens = _paired_device(client)
-    created = _create_task(client, device_id)
+    assert _create_task(client, device_id).status_code == 201
     headers = _device_headers(device_id, tokens)
     claimed = client.post("/devices/tasks/claim", headers=headers).json()["task"]
     with sqlite3.connect(database_path) as db:
