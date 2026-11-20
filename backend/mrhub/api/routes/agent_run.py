@@ -60,9 +60,7 @@ def run_agent(
         if selected_project is None:
             raise HTTPException(status_code=404, detail="Project is not enrolled")
 
-    # The public Agent API uses the stable "remote" mode while the provider
-    # registry names its remote adapter "kimi". Translate at this boundary so
-    # remote requests can never silently produce an empty provider catalog.
+    # Keep the public API's stable remote mode aligned with the provider registry.
     provider_mode = "local" if payload.provider_mode == "local" else "kimi"
     model_router = build_model_router(
         provider_mode=provider_mode,
@@ -123,14 +121,14 @@ def run_agent(
         return permission_service.active_permissions(user.user_id)
 
     worker_control = WorkerControlRepository(settings.database_path)
-    tool_registry = build_tool_registry()
+    run_id = str(uuid4())
+    tool_registry = build_tool_registry(correlation_id=run_id, owner_user_id=user.user_id)
     agent_registry = build_default_agent_registry(tool_registry)
     result = AgentOrchestrator(model_router, tool_registry, agent_registry).run(
         request,
         should_cancel=worker_control.is_stopped,
         permission_provider=permission_provider,
     )
-    run_id = str(uuid4())
     outcome = "success" if result.get("status") == "completed" else "failure"
     audit.record(
         event_type="agent.model_run",
