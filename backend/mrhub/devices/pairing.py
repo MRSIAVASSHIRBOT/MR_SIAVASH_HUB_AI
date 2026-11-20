@@ -224,13 +224,18 @@ class DevicePairingRepository:
         return DeviceIdentity(row["owner_user_id"],row["device_id"],row["platform"],row["label"],
                               frozenset(json.loads(row["scopes_json"])))
 
-    def heartbeat(self, *, device_id: str, agent_version: str) -> bool:
+    def heartbeat(
+        self, *, device_id: str, agent_version: str, runtime_state: str,
+        app_uptime_seconds: int, last_task_id: str | None,
+    ) -> bool:
         now = self._now().isoformat()
         with self._connection() as connection:
             result = connection.execute(
-                """UPDATE personal_devices SET last_seen_at=?,agent_version=?
+                """UPDATE personal_devices
+                   SET last_seen_at=?,agent_version=?,runtime_state=?,
+                       app_uptime_seconds=?,last_task_id=?
                    WHERE device_id=? AND status='active'""",
-                (now,agent_version,device_id),
+                (now,agent_version,runtime_state,app_uptime_seconds,last_task_id,device_id),
             )
             return result.rowcount == 1
 
@@ -238,7 +243,8 @@ class DevicePairingRepository:
         with self._connection() as connection:
             rows = connection.execute(
                 """SELECT device_id,platform,label,agent_version,os_version,
-                          advertised_capabilities_json,scopes_json,status,created_at,last_seen_at,revoked_at
+                          advertised_capabilities_json,scopes_json,status,created_at,last_seen_at,revoked_at,
+                          runtime_state,app_uptime_seconds,last_task_id
                    FROM personal_devices WHERE owner_user_id=? ORDER BY created_at DESC LIMIT 100""",
                 (owner_user_id,),
             ).fetchall()
@@ -246,7 +252,9 @@ class DevicePairingRepository:
                  "agent_version":row["agent_version"],"os_version":row["os_version"],
                  "advertised_capabilities":json.loads(row["advertised_capabilities_json"]),
                  "granted_scopes":json.loads(row["scopes_json"]),"status":row["status"],
-                 "created_at":row["created_at"],"last_seen_at":row["last_seen_at"],"revoked_at":row["revoked_at"]}
+                 "created_at":row["created_at"],"last_seen_at":row["last_seen_at"],"revoked_at":row["revoked_at"],
+                 "runtime_state":row["runtime_state"],"app_uptime_seconds":row["app_uptime_seconds"],
+                 "last_task_id":row["last_task_id"]}
                 for row in rows]
 
     def revoke(self, *, owner_user_id: str, device_id: str) -> bool:
