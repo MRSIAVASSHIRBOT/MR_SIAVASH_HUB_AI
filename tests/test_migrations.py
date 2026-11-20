@@ -675,25 +675,6 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     ).fetchone()["campaign_id"] == "campaign-1"
     connection.commit()
 
-    with pytest.raises(sqlite3.IntegrityError):
-        connection.execute(
-            """INSERT INTO personal_device_tasks (
-                task_id,owner_user_id,device_id,action,parameters_json,required_scope,
-                status,request_digest,idempotency_key_hash,timeout_seconds,scheduled_at,
-                expires_at,created_at,updated_at
-            ) VALUES ('task-extra','owner-1',?,'app.launch',
-                      '{"app":"notepad","command":"untrusted"}','app.launch',
-                      'queued',?,?,30,?,?,?,?)""",
-            (
-                "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",
-                "3" * 64,
-                "4" * 64,
-                now,
-                now,
-                now,
-                now,
-            ),
-        )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
 
@@ -921,6 +902,7 @@ def test_v50_adds_heartbeat_runtime_defaults_without_losing_registered_devices(
     ]
 
     now = "2026-11-20T00:00:00+00:00"
+    later = "2026-11-20T00:05:00+00:00"
     connection.execute(
         "INSERT INTO auth_users (user_id, username, salt, password_hash, created_at) "
         "VALUES ('owner-1', 'owner-1', '00', '00', ?)",
@@ -1001,7 +983,7 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
             "a" * 64,
             "b" * 64,
             now,
-            now,
+            later,
             now,
             now,
         ),
@@ -1019,7 +1001,7 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
                 "c" * 64,
                 "d" * 64,
                 now,
-                now,
+                later,
                 now,
                 now,
             ),
@@ -1056,6 +1038,25 @@ def test_v51_creates_bounded_device_task_queue_with_strict_constraints(tmp_path,
                 "2" * 64,
                 now,
                 now,
+                now,
+                now,
+            ),
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """INSERT INTO personal_device_tasks (
+                task_id,owner_user_id,device_id,action,parameters_json,required_scope,
+                status,request_digest,idempotency_key_hash,timeout_seconds,scheduled_at,
+                expires_at,created_at,updated_at
+            ) VALUES ('task-extra','owner-1',?,'app.launch',
+                      '{"app":"notepad","command":"untrusted"}','app.launch',
+                      'queued',?,?,30,?,?,?,?)""",
+            (
+                "a4e1b9cc-cb55-4c2d-aed0-c8e1ec9c40f4",
+                "3" * 64,
+                "4" * 64,
+                now,
+                later,
                 now,
                 now,
             ),
