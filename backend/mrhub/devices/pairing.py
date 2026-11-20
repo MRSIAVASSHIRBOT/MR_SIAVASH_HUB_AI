@@ -269,5 +269,14 @@ class DevicePairingRepository:
             if updated.rowcount != 1:
                 return False
             connection.execute("UPDATE personal_device_tokens SET revoked_at=? WHERE device_id=? AND revoked_at IS NULL",(now,device_id))
+            task_table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='personal_device_tasks'"
+            ).fetchone()
+            if task_table is not None:
+                from mrhub.devices.tasks import DeviceTaskRepository
+
+                DeviceTaskRepository(self.database_path).revoke_device_tasks(
+                    connection, device_id=device_id, now_text=now
+                )
             self._audit(connection,event_type="device.revoked",owner_user_id=owner_user_id,device_id=device_id,actor_type="owner")
         return True
