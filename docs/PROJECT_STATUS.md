@@ -57,9 +57,11 @@ Hub remains authoritative for private memory, tasks, agents, approvals, tool pol
 
 ### Next engineering priorities
 
-1. Finish and verify all post-merge checks on Hub SHA `57ac03024fa05cf76fc81d10a372944176ef98d6`; investigate any failure before additional runtime work.
-2. Remove the unused `MR_SIAVASH_HUB_AI` Actions secret from repository Settings; the retired workflows no longer consume it. Do not renew or replace it.
-3. Review the Website's complete 40-commit source delta, Preview acceptance, migration state, backup/rollback and then obtain explicit owner approval before any Production release.
+1. Keep Hub PR #460 Draft until the device-task and specialist-profile scope is reviewed. Code head `24428ebc8890c71bf384eceb9db83a525117d5cd` passed exact-head checks; a documentation-only follow-up is re-running CI. No Hub task API has been merged or deployed.
+2. Complete the separate EL_AGENT task polling/claim/outcome client and live Windows acceptance; the current companion supports owner-initiated pairing and heartbeat only.
+3. Keep Website Production release gated: the current GitHub source delta is 55 commits; isolated migration tests pass, but live Production D1 migration state and current Worker inventory remain unverified. Require fresh Preview, backup/rollback, migration, and owner approval evidence before release.
+4. Verify whether the retired `MR_SIAVASH_HUB_AI` Actions secret remains in repository settings; if present, remove it. Do not renew or replace it.
+5. Owner/admin action is still required to enable branch protection and required checks on all three repositories; current GitHub branch metadata reports `main.protected=false` for each.
 4. Have the repository owner configure and verify branch protection and exact-head required checks for all three repositories.
 5. Add reproducible dependency lockfiles and verify clean Linux/Windows installs.
 6. Keep EL_AI on the scoped Hub contract; perform live Telegram acceptance only after the owner configures its token securely.
