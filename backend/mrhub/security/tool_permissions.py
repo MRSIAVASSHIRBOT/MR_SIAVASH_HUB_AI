@@ -11,7 +11,7 @@ from mrhub.security.audit import AuditLogger
 DEFAULT_GRANT_SECONDS = 3_600
 MIN_GRANT_SECONDS = 60
 MAX_GRANT_SECONDS = 86_400
-GRANTABLE_PERMISSIONS = frozenset({"cloudflare.read"})
+GRANTABLE_PERMISSIONS = frozenset({"cloudflare.read", "device.registry.read", "device.app_launch"})
 
 
 class ToolPermissionService:
