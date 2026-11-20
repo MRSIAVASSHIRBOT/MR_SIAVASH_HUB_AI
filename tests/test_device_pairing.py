@@ -66,6 +66,8 @@ def test_device_pairing_is_owner_initiated_and_stores_only_hashes(tmp_path, monk
         challenge_hashes = {row[0] for row in db.execute("SELECT challenge_hash FROM personal_device_pairing_challenges")}
     assert hashlib.sha256(tokens["access_token"].encode()).hexdigest() in token_hashes
     assert tokens["access_token"] not in token_hashes
+    assert hashlib.sha256(tokens["refresh_token"].encode()).hexdigest() in token_hashes
+    assert tokens["refresh_token"] not in token_hashes
     assert hashlib.sha256(challenge["pairing_code"].encode()).hexdigest() in challenge_hashes
     assert challenge["pairing_code"] not in challenge_hashes
     get_settings.cache_clear()
@@ -114,6 +116,10 @@ def test_device_refresh_rotates_credentials_and_rejects_replay(tmp_path, monkeyp
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"] != tokens["access_token"]
     assert client.post("/devices/refresh", json=body).status_code == 401
+    with sqlite3.connect(database_path) as db:
+        hashes = {row[0] for row in db.execute("SELECT token_hash FROM personal_device_tokens")}
+    assert hashlib.sha256(tokens["refresh_token"].encode()).hexdigest() in hashes
+    assert tokens["refresh_token"] not in hashes
     get_settings.cache_clear()
 
 
@@ -142,4 +148,47 @@ def test_expired_pairing_challenge_can_be_reissued_for_same_unpaired_device(tmp_
     replacement = client.post("/devices/pairing-challenges", json=payload)
     assert replacement.status_code == 201
     assert replacement.json()["device_id"] == payload["device_id"]
+    get_settings.cache_clear()
+
+
+def test_pairing_exchange_rejects_control_characters_in_os_version(tmp_path, monkeypatch):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_challenge(client)
+    invalid = client.post("/devices/pair", json={
+        "pairing_code": challenge["pairing_code"],
+        "device_id": payload["device_id"],
+        "agent_version": "0.1.0",
+        "os_version": "Windows 11\\nInjected",
+    })
+    assert invalid.status_code == 422
+    assert _exchange(client, payload, challenge).status_code == 200
+    get_settings.cache_clear()
+
+
+def test_device_registry_listing_and_revocation_are_owner_scoped(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_challenge(client)
+    tokens = _exchange(client, payload, challenge).json()
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute(
+            "SELECT user_id FROM auth_users WHERE username='owner'"
+        ).fetchone()[0]
+
+    from mrhub.devices.pairing import DevicePairingRepository
+
+    repository = DevicePairingRepository(database_path)
+    assert len(repository.list_devices(owner_user_id)) == 1
+    assert repository.list_devices("different-owner") == []
+    assert repository.revoke(
+        owner_user_id="different-owner", device_id=payload["device_id"]
+    ) is False
+    assert repository.authenticate(
+        access_token=tokens["access_token"], device_id=payload["device_id"]
+    ) is not None
+    assert repository.revoke(
+        owner_user_id=owner_user_id, device_id=payload["device_id"]
+    ) is True
+    assert repository.authenticate(
+        access_token=tokens["access_token"], device_id=payload["device_id"]
+    ) is None
     get_settings.cache_clear()
