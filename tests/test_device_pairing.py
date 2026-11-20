@@ -113,15 +113,45 @@ def test_device_heartbeat_requires_scope_and_owner_can_revoke(tmp_path, monkeypa
     get_settings.cache_clear()
 
 
-def test_device_refresh_rotates_credentials_and_rejects_replay(tmp_path, monkeypatch):
-    client, _ = _owner_client(tmp_path, monkeypatch)
+def test_device_refresh_rotates_credentials_and_revokes_device_on_replay(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
     payload, challenge = _create_challenge(client)
     tokens = _exchange(client, payload, challenge).json()
     body = {"refresh_token": tokens["refresh_token"], "device_id": payload["device_id"]}
+
+    wrong_device = client.post(
+        "/devices/refresh",
+        json={"refresh_token": tokens["refresh_token"], "device_id": str(uuid4())},
+    )
+    assert wrong_device.status_code == 401
+
     refreshed = client.post("/devices/refresh", json=body)
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"] != tokens["access_token"]
-    assert client.post("/devices/refresh", json=body).status_code == 401
+
+    replay = client.post("/devices/refresh", json=body)
+    assert replay.status_code == 401
+    device = client.get("/devices").json()["devices"][0]
+    assert device["status"] == "revoked"
+
+    heartbeat = client.post(
+        "/devices/heartbeat",
+        headers=_device_headers(refreshed.json(), payload["device_id"]),
+        json={"agent_version": "0.1.0", "runtime_state": "ready", "app_uptime_seconds": 0},
+    )
+    assert heartbeat.status_code == 401
+
+    with sqlite3.connect(database_path) as db:
+        active_tokens = db.execute(
+            "SELECT COUNT(*) FROM personal_device_tokens WHERE device_id=? AND revoked_at IS NULL",
+            (payload["device_id"],),
+        ).fetchone()[0]
+        reuse_events = db.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE subject_id=? AND event_type='device.refresh_reuse_detected'",
+            (payload["device_id"],),
+        ).fetchone()[0]
+    assert active_tokens == 0
+    assert reuse_events == 1
     get_settings.cache_clear()
 
 
@@ -151,6 +181,44 @@ def test_expired_pairing_challenge_can_be_reissued_for_same_unpaired_device(tmp_
     assert replacement.status_code == 201
     assert replacement.json()["device_id"] == payload["device_id"]
     get_settings.cache_clear()
+
+def test_pairing_challenge_registry_is_bounded_and_prunes_expired_rows(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    pending = [_create_challenge(client) for _ in range(10)]
+
+    overflow_payload = {
+        "device_id": str(uuid4()),
+        "platform": "windows",
+        "label": "Overflow device",
+        "advertised_capabilities": ["device.heartbeat"],
+    }
+    overflow = client.post("/devices/pairing-challenges", json=overflow_payload)
+    assert overflow.status_code == 422
+    assert "too many pending" in overflow.json()["detail"].lower()
+
+    expired_device_id = pending[0][0]["device_id"]
+    with sqlite3.connect(database_path) as db:
+        db.execute(
+            "UPDATE personal_device_pairing_challenges SET expires_at=? WHERE device_id=?",
+            ("2000-01-01T00:00:00+00:00", expired_device_id),
+        )
+
+    replacement = client.post("/devices/pairing-challenges", json=overflow_payload)
+    assert replacement.status_code == 201
+    with sqlite3.connect(database_path) as db:
+        stale = db.execute(
+            "SELECT 1 FROM personal_device_pairing_challenges WHERE device_id=?",
+            (expired_device_id,),
+        ).fetchone()
+        active_count = db.execute(
+            """SELECT COUNT(*) FROM personal_device_pairing_challenges
+               WHERE consumed_at IS NULL AND expires_at>?""",
+            ("2000-01-01T00:00:00+00:00",),
+        ).fetchone()[0]
+    assert stale is None
+    assert active_count == 10
+    get_settings.cache_clear()
+
 
 def test_pairing_requires_heartbeat_scope(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
