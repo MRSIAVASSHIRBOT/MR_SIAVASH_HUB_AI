@@ -125,6 +125,27 @@ def test_device_refresh_rotates_credentials_and_revokes_device_on_replay(tmp_pat
     )
     assert wrong_device.status_code == 401
 
+    claimed_submission = client.post(
+        f"/devices/{payload['device_id']}/tasks",
+        headers={"Idempotency-Key": "refresh-replay-claimed-001"},
+        json={"action": "app.launch", "app": "notepad"},
+    )
+    assert claimed_submission.status_code == 201
+    claimed = client.post(
+        "/devices/tasks/claim",
+        headers=_device_headers(tokens, payload["device_id"]),
+    )
+    claimed_task_id = claimed.json()["task"]["task_id"]
+    assert claimed_task_id == claimed_submission.json()["task"]["task_id"]
+
+    queued_submission = client.post(
+        f"/devices/{payload['device_id']}/tasks",
+        headers={"Idempotency-Key": "refresh-replay-queued-001"},
+        json={"action": "app.launch", "app": "calculator"},
+    )
+    assert queued_submission.status_code == 201
+    queued_task_id = queued_submission.json()["task"]["task_id"]
+
     refreshed = client.post("/devices/refresh", json=body)
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"] != tokens["access_token"]
@@ -133,6 +154,10 @@ def test_device_refresh_rotates_credentials_and_revokes_device_on_replay(tmp_pat
     assert replay.status_code == 401
     device = client.get("/devices").json()["devices"][0]
     assert device["status"] == "revoked"
+    task_rows = client.get(f"/devices/{payload['device_id']}/tasks").json()["tasks"]
+    task_statuses = {item["task_id"]: item["status"] for item in task_rows}
+    assert task_statuses[claimed_task_id] == "unknown_outcome"
+    assert task_statuses[queued_task_id] == "cancelled"
 
     heartbeat = client.post(
         "/devices/heartbeat",
@@ -150,8 +175,15 @@ def test_device_refresh_rotates_credentials_and_revokes_device_on_replay(tmp_pat
             "SELECT COUNT(*) FROM audit_events WHERE subject_id=? AND event_type='device.refresh_reuse_detected'",
             (payload["device_id"],),
         ).fetchone()[0]
+        task_security_events = db.execute(
+            """SELECT COUNT(*) FROM audit_events
+               WHERE subject_id IN (?,?) AND actor_type='device_security'
+                 AND event_type IN ('device.task_cancelled','device.task_unknown_outcome')""",
+            (claimed_task_id, queued_task_id),
+        ).fetchone()[0]
     assert active_tokens == 0
     assert reuse_events == 1
+    assert task_security_events == 2
     get_settings.cache_clear()
 
 
