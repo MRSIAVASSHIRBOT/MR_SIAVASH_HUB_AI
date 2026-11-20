@@ -209,6 +209,7 @@ class DeviceTaskRepository:
         parameters = {"app": app} if app is not None else {}
         request_digest = self._digest(
             {
+                "device_id": device_id,
                 "action": action,
                 "app": app,
                 "required_scope": required_scope,
