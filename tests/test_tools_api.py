@@ -332,7 +332,7 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     summaries = listed.json()["result"]["devices"]
     assert len(summaries) == 1
     assert summaries[0]["device_id"] == device_id
-    assert summaries[0]["granted_scopes"] == ["device.heartbeat", "app.launch"]
+    assert summaries[0]["granted_scopes"] == sorted(["device.heartbeat", "app.launch"])
     assert "access_token" not in str(summaries)
 
     payload = {
