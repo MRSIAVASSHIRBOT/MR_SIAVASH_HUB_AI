@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mrhub.api.dependencies import require_user
@@ -19,8 +19,8 @@ from mrhub.devices.tasks import (
     DeviceTaskRepository,
 )
 from mrhub.domain.tasks import RiskClass
-from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
 
 router = APIRouter(prefix="/devices", tags=["personal-devices"])
 DeviceScope = Literal[
@@ -101,6 +101,7 @@ class DeviceTaskOutcomeRequest(BaseModel):
 
 def get_device_repository() -> DevicePairingRepository:
     return DevicePairingRepository(get_settings().database_path)
+
 
 def get_device_task_repository() -> DeviceTaskRepository:
     return DeviceTaskRepository(get_settings().database_path)
@@ -203,6 +204,7 @@ def device_heartbeat(
         "app_uptime_seconds": payload.app_uptime_seconds,
         "last_task_id": str(payload.last_task_id) if payload.last_task_id else None,
     }
+
 
 @router.post("/{device_id}/tasks", status_code=status.HTTP_201_CREATED)
 def submit_device_task(
