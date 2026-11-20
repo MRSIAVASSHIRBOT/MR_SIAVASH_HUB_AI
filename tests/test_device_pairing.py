@@ -154,7 +154,7 @@ def test_expired_pairing_challenge_can_be_reissued_for_same_unpaired_device(tmp_
 
 def test_pairing_requires_heartbeat_scope(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
-    payload, challenge = _create_challenge(client, scopes=["app.launch"])
+    _payload, challenge = _create_challenge(client, scopes=["app.launch"])
     assert challenge.status_code == 422
     assert "device.heartbeat" in challenge.json()["detail"]
     get_settings.cache_clear()
