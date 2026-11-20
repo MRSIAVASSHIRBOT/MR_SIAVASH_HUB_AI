@@ -61,7 +61,7 @@ Use the companion's own README for installation and operation. Its local API tok
 ## Hub integration sequence
 
 1. Owner-created single-use pairing, the owner-scoped device registry, hashed short-lived credentials, scoped access, listing, revocation, authenticated heartbeat, and pairing/revocation audit events are implemented in Hub `main`.
-2. Persisted heartbeat diagnostics are proposed in [PR #456](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/456); they remain non-authoritative and do not indicate task success.
+2. Persisted heartbeat diagnostics (`runtime_state`, bounded `app_uptime_seconds`, and optional `last_task_id`) are implemented in Hub `main` after [PR #456](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/456); they are self-reported operational hints and do not indicate task success.
 3. Implement Hub-issued bounded task dispatch, acknowledgement, cancellation, expiry, idempotency, and verified outcomes.
 4. Integrate the Windows companion with Hub pairing only after its enrollment client, credential-vault storage, renewal, and revocation behavior are implemented and tested. Its standalone local token is not interchangeable with a Hub credential.
 5. Shared Hub memory, Android companion, and browser extension remain separate future milestones.
@@ -70,6 +70,6 @@ Use the companion's own README for installation and operation. Its local API tok
 
 - Architecture decision and typed contracts: merged into Hub main.
 - Hub pairing registry, single-use challenge exchange, hashed access/refresh credentials, scoped heartbeat authentication, owner listing/revocation, and audit events: merged into Hub main.
-- Bounded heartbeat runtime metadata persistence: proposed in PR #456; exact-head CI is required before merge.
-- Standalone Windows MVP: implemented in the separate repository; hosted CI passed on `98e77d4b9ef0684e60281297891c5d22ddb60749` ([run 44726855003](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44726855003)); live Windows install/upgrade/backup/restore/rollback acceptance remains pending.
+- Bounded heartbeat runtime metadata persistence: merged in PR #456 as `ba0cc7278cc94badfaeb0ef566023cd80112f6fb`. The exact PR head `e033b66678595c010be5b334ca2bc905f893f2ca` passed CI, Backend CI, Windows Launcher Validation, Video Render Integration, Workflow Security Audit, and Defensive Python Scan. Post-merge CI and Backend CI were still running at the time of this documentation update.
+- Standalone Windows MVP: implemented in the separate repository, but the latest observed companion `main` (`cd7ab54e83831c0c368b37b6bf3afd9373b62886`) has a failing CI run ([run 44730401161](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44730401161)): `tests/test_hub.py` cannot import `el_agent.hub` during collection on the Python/OS matrix. Earlier success on an older SHA is not current acceptance. Live Windows install/upgrade/backup/restore/rollback acceptance remains pending.
 - Hub task dispatch, shared memory, Android companion, and browser extension: not yet implemented.
