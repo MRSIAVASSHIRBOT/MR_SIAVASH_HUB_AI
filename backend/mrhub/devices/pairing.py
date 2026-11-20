@@ -261,5 +261,17 @@ class DevicePairingRepository:
             if updated.rowcount != 1:
                 return False
             connection.execute("UPDATE personal_device_tokens SET revoked_at=? WHERE device_id=? AND revoked_at IS NULL",(now,device_id))
+            connection.execute(
+                """UPDATE personal_device_tasks
+                   SET status='cancelled',completed_at=?,result_code='cancelled'
+                   WHERE device_id=? AND status='queued'""",
+                (now,device_id),
+            )
+            connection.execute(
+                """UPDATE personal_device_tasks
+                   SET status='delivery_unknown',completed_at=?,result_code='delivery_unknown'
+                   WHERE device_id=? AND status='claimed'""",
+                (now,device_id),
+            )
             self._audit(connection,event_type="device.revoked",owner_user_id=owner_user_id,device_id=device_id,actor_type="owner")
         return True
