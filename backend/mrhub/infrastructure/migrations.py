@@ -1350,6 +1350,57 @@ MIGRATIONS = (
                CHECK (app_uptime_seconds BETWEEN 0 AND 31536000)""",
             "ALTER TABLE personal_devices ADD COLUMN last_task_id TEXT",
         ),
+    ),,
+
+    Migration.build(
+        51,
+        "bounded_personal_device_task_dispatch",
+        (
+            """CREATE TABLE IF NOT EXISTS personal_device_tasks (
+                task_id TEXT PRIMARY KEY,
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                device_id TEXT NOT NULL REFERENCES personal_devices(device_id) ON DELETE CASCADE,
+                action TEXT NOT NULL CHECK (action IN ('app.launch','screen.capture')),
+                parameters_json TEXT NOT NULL,
+                required_scope TEXT NOT NULL CHECK (required_scope IN ('app.launch','screen.capture')),
+                status TEXT NOT NULL CHECK (status IN (
+                    'queued','claimed','reported_succeeded','reported_failed',
+                    'cancelled','expired','unknown_outcome'
+                )),
+                request_digest TEXT NOT NULL CHECK (length(request_digest)=64),
+                idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 8 AND 128),
+                timeout_seconds INTEGER NOT NULL CHECK (timeout_seconds BETWEEN 5 AND 60),
+                expires_at TEXT NOT NULL,
+                lease_token_hash TEXT,
+                lease_expires_at TEXT,
+                error_code TEXT CHECK (error_code IS NULL OR error_code IN (
+                    'app_not_available','permission_denied','timeout','execution_failed'
+                )),
+                duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms BETWEEN 0 AND 60000),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                claimed_at TEXT,
+                completed_at TEXT,
+                UNIQUE(owner_user_id,idempotency_key),
+                CHECK (
+                    (action='app.launch' AND required_scope='app.launch'
+                     AND json_valid(parameters_json)
+                     AND json_type(parameters_json,'$.app')='text'
+                     AND json_extract(parameters_json,'$.app') IN
+                         ('notepad','calculator','explorer','browser','chatgpt'))
+                    OR
+                    (action='screen.capture' AND required_scope='screen.capture'
+                     AND parameters_json='{}')
+                ),
+                CHECK (
+                    (status='claimed' AND lease_token_hash IS NOT NULL AND lease_expires_at IS NOT NULL)
+                    OR
+                    (status<>'claimed' AND lease_token_hash IS NULL AND lease_expires_at IS NULL)
+                )
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_device_tasks_device_status_created ON personal_device_tasks(device_id,status,created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_device_tasks_owner_created ON personal_device_tasks(owner_user_id,created_at)",
+        ),
     ),
 )
 
