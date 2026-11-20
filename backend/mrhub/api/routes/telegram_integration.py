@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
 from mrhub.api.dependencies import require_user
+from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.api.telegram_auth import require_telegram_scope
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord, TaskStatus
@@ -37,7 +38,6 @@ from mrhub.memory.repository import MemoryRepository
 from mrhub.memory.validation import MemoryValidationEngine
 from mrhub.providers.base import ProviderError, ProviderRequest
 from mrhub.providers.router import ModelRequest
-from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
