@@ -165,6 +165,7 @@ class DeviceTaskRepository:
                 raise DeviceTaskError("Active owner device not found")
             if "app.launch" not in json.loads(device["scopes_json"]):
                 raise DeviceTaskError("Device does not have the app.launch scope")
+            self._reconcile(connection, device_id=device_id, now_text=now.isoformat())
 
             existing = connection.execute(
                 """SELECT * FROM personal_device_tasks
