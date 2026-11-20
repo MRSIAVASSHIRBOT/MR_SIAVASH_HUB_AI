@@ -3578,11 +3578,13 @@
       });
       const result = response && response.result;
       const task = result && result.task;
-      if (!task || !task.task_id || task.status !== "queued") {
-        throw new Error("Hub درخواست را به‌صورت صف‌شده تأیید نکرد؛ وضعیت را بررسی کنید.");
+      if (!task || !task.task_id || typeof task.status !== "string") {
+        throw new Error("Hub شناسه یا وضعیت معتبر برای وظیفه برنگرداند؛ وضعیت را بررسی کنید.");
       }
       output.textContent = [
-        "درخواست با موفقیت در صف Hub ثبت شد؛ اجرای برنامه هنوز تأیید نشده است.",
+        result.idempotent_replay
+          ? "این شناسهٔ idempotency قبلاً ثبت شده است؛ وضعیت فعلی وظیفه نمایش داده می‌شود."
+          : "درخواست در صف Hub ثبت شد؛ اجرای برنامه هنوز تأیید نشده است.",
         "Task ID: " + String(task.task_id),
         "Device ID: " + String(task.device_id),
         "App: " + String(task.app),
@@ -3591,7 +3593,13 @@
       ].join("\n");
       pendingDeviceLaunchKey = null;
       pendingDeviceLaunchFingerprint = null;
-      message("#device-app-launch-message", "درخواست صف شد. نتیجهٔ اجرا باید از گزارش دستگاه تأیید شود.", "success");
+      message(
+        "#device-app-launch-message",
+        result.idempotent_replay
+          ? "وضعیت قبلی وظیفه بازیابی شد؛ نتیجهٔ دستگاه مستقل از پاسخ صف بررسی می‌شود."
+          : "درخواست صف شد. نتیجهٔ اجرا باید از گزارش دستگاه تأیید شود.",
+        "success"
+      );
     } catch (error) {
       message("#device-app-launch-message", error.message, "error");
       output.textContent = "نتیجهٔ درخواست نامشخص است. برای جلوگیری از ثبت تکراری، Retry همین انتخاب از کلید idempotency موجود استفاده می‌کند.\n" + error.message;
