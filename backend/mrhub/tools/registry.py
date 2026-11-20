@@ -129,6 +129,10 @@ class ToolRegistry:
         handler_failed = False
         try:
             raw_result = tool.handler(validated_input)
+        except ToolPolicyError:
+            # Domain-specific authorization checks (e.g. a device's exact granted
+            # scope) retain the normal policy-denied response and audit path.
+            raise
         except Exception:  # noqa: BLE001 - sanitize arbitrary untrusted tool failures
             # Leave the exception handler before raising so the original error
             # (which may retain credentials or private request data) is not kept
