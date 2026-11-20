@@ -908,3 +908,13 @@ This section supersedes earlier control-center status notes above.
 2. Add independently configured runtime probes for MR_SIAVASH_AI and Gshop only when their exact health contracts are known; otherwise keep them unknown.
 3. Add explainable risk summaries only from verified CI, runtime, and infrastructure observations.
 4. Keep all action proposals separate from monitoring and require fresh action-bound owner approval for production changes.
+
+
+## Verified maintenance checkpoint — 2026-11-20 14:12 +03:30
+
+- Current `main` is `adc036f81378dc83aa2b8d775ced2301b5edb91c`; PR #449 is merged. It adds bounded retries/backoff for transient Windows FFmpeg package-feed failures and verifies both `ffmpeg` and `ffprobe` are available before integration tests.
+- On this exact commit, the latest GitHub Actions snapshot contains 21 check-run records because some workflows were started more than once. Each distinct required job has at least one successful result: Python 3.11/3.12 tests, Windows wheel smoke for both versions, Linux and Windows real-FFmpeg integration, runtime smoke, PowerShell parsing, failed-startup cleanup, defensive scan, workflow audit, and supply-chain posture. Duplicate runs include cancelled records; one duplicate general test run was still in progress at inspection. Cancelled duplicates are not reported as successes.
+- The workflow definitions use concurrency cancellation to supersede older runs on the same ref. The exact-SHA successful records remain the acceptance evidence; do not infer a failure from a superseded duplicate cancellation.
+- The isolated Hub staging Wrangler config is source-only. No Worker has been provisioned or deployed; no route, custom domain, DNS, Access policy, database, secret, or existing Worker was modified.
+- Remaining owner/admin/device gates are unchanged: configure and verify `main` branch protection (connected integration lacks settings-write access); approve a dedicated staging account/zone/hostname and cost ceiling before Cloudflare provisioning; supply a compatible video-generation provider choice/configuration before provider-backed generation; complete Windows install/upgrade/backup/restore/rollback acceptance on the owner's device. GShop remains excluded.
+- No local test suite was executed in this environment. All test statements above refer only to hosted GitHub Actions results on the exact stated commit.
