@@ -908,3 +908,43 @@ This section supersedes earlier control-center status notes above.
 2. Add independently configured runtime probes for MR_SIAVASH_AI and Gshop only when their exact health contracts are known; otherwise keep them unknown.
 3. Add explainable risk summaries only from verified CI, runtime, and infrastructure observations.
 4. Keep all action proposals separate from monitoring and require fresh action-bound owner approval for production changes.
+
+---
+
+## Hub control-plane and device-dispatch checkpoint — 2026-11-20 UTC
+
+This checkpoint supersedes older device-agent and maintenance snapshots above. It distinguishes repository implementation from live staging and owner-device acceptance.
+
+### Main and migration state
+
+- Hub `main` after PR #456: `ba0cc7278cc94badfaeb0ef566023cd80112f6fb`.
+- PR #456 merged migration 50, persisting bounded device heartbeat runtime state, app uptime, and optional last-task UUID. All 20 observed exact-PR-head checks passed before merge.
+- Post-merge CI on `ba0cc727` was still running for the main CI and Backend CI workflows at the first post-merge observation; completed Windows, FFmpeg, runtime smoke, workflow-security, and supply-chain checks were successful. Do not mark the post-merge full suite green until both test workflows complete successfully.
+- Migration 51 and bounded device task dispatch are under development on `feat/device-task-dispatch-20261120`; they are not part of `main` and must not be treated as released capability until exact-head CI and review pass.
+- The new task contract is limited to allow-listed application launch and owner-confirmed screenshot capture. It stores hashed idempotency and lease tokens, enforces device scopes, expires stale claims to `unknown_outcome` without replay, permits cancellation only before claim, and labels device results as self-reported rather than verified.
+
+### Existing agent, policy, and memory capabilities
+
+- Policy Engine decisions are deterministic and fail closed for prohibited risk, missing grants, and high-impact/external actions without explicit approval.
+- Agent orchestration is bounded by turn, tool-call, input, output, delegation, and wall-clock budgets. Specialist profiles are server-defined and tool-scoped; model output cannot register or activate an agent.
+- Proposal evaluation is read-only and reports readiness; it does not execute or activate proposed agents.
+- Durable workflow execution has leases/fencing, bounded safe retries, cancellation, checkpoint recovery, and worker emergency-stop controls. In-flight synchronous/external operation interruption remains a documented limitation.
+- Owner-scoped memory CRUD, export, deletion, FTS5 retrieval, provenance and freshness metadata are implemented. Dreaming is a deterministic, read-only duplicate-review proposal engine; it does not automatically merge, rewrite, or delete memories.
+- Backup/restore helpers and checksum/integrity tests exist. A restore drill on the owner's target Windows machine and protected media/encryption-key backup procedure remain open.
+
+### Staging and security gates
+
+- Cloudflare read-only inventory on 2026-11-20 showed no deployed Worker named `mr-siavash-hub-gateway-staging`. The isolated Wrangler config is source-only; no Worker, route, custom domain, DNS, Access policy, database, or secret was changed in this checkpoint.
+- Staging deployment requires a dedicated least-privilege Cloudflare API token and a separate Hub-to-gateway bearer secret configured through secure secret storage. The ChatGPT Cloudflare connector credential must never be reused as the Worker's provider token.
+- Existing production and preview Workers are separate from the Hub staging gateway. No production deployment or D1 row query was performed.
+- GitHub branch-protection/ruleset state remains unverified because the connected integration returned HTTP 403 for branch-protection reads. No protection setting was changed.
+- No live Windows device acceptance, real task execution, Telegram action, or Instagram publishing was performed as part of this checkpoint.
+
+### Remaining critical exit gates
+
+1. Complete and review device-task dispatch; pass migration, API, authorization, idempotency, lease-expiry, cancellation, and replay regression tests.
+2. Complete the standalone companion's Hub enrollment/credential-vault client and Windows install/upgrade/backup/restore/rollback acceptance.
+3. Deploy the dedicated Hub staging Worker only after the two required credentials and non-secret account/zone variables are securely configured; run authenticated read-only acceptance tests.
+4. Complete the target-device SQLite and media restore drill.
+5. Verify GitHub branch rules through an authorized route and enable required checks before routine merges.
+6. Run the complete four-project end-to-end flow and verify that each device outcome remains explicitly untrusted until independently corroborated.
