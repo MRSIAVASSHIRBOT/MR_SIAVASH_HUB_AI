@@ -7,8 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from mrhub.api.dependencies import require_user
 from mrhub.api.device_auth import require_device_scope
+from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
 from mrhub.devices.contracts import DeviceCapability, DeviceHeartbeatRequest, DevicePlatform
 from mrhub.devices.pairing import DeviceIdentity, DevicePairingError, DevicePairingRepository
