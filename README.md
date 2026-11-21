@@ -189,5 +189,5 @@ The Agent tool registry exposes two device tools only inside an authenticated ow
 - The tool applies platform-specific aliases: Windows supports the five existing fixed aliases; Android supports only ChatGPT and browser. No arbitrary commands, executable paths, URLs, screenshots, file access, shell or browser form submission are exposed to the model.
 - Direct and durable Agent runs both read the active owner grants at each tool decision, so expiry or revocation during inference is enforced before action dispatch.
 
-This tool integration is source code under review in the Hub device-agent tools PR; it does not mean the Hub Staging Worker is deployed or a physical device has completed a live task round-trip.
+The owner-authorized Agent tool integration is merged into Hub `main` as PR #465 (`4d737b2`). This confirms source integration only: the Hub Staging Worker has not been verified as deployed, and no physical device has completed a live task round-trip.
 
