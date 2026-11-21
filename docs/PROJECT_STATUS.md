@@ -1,3 +1,34 @@
+## Current Hub and ecosystem state refresh — 2026-11-21 UTC
+
+This addendum supersedes the earlier repository and companion snapshots below where they conflict. It records GitHub source and CI evidence only; it is not a fresh Cloudflare inventory or a production-release approval.
+
+### Verified repository heads
+- Hub `main`: `4d737b2e97b3753249f1276d8ca132bb7c96be47`. PR [#465](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/465) is merged. It adds owner-bound Agent tools for device-registry reads and allow-listed app-launch task submission, two independent expiring owner grants, exact device-scope enforcement, transactional grant rechecks, migration 52, and dashboard controls.
+- EL_AI `main`: `5e6b08e96538d7fe9b36a8aa89db0f357e843ecf` (documentation reconciliation PR #74 merged; runtime implementation is in parent/source commit `ff31209cb1d6c380b8cb3df55de17339353a2fec`). Dependency-aware task-plan DAG storage and root-first advancement are implemented. Exact-main Python 3.11/3.12 tests, Workflow Security Audit, and OpenSSF Scorecard passed on the implementation commit (runs 44928644306, 44928644348, 44928644369); post-merge checks for the documentation commit are a separate gate.
+- Website `main`: `78b28cb89cdf4ff70106071740060c7e3f3327a0`. The exact-main test, Workflow Security Audit, supply-chain posture, deployed Gateway health/support/admin/CORS smoke, Preview API smoke, syntax/structure checks, and static Pages publication/asset verification passed (runs 44929243774, 44929243855, 44929243798, 44929243776, 44929243761, 44929243795). Pages publication does not establish a new Cloudflare Worker deployment.
+
+### Hub device-agent integration boundary
+- PR #465 is merged into source. The model-visible device tools are limited to owner-scoped device registry reads and allow-listed app-launch task submission.
+- App launch requires both active owner grants (`device.registry.read` and `device.app_launch`) and the paired device's exact `app.launch` scope. Grants are time-limited; task creation rechecks them within the write transaction.
+- The Agent tools do not expose arbitrary shell commands, executable paths, arbitrary URLs, screenshots, file access, keystroke capture, or model-authored executable payloads.
+- Windows consumer work remains in EL_AGENT Draft PR #23; Android consumer work is in Draft PR #25. Both require isolated Hub Staging round-trips, grant expiry/revocation acceptance, and physical-device validation.
+- No live Hub Staging deployment or physical-device task round-trip was verified in this checkpoint.
+
+### EL_AI dependency-aware plan semantics
+- Owner-authored plans support sequential shorthand and explicit 1-based DAG syntax, for example: `1: Collect ; 2: Validate <- 1 ; 3: Publish <- 1,2`.
+- Plan preview is local and does not create Hub tasks. The owner must explicitly start submission with `/taskplanrun PLAN_ID`; only root tasks are initially submitted.
+- The orchestrator advances a dependent step only after all prerequisites report `succeeded`. Failed/blocked dependencies persist a blocked checkpoint; unavailable status never unlocks a dependent step. Stable idempotency keys support safe retry after ambiguous Hub outcomes.
+- This is bounded orchestration, not unrestricted autonomous execution. Hub policy and approval gates remain authoritative.
+- No Telegram token is configured, no live bot connection or webhook registration is verified, and no production EL_AI deployment is claimed.
+
+### Release and security boundaries
+- No Cloudflare Worker deployment, Production traffic change, D1 application-data operation, secret mutation, route/DNS change, repository permission change, or physical-device action occurred in this checkpoint.
+- Cloudflare was not re-read; historical Worker versions and source annotations remain historical, not current live evidence.
+- Branch-protection and required-check enforcement were not independently verified during this checkpoint.
+- Green CI and GitHub Pages publication do not authorize or prove a Cloudflare Worker release.
+
+---
+
 ## Current Hub maintenance addendum — 2026-11-21 UTC
 
 This snapshot supersedes older repository snapshots below where they conflict. It distinguishes merged Hub source, review branches, companion branches, and live infrastructure evidence.

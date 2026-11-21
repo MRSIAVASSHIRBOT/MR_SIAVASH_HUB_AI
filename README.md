@@ -165,9 +165,9 @@ The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools`
 
 The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
 
-## Personal device task dispatch (pending review)
+## Personal device task dispatch — merged Hub API; companion acceptance pending
 
-The current device-dispatch implementation branch proposes a narrow Hub-owned task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed near-term screenshot capture (maximum five-minute scheduling horizon and 300-second TTL). Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
+The Hub-owned device-task API on `main` provides a narrow task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed near-term screenshot capture (maximum five-minute scheduling horizon and 300-second TTL). Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
 
 - Owner API: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks/{task_id}`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
 - Device API: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
@@ -176,7 +176,7 @@ The current device-dispatch implementation branch proposes a narrow Hub-owned ta
 - Queue size is bounded per device. Queued work can be cancelled; claimed work cannot be represented as safely cancelled. Device revocation cancels queued tasks and fences claimed tasks as unknown outcome.
 - Arbitrary shell commands, caller-provided executable paths, URLs, unrestricted file access, keystroke capture, and model-authored executable payloads are not supported.
 
-The base Hub device-task API is on `main`. The owner-authorized Agent tool registry in this PR is still under review; Windows and Android consumers are tracked separately in EL_AGENT PRs #23 and #24. Both require a live Staging round-trip and physical-device acceptance before release.
+The base Hub device-task API and owner-authorized Agent tool registry are now on `main` (PR #465). Windows and Android consumers are tracked separately in EL_AGENT PRs #23 and #25. Both require a live Staging round-trip, grant revocation/expiry checks, and physical-device acceptance before release. No production Worker deployment is claimed.
 
 ## Model-driven device tools — owner-authorized, time-limited
 
@@ -189,5 +189,5 @@ The Agent tool registry exposes two device tools only inside an authenticated ow
 - The tool applies platform-specific aliases: Windows supports the five existing fixed aliases; Android supports only ChatGPT and browser. No arbitrary commands, executable paths, URLs, screenshots, file access, shell or browser form submission are exposed to the model.
 - Direct and durable Agent runs both read the active owner grants at each tool decision, so expiry or revocation during inference is enforced before action dispatch.
 
-This tool integration is source code under review in the Hub device-agent tools PR; it does not mean the Hub Staging Worker is deployed or a physical device has completed a live task round-trip.
+The owner-authorized Agent tool integration is merged into Hub `main` as PR #465 (`4d737b2`). This confirms source integration only: the Hub Staging Worker has not been verified as deployed, and no physical device has completed a live task round-trip.
 
