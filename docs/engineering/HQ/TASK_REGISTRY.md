@@ -42,7 +42,7 @@
 ### HQ-003 — Reconcile recovery Issue #200
 
 - Replace obsolete references to historical PR #196/#198/#183 as active queue state with current open PRs #472/#473 and current main SHA.
-- Record the complete 372-branch inventory and a non-destructive classification plan.
+- Record the complete 472-branch inventory and a non-destructive classification plan.
 - Reconcile migration, dependency and release evidence from current source.
 - **Accept only when:** every open PR has a state, exact head, checks, changed files and dependency; no branch is deleted or PR closed merely for cleanup.
 
@@ -126,3 +126,8 @@
 - **HQ-001 / PR #473:** BLOCKED pending investigation of Windows failure `test_model_device_task_creation_uses_time_after_write_lock_for_grants` (69 passed, 1 failed). CI was cancelled and Backend CI was still running at last read. Do not merge until the failure is understood and every required check passes on the updated exact head.
 - **HQ-002 / PR #472:** IN PROGRESS. Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; CI was cancelled and Backend CI remained in progress. Cancelled is not PASS.
 - **HQ initialization / PR #474:** documentation-only PR containing these five reference files. Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; CI and Backend CI were still running at last read.
+
+
+## Branch inventory count correction — 2026-11-21 UTC
+
+The complete paginated Hub branch inventory contains 472 remote branches (pages 1–4: 100 each; page 5: 72). The prior 372 figure was an arithmetic error. No branch was deleted or modified.
