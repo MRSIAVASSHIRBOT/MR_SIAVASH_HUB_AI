@@ -8,6 +8,7 @@ import sqlite3
 import subprocess
 import threading
 import tempfile
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -187,9 +188,7 @@ def download_asset(
     # Verify and copy through one stable source descriptor. The response serves
     # only this private snapshot, so a later replacement of the storage path
     # cannot swap the bytes after the integrity check (TOCTOU).
-    snapshot_directory = __import__("pathlib").Path(
-        tempfile.mkdtemp(prefix="mrhub-download-")
-    )
+    snapshot_directory = Path(tempfile.mkdtemp(prefix="mrhub-download-"))
     snapshot_path = snapshot_directory / "asset"
     try:
         repository.create_verified_snapshot(record, snapshot_path)
