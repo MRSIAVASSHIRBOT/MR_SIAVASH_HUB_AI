@@ -77,13 +77,21 @@ def test_unknown_version_and_bad_key_are_rejected() -> None:
         encrypt_payload({"a": 1}, **BINDING, key=b"short")
 
 
-def test_missing_or_invalid_environment_key_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_or_invalid_environment_key_fails_closed(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Settings reads .env from the current working directory. Use an empty
+    # temporary directory so a developer's local key cannot leak into this test.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("MRH_WORKFLOW_PAYLOAD_KEY", raising=False)
     get_settings.cache_clear()
-    with pytest.raises(PayloadEnvelopeError, match="not configured"):
-        load_payload_key()
-    with pytest.raises(PayloadEnvelopeError, match="32 bytes"):
-        load_payload_key(base64.urlsafe_b64encode(b"short").decode("ascii"))
+    try:
+        with pytest.raises(PayloadEnvelopeError, match="not configured"):
+            load_payload_key()
+        with pytest.raises(PayloadEnvelopeError, match="32 bytes"):
+            load_payload_key(base64.urlsafe_b64encode(b"short").decode("ascii"))
+    finally:
+        get_settings.cache_clear()
 
 
 def test_encoded_key_loads_correctly() -> None:
