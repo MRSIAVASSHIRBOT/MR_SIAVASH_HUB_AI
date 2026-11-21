@@ -4,7 +4,7 @@ This addendum supersedes the earlier repository and companion snapshots below wh
 
 ### Verified repository heads
 - Hub `main`: `4d737b2e97b3753249f1276d8ca132bb7c96be47`. PR [#465](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/465) is merged. It adds owner-bound Agent tools for device-registry reads and allow-listed app-launch task submission, two independent expiring owner grants, exact device-scope enforcement, transactional grant rechecks, migration 52, and dashboard controls.
-- EL_AI `main`: `ff31209cb1d6c380b8cb3df55de17339353a2fec`. Dependency-aware task-plan DAG storage and root-first advancement are implemented. Exact-main Python 3.11/3.12 tests, Workflow Security Audit, and OpenSSF Scorecard passed (runs 44928644306, 44928644348, 44928644369).
+- EL_AI `main`: `5e6b08e96538d7fe9b36a8aa89db0f357e843ecf` (documentation reconciliation PR #74 merged; runtime implementation is in parent/source commit `ff31209cb1d6c380b8cb3df55de17339353a2fec`). Dependency-aware task-plan DAG storage and root-first advancement are implemented. Exact-main Python 3.11/3.12 tests, Workflow Security Audit, and OpenSSF Scorecard passed on the implementation commit (runs 44928644306, 44928644348, 44928644369); post-merge checks for the documentation commit are a separate gate.
 - Website `main`: `78b28cb89cdf4ff70106071740060c7e3f3327a0`. The exact-main test, Workflow Security Audit, supply-chain posture, deployed Gateway health/support/admin/CORS smoke, Preview API smoke, syntax/structure checks, and static Pages publication/asset verification passed (runs 44929243774, 44929243855, 44929243798, 44929243776, 44929243761, 44929243795). Pages publication does not establish a new Cloudflare Worker deployment.
 
 ### Hub device-agent integration boundary
