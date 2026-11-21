@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -54,19 +55,32 @@ def readiness() -> dict[str, str | int | None]:
     worker_age: int | None = None
     worker_status = "not_detected"
     if heartbeat is not None:
-        from datetime import UTC, datetime
         try:
             heartbeat_time = datetime.fromisoformat(heartbeat[0])
             if heartbeat_time.tzinfo is not None:
-                worker_age = max(0, int((datetime.now(UTC) - heartbeat_time.astimezone(UTC)).total_seconds()))
-                worker_status = (
-                    "running"
-                    if worker_age <= settings.worker_heartbeat_timeout_seconds
-                    else "stale"
-                )
+                age_seconds = (
+                    datetime.now(UTC) - heartbeat_time.astimezone(UTC)
+                ).total_seconds()
+                # A future timestamp is invalid evidence of liveness. Keep the
+                # worker unverified instead of clamping its age to zero.
+                if age_seconds >= 0:
+                    worker_age = int(age_seconds)
+                    worker_status = (
+                        "running"
+                        if worker_age <= settings.worker_heartbeat_timeout_seconds
+                        else "stale"
+                    )
         except (TypeError, ValueError):
             worker_age = None
     if settings.require_worker_for_readiness and worker_status != "running":
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Worker process is not ready")
-    return {"status": "ready", "database": "ready", "schema_version": expected_version,
-            "worker": worker_status, "worker_heartbeat_age_seconds": worker_age}
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Worker process is not ready",
+        )
+    return {
+        "status": "ready",
+        "database": "ready",
+        "schema_version": expected_version,
+        "worker": worker_status,
+        "worker_heartbeat_age_seconds": worker_age,
+    }
