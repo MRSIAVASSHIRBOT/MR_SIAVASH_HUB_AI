@@ -229,6 +229,9 @@ def test_api_responses_include_security_headers():
     )
 
 def test_readiness_endpoint_reports_migrated_database(tmp_path, monkeypatch) -> None:
+    # The local launcher may export this flag in the parent shell; this test
+    # verifies database readiness independently from worker availability.
+    monkeypatch.delenv("MRH_REQUIRE_WORKER_FOR_READINESS", raising=False)
     database_path = tmp_path / "ready.sqlite3"
     monkeypatch.setenv("MRH_DATABASE_PATH", str(database_path))
     get_settings.cache_clear()
