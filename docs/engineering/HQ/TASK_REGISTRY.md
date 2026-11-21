@@ -131,3 +131,74 @@
 ## Branch inventory count correction — 2026-11-21 UTC
 
 The complete paginated Hub branch inventory contains 472 remote branches (pages 1–4: 100 each; page 5: 72). The prior 372 figure was an arithmetic error. No branch was deleted or modified.
+
+
+# Four-project task registry correction — 2026-11-21
+
+This section supersedes the earlier three-project registry scope. The portfolio now tracks all four repositories. Existing PRs/issues remain the work records; no duplicate implementation issues are created.
+
+## Refreshed active queue
+
+| Task ID | Priority | Repository | Accountable role | Existing source | Current state |
+| --- | --- | --- | --- | --- | --- |
+| HQ-001 | P0 | HUB | Backend + QA + Security | PR #473 | DONE — merged as `9ae07b0`; failed Windows regression rerun and merged-main Windows validation passed |
+| HQ-002 | P0 | HUB | Project Management + QA | PR #472 | READY FOR REVIEW — all five exact-head checks passed |
+| HQ-003 | P0 | HUB | Architecture + Project Management | Issue #200 | IN PROGRESS — refresh issue against current four-repo portfolio and current merged PRs |
+| HQ-004 | P0 | All four | DevOps + Security | HUB #304, Website #70, EL_AI #5; EL_AGENT branch metadata | BLOCKED — all four main branches report unprotected; GitHub branch protection administration unavailable |
+| HQ-005 | P1 | EL_AI | Integration + QA + Security | PR #78 | DONE — merged into main as `39ea955`; exact-main CI/security/Scorecard passed |
+| HQ-006 | P1 | HUB | Integration + Cloud Operations | Issue #305 | BLOCKED — isolated staging resource and owner approval required |
+| HQ-007 | P1 | HUB | Backend + QA | Issue #182 | IN PROGRESS — provider-neutral durable foundation merged; render/provider/runtime acceptance remains |
+| HQ-008 | P1 | Website | DevOps + QA | Issue #120 | BLOCKED — fresh Cloudflare source/version readback required |
+| HQ-009 | P1 | Website | DevOps + Security | Issue #70 | BLOCKED — branch protection admin unavailable |
+| HQ-010 | P1 | EL_AI | DevOps + Security | Issue #5 | BLOCKED — branch protection admin unavailable |
+| HQ-011 | P1 | EL_AI | Integration + QA | Runtime acceptance | BLOCKED — owner-managed Telegram runtime secret and live test setup |
+| HQ-012 | P1 | All four | Architecture + Integration + QA | HQ four-project baseline | IN PROGRESS — contract compatibility, ownership and release matrix |
+| HQ-013 | P2 | HQ | Project Management | Existing SPC Control Center | BLOCKED — Notion write actions unavailable |
+| HQ-014 | P1 | EL_AGENT | QA + Desktop Platform | EL_AGENT README/ROADMAP | IN PROGRESS — clean Windows 11 install, loopback API, scheduler/recovery and real-device acceptance; no new feature branch |
+| HQ-015 | P1 | EL_AGENT | Integration + QA + Security | PR #23 | DRAFT / CI PASS — Windows Hub task consumer; physical Windows 11 and isolated Hub Staging acceptance pending |
+| HQ-016 | P1 | EL_AGENT | Android + QA + Security | PR #25 | DRAFT / CI PASS — Android planner/offline runtime/Hub consumer; physical Android and isolated Hub Staging/revocation acceptance pending |
+| HQ-017 | P1 | HUB + EL_AGENT | Architecture + Backend + Integration | HUB device-task contract and EL_AGENT PRs #23/#25 | IN PROGRESS — verify contract compatibility and ensure only one task owns each contract change |
+
+## EL_AGENT task acceptance criteria
+
+### HQ-014 — Standalone Windows and Android acceptance
+- Windows: clean Windows 11 install/uninstall; local API bound only to loopback; bearer auth; fixed app aliases; explicit screenshot locality; scheduler/cancel/recovery; no admin elevation; startup install/removal; local Ollama-only mode.
+- Voice: microphone is user-initiated, bounded, visibly active and local-only by default; unsupported speech is rejected.
+- Android: physical install; Keystore credential persistence; owner pairing; Unpair/re-pair; foreground microphone permission; file picker URI grant bounds; offline model import limits; no background UI automation.
+- **Accept only when:** platform test reports include OS/device version, exact app commit/build, reproducible steps and observed result. CI is not physical-device acceptance.
+
+### HQ-015 — Windows Hub task consumer PR #23
+- Review all 14 changed files and task claim/execute/report lifecycle.
+- Verify exact device binding, allowlisted actions, owner confirmation, scope/lease/deadline checks, OS credential vault and no plaintext migration unless vault write is verified.
+- Test cancellation, grant revocation/expiry, stale lease, timeout and ambiguous outcome; do not replay uncertain operations.
+- **Accept only when:** isolated Hub Staging round-trip and physical Windows 11 tests pass, in addition to exact-head CI/security review. Keep Draft until then.
+
+### HQ-016 — Android Hub task consumer and planner PR #25
+- Review the 42-file consolidated diff, planner schema, bounded step/dependency handling, deterministic Android capability policy, document picker, provider routing and offline model import.
+- Verify no paid provider fallback, no model-authored executable payload, no silent phone call, no background microphone/UI automation, and no action after Unpair wins the credential/action fence.
+- **Accept only when:** exact-head Python/Android CI remains green, physical-device tests pass, isolated Hub Staging pairing/task/revocation round-trip passes, and security review is clear. Keep Draft until then.
+
+### HQ-017 — Hub/device contract compatibility
+- Hub owns issuance, policy/grants, lease, revocation and reconciliation; EL_AGENT owns platform execution and local OS checks.
+- Validate versioning, exact device identity, scopes, action allowlist, idempotency, correlation, deadline, cancellation and unknown outcomes.
+- **Accept only when:** contract tests run against synthetic test identities on both Windows and Android clients and Hub provider code; no production device operation is used.
+
+## Eight specialist workstreams — EL_AGENT coverage
+
+1. **System Architecture:** own four-project boundaries and standalone EL_AGENT architecture; prevent EL_AGENT/EL_AI conflation; document platform-specific capability contracts.
+2. **Backend Engineering:** review Hub device-task APIs and EL_AGENT Windows runtime/credential/task persistence; keep authorization at execution boundary.
+3. **AI & Agent Engineering:** review Android planner, local/cloud provider routing, model imports, bounded plans and the distinction between model proposal and deterministic policy authorization.
+4. **Integration Engineering:** own Hub↔EL_AGENT pairing/task contract; separately verify EL_AI→Hub and Website public projection; no direct DB sharing.
+5. **QA Engineering:** own Windows 11 and physical Android acceptance matrix, task lifecycle/recovery, platform regression and CI exact-head evidence.
+6. **Security Engineering:** own Windows credential vault, Android Keystore, local loopback/token boundary, app/document/microphone permissions, redirect refusal, revocation and threat review.
+7. **DevOps & Release Engineering:** own Python/Windows packaging, Android APK build/artifacts, dependency/supply-chain checks, staging, provenance, rollback and branch governance proposal.
+8. **GitHub & System Audit:** own all-four-repository branch/commit/PR/issue/CI inventory, exact SHA evidence, stale branch classification and duplicate-work detection.
+
+The Chief Engineering Coordinator remains accountable for portfolio priorities, conflict resolution, task assignment and the single status record; this is coordination, not a ninth implementation workstream.
+
+## Duplicate-work prevention update
+- PR #23 is the owner of Windows Hub task-consumer implementation; do not create a second Windows consumer task.
+- PR #25 is the owner of the consolidated Android planner/offline-runtime/Hub-consumer implementation; do not revive its closed stacked PRs as separate active tasks.
+- HUB device-task API and policy remain owned by HUB. EL_AGENT consumes the contract and owns platform-side enforcement.
+- Local Windows/Android platform acceptance is a QA task, not a duplicate feature implementation.
+- Do not create new EL_AGENT issues while the existing PRs and HQ task IDs already own the work.
