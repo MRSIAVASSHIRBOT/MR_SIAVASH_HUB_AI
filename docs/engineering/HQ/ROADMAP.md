@@ -107,7 +107,7 @@ Tasks:
 - No private memory, task result, token or owner context reaches public Website/Gateway requests.
 - Correlation IDs and idempotency keys survive retries.
 - Partial outages degrade only the affected integration.
-- All three repositories remain independently testable and releasable.
+- All four repositories remain independently testable and releasable.
 
 ### M5 — Staging and operational readiness (P1)
 
@@ -118,7 +118,7 @@ Tasks:
 - Reconcile Website Gateway source annotation with current source in Issue #120.
 - Verify EL_AI runtime configuration using owner-managed secrets, without exposing token values.
 - Establish backup/restore, observability, incident response and rollback evidence.
-- Prepare a single-maintainer-safe branch-protection policy proposal for all three repositories.
+- Prepare a single-maintainer-safe branch-protection policy proposal for all four repositories.
 
 **Exit criteria:**
 - Staging resources are isolated and traceable to exact commits.
