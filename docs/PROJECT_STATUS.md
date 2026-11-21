@@ -1081,3 +1081,11 @@ This section supersedes earlier repository-head and CI snapshots above where the
 - No live Telegram message delivery, production deployment, paid-provider request, or physical-device action is claimed.
 
 This documentation PR must pass exact-head CI before merge. All checks must be evaluated against its final head; cancelled checks are not passes.
+
+
+### Post-merge correction — PR #483 — 2026-11-22 UTC
+
+- PR #483 merged to Hub `main` as `8793043639d2b8e26590cb5943fd896641a04527`.
+- The PR added only regression tests for timezone-naive and malformed worker heartbeat timestamps, covering optional and required-worker readiness behavior.
+- Exact PR-head validation on `2542c01121d8b617b2c46dbbc471415d2bfd9a31`: all six observed workflows succeeded (Backend CI, CI matrix, Workflow Security Audit, Defensive Python Scan, Video Render Integration, and Windows Launcher Validation).
+- The earlier 14/14 Hub main CI count above belongs to parent main `41a0a111caae40377e81be5f0c1badf2363f699f` and is a pre-#483 snapshot. Do not interpret it as post-merge CI for `8793043`; that post-merge state was not established by this PR-only workflow query.
