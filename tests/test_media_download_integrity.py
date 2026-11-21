@@ -6,7 +6,7 @@ from mrhub.config import get_settings
 from mrhub.media.repository import MediaAssetRepository
 
 
-_PNG = b"\\x89PNG\\r\\n\\x1a\\n" + b"test-png-payload"
+_PNG = b"\x89PNG\r\n\x1a\n" + b"test-png-payload"
 
 
 def _uploaded_asset():
@@ -34,8 +34,8 @@ def test_private_media_download_serves_verified_snapshot_and_cleans_it(
 ):
     import mrhub.api.routes.media as media_routes
 
-    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
     client, _repository, asset_id, _record = _uploaded_asset()
+    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
 
     response = client.get(f"/content/assets/{asset_id}/file")
 
@@ -51,8 +51,8 @@ def test_private_media_download_rejects_tampered_asset_and_cleans_snapshot(
 ):
     import mrhub.api.routes.media as media_routes
 
-    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
     client, repository, asset_id, record = _uploaded_asset()
+    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
     source = repository.file_path(str(record["storage_key"]))
     tampered = bytearray(_PNG)
     tampered[-1] ^= 0x01
