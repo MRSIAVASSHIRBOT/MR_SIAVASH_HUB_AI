@@ -1463,11 +1463,19 @@ class SchemaMigrator:
     def _validate_migration_registry(self) -> None:
         """Reject invalid version definitions before touching the database."""
         versions = tuple(migration.version for migration in MIGRATIONS)
-        if not versions or any(type(version) is not int or version < 1 for version in versions):
+        if not versions or any(
+            not isinstance(version, int)
+            or isinstance(version, bool)
+            or version < 1
+            for version in versions
+        ):
             raise MigrationError(
                 "Migration registry versions must be positive integers"
             )
-        if any(current <= previous for previous, current in zip(versions, versions[1:])):
+        if any(
+            current <= previous
+            for previous, current in zip(versions, versions[1:])
+        ):
             raise MigrationError(
                 "Migration registry versions must be strictly increasing"
             )
