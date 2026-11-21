@@ -118,7 +118,7 @@ Acceptance:
 - No Website access to private Hub memory or owner task context.
 - No implicit remote model fallback or paid provider invocation.
 - No Gshop integration or operations within this workspace.
-- The separate MR_SIAVASH_EL_AGENT device companion repository is not included in this three-repository baseline and must be audited separately before work is assigned to it.
+- MR_SIAVASH_EL_AGENT is an in-scope standalone device-execution product. Its physical-device and isolated Hub Staging acceptance remain separate release gates.
 
 
 # Four-project ownership and integration correction — 2026-11-21
