@@ -996,3 +996,26 @@ This checkpoint records the current engineering branch work separately from merg
 4. Deploy the dedicated staging Worker only after its four configuration values and the Hub-side secret are securely configured; run authenticated staging acceptance.
 5. Keep the public Website Production release gate closed until fresh Worker/D1 inventory, migration/backup/rollback verification, exact-candidate Preview acceptance, and explicit owner approval.
 6. Run end-to-end tests for multi-device isolation, approvals, memory access, specialist delegation, cancellation, timeouts, and audit provenance.
+
+
+## Cross-repository continuation checkpoint — 2026-11-22 UTC
+
+This addendum records the GitHub state re-read during the 2026-11-22 continuation. It supersedes older branch/PR snapshots above where they conflict. It is not a live Cloudflare inventory, production release, Telegram bot, or physical-device acceptance.
+
+### Exact default-branch heads
+- **MR_SIAVASH_HUB_AI:** `ff15b26009d642ffe3cdfdfa7c9fca60a4fb9f3b`. The current `backend/mrhub/projects/registry.py` contains exactly the four enrolled repositories (Hub, Website, EL_AGENT, EL_AI) and no Gshop entry. PR #476 is merged. PR #475 is closed without merge; its environment-isolation changes are present in current-main test files, including explicit removal of `MRH_REQUIRE_WORKER_FOR_READINESS` in readiness/registry tests and temporary-directory isolation for payload-key tests. The latest inspected main commit includes these test changes. Exact-main CI for `ff15b26` was not independently verified in this checkpoint.
+- **MR_SIAVASH_AI:** `fe48ad35320b5f595c2b14ec0f199967449aa87d`. The latest inspected commit is a documentation/release-evidence refresh. `docs/RELEASE_STATUS.md` records a 2026-11-21 read-only Cloudflare audit: Production Worker version 14 was annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`, 104 commits behind the then-current Website main; Preview query-string redaction was disabled at that audit. These are dated historical observations, not a fresh 2026-11-22 Cloudflare read. Issue #120 remains open; no deployment or Worker/D1 mutation is authorized by this record.
+- **MR_SIAVASH_EL_AGENT:** `d2511f57abe00451ada4b84e5fe1196742393505`. PR #23 (Windows consumer) remains Draft at `dfd482971340fcfe69d36855e005e9fa397062aa`; exact-head CI run #44937500857 passed on Ubuntu/Windows with Python 3.11/3.12. PR #25 (Android planner/consumer) remains Draft at `1f57a3810e6c0ed1bf7eb9959f13db1e8e8195a4`; exact-head CI #44938915072 and Android build/unit-test run #44938915079 passed. Both branches are ahead of main and still require physical-device acceptance and a live Hub Staging round-trip; neither is merged or operationally accepted.
+- **MR_SIAVASH_EL_AI:** `39ea9557b12ebc827e19b0e4d2f274073752b0a2`. Issue #5 remains open. No live Telegram token, bot connection, or deployment was verified in this checkpoint.
+
+### Governance and integration gates
+- A fresh read of each repository's `main` branch metadata reports `protected=false`, with required-status-check enforcement off and no required contexts, for all four repositories. The connected GitHub action surface exposes no write operation for branch protection/rulesets. Repository-admin configuration and a subsequent enforcement test remain required; do not claim this gate is remediated.
+- The Windows and Android PR CI results above are exact-head evidence only. No physical Windows/Android device, live Hub Staging, Telegram, or external provider acceptance was performed.
+- The Website's dated Cloudflare evidence is not a live deployment pointer. Production release, Preview redeployment, Worker secrets/routes, and D1 migration/application state remain separate operational gates.
+- No production resource, credential, branch-protection setting, device, Telegram account, or external provider account was changed in this checkpoint.
+
+### Immediate next work
+1. Continue source-level review of the four repositories and keep changes on isolated branches with exact-head CI.
+2. Preserve PR #23 and #25 as Draft until device and Staging acceptance evidence exists.
+3. Keep branch-protection issues open until an administrator applies and verifies the required rules.
+4. Do not repurpose Website Preview or any Gshop resource as Hub staging; do not deploy Website Production from source-drift evidence alone.
