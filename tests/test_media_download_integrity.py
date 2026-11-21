@@ -78,3 +78,50 @@ def test_private_media_download_preserves_not_found_for_missing_source(
     assert response.status_code == 404
     assert response.json()["detail"] == "Media file is missing"
     assert list(tmp_path.iterdir()) == []
+
+def test_private_media_download_serves_snapshot_if_storage_path_changes_after_copy(
+    tmp_path: Path, monkeypatch
+):
+    import mrhub.api.routes.media as media_routes
+
+    client, repository, asset_id, record = _uploaded_asset()
+    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
+    original_snapshot = MediaAssetRepository.create_verified_snapshot
+
+    def snapshot_then_replace_source(self, asset, destination):
+        snapshot = original_snapshot(self, asset, destination)
+        # Simulate a path replacement after integrity verification and copying.
+        self.file_path(str(asset["storage_key"])).write_bytes(b"replacement-after-snapshot")
+        return snapshot
+
+    monkeypatch.setattr(
+        MediaAssetRepository,
+        "create_verified_snapshot",
+        snapshot_then_replace_source,
+    )
+
+    response = client.get(f"/content/assets/{asset_id}/file")
+
+    assert response.status_code == 200
+    assert response.content == _PNG
+    assert repository.file_path(str(record["storage_key"])).read_bytes() != _PNG
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_private_media_download_rejects_invalid_storage_key(
+    tmp_path: Path, monkeypatch
+):
+    client, repository, asset_id, record = _uploaded_asset()
+    monkeypatch.setattr("mrhub.api.routes.media.tempfile.tempdir", str(tmp_path))
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE content_assets SET storage_key = ? WHERE asset_id = ? AND owner_user_id = ?",
+            ("../outside.png", str(asset_id), str(record["owner_user_id"])),
+        )
+
+    response = client.get(f"/content/assets/{asset_id}/file")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "media_asset_integrity_failed"
+    assert list(tmp_path.iterdir()) == []
