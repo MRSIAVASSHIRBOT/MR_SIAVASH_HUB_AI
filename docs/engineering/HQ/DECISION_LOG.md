@@ -77,3 +77,42 @@ No new cross-repository architectural proposal is accepted by this document. Any
 | Date | Change |
 | --- | --- |
 | 2026-11-21 | Initial HQ decision log created from explicit owner scope and the current repository/Notion audit. |
+
+
+## Four-project architecture correction — 2026-11-21
+
+### HQ-DEC-008 — Four independent products, one coordinated ecosystem
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Decision:** The ecosystem consists of four distinct repositories: HUB_AI, EL_AGENT, EL_AI and MR_SIAVASH_AI.
+- **Rationale:** The previous HQ baseline omitted the already-existing EL_AGENT repository and incorrectly treated the portfolio as three projects.
+- **Consequences:** Every portfolio audit, dependency map, roadmap, release matrix and task registry must include all four. HUB remains the primary development project. Gshop remains excluded.
+
+### HQ-DEC-009 — EL_AGENT is a standalone device execution product
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Decision:** EL_AGENT owns its device-side runtime and platform execution adapters for Windows and Android. It must remain useful in standalone/local mode without HUB, EL_AI or Website availability. Hub pairing/task relay is an optional, versioned integration adapter.
+- **Rationale:** EL_AGENT's own architecture document explicitly defines standalone-by-default operation, local providers and local platform capabilities.
+- **Consequences:** Do not reduce EL_AGENT to an EL_AI transport, do not move its local runtime into HUB, and do not assume all local memory is already implemented. Local policy validates model-proposed typed actions; models never authorize or directly execute device tools.
+
+### HQ-DEC-010 — Separate communication, orchestration and device execution
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Decision:** HUB is the central control plane; EL_AI is the Telegram communication interface; EL_AGENT is the device execution layer; MR_SIAVASH_AI is the public web/Gateway layer.
+- **Rationale:** Separate trust boundaries, release cycles and failure domains.
+- **Consequences:** EL_AI cannot directly run local device operations. It submits scoped requests to HUB. HUB authorizes and relays supported device tasks to a paired EL_AGENT. Website/Gateway receives public-only context. No direct cross-repository database or private filesystem access.
+
+### HQ-DEC-011 — Clarify shared versus local memory ownership
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Decision:** HUB owns ecosystem-level shared/private memory services and cross-project owner/task/audit records. EL_AGENT may own local settings and a future local-memory store for standalone use. Local memory is not considered implemented until verified in EL_AGENT source and tests.
+- **Rationale:** Preserve standalone operation without duplicating authoritative shared identity, policy or cross-project state.
+- **Consequences:** Synchronization is opt-in through explicit versioned APIs, encrypted and scoped; no shared database credentials.
+
+### Supersession note
+
+The earlier three-project wording and the statement that EL_AGENT was outside the baseline are superseded by HQ-DEC-008 through HQ-DEC-011. Earlier PR #473/#78 open-state notes are also superseded by the refreshed status: HUB #473 and EL_AI #78 are merged.
