@@ -17,6 +17,8 @@ def test_project_registry_requires_authenticated_owner(tmp_path, monkeypatch):
 
 
 def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypatch):
+    # Keep the expected worker-not-detected state independent of a running local launcher.
+    monkeypatch.delenv("MRH_REQUIRE_WORKER_FOR_READINESS", raising=False)
     monkeypatch.setattr(
         "mrhub.projects.registry.get_repository_status",
         lambda repository: {
