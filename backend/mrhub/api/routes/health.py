@@ -59,8 +59,11 @@ def readiness() -> dict[str, str | int | None]:
             heartbeat_time = datetime.fromisoformat(heartbeat[0])
             if heartbeat_time.tzinfo is not None:
                 worker_age = max(0, int((datetime.now(UTC) - heartbeat_time.astimezone(UTC)).total_seconds()))
-                if worker_age <= settings.worker_heartbeat_timeout_seconds:
-                    worker_status = "running"
+                worker_status = (
+                    "running"
+                    if worker_age <= settings.worker_heartbeat_timeout_seconds
+                    else "stale"
+                )
         except (TypeError, ValueError):
             worker_age = None
     if settings.require_worker_for_readiness and worker_status != "running":
