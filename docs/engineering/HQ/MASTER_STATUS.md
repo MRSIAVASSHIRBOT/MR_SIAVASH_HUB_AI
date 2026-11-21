@@ -20,7 +20,7 @@ This is a dated evidence snapshot, not a live status endpoint. Refresh it before
 
 | Repository | Default branch / HEAD | Branches | Open PRs | Open issues | Latest main CI evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| [MR_SIAVASH_HUB_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI) | main / `fd3d8b319592fec207912f446234c359e0352fd9` | 372 | 2 | 5 | 7 workflows passed on exact HEAD |
+| [MR_SIAVASH_HUB_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI) | main / `fd3d8b319592fec207912f446234c359e0352fd9` | 472 | 2 | 5 | 7 workflows passed on exact HEAD |
 | [MR_SIAVASH_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI) | main / `a2428f5208a78e3d8f1181f55af1427448b55483` | 244 | 0 | 2 | 6 workflows passed on exact HEAD |
 | [MR_SIAVASH_EL_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI) | main / `90aa638fff2f515e193e754fa73bad4b79e14e36` | 79 | 1 | 1 | CI, security audit, Scorecard passed on exact HEAD |
 
@@ -123,3 +123,8 @@ This addendum supersedes the open-PR CI state above; repository main SHAs are un
 - The failed Windows job executed 70 targeted database/device/backup tests: 69 passed and 1 failed. Failure: `tests/test_device_tasks.py::test_model_device_task_creation_uses_time_after_write_lock_for_grants` — expected `DeviceTaskPermissionError`, but none was raised. See [exact Windows run](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/44938460022).
 - Root cause is not yet established. PR #473 is not accepted for merge until the failing regression is understood, fixed if needed, and the exact updated head passes all required checks.
 - New HQ documentation PR #474 is open at head `6d58c02da0f74c7f2c5d2c8e2be485cba5ae981d`. Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; CI and Backend CI were still running at this refresh. See [PR #474](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/474).
+
+
+## Branch inventory count correction — 2026-11-21 UTC
+
+The complete paginated Hub branch inventory contains 472 remote branches (pages 1–4: 100 each; page 5: 72). The prior 372 figure was an arithmetic error. No branch was deleted or modified.
