@@ -19,7 +19,7 @@
 | HQ-009 | P1 | Website | DevOps + Security | Issue #70 | BLOCKED — branch protection admin not available in connector |
 | HQ-010 | P1 | EL_AI | DevOps + Security | Issue #5 | BLOCKED — branch protection admin not available in connector |
 | HQ-011 | P1 | EL_AI | Integration + QA | Roadmap Milestone 2/3 | BLOCKED — owner-managed Telegram runtime secret and live test setup |
-| HQ-012 | P1 | All three | Architecture + QA | This HQ baseline | IN PROGRESS — contract compatibility and branch inventory mapping |
+| HQ-012 | P1 | All four | Architecture + QA | This HQ baseline | IN PROGRESS — contract compatibility and branch inventory mapping |
 | HQ-013 | P2 | HQ | Project Management | Existing SPC Control Center | BLOCKED — Notion write tools not available to this connection |
 
 ## Acceptance details
