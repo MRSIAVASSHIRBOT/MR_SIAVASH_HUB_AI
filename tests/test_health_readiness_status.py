@@ -104,3 +104,36 @@ def test_required_worker_rejects_future_heartbeat(monkeypatch, tmp_path):
 
     assert exc_info.value.status_code == 503
     assert exc_info.value.detail == "Worker process is not ready"
+
+
+@pytest.mark.parametrize(
+    "heartbeat",
+    ("2026-11-22T00:00:00", "not-a-timestamp"),
+)
+def test_unverifiable_worker_heartbeat_is_not_accepted_as_live(
+    monkeypatch, tmp_path, heartbeat
+):
+    _configure_readiness(monkeypatch, tmp_path, (heartbeat,))
+
+    result = health.readiness()
+
+    assert result["worker"] == "not_detected"
+    assert result["worker_heartbeat_age_seconds"] is None
+
+
+@pytest.mark.parametrize(
+    "heartbeat",
+    ("2026-11-22T00:00:00", "not-a-timestamp"),
+)
+def test_required_worker_rejects_unverifiable_heartbeat(
+    monkeypatch, tmp_path, heartbeat
+):
+    _configure_readiness(
+        monkeypatch, tmp_path, (heartbeat,), require_worker=True
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        health.readiness()
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Worker process is not ready"
