@@ -10,7 +10,7 @@ This log records cross-repository decisions. Repository-local architecture decis
 - **Date:** 2026-11-21
 - **Decision:** MR_SIAVASH_HUB_AI is the single primary development repository.
 - **Rationale:** It owns the shared intelligence core, private memory, agent orchestration, policy, jobs, tools and core integration contracts.
-- **Consequences:** Website and EL_AI remain independently maintained companions. Do not start competing feature programs in all three repositories.
+- **Consequences:** Website, EL_AI and EL_AGENT remain independently maintained companions. Do not start competing feature programs across all four repositories.
 
 ### HQ-DEC-002 — Gshop is outside this workspace scope
 
@@ -32,7 +32,7 @@ This log records cross-repository decisions. Repository-local architecture decis
 
 - **Status:** Accepted
 - **Date:** 2026-11-21
-- **Decision:** The three repositories keep independent source histories, CI pipelines, release gates and runtime ownership.
+- **Decision:** All four repositories keep independent source histories, CI pipelines, release gates and runtime ownership.
 - **Rationale:** Avoid unnecessary coupling and accidental shared failure domains.
 - **Consequences:** Integration occurs through explicit, versioned API contracts, not shared source directories or direct database access.
 
