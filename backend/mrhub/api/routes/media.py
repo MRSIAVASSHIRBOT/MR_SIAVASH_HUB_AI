@@ -7,11 +7,13 @@ import shutil
 import sqlite3
 import subprocess
 import threading
+import tempfile
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
@@ -167,14 +169,48 @@ def download_asset(
     record = repository.get(user.user_id, asset_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Media asset not found")
-    path = repository.file_path(str(record["storage_key"]))
-    if not path.is_file():
+    try:
+        source_path = repository.file_path(str(record["storage_key"]))
+    except ValueError:
+        _audit(
+            repository,
+            user,
+            "content.asset_download_rejected",
+            str(asset_id),
+            "invalid_storage_key",
+            "failure",
+        )
+        raise HTTPException(status_code=409, detail="media_asset_integrity_failed") from None
+    if not source_path.is_file():
         raise HTTPException(status_code=404, detail="Media file is missing")
+
+    # Verify and copy through one stable source descriptor. The response serves
+    # only this private snapshot, so a later replacement of the storage path
+    # cannot swap the bytes after the integrity check (TOCTOU).
+    snapshot_directory = __import__("pathlib").Path(
+        tempfile.mkdtemp(prefix="mrhub-download-")
+    )
+    snapshot_path = snapshot_directory / "asset"
+    try:
+        repository.create_verified_snapshot(record, snapshot_path)
+    except (OSError, ValueError):
+        shutil.rmtree(snapshot_directory, ignore_errors=True)
+        _audit(
+            repository,
+            user,
+            "content.asset_download_rejected",
+            str(asset_id),
+            "integrity_check_failed",
+            "failure",
+        )
+        raise HTTPException(status_code=409, detail="media_asset_integrity_failed") from None
+
     return FileResponse(
-        path,
+        snapshot_path,
         media_type=str(record["media_type"]),
         filename=str(record["original_filename"]),
         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"},
+        background=BackgroundTask(shutil.rmtree, snapshot_directory, ignore_errors=True),
     )
 
 
