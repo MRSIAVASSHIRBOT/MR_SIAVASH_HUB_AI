@@ -133,3 +133,62 @@ The complete paginated Hub branch inventory contains 472 remote branches (pages 
 ## HQ bootstrap PR count update — 2026-11-21 UTC
 
 The initial repository baseline table recorded two open HUB PRs (#472 and #473) before HQ initialization. This branch subsequently opened documentation-only PR #474. The current open HUB PR count is therefore **3**: #472, #473 and #474. No existing PR was closed or modified by this count update.
+
+
+# Four-project architecture correction and refreshed baseline — 2026-11-21 UTC
+
+**This section supersedes every earlier statement in this document that described a three-project ecosystem or excluded EL_AGENT.** The authoritative ecosystem has FOUR independent repositories:
+
+1. [MR_SIAVASH_HUB_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI) — central control plane and orchestration.
+2. [MR_SIAVASH_EL_AGENT](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) — standalone Windows/Android device-side execution agent.
+3. [MR_SIAVASH_EL_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI) — Telegram-facing conversational and communication interface.
+4. [MR_SIAVASH_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI) — public website, learning surface and public Gateway.
+
+Gshop remains excluded. The separate four-project architecture does not change the active development priority: HUB remains the primary development project.
+
+## Current four-repository baseline
+
+| Repository | Default branch / latest main SHA | Remote branches | Open PRs | Open issues | Latest exact-main CI evidence |
+| --- | --- | ---: | ---: | ---: | --- |
+| HUB_AI | main / `9ae07b04733ac5555be8bf237437b4570e1985ed` | 473 | 2 | 5 | Security Audit, Scorecard, Defensive Scan, Video Render Integration and Windows Launcher passed; CI and Backend CI still running at snapshot |
+| EL_AGENT | main / `d2511f57abe00451ada4b84e5fe1196742393505` | 28 | 2 | 0 | CI passed on exact main SHA; four Ubuntu/Windows × Python 3.11/3.12 jobs succeeded |
+| EL_AI | main / `39ea9557b12ebc827e19b0e4d2f274073752b0a2` | 79 | 0 | 1 | CI, Workflow Security Audit and OpenSSF Scorecard passed on exact main SHA |
+| MR_SIAVASH_AI | main / `a2428f5208a78e3d8f1181f55af1427448b55483` | 244 | 0 | 2 | Gateway CI, Security Audit, Scorecard, Preview/Production Gateway smoke and Pages quality/deploy all passed |
+
+Branch counts reflect complete paginated inventories observed in this audit: HUB 100+100+100+100+73=473; EL_AGENT 28; EL_AI 79; Website 100+100+44=244. No branch was deleted or modified. All four default `main` branch metadata records report `protected=false`; the branch-protection endpoint is not accessible to the current GitHub integration (403), so no ruleset mutation or protection readback was possible.
+
+### Current open work and status corrections
+
+**HUB_AI**
+- Open PR [#472](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/472), head `1a7e3c0fd35c51134497056894c02ccf29efc34d`: all five observed checks (Workflow Security Audit, Defensive Python Scan, Video Render Integration, CI, Backend CI) passed on exact head.
+- Open PR [#474](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/474), HQ documentation. Latest observed head `e885e514c20148f60dbefb0f86eee49270a32ad4`: Workflow Security Audit, Defensive Python Scan, Video Render Integration and Backend CI passed; CI remained in progress at the last exact-head read. This PR is being expanded to include the fourth project baseline.
+- PR #473 is now **merged** into main at `9ae07b04733ac5555be8bf237437b4570e1985ed`. Its previously failing Windows regression rerun completed successfully; Windows Launcher Validation on the merged main SHA also passed. The earlier statement that #473 was blocked is superseded.
+- Five open issues remain: #200, #182, #298, #304 and #305. #298 references payment/production credential/CORS resources outside this workspace execution scope; do not act on it here.
+- Latest main CI had CI and Backend CI still running, while security audit, Scorecard, Defensive Scan, Video Render Integration and Windows Launcher Validation passed.
+
+**EL_AGENT**
+- Exact repository located through authenticated owner-repository listing and exact-name repository search: [MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT), repository ID `1465333314`, public, default branch `main`, created 2026-11-20, last pushed 2026-11-21.
+- Open [PR #23](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/23), Draft: Windows scoped Hub task consumer; 14 files, +1313/-48. Exact head `dfd482971340fcfe69d36855e005e9fa397062aa`. Python CI matrix, Android workflow and push CI observed successful. Physical Windows 11 and isolated Hub Staging acceptance remain pending.
+- Open [PR #25](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/25), Draft: Android reviewed planner, offline runtimes and foreground Hub consumer; 42 files, +4859/-83. Exact head `1f57a3810e6c0ed1bf7eb9959f13db1e8e8195a4`. Exact-head Python CI and Android debug build/unit tests both passed. Physical Android and isolated Hub Staging/revocation acceptance remain pending.
+- No open Issues. The repository has 28 remote branches, all observed unprotected.
+- Main CI run [44933709135](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/44933709135) passed all four Ubuntu/Windows and Python 3.11/3.12 matrix jobs. Android workflow is path-filtered and was not observed on the latest main commit; PR #25's exact-head Android workflow passed.
+- Main README documents a Windows 0.2.0 local-first MVP: loopback-only authenticated API, explicit screenshot, fixed app allowlist, local scheduler, task list/cancel, desktop control center, deterministic Persian/English command parser, optional per-user startup, local Ollama-first text provider and opt-in local push-to-talk. Hub pairing on main is heartbeat-only; remote task dispatch is not yet on main.
+- Android companion preview includes owner pairing, Android Keystore credential storage, heartbeat, foreground push-to-talk prototype and explicit local app launch. Physical-device acceptance is pending.
+- Main roadmap explicitly leaves clean Windows 11 install/live acceptance, Hub-issued task dispatch, shared memory, Android physical acceptance, wake word, hybrid voice and adaptive memory/planning unfinished.
+
+**EL_AI**
+- PR #78 is now **merged** into main at `39ea9557b12ebc827e19b0e4d2f274073752b0a2`; it adds authenticated Hub client redirect protection. Exact-main CI, Workflow Security Audit and Scorecard all passed.
+- One open issue remains: #5 (main branch protection).
+
+**MR_SIAVASH_AI**
+- No open PRs; two open issues remain: #70 (main branch protection) and #120 (Gateway deployment/source reconciliation).
+- Six exact-main workflows passed. GitHub Pages publication passed; Cloudflare production source/version parity is not established by CI alone.
+
+## Four-project acceptance boundary
+
+- CI PASS is not physical-device acceptance, live integration acceptance, deployment confirmation or production health.
+- EL_AGENT remains independently useful in local/standalone mode. Hub pairing and remote task relay are optional adapters, not startup dependencies.
+- Hub is authoritative for ecosystem owner identity, shared grants, cross-project policy, shared task relay/audit and shared memory services. EL_AGENT owns its local runtime, platform capabilities, local settings, local scheduler and future local-memory implementation; do not claim local memory is shipped until its implementation and tests exist.
+- EL_AI remains the Telegram interface, not the device executor. It submits only scoped requests to Hub; it does not directly invoke local Windows/Android tools.
+- Website/Gateway receives public-only projections and public request context. It never receives private Hub memory, owner tasks, device credentials or private EL_AGENT telemetry.
+- No repository may access another repository's database or private filesystem directly.
