@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-11-21 UTC  
 **Status owner:** Engineering Coordinator  
 **Authority:** GitHub repository heads, pull requests, issues, and exact-head Actions observations  
-**Scope:** MR_SIAVASH_HUB_AI, MR_SIAVASH_AI, MR_SIAVASH_EL_AI only. Gshop is explicitly out of scope.
+**Scope:** MR_SIAVASH_HUB_AI, MR_SIAVASH_AI, MR_SIAVASH_EL_AI, and MR_SIAVASH_EL_AGENT. Gshop is explicitly out of scope.
 
 This is a dated evidence snapshot, not a live status endpoint. Refresh it before making merge, release, deployment, or architecture decisions.
 
@@ -24,7 +24,7 @@ This is a dated evidence snapshot, not a live status endpoint. Refresh it before
 | [MR_SIAVASH_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI) | main / `a2428f5208a78e3d8f1181f55af1427448b55483` | 244 | 0 | 2 | 6 workflows passed on exact HEAD |
 | [MR_SIAVASH_EL_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI) | main / `90aa638fff2f515e193e754fa73bad4b79e14e36` | 79 | 1 | 1 | CI, security audit, Scorecard passed on exact HEAD |
 
-Branch counts were obtained by exhausting paginated branch listings (100 per page). They describe remote branch refs, not necessarily active work. No branch was deleted. All three repositories use `main` as the default branch and GitHub reported `protected=false`.
+Branch counts were obtained by exhausting paginated branch listings (100 per page). They describe remote branch refs, not necessarily active work. No branch was deleted. The three repositories in this historical baseline use `main` as the default branch and GitHub reported `protected=false`; EL_AGENT branch protection was not established by that observation.
 
 ### MR_SIAVASH_HUB_AI
 
@@ -79,13 +79,13 @@ Recent mainline changes include dependency-aware task-plan progression, Website 
 | EL_AI → Website Gateway | EL_AI public client; Website owns public Gateway | Public-only request contract exists; private Hub context must never be forwarded | Live configured Gateway response and public/owner isolation evaluation |
 | Website → HUB public status | HUB publishes a bounded public projection; Website consumes its schema | Public status schema and generator exist in Website source | Schema compatibility and publication freshness checks |
 | HUB → external tools/providers | HUB owns model/tool policy and execution | Explicit provider selection, grants, bounded jobs and approval gates | Provider-specific integration and operational acceptance |
-| HUB ↔ device companion | Separate companion repository appears in Hub records | Not part of this three-repository audit | Inspect separately before scheduling work |
+| HUB ↔ EL_AGENT | Versioned device-task API and paired-device contract | Four-project integration baseline; physical-device and isolated staging acceptance pending | Keep device execution in EL_AGENT; Hub authorizes and records task state |
 
 No direct cross-repository database access is permitted. Use versioned API contracts, scoped credentials, correlation IDs, idempotency keys, bounded retries, and sanitized errors.
 
 ## Tool and permission findings
 
-- GitHub connector: authenticated repository reads and writes are available. Repository metadata reports admin/maintain/push permissions on all three audited repositories. Available actions include branch creation, file creation/update, PR creation, PR review/comment, issue updates, and merge operations.
+- GitHub connector: authenticated repository reads and writes are available. Repository metadata reports admin/maintain/push permissions on the three repositories in the initial audit; EL_AGENT access is recorded separately in the four-project addendum. Available actions include branch creation, file creation/update, PR creation, PR review/comment, issue updates, and merge operations.
 - GitHub branch-protection administration: not available through the current connector surface. The branch-protection read endpoint returned 403 for this connection; branch metadata independently reported `protected=false`. No policy mutation was attempted.
 - GitHub Actions: workflow/run/check metadata and job logs are available through read actions.
 - Notion: search and fetch are available. The existing SPC Control Center and SPC Documents records were found. Page creation/update tools are not exposed as available in the current Notion access map; no Notion writes were attempted.
