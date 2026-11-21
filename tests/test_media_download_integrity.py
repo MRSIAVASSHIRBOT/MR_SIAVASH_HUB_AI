@@ -5,7 +5,6 @@ from client_helpers import authenticated_client
 from mrhub.config import get_settings
 from mrhub.media.repository import MediaAssetRepository
 
-
 _PNG = b"\x89PNG\r\n\x1a\n" + b"test-png-payload"
 
 
