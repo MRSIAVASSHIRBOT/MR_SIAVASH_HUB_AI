@@ -128,3 +128,8 @@ This addendum supersedes the open-PR CI state above; repository main SHAs are un
 ## Branch inventory count correction — 2026-11-21 UTC
 
 The complete paginated Hub branch inventory contains 472 remote branches (pages 1–4: 100 each; page 5: 72). The prior 372 figure was an arithmetic error. No branch was deleted or modified.
+
+
+## HQ bootstrap PR count update — 2026-11-21 UTC
+
+The initial repository baseline table recorded two open HUB PRs (#472 and #473) before HQ initialization. This branch subsequently opened documentation-only PR #474. The current open HUB PR count is therefore **3**: #472, #473 and #474. No existing PR was closed or modified by this count update.
