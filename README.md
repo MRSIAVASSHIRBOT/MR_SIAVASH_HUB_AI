@@ -165,9 +165,9 @@ The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools`
 
 The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
 
-## Personal device task dispatch (pending review)
+## Personal device task dispatch — merged Hub API; companion acceptance pending
 
-The current device-dispatch implementation branch proposes a narrow Hub-owned task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed near-term screenshot capture (maximum five-minute scheduling horizon and 300-second TTL). Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
+The Hub-owned device-task API on `main` provides a narrow task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed near-term screenshot capture (maximum five-minute scheduling horizon and 300-second TTL). Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
 
 - Owner API: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks/{task_id}`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
 - Device API: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
