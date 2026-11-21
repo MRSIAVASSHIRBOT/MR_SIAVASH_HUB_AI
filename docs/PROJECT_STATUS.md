@@ -1019,3 +1019,31 @@ This addendum records the GitHub state re-read during the 2026-11-22 continuatio
 2. Preserve PR #23 and #25 as Draft until device and Staging acceptance evidence exists.
 3. Keep branch-protection issues open until an administrator applies and verifies the required rules.
 4. Do not repurpose Website Preview or any Gshop resource as Hub staging; do not deploy Website Production from source-drift evidence alone.
+
+
+## Current operational checkpoint — 2026-11-22 UTC
+
+This addendum supersedes earlier snapshots in this file where they conflict. It records current GitHub source/CI evidence only; it is not a staging, production, Telegram, or physical-device acceptance.
+
+### Default-branch heads and validation
+- **MR_SIAVASH_HUB_AI:** `41a0a111caae40377e81be5f0c1badf2363f699f`; PR #479 (stale-worker heartbeat handling) and PR #481 (future-dated heartbeat rejection) are merged. Current main CI was verified at 14/14 successful checks.
+- **MR_SIAVASH_AI:** `fe48ad35320b5f595c2b14ec0f199967449aa87d`; main CI 7/7 successful.
+- **MR_SIAVASH_EL_AGENT:** `d2511f57abe00451ada4b84e5fe1196742393505`; main CI 4/4 successful.
+- **MR_SIAVASH_EL_AI:** `6bbd8fea0ccb827ac0c2d1429daf707fe4a976d2`; main CI 4/4 successful.
+
+These are GitHub source and CI results. They do not establish live deployment or end-to-end acceptance.
+
+### Documentation follow-up PR
+- Existing PR #480 is documentation-only, with head `0827f04b5ed0aa44b57a323716694a6f04578c7c`. It is based on the earlier Hub head `d72163f1a48c6ed56869e263f931050e5575f8de`; comparison against current `main` reports 7 commits ahead and 1 behind.
+- Exact-head workflow run #44953665175: Backend CI, Workflow Security Audit, Defensive Python Scan, Video Render Integration, and both Windows wheel smoke jobs succeeded. The Python 3.11 CI job was still running and the Python 3.12 CI job was cancelled at the latest read. PR #480 is therefore not eligible for merge.
+- This checkpoint is being refreshed from current `main` on a clean branch rather than merging the stale PR head. The original PR must remain open until the replacement passes exact-head validation.
+
+### Device integration boundaries
+- Hub device pairing, task APIs, and bounded agent tools are merged in source; deployment to an isolated Hub Staging environment remains unverified.
+- EL_AGENT PRs #23 (Windows) and #25 (Android) remain Draft. CI is not a substitute for physical-device acceptance, authenticated Staging task round-trips, expiry, or revocation tests.
+- No dedicated Hub Staging Worker was present in the last recorded read-only Cloudflare inventory. Do not reuse unrelated Workers or credentials.
+- No production deployment, Worker/D1 mutation, secret read/write, Telegram API action, paid-provider request, or physical-device action was performed in this checkpoint.
+
+### Governance
+- All four default branches were last verified as unprotected, with no enforced required status checks. Administrator-side branch protection/ruleset configuration and a subsequent enforcement test remain open.
+- Keep release and device acceptance gates open until fresh, independently verifiable evidence exists.
