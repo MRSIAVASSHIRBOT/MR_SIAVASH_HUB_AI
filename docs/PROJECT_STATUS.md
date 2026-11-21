@@ -1061,3 +1061,23 @@ This note supersedes the preceding statement that PR #480 had 9/9 successful che
 - Exact-head check-runs for `0ec2d0e3c14a97beec30547cc7a3f090480cfce1`: 6/9 successful, 3 in progress, 0 failures. The three running checks were `test (3.11)`, `test (3.12)`, and `test`. Therefore PR #480 was not yet eligible for merge at this read.
 - The PR branch requires a fresh documentation checkpoint because the preceding 9/9 claim was premature and the branch is behind current `main`. Do not merge until the corrected commit is tested at its exact head and all required checks succeed.
 - The two changed files remain documentation-only. No production, Cloudflare, staging, device, Telegram, credential, paid-provider, or GShop operation was performed.
+
+
+## Current operational checkpoint — 2026-11-22 UTC
+
+This section supersedes earlier repository-head and CI snapshots above where they conflict. It records GitHub source and CI evidence only; it does not imply live deployment, Staging, Telegram, or physical-device acceptance.
+
+### Verified default branches
+- **Hub:** `41a0a111caae40377e81be5f0c1badf2363f699f`; exact-main CI 14/14 successful.
+- **Website:** `fe48ad35320b5f595c2b14ec0f199967449aa87d`; exact-main CI 7/7 successful.
+- **EL_AGENT:** `d2511f57abe00451ada4b84e5fe1196742393505`; exact-main CI 4/4 successful.
+- **EL_AI:** `6bbd8fea0ccb827ac0c2d1429daf707fe4a976d2`; exact-main CI 4/4 successful.
+
+### Current integration gates
+- Hub PR #479 and #481 are merged. The current device companion guide below reflects the merged Hub pairing/task contract and the current EL_AGENT consumer PRs.
+- EL_AGENT PR #23 (Windows) and #25 (Android) remain Draft. Physical-device acceptance and authenticated Hub Staging round-trips, including expiry and revocation, are not complete.
+- The latest read-only Cloudflare inventory found no dedicated Hub Staging Worker. No production Worker, D1, route, DNS, or secret mutation was performed.
+- All four default branches remain unprotected; administrator-side branch-protection/ruleset configuration and enforcement verification are outstanding.
+- No live Telegram message delivery, production deployment, paid-provider request, or physical-device action is claimed.
+
+This documentation PR must pass exact-head CI before merge. All checks must be evaluated against its final head; cancelled checks are not passes.
