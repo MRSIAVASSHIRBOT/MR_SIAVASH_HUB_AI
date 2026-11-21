@@ -590,9 +590,13 @@ def test_model_device_task_creation_uses_time_after_write_lock_for_grants(tmp_pa
         )
         db.commit()
 
-    times = iter((before_lock, after_lock))
-    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: next(times)))
     repository = DeviceTaskRepository(database_path)
+    _advance_clock_after_write_lock(
+        repository,
+        monkeypatch,
+        before=before_lock,
+        after=after_lock,
+    )
     with pytest.raises(DeviceTaskPermissionError):
         repository.create(
             owner_user_id=owner_user_id,
