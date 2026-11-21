@@ -9,7 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
-from mrhub.devices.tasks import DeviceTaskNotFound, DeviceTaskPermissionError, DeviceTaskRepository
+from mrhub.devices.tasks import (
+    DeviceTaskConflict,
+    DeviceTaskNotFound,
+    DeviceTaskPermissionError,
+    DeviceTaskRepository,
+)
 from mrhub.main import create_app
 
 
@@ -62,6 +67,44 @@ def _submit(client, device_id, *, action="app.launch", app="notepad", key=None, 
         payload["app"] = app
     headers = {"Idempotency-Key": key or f"device-task-{uuid4()}"}
     return client.post(f"/devices/{device_id}/tasks", headers=headers, json=payload)
+
+
+class _ClockAdvancingConnection:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        clock: dict[str, datetime],
+        after: datetime,
+    ) -> None:
+        self._connection = connection
+        self._clock = clock
+        self._after = after
+
+    def execute(self, sql: str, parameters: tuple[object, ...] = ()) -> sqlite3.Cursor:
+        cursor = self._connection.execute(sql, parameters)
+        if sql.strip().upper() == "BEGIN IMMEDIATE":
+            self._clock["now"] = self._after
+        return cursor
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
+
+
+def _advance_clock_after_write_lock(
+    repository: DeviceTaskRepository,
+    monkeypatch,
+    *,
+    before: datetime,
+    after: datetime,
+) -> None:
+    clock = {"now": before}
+    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: clock["now"]))
+    original_connect = repository._connect
+    monkeypatch.setattr(
+        repository,
+        "_connect",
+        lambda: _ClockAdvancingConnection(original_connect(), clock, after),
+    )
 
 
 def test_owner_can_submit_scheduled_task_and_device_claims_it_once(tmp_path, monkeypatch):
@@ -312,6 +355,7 @@ def test_outcome_requires_the_claim_lease_and_remains_unverified(tmp_path, monke
     owner_view = client.get(f"/devices/{device_id}/tasks/{task_id}")
     assert rejected.status_code == 409
     assert accepted.status_code == 200
+    assert accepted.json()["task"]["task_id"] == task_id
     assert accepted.json()["task"]["status"] == "reported_succeeded"
     assert accepted.json()["task"]["outcome_verified"] is False
     assert duplicate.status_code == 409
@@ -546,9 +590,13 @@ def test_model_device_task_creation_uses_time_after_write_lock_for_grants(tmp_pa
         )
         db.commit()
 
-    times = iter((before_lock, after_lock))
-    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: next(times)))
     repository = DeviceTaskRepository(database_path)
+    _advance_clock_after_write_lock(
+        repository,
+        monkeypatch,
+        before=before_lock,
+        after=after_lock,
+    )
     with pytest.raises(DeviceTaskPermissionError):
         repository.create(
             owner_user_id=owner_user_id,
@@ -573,4 +621,144 @@ def test_model_device_task_creation_uses_time_after_write_lock_for_grants(tmp_pa
             (hashlib.sha256(b"owner-grant-expiry-after-lock-001").hexdigest(),),
         ).fetchone()[0]
     assert count == 0
+    get_settings.cache_clear()
+
+
+def test_default_device_task_schedule_starts_after_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+
+    repository = DeviceTaskRepository(database_path)
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    task, created = repository.create(
+        owner_user_id=owner_user_id,
+        device_id=device_id,
+        action="app.launch",
+        app="notepad",
+        required_scope="app.launch",
+        idempotency_key="default-schedule-after-lock-001",
+        owner_confirmed=False,
+        scheduled_at=None,
+        expires_in_seconds=300,
+        timeout_seconds=30,
+    )
+
+    assert created is True
+    assert task["scheduled_at"] == after.isoformat()
+    assert task["created_at"] == after.isoformat()
+    assert task["expires_at"] == (after + timedelta(seconds=300)).isoformat()
+    get_settings.cache_clear()
+
+
+def test_device_claim_uses_clock_after_write_lock_to_release_expired_lease(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, device_headers = _paired_device(client)
+    first = _submit(client, device_id, app="notepad", key="claim-clock-first-001")
+    second = _submit(client, device_id, app="calculator", key="claim-clock-second-001")
+    assert first.status_code == 201
+    assert second.status_code == 201
+    first_claim = client.post("/devices/tasks/claim", headers=device_headers).json()
+    first_task_id = first_claim["task"]["task_id"]
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+        db.execute(
+            "UPDATE personal_device_tasks SET lease_expires_at=? WHERE task_id=?",
+            ((before + timedelta(seconds=5)).isoformat(), first_task_id),
+        )
+
+    repository = DeviceTaskRepository(database_path)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    next_claim = repository.claim(
+        owner_user_id=owner_user_id,
+        device_id=device_id,
+        granted_scopes=frozenset({"app.launch"}),
+    )
+
+    assert next_claim is not None
+    assert next_claim["task"]["task_id"] == second.json()["task"]["task_id"]
+    assert next_claim["lease_expires_at"] > after.isoformat()
+    get_settings.cache_clear()
+
+
+def test_device_outcome_is_fenced_when_lease_expires_during_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, device_headers = _paired_device(client)
+    submitted = _submit(client, device_id, app="calculator", key="outcome-clock-expiry-001")
+    task_id = submitted.json()["task"]["task_id"]
+    claimed = client.post("/devices/tasks/claim", headers=device_headers).json()
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+        db.execute(
+            "UPDATE personal_device_tasks SET lease_expires_at=? WHERE task_id=?",
+            ((before + timedelta(seconds=5)).isoformat(), task_id),
+        )
+
+    repository = DeviceTaskRepository(database_path)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    result = repository.report_outcome(
+        owner_user_id=owner_user_id,
+        device_id=device_id,
+        task_id=task_id,
+        lease_token=claimed["lease_token"],
+        outcome="succeeded",
+        error_code=None,
+        duration_ms=250,
+    )
+
+    assert result is None
+    with sqlite3.connect(database_path) as db:
+        row = db.execute(
+            "SELECT status,lease_token_hash,lease_expires_at,completed_at "
+            "FROM personal_device_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()
+        event = db.execute(
+            "SELECT event_type,metadata_json FROM audit_events "
+            "WHERE subject_id=? AND event_type='device.task_unknown_outcome'",
+            (task_id,),
+        ).fetchone()
+    assert row == ("unknown_outcome", None, None, after.isoformat())
+    assert event is not None
+    assert "late_outcome_after_lease" in event[1]
+    get_settings.cache_clear()
+
+
+def test_owner_cannot_cancel_task_expired_during_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+    submitted = _submit(client, device_id, app="notepad", key="cancel-clock-expiry-001")
+    task_id = submitted.json()["task"]["task_id"]
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    with sqlite3.connect(database_path) as db:
+        db.execute(
+            "UPDATE personal_device_tasks SET expires_at=? WHERE task_id=?",
+            ((before + timedelta(seconds=5)).isoformat(), task_id),
+        )
+    repository = DeviceTaskRepository(database_path)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    with pytest.raises(DeviceTaskConflict):
+        repository.cancel_for_owner(
+            owner_user_id=owner_user_id,
+            device_id=device_id,
+            task_id=task_id,
+        )
+
+    with sqlite3.connect(database_path) as db:
+        row = db.execute(
+            "SELECT status,completed_at FROM personal_device_tasks WHERE task_id=?",
+            (task_id,),
+        ).fetchone()
+    assert row == ("expired", after.isoformat())
     get_settings.cache_clear()

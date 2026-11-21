@@ -100,11 +100,11 @@ class DevicePairingRepository:
             raise DevicePairingError("Requested device scopes are invalid")
         if "device.heartbeat" not in scopes:
             raise DevicePairingError("Every paired device must include device.heartbeat")
-        now = self._now()
-        expires_at = now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS)
         code = secrets.token_urlsafe(32)
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now = self._now()
+            expires_at = now + timedelta(seconds=self.CHALLENGE_TTL_SECONDS)
             # Expired pairing codes are no longer usable; prune them while the
             # owner-scoped challenge registry is already write-locked.
             connection.execute(
@@ -150,13 +150,13 @@ class DevicePairingRepository:
         return code, expires_at
 
     def exchange(self, *, pairing_code: str, device_id: str, agent_version: str, os_version: str) -> dict[str, object]:
-        now = self._now()
         access = secrets.token_urlsafe(32)
         refresh = secrets.token_urlsafe(48)
-        access_expiry = now + timedelta(seconds=self.ACCESS_TTL_SECONDS)
-        refresh_expiry = now + timedelta(seconds=self.REFRESH_TTL_SECONDS)
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now = self._now()
+            access_expiry = now + timedelta(seconds=self.ACCESS_TTL_SECONDS)
+            refresh_expiry = now + timedelta(seconds=self.REFRESH_TTL_SECONDS)
             challenge = connection.execute(
                 "SELECT * FROM personal_device_pairing_challenges WHERE challenge_hash=?",
                 (self._hash(pairing_code),),
@@ -193,16 +193,16 @@ class DevicePairingRepository:
                 "refresh_expires_in":self.REFRESH_TTL_SECONDS,"scopes":scopes}
 
     def refresh(self, *, refresh_token: str, device_id: str) -> dict[str, object]:
-        now = self._now()
-        now_text = now.isoformat()
         access = secrets.token_urlsafe(32)
         next_refresh = secrets.token_urlsafe(48)
-        access_expiry = now + timedelta(seconds=self.ACCESS_TTL_SECONDS)
-        refresh_expiry = now + timedelta(seconds=self.REFRESH_TTL_SECONDS)
         reuse_detected = False
         scopes: list[str] = []
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now = self._now()
+            now_text = now.isoformat()
+            access_expiry = now + timedelta(seconds=self.ACCESS_TTL_SECONDS)
+            refresh_expiry = now + timedelta(seconds=self.REFRESH_TTL_SECONDS)
             row = connection.execute(
                 """SELECT t.device_id,t.expires_at,t.revoked_at,d.status,d.scopes_json,d.owner_user_id
                    FROM personal_device_tokens t JOIN personal_devices d ON d.device_id=t.device_id
@@ -335,9 +335,9 @@ class DevicePairingRepository:
                 for row in rows]
 
     def revoke(self, *, owner_user_id: str, device_id: str) -> bool:
-        now = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now = self._now().isoformat()
             updated = connection.execute(
                 """UPDATE personal_devices SET status='revoked',revoked_at=?
                    WHERE owner_user_id=? AND device_id=? AND status='active'""",

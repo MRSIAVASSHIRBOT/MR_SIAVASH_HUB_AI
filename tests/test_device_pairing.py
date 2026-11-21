@@ -1,10 +1,13 @@
 import hashlib
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
+from mrhub.devices.pairing import DevicePairingError, DevicePairingRepository
 from mrhub.main import create_app
 
 
@@ -49,6 +52,44 @@ def _device_headers(tokens, device_id):
         "Authorization": f"Bearer {tokens['access_token']}",
         "X-Device-ID": device_id,
     }
+
+
+class _ClockAdvancingConnection:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        clock: dict[str, datetime],
+        after: datetime,
+    ) -> None:
+        self._connection = connection
+        self._clock = clock
+        self._after = after
+
+    def execute(self, sql: str, parameters: tuple[object, ...] = ()) -> sqlite3.Cursor:
+        cursor = self._connection.execute(sql, parameters)
+        if sql.strip().upper() == "BEGIN IMMEDIATE":
+            self._clock["now"] = self._after
+        return cursor
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
+
+
+def _advance_clock_after_write_lock(
+    repository: DevicePairingRepository,
+    monkeypatch,
+    *,
+    before: datetime,
+    after: datetime,
+) -> None:
+    clock = {"now": before}
+    monkeypatch.setattr(DevicePairingRepository, "_now", staticmethod(lambda: clock["now"]))
+    original_connect = repository._connect
+    monkeypatch.setattr(
+        repository,
+        "_connect",
+        lambda: _ClockAdvancingConnection(original_connect(), clock, after),
+    )
 
 
 def test_device_pairing_is_owner_initiated_and_stores_only_hashes(tmp_path, monkeypatch):
@@ -265,3 +306,139 @@ def test_pairing_requires_heartbeat_scope(tmp_path, monkeypatch):
     assert "device.heartbeat" in challenge.json()["detail"]
     get_settings.cache_clear()
 
+
+
+def test_pairing_challenge_ttl_starts_after_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    assert client.get("/devices").status_code == 200
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+
+    repository = DevicePairingRepository(database_path)
+    before = datetime.now(UTC)
+    after = before + timedelta(minutes=2)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    device_id = str(uuid4())
+    code, expires_at = repository.create_challenge(
+        owner_user_id=owner_user_id,
+        device_id=device_id,
+        platform="windows",
+        label="Lock-delayed workstation",
+        advertised_capabilities=("device.heartbeat",),
+        scopes=frozenset({"device.heartbeat"}),
+    )
+
+    assert expires_at == after + timedelta(seconds=repository.CHALLENGE_TTL_SECONDS)
+    with sqlite3.connect(database_path) as db:
+        row = db.execute(
+            "SELECT created_at,expires_at FROM personal_device_pairing_challenges "
+            "WHERE challenge_hash=?",
+            (hashlib.sha256(code.encode()).hexdigest(),),
+        ).fetchone()
+    assert row == (after.isoformat(), expires_at.isoformat())
+    get_settings.cache_clear()
+
+
+def test_pairing_exchange_rejects_challenge_expired_during_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_challenge(client)
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    with sqlite3.connect(database_path) as db:
+        db.execute(
+            "UPDATE personal_device_pairing_challenges SET expires_at=? WHERE device_id=?",
+            ((before + timedelta(seconds=5)).isoformat(), payload["device_id"]),
+        )
+
+    repository = DevicePairingRepository(database_path)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    with pytest.raises(DevicePairingError):
+        repository.exchange(
+            pairing_code=challenge["pairing_code"],
+            device_id=payload["device_id"],
+            agent_version="0.1.0",
+            os_version="Windows 11",
+        )
+
+    with sqlite3.connect(database_path) as db:
+        consumed_at = db.execute(
+            "SELECT consumed_at FROM personal_device_pairing_challenges WHERE device_id=?",
+            (payload["device_id"],),
+        ).fetchone()[0]
+        device_count = db.execute(
+            "SELECT COUNT(*) FROM personal_devices WHERE device_id=?",
+            (payload["device_id"],),
+        ).fetchone()[0]
+    assert consumed_at is None
+    assert device_count == 0
+    get_settings.cache_clear()
+
+
+def test_pairing_exchange_token_ttls_start_after_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_challenge(client)
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    repository = DevicePairingRepository(database_path)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+
+    tokens = repository.exchange(
+        pairing_code=challenge["pairing_code"],
+        device_id=payload["device_id"],
+        agent_version="0.1.0",
+        os_version="Windows 11",
+    )
+    with sqlite3.connect(database_path) as db:
+        rows = {
+            row[0]: (row[1], row[2])
+            for row in db.execute(
+                "SELECT token_type,created_at,expires_at FROM personal_device_tokens "
+                "WHERE device_id=?",
+                (payload["device_id"],),
+            )
+        }
+    assert rows["access"] == (
+        after.isoformat(),
+        (after + timedelta(seconds=repository.ACCESS_TTL_SECONDS)).isoformat(),
+    )
+    assert rows["refresh"] == (
+        after.isoformat(),
+        (after + timedelta(seconds=repository.REFRESH_TTL_SECONDS)).isoformat(),
+    )
+    assert tokens["device_id"] == payload["device_id"]
+    get_settings.cache_clear()
+
+
+def test_refresh_rejects_credential_expired_during_write_lock(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    payload, challenge = _create_challenge(client)
+    tokens = _exchange(client, payload, challenge).json()
+    before = datetime.now(UTC)
+    after = before + timedelta(seconds=10)
+    token_hash = hashlib.sha256(tokens["refresh_token"].encode()).hexdigest()
+    with sqlite3.connect(database_path) as db:
+        db.execute(
+            "UPDATE personal_device_tokens SET expires_at=? WHERE token_hash=?",
+            ((before + timedelta(seconds=5)).isoformat(), token_hash),
+        )
+
+    repository = DevicePairingRepository(database_path)
+    _advance_clock_after_write_lock(repository, monkeypatch, before=before, after=after)
+    with pytest.raises(DevicePairingError):
+        repository.refresh(
+            refresh_token=tokens["refresh_token"],
+            device_id=payload["device_id"],
+        )
+
+    with sqlite3.connect(database_path) as db:
+        token = db.execute(
+            "SELECT revoked_at FROM personal_device_tokens WHERE token_hash=?",
+            (token_hash,),
+        ).fetchone()
+        token_count = db.execute(
+            "SELECT COUNT(*) FROM personal_device_tokens WHERE device_id=?",
+            (payload["device_id"],),
+        ).fetchone()[0]
+    assert token[0] is None
+    assert token_count == 2
+    get_settings.cache_clear()
