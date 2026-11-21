@@ -70,8 +70,8 @@ def test_private_media_download_preserves_not_found_for_missing_source(
 ):
     import mrhub.api.routes.media as media_routes
 
-    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
     client, repository, asset_id, record = _uploaded_asset()
+    monkeypatch.setattr(media_routes.tempfile, "tempdir", str(tmp_path))
     repository.file_path(str(record["storage_key"])).unlink()
 
     response = client.get(f"/content/assets/{asset_id}/file")
