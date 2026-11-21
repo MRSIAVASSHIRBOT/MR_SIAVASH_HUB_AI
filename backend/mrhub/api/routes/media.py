@@ -6,8 +6,8 @@ import re
 import shutil
 import sqlite3
 import subprocess
-import threading
 import tempfile
+import threading
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
