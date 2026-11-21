@@ -119,3 +119,62 @@ Acceptance:
 - No implicit remote model fallback or paid provider invocation.
 - No Gshop integration or operations within this workspace.
 - The separate MR_SIAVASH_EL_AGENT device companion repository is not included in this three-repository baseline and must be audited separately before work is assigned to it.
+
+
+# Four-project ownership and integration correction — 2026-11-21
+
+This section supersedes the earlier three-repository map and the former statement that EL_AGENT was excluded.
+
+## Four-project ownership matrix
+
+| Project | Primary responsibility | Owns | Must not own |
+| --- | --- | --- | --- |
+| MR_SIAVASH_HUB_AI | Central intelligence/control plane | Ecosystem identity, cross-project policy/grants, approvals, shared memory services, durable shared tasks/workflows, device registry, audit, provider/tool governance | Local OS execution or platform-specific device UI |
+| MR_SIAVASH_EL_AGENT | Personal desktop/device execution | Standalone local runtime, Windows/Android adapters, local settings/scheduler, device capability execution, local credential storage, future local memory | Telegram transport, central ecosystem identity, public website, independent authority to expand grants |
+| MR_SIAVASH_EL_AI | Telegram-facing assistant and communication | Telegram updates, conversational routing, scoped Hub client, public/owner conversation separation | Direct Windows/Android execution, local device credentials, central policy authority |
+| MR_SIAVASH_AI | Public website and Gateway | Public UI/content, public assistant Gateway, public status presentation | Private Hub memory, owner task data, device credentials, local device operations |
+
+## Integration edges and current evidence
+
+### HUB ↔ EL_AGENT — paired device control plane
+
+**Status:** heartbeat/pairing is on EL_AGENT main; bounded remote task consumers are in Draft PRs #23 (Windows) and #25 (Android).
+
+- EL_AGENT main has owner-initiated Hub pairing, short-lived rotating device credentials and outbound minimal heartbeat metadata.
+- EL_AGENT main does not yet implement Hub-issued remote task dispatch.
+- PR #23 adds Windows foreground task claiming/execution with exact device identity, scopes, owner confirmation, credential vault and unknown-outcome handling. CI passed; physical Windows 11 and isolated Staging acceptance remain pending.
+- PR #25 adds Android foreground task claim/review, Android capability policy, app aliases, serialized credential lifecycle/Unpair fences, planner, local model runtimes and provider routing. Python CI and Android build/unit tests passed on exact head; physical-device and Staging acceptance remain pending.
+- HUB owns task issuance, lease, grant, revocation and reconciliation. EL_AGENT owns local platform capability checks and execution result.
+- EL_AGENT remains operational locally when HUB is disconnected. Hub integration must be opt-in, versioned, scoped and revocable.
+
+Required contract: exact paired device ID; narrow scopes; action allowlist; typed bounded payload; idempotency key; correlation ID; lease expiry/deadline; owner confirmation; cancellation fence; structured result; unknown-outcome reconciliation; bounded retries; no redirects on authenticated requests.
+
+### EL_AI → HUB — Telegram client
+
+**Status:** authenticated Hub client redirect hardening is merged into EL_AI main as commit `39ea955`; exact-main CI, security audit and Scorecard passed.
+
+- EL_AI is the Telegram communication interface, not the device executor.
+- It may submit owner-authorized, scoped task requests to HUB. HUB authorizes and decides whether a device task may be relayed to EL_AGENT.
+- Never forward Telegram public-user content into private owner memory or private device operations without explicit identity and policy checks.
+
+### Website ↔ HUB — public projection and Gateway
+
+**Status:** public status schema and Gateway consumer exist in source; Website main exact-head workflows passed. Runtime source parity remains an open operational check in Website Issue #120.
+
+- Website consumes allow-listed public status only.
+- No private memory, task result, device ID beyond approved public metadata, credential, local path or owner diagnostic may enter public output.
+
+### EL_AGENT ↔ Website — optional public integration only
+
+No direct device-to-public-site execution path is authorized. If status presentation is needed, EL_AGENT reports only through HUB's sanitized public projection or a separately reviewed public contract. Website cannot invoke device tools.
+
+## Four-party contract requirements
+
+- Each service has an independent release/version and explicit API ownership.
+- No cross-repository direct DB or private filesystem access.
+- Authenticated clients refuse redirects; credentials are scoped, short-lived and revocable.
+- State-changing calls use stable idempotency keys and request correlation IDs.
+- All network calls have finite deadlines, bounded response sizes and sanitized error handling.
+- Model-generated content is untrusted; deterministic policy at the execution owner authorizes every action.
+- Public and private contexts remain separate.
+- Missing/revoked integrations degrade to disconnected/unavailable; local EL_AGENT functions continue.
