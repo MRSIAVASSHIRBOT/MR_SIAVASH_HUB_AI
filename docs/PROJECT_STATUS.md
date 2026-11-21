@@ -1,30 +1,34 @@
-## Current Hub and ecosystem state refresh — 2026-11-21 UTC
+## Current Hub and ecosystem state refresh — 2026-11-21 (latest GitHub inspection)
 
-This addendum supersedes the earlier repository and companion snapshots below where they conflict. It records GitHub source and CI evidence only; it is not a fresh Cloudflare inventory or a production-release approval.
+This addendum supersedes earlier repository and companion snapshots below where they conflict. It records GitHub source and CI evidence only. It is not a fresh Cloudflare inventory, production-release approval, live bot acceptance, or physical-device acceptance.
 
 ### Verified repository heads
-- Hub `main`: `8def88d1326cd78c2c4c80018f8ba14e1c745dff`. PR [#465](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/465) adds owner-bound Agent tools for device-registry reads and allow-listed app-launch task submission, two independent expiring owner grants, exact device-scope enforcement, transactional grant rechecks, migration 52, and dashboard controls. Documentation PR [#466](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/466) is merged and reconciles consumer references and release boundaries; it does not claim Staging or physical-device acceptance.
-- EL_AI `main`: `5e6b08e96538d7fe9b36a8aa89db0f357e843ecf` (documentation reconciliation PR #74 merged; runtime implementation is in parent/source commit `ff31209cb1d6c380b8cb3df55de17339353a2fec`). Dependency-aware task-plan DAG storage and root-first advancement are implemented. Exact-main Python 3.11/3.12 tests, Workflow Security Audit, and OpenSSF Scorecard passed on the implementation commit (runs 44928644306, 44928644348, 44928644369); post-merge checks for the documentation commit are a separate gate.
-- Website `main`: `78b28cb89cdf4ff70106071740060c7e3f3327a0`. Ready-for-review PR [#244](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/pull/244), head `a2a29b822511fd9db46b8c5ff1936129a6f081c2`, carries the privacy/public-site rebuild while restoring the established Dark Emerald palette. Exact-head CI passed: 369 tests, 5 isolated D1 migrations, Academy Chromium E2E, 390×844 and 1440×900 accessibility/responsive audit, Gateway CI, and Workflow Security Audit. The Pages deployment job was skipped; no production publication occurred. Graphite-only draft PR #243 was closed as superseded. Pages publication does not establish a new Cloudflare Worker deployment.
+
+- **Hub `main`:** `ef0bec04a8ddaeddf38dd5f347fc302e53944957`. This is the latest observed Hub source at the start of this documentation refresh. PR [#467](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/467) is merged and documentation-only; PR [#465](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/465) provides the merged owner-authorized Device Agent tools. The model-visible tool surface remains limited to owner-scoped device registry reads and allow-listed app-launch task submission.
+- **EL_AI `main`:** `e26feedf37f287c3311b0e3c9a2e1075bed48b72` (merged documentation refresh PR #75). The dependency-aware task-plan implementation remains in `ff31209cb1d6c380b8cb3df55de17339353a2fec`; it supports bounded dependencies, explicit root-first start, success-gated progression, persisted blocked checkpoints, and idempotent recovery. The latest main-head Python 3.11/3.12 tests, GitHub Actions security audit, and supply-chain posture checks all passed on `e26feedf37f287c3311b0e3c9a2e1075bed48b72`. No live Telegram runtime is inferred.
+- **Website `main`:** `78b28cb89cdf4ff70106071740060c7e3f3327a0`. Ready-for-review PR [#244](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/pull/244) is open at head `a65a883351a0b05deb7846293aa935277875d532`, 69 commits ahead and 0 behind `main`. Two commits were added after the previous recorded head: the Service Worker/privacy offline-navigation coverage and its regression test. Exact-head runs [Workflow Security Audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44931833998), [Gateway CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44931834156), and [Quality checks and GitHub Pages deployment](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44931833980) completed successfully. The Pages deployment job was skipped for this pull-request run, so PR #244's candidate head was not published by that workflow. Separately, Website `main` at `78b28cb89cdf4ff70106071740060c7e3f3327a0` was published and its static assets verified in main-branch run [44929243795](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44929243795). This is GitHub Pages evidence only, not a Cloudflare Worker deployment. PR #243 remains closed as superseded.
+- **Device companion `MR_SIAVASH_EL_AGENT` `main`:** `94682dc99b9ff5edb708569f37f864742fdc80b6`. Windows Hub task consumer PR [#23](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/23), head `9b425c0102592cc23efe19db0eda065cfe339ca9`, remains Draft; its exact-head CI and Android build checks passed (runs 44924765318 and 44924765269). Android Hub consumer/offline runtime PR [#25](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/25), head `df85e6827cc532d18a1d4ffea31f7317bc5e00ee`, remains Draft; its exact-head CI and Android build checks passed (runs 44924436557 and 44924436485). Both branches target the current companion `main`.
 
 ### Hub device-agent integration boundary
-- PR #465 is merged into source. The model-visible device tools are limited to owner-scoped device registry reads and allow-listed app-launch task submission.
-- App launch requires both active owner grants (`device.registry.read` and `device.app_launch`) and the paired device's exact `app.launch` scope. Grants are time-limited; task creation rechecks them within the write transaction.
-- The Agent tools do not expose arbitrary shell commands, executable paths, arbitrary URLs, screenshots, file access, keystroke capture, or model-authored executable payloads.
-- Windows consumer work remains in EL_AGENT Draft PR #23; Android consumer work is in Draft PR #25. Both require isolated Hub Staging round-trips, grant expiry/revocation acceptance, and physical-device validation.
-- No live Hub Staging deployment or physical-device task round-trip was verified in this checkpoint.
+
+- Hub PR #465 is merged. Device registry reads and app-launch task submissions remain owner-bound and policy-checked; app launch requires active owner grants plus the paired device's exact `app.launch` scope, with authorization rechecked during task creation.
+- The companion clients accept only bounded, allow-listed device actions. Windows screenshot capture requires an explicit owner-confirmed task; arbitrary shell commands, arbitrary executable paths, arbitrary URLs, and model-authored executable payloads are not part of the Hub task contract.
+- PRs #23 and #25 have passing CI, but remain Draft until isolated Hub Staging contract round-trips, grant expiry/revocation behavior, and physical Windows/Android acceptance are verified. CI is not evidence of a live device operation.
+- No live Hub Staging deployment or physical-device task round-trip has been verified.
 
 ### EL_AI dependency-aware plan semantics
-- Owner-authored plans support sequential shorthand and explicit 1-based DAG syntax, for example: `1: Collect ; 2: Validate <- 1 ; 3: Publish <- 1,2`.
-- Plan preview is local and does not create Hub tasks. The owner must explicitly start submission with `/taskplanrun PLAN_ID`; only root tasks are initially submitted.
-- The orchestrator advances a dependent step only after all prerequisites report `succeeded`. Failed/blocked dependencies persist a blocked checkpoint; unavailable status never unlocks a dependent step. Stable idempotency keys support safe retry after ambiguous Hub outcomes.
+
+- Owner-authored plans support sequential shorthand and explicit 1-based DAG dependencies.
+- Preview is local and creates no Hub tasks. The owner must explicitly start submission with `/taskplanrun PLAN_ID`; only root tasks are initially submitted.
+- A dependent step advances only after all prerequisites report `succeeded`. Failed/blocked dependencies persist a blocked checkpoint; unavailable status never unlocks a dependent step. Stable idempotency keys support recovery after ambiguous Hub outcomes.
 - This is bounded orchestration, not unrestricted autonomous execution. Hub policy and approval gates remain authoritative.
 - No Telegram token is configured, no live bot connection or webhook registration is verified, and no production EL_AI deployment is claimed.
 
 ### Release and security boundaries
+
 - No Cloudflare Worker deployment, Production traffic change, D1 application-data operation, secret mutation, route/DNS change, repository permission change, or physical-device action occurred in this checkpoint.
 - Cloudflare was not re-read; historical Worker versions and source annotations remain historical, not current live evidence.
-- Branch-protection and required-check enforcement were not independently verified during this checkpoint.
+- GitHub currently reports all four ecosystem `main` branches (Hub, EL_AGENT, EL_AI and Website) as unprotected. No branch-protection or ruleset setting was changed; configuring required checks remains an owner-controlled security task.
 - Green CI and GitHub Pages publication do not authorize or prove a Cloudflare Worker release.
 
 ---
