@@ -1,33 +1,41 @@
-## Current Hub maintenance addendum — 2026-11-20 UTC
+## Current Hub maintenance addendum — 2026-11-21 UTC
 
-This snapshot supersedes older repository snapshots below where they conflict.
+This snapshot supersedes older repository snapshots below where they conflict. It distinguishes merged Hub source, review branches, companion branches, and live infrastructure evidence.
 
 ### Verified repository state
-- Current `main`: `c08897ea8125e9dd7e0e6cb5065add863d43c497` (PR #446 merged).
-- PR #439 merged as `03ee72f386904959497116b632b7238a984695fd`; all 9 exact-head checks passed.
-- PR #440 merged as `4bb72c3951cbb93ba78b80ddb47d9c0e08c46c46`; all 9 exact-head checks passed.
-- PR #444 merged as `53a245de1d8dbf9a9069241a34c16b4f1d205084`.
-- PR #445 merged as `5a0b51f95637aac3af5aff2d8e3c74ee04d38641`; exact-head validation passed 20/20 checks.
-- PR #446 merged as `c08897ea8125e9dd7e0e6cb5065add863d43c497`; it adds a dedicated `mr-siavash-hub-gateway-staging` Wrangler configuration isolated to `workers.dev`, with preview URLs disabled and no routes, custom domains, account IDs, or credentials. This is configuration in source only; no Worker was deployed.
-- Post-merge workflows for #446 are still running on the exact merge SHA at this checkpoint. Completed checks observed so far include PowerShell parsing and workflow security audit; all other checks remain pending. Do not mark main green until every exact-SHA check completes.
-- PR #447 was based on the pre-#446 main SHA and is now stale/non-mergeable. Its documentation change is being refreshed on a branch created from the new main; do not merge the stale PR.
+- Current Hub `main`: `4ebbf92cff4803d34904aa463c330b54c1aba71d`.
+- Recent merged commits include:
+  - `f917f4293e26c418c7869da0c9c0a44a8724df99`: refresh-token reuse detection, device credential-set revocation, outstanding-task fencing, and bounded pairing challenges.
+  - `28e1dd47d26f8e2e331c438c9bbef8cb1fa12f14`: maps the stable public `remote` mode to the Kimi provider registry.
+  - `4ebbf92cff4803d34904aa463c330b54c1aba71d`: bounded AI task-plan preview.
+- Hub device pairing and bounded task claim/complete API are merged; PR #460 is the API baseline.
+- Draft Hub PR [#465](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/465), head `3371f2b0216ba56f431282406e2beb8b3e6ab79b`, adds owner-scoped model tools for device registry reads and allowlisted app launch, two independent expiring owner grants, exact device-scope checks, atomic grant re-check at enqueue, migration 52, and dashboard controls. All 21 observed exact-head checks passed. It remains Draft and is not merged or deployed pending isolated Hub Staging and physical-device acceptance.
 
-### Current architecture/security posture
-- Tool grants are owner-scoped, explicitly allow-listed to `cloudflare.read`, audited, and expire within 24 hours. Agent dispatch re-reads active grants; lookup failures fail closed.
-- Cloudflare integration remains a fixed-route, HTTPS `workers.dev` read-only adapter with redirect rejection, no inherited proxy environment, bounded timeout/response size/item count, strict projected metadata schemas, and sanitized errors.
-- The new staging Wrangler file does not grant credentials or create routes. Live staging provisioning/acceptance remains separate and gated.
-- No Cloudflare write operation, production deployment, provider selection, paid generation, model download, D1 row query, or secret-value access occurred during this maintenance pass.
+### Cross-repository device consumers
+- Windows consumer: [EL_AGENT PR #23](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/23), Draft, based on EL_AGENT `main`, head `ebd67e2605e26e0763f02a294aedbc511e89f1b1`. Its nine observed exact-head checks passed. It is limited to allowlisted `app.launch` and explicitly owner-confirmed local `screen.capture`; physical Windows 11 acceptance remains pending.
+- Android consumer: [EL_AGENT PR #24](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/24), Draft, head `61627e6b93f17f5c9d68b2a816f6903d3710e32d`. Its five observed checks passed, including Android debug build. It is stacked on `feat/android-visual-refresh-20261120` and is not ready to retarget to `main` until the preceding Android stack is merged. The consumer is foreground-only, supports ChatGPT/browser app launch, and requires a separate on-device approval dialog. Physical Android acceptance remains pending.
+- These are source/CI results only. No live device round-trip or deployed Hub Staging endpoint was verified.
 
-### Outstanding acceptance gates
-- GitHub reports `main.protected=false`. Repository-admin must configure and independently verify branch protection/rulesets and test enforcement; no settings-write operation is available through the connected integration.
-- A dedicated Hub Cloudflare staging Worker and live acceptance remain outstanding. Provisioning new resources/credentials requires owner-approved scope and cost decisions. Do not repurpose Website or GShop production resources.
-- Provider-backed video generation remains unavailable until the owner explicitly selects and configures a compatible provider. Deterministic FFmpeg rendering is not generative AI.
-- Windows target-device install/upgrade/backup/restore/rollback acceptance remains unrun on the owner's actual device.
-- GShop remains excluded from this project scope.
+### Website and EL_AI coordination
+- Website `main`: `21657e4e21cf215b1abc1e2df3a8c4bb53d4d15d`; GitHub compare against the last recorded Production Worker source annotation reports 95 ahead and 0 behind. GitHub Pages publication and published-asset verification passed in run [44899174187](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44899174187). Gateway CI and Production/Preview runtime smoke also passed on this SHA; these checks do not prove a new Cloudflare Worker deployment.
+- Cloudflare was not re-read on 2026-11-21. The last recorded Production Worker version/annotation and Preview inventory remain historical observations, not fresh live verification. No Worker or D1 change is inferred.
+- EL_AI `main`: `df5472c0b8321f3c32e9ad05fac6a7b282316678`. PR #67 merged owner/public Telegram routing and private Hub result/task-progress isolation tests. PR #69 refreshed the Website source snapshot; PR #70 is the current README evidence refresh.
 
-No deployment, production configuration, application data, repository secrets, Cloudflare resources, or access-control settings were changed during this documentation update.
+### Security, dependencies, and release controls
+- Current branch-protection reads for all three requested repositories returned HTTP 403 `Resource not accessible by integration`. Protection is not independently verified; no ruleset, access-control, or repository permission was changed.
+- The Hub staging Worker was reported absent by the last recorded read-only inventory on 2026-11-20; no live Cloudflare inventory was performed on 2026-11-21. Do not repurpose the Website Gateway Preview or GShop resources.
+- Hub remains local-first: Ollama is opt-in, Kimi is a separate explicit remote adapter, and there is no silent local-to-cloud fallback. No provider credential or secret value was read or changed.
+- No committed Python or Node dependency lockfile was found in the inspected project roots. Reproducible dependency locking and clean Linux/Windows install acceptance remain follow-ups.
+- No production Worker deployment, D1 application-row query, secret mutation, route/DNS change, or physical-device operation occurred in this run.
 
+### Next acceptance gates
+1. Complete isolated Hub Staging provisioning and authenticated contract acceptance using owner-approved resources and credentials.
+2. Merge/rebase the Windows and Android consumer stacks only after their branch dependencies are resolved; then run physical-device pairing, scope, launch, screenshot/approval, expiry, and revocation acceptance.
+3. Keep PR #465 Draft until the Hub tool adapter is validated against Staging and companion behavior.
+4. Complete Website Cloudflare source review, Preview acceptance, D1 migration/backup/rollback verification, and explicit Production owner approval.
+5. Have the repository owner configure and independently verify main-branch protection and exact-head required checks.
 
+No deployment, production configuration, application data, repository secret, Cloudflare resource, or access-control setting was changed during this documentation update.
 ---
 
 ## Portfolio maintenance addendum — 2026-11-16 12:14 UTC
