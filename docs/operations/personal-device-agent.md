@@ -2,81 +2,74 @@
 
 ## Product boundary
 
-MR_SIAVASH_EL_AGENT is the device-facing companion layer. It delegates reasoning, private memory, task state, scheduling, policy, approvals, and audit to MR_SIAVASH_HUB_AI. It does not implement a second AI orchestrator.
+`MR_SIAVASH_EL_AGENT` is the device-facing companion. `MR_SIAVASH_HUB_AI` remains authoritative for owner identity, pairing, grants, task policy, scheduling, leases, revocation, and audit. The companion does not implement a second orchestrator.
 
-## Supported targets
+## Current implementation and release state
 
-| Target | Current implementation status | Responsibility |
+| Component | Source state | Validation / release gate |
 |---|---|---|
-| Windows 11 | EL_AGENT PR #23 is Draft; exact-head CI passed; physical acceptance pending | Outbound Hub task polling for allowlisted app.launch and explicitly owner-confirmed local screen.capture |
-| Android | EL_AGENT PR #24 is Draft and stacked on PR #20; exact-head CI passed; physical acceptance pending | Foreground-only app.launch for ChatGPT/browser with a separate on-device approval dialog |
-| Browser | Planned | Allowlisted tab and page workflows |
-| Cloud | Hub worker/scheduler | Durable scheduling and coordination, not covert access to personal devices |
+| Hub pairing, scoped credentials, heartbeat, device registry | Merged to Hub `main` | Source and CI evidence do not imply a deployed Hub endpoint |
+| Hub task claim/complete API | Merged to Hub `main` through PR #460 | Bounded actions, hashed short-lived leases, expiry/revocation fencing, audit |
+| Hub Agent device tools | Merged to Hub `main` through PR #465 | Owner grants and exact device scope are checked; Staging acceptance remains open |
+| Windows task consumer | EL_AGENT PR [#23](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/23), Draft | Exact-head Python matrix and Android build passed; physical Windows acceptance pending |
+| Android planner and foreground task consumer | EL_AGENT PR [#25](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/25), Draft | Exact-head Python matrix, Android unit tests and Debug build passed; physical Android acceptance pending |
+| Windows authenticated-transport hardening | EL_AGENT PR [#26](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/26), merged | Redirects are rejected to prevent bearer-token forwarding |
+| Browser extension | Not implemented | Separate future milestone |
 
-Windows and Android task-consumer code exists in separate review branches but is not merged or live-device accepted. Browser extension remains planned. Hub API availability, companion source implementation, staging deployment, and physical-device acceptance are separate gates.
+PRs #23 and #25 are each ahead of current EL_AGENT `main` and have no commits behind it at the last GitHub comparison. They remain Draft because CI cannot replace isolated Hub Staging round-trips, grant revocation/expiry checks, or physical-device acceptance. Do not merge or deploy them solely because their current CI is green.
 
-## Device identity lifecycle
+## Device identity and credentials
 
-1. The owner authenticates to the local Hub.
-2. The owner creates a short-lived pairing challenge for a specific device identity and platform.
-3. The companion exchanges the challenge once and receives scoped credentials.
-4. The server stores credential hashes only; the companion stores refresh material in the platform credential vault.
-5. The owner can list and revoke devices. Revocation invalidates all credentials for that device.
-6. Heartbeats update liveness and carry only bounded, self-reported diagnostics. `runtime_state` (`ready`, `busy`, or `degraded`), `app_uptime_seconds` (0–31,536,000), and an optional `last_task_id` UUID are operational hints, not proof that a task ran or completed. Device-reported capabilities are descriptive and do not grant authority.
+1. The owner authenticates to Hub and creates a short-lived pairing challenge for one device identity and platform.
+2. The companion exchanges the single-use challenge and receives credentials scoped to that paired device.
+3. Hub stores credential hashes; the companion stores refresh credentials in the platform's protected credential store.
+4. The owner can inspect and revoke paired devices. Revocation invalidates credentials and fences outstanding claimed tasks.
+5. Heartbeats contain bounded, self-reported runtime metadata. They are liveness hints, not proof that an action ran or completed.
 
-## Execution contract
+The Windows client rejects authenticated redirects. Android uses HTTPS-only requests and disables HTTP redirects. Local companion API credentials are distinct from Hub device credentials; neither may be exposed through the public website or a network tunnel.
 
-A future device task must include a task ID, device ID, action name, schema-validated parameters, required scope, policy decision, expiry, idempotency key, timeout, and audit correlation ID. The companion must reject unknown actions and expired tasks. It must report a structured outcome; the Hub must not equate dispatch with successful completion.
+## Hub task contract
 
-## Initial action policy
+Hub exposes owner-authenticated task submission, listing, inspection, and queued-task cancellation, plus device-authenticated claim and completion endpoints:
 
-| Action | Initial policy |
-|---|---|
-| Device status / heartbeat | Allowed with paired device scope |
-| Screenshot | Explicit user task, visible capture, OS permission |
-| Launch an allowlisted application | Reversible local action with a narrowly scoped grant |
-| Read arbitrary files | Disabled until a path-scoped design and review exist |
-| Write/delete files | Approval and preview required |
-| Browser form submission / external message | Exact action preview and approval |
-| Arbitrary shell / scripts | Not supported |
-| Credential extraction / covert monitoring | Prohibited |
+- Owner: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks/{task_id}`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
+- Paired device: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
 
-## Reliability
+Each task is bound to an owner, paired device, exact required scope, bounded action schema, idempotency key, schedule, expiry, timeout, and audit record. A device receives one short-lived lease; Hub persists only its hash. Completion is recorded as `reported_succeeded` or `reported_failed` with `outcome_verified=false`: the device's report is not independent proof. Expired claims and revoked-device claims become `unknown_outcome` and are never replayed automatically.
 
-- Heartbeats are rate-limited and bounded.
-- Device and task IDs are stable UUIDs.
-- Dispatch and completion are idempotent where possible.
-- Offline devices do not receive a false success state.
-- Expired tasks are not replayed automatically.
-- Retries are limited to explicitly idempotent operations.
-- Local companion logs exclude credentials and captured content.
-- Every operation has cancellation and timeout semantics before production use.
+## Supported action boundary
 
-## Standalone Windows MVP
+- Windows consumer PR #23: allow-listed `app.launch` and explicitly owner-confirmed local `screen.capture`.
+- Android consumer PR #25: foreground-only `app.launch` for supported ChatGPT/browser aliases, with a separate on-device approve/reject step. Android does not implement screenshot capture or background task dispatch.
+- Hub model tools: owner-scoped device registry listing and allow-listed app-launch submission only. They require the relevant expiring owner grants and the target device's exact `app.launch` scope. Screenshot capture is not exposed as a model tool.
+- Arbitrary shell commands, scripts, executable paths, caller-provided URLs, unrestricted file access, keystroke capture, hidden monitoring, and model-authored executable payloads are not supported.
 
-The separate [MR_SIAVASH_EL_AGENT repository](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) contains the Windows and Android companion implementations. Draft PR #23 adds an outbound Windows Hub task consumer for fixed app.launch aliases and explicitly owner-confirmed local screen.capture, with Windows Credential Manager storage and fail-closed credential migration. Draft PR #24 adds a foreground-only Android consumer for ChatGPT/browser app.launch with an explicit approve/reject dialog. Neither PR is merged or accepted on a physical device. The local companion API token remains distinct from Hub credentials and must never be forwarded through the public website or a network tunnel.
+A task's dispatch or a successful local API response must never be described as verified completion. Late or ambiguous actions are not reported as success and are not retried.
 
-Use the companion's own README for installation and operation. Its local API token is not a Hub credential and must never be forwarded through the public website or a network tunnel.
+## Security and reliability invariants
 
-## Hub integration sequence
+- Least privilege: owner grants and device scopes are independent; neither implies the other.
+- Fail closed on malformed identity, credential, scope, task, lease, timeout, or response data.
+- Recheck authorization at task creation and enforce lease/fencing state at completion.
+- Do not persist bearer credentials or raw captured content in Hub task records.
+- Queue size, action parameters, task lifetime, timeout, and execution scope are bounded.
+- Revocation cancels queued tasks and fences claimed tasks as unknown outcome.
+- No automatic replay after lease expiry, process interruption, or ambiguous external effect.
+- Physical acceptance must verify pairing, scope boundaries, owner approval, launch behavior, expiry, revocation, and audit outcomes.
 
-1. Owner-created single-use pairing, owner-scoped device registry, hashed short-lived credentials, scoped access, listing, revocation, and authenticated heartbeat are merged into Hub `main`.
-2. Migration 50 persists bounded heartbeat runtime diagnostics. PR #456 merged as [`ba0cc727`](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/commit/ba0cc7278cc94badfaeb0ef566023cd80112f6fb). Heartbeat metadata is device-reported diagnostics, not proof of task execution.
-3. Migration 51 and device-task dispatch are merged to Hub main in PR #460 (merge commit `4d030f0abc28e9a63e4fc026243ef74c906e8769`). They provide scheduled, owner-scoped, idempotent tasks; one-at-a-time device claims; short-lived hashed leases; bounded action schemas; explicit screenshot confirmation; audit events; queue limits; cancellation before claim; expiry and revocation fencing.
-4. The initial remote action set is only `app.launch` for a fixed application allowlist and explicitly confirmed `screen.capture`. Arbitrary shell, file paths, URLs, keystrokes, and model-authored executable payloads are not accepted.
-5. Device outcomes are recorded as `reported_succeeded` or `reported_failed` with `outcome_verified=false`. An expired claim or revoked device becomes `unknown_outcome` and is never automatically replayed.
-6. The Windows consumer is under review in [EL_AGENT PR #23](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/23), based on EL_AGENT `main`, at head `ebd67e2605e26e0763f02a294aedbc511e89f1b1`. Its nine observed exact-head checks passed, including Windows/Linux Python 3.11/3.12 tests and the Android debug build; physical Windows 11 pairing, allowlisted launch, local screenshot, expiry, and revocation acceptance remain pending. The Android foreground consumer is [EL_AGENT PR #24](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/24), at head `61627e6b93f17f5c9d68b2a816f6903d3710e32d`; all five observed checks passed, including Android debug build, but it is stacked on `feat/android-visual-refresh-20261120` and must not be retargeted to `main` until its preceding Android stack is merged. Physical Android approval/expiry acceptance remains pending. Both consumers still require isolated Hub Staging deployment and owner-device acceptance.
-7. Shared Hub memory, Android companion, and browser extension remain separate milestones.
+## Staging and deployment boundary
 
-## Current status
+A fresh read-only Cloudflare inventory on 2026-11-22 found no dedicated `mr-siavash-hub-gateway-staging` Worker and no custom Worker domain configured for the account. The visible Workers are separate services, not an accepted Hub Staging deployment. No current Hub Staging deployment or authenticated device round-trip is claimed; no Worker, route, D1, secret, or deployment setting was changed.
 
-- Architecture decision and typed contracts: merged into Hub main.
-- Hub pairing registry, single-use challenge exchange, hashed access/refresh credentials, scoped heartbeat authentication, owner listing/revocation, and audit events: merged into Hub main.
-- Migration 50 heartbeat runtime metadata: merged as `ba0cc727`; exact PR-head checks passed and post-merge Backend CI passed.
-- Bounded device task dispatch: merged through PR #460 as `4d030f0abc28e9a63e4fc026243ef74c906e8769`. Post-merge Backend CI, main CI, Windows Launcher Validation, Video Render Integration, Defensive Python Scan, Workflow Security Audit, and OpenSSF Scorecard all passed.
-- The bounded device dispatch API is merged through Hub PR #460. The AgentOrchestrator integration is in Hub Draft PR #465 at head `3371f2b0216ba56f431282406e2beb8b3e6ab79b`: owner-scoped `device.registry.list` and `device.app_launch.submit` tools, two independent expiring owner grants, exact device `app.launch` scope, live-grant re-checks for direct and durable Agent runs, and an atomic grant re-check inside task creation. All 21 observed exact-head checks passed. PR #465 remains Draft pending isolated Hub Staging and physical Windows/Android acceptance. Screenshot capture is not exposed to model tools; it remains an explicit owner-confirmed action through the narrow device-task API.
-- Windows companion: EL_AGENT Draft PR #23 adds outbound Hub task polling/claim, outcome reporting, Windows Credential Manager storage, and allowlisted app.launch plus explicitly owner-confirmed local screen.capture. Its nine observed exact-head checks passed; physical Windows 11 acceptance remains pending. Android companion: EL_AGENT Draft PR #24 adds foreground-only ChatGPT/browser app.launch with an on-device approval dialog. Its five observed checks passed, but it remains stacked on PR #20 and is not merged to main. Neither consumer is live-device accepted.
-- Hub staging Worker: the last recorded read-only inventory on 2026-11-20 reported that `mr-siavash-hub-gateway-staging` was absent. Cloudflare was not re-read on 2026-11-21, so absence is a last-recorded observation, not fresh live verification. The Website AI Gateway Preview is a separate integration and must not be repurposed; GShop resources remain excluded. The isolated source config is not a deployment. Staging remains blocked until a project-approved zone/scope decision, dedicated least-privilege provider token, and separate Hub-to-gateway bearer secret in the Hub server-side secret store are available. Never reuse the ChatGPT Cloudflare connector credential.
-- Shared Hub memory is owner-scoped and supports export/deletion, FTS5 retrieval, provenance and freshness metadata. Dreaming remains a read-only duplicate-review proposal process; it does not silently rewrite or delete memory.
-- Android companion preview: pairing, encrypted Keystore credentials, heartbeat, and foreground-only app.launch approval are under review in EL_AGENT PR #24 (stacked on PR #20). Physical-device acceptance remains pending. Android screenshot capture and background task dispatch are not implemented.
-- Browser extension: not yet implemented.
+Staging requires an owner-approved isolated resource scope, a dedicated least-privilege provider token, and a separate Hub-to-gateway bearer secret stored server-side. Do not reuse Website Gateway Preview, the ChatGPT Cloudflare connector credential, or any GShop resource. No production Worker deployment, live pairing, device task, screenshot, or application launch is implied by merged source or green CI.
+
+## Acceptance sequence
+
+1. Provision and verify an isolated Hub Staging environment under owner-controlled Cloudflare scope and credentials.
+2. Run authenticated contract tests for pairing, exact scopes, task claim/complete, lease expiry, cancellation, revocation, and audit.
+3. Perform Windows 11 physical acceptance for the Windows consumer.
+4. Perform supported Android physical acceptance for foreground approval and app launch.
+5. Keep PR #23 and #25 Draft until these gates have evidence; then re-read their exact heads and checks before any merge decision.
+6. Treat production deployment as a separate owner-approved release with fresh infrastructure inventory and rollback evidence.
+
+Shared Hub memory, Android background execution, screenshot capture on Android, and browser extension workflows remain separate milestones.
