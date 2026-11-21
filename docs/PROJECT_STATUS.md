@@ -1000,22 +1000,101 @@ This checkpoint records the current engineering branch work separately from merg
 
 ## Cross-repository continuation checkpoint — 2026-11-22 UTC
 
-This addendum records the GitHub state re-read during the 2026-11-22 continuation. It supersedes older branch/PR snapshots above where they conflict. It is not a live Cloudflare inventory, production release, Telegram bot, or physical-device acceptance.
+This continuation refresh follows the merge of PR #477 and documentation checkpoint PR #478. Exact GitHub heads and CI states below were re-read during this continuation. This is not a live Cloudflare inventory, production release, Telegram bot, or physical-device acceptance.
 
-### Exact default-branch heads
-- **MR_SIAVASH_HUB_AI:** `ff15b26009d642ffe3cdfdfa7c9fca60a4fb9f3b`. The current `backend/mrhub/projects/registry.py` contains exactly the four enrolled repositories (Hub, Website, EL_AGENT, EL_AI) and no Gshop entry. PR #476 is merged. PR #475 is closed without merge; its environment-isolation changes are present in current-main test files, including explicit removal of `MRH_REQUIRE_WORKER_FOR_READINESS` in readiness/registry tests and temporary-directory isolation for payload-key tests. The latest inspected main commit includes these test changes. Exact-main CI for `ff15b26` was not independently verified in this checkpoint.
-- **MR_SIAVASH_AI:** `fe48ad35320b5f595c2b14ec0f199967449aa87d`. The latest inspected commit is a documentation/release-evidence refresh. `docs/RELEASE_STATUS.md` records a 2026-11-21 read-only Cloudflare audit: Production Worker version 14 was annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`, 104 commits behind the then-current Website main; Preview query-string redaction was disabled at that audit. These are dated historical observations, not a fresh 2026-11-22 Cloudflare read. Issue #120 remains open; no deployment or Worker/D1 mutation is authorized by this record.
-- **MR_SIAVASH_EL_AGENT:** `d2511f57abe00451ada4b84e5fe1196742393505`. PR #23 (Windows consumer) remains Draft at `dfd482971340fcfe69d36855e005e9fa397062aa`; exact-head CI run #44937500857 passed on Ubuntu/Windows with Python 3.11/3.12. PR #25 (Android planner/consumer) remains Draft at `1f57a3810e6c0ed1bf7eb9959f13db1e8e8195a4`; exact-head CI #44938915072 and Android build/unit-test run #44938915079 passed. Both branches are ahead of main and still require physical-device acceptance and a live Hub Staging round-trip; neither is merged or operationally accepted.
-- **MR_SIAVASH_EL_AI:** `39ea9557b12ebc827e19b0e4d2f274073752b0a2`. Issue #5 remains open. No live Telegram token, bot connection, or deployment was verified in this checkpoint.
+### Exact default-branch heads and CI
+- **MR_SIAVASH_HUB_AI:** `d72163f1a48c6ed56869e263f931050e5575f8de`. PR #476 merged as `21d160c872618fff4148ed0da3f73531239a1f8e` and aligned the owner-authenticated project registry with exactly the four enrolled repositories; Gshop is excluded. PR #477 merged as `1dbba378eae7a39b20600d75dce56ee06d069e98`; its exact PR-head CI passed 13/13 checks, with backend coverage logs reporting 1,380 passed, 2 skipped, and 86% coverage on Python 3.11. PR #478 merged the preceding documentation checkpoint as `d72163f1a48c6ed56869e263f931050e5575f8de`; a follow-up correction is needed because the source snapshot in that PR was superseded by the #477 merge. At the latest read, post-merge CI for current Hub main had 2/14 checks completed successfully and 12 still running, with no completed failures.
+- **MR_SIAVASH_AI:** `fe48ad35320b5f595c2b14ec0f199967449aa87d`; exact-main CI 7/7 passed. The checked-in release status records a 2026-11-21 read-only Cloudflare audit: Production Worker version 14 was annotated with source `1616545a2e204cb378e2c824299412ca20ef598b`, 104 commits behind then-current Website main; Preview query-string redaction was disabled at that audit. These are dated historical observations, not a fresh Cloudflare read. Issue #120 remains open; no deployment or Worker/D1 mutation was performed.
+- **MR_SIAVASH_EL_AGENT:** `d2511f57abe00451ada4b84e5fe1196742393505`; exact-main CI 4/4 passed. PR #23 (Windows consumer) head `dfd482971340fcfe69d36855e005e9fa397062aa` has 9/9 checks passed and is 26 commits ahead / 0 behind current main. PR #25 (Android planner/consumer) head `1f57a3810e6c0ed1bf7eb9959f13db1e8e8195a4` has 5/5 checks passed and is 22 commits ahead / 0 behind current main. Both remain Draft: physical Windows/Android device acceptance and a live isolated Hub Staging round-trip, including scope revocation/expiry, are outstanding. CI success is not device or production acceptance.
+- **MR_SIAVASH_EL_AI:** `39ea9557b12ebc827e19b0e4d2f274073752b0a2`; exact-main CI 4/4 passed. Issue #5 remains open. No live Telegram token, bot connection, webhook, or deployment was verified.
 
-### Governance and integration gates
-- A fresh read of each repository's `main` branch metadata reports `protected=false`, with required-status-check enforcement off and no required contexts, for all four repositories. The connected GitHub action surface exposes no write operation for branch protection/rulesets. Repository-admin configuration and a subsequent enforcement test remain required; do not claim this gate is remediated.
-- The Windows and Android PR CI results above are exact-head evidence only. No physical Windows/Android device, live Hub Staging, Telegram, or external provider acceptance was performed.
-- The Website's dated Cloudflare evidence is not a live deployment pointer. Production release, Preview redeployment, Worker secrets/routes, and D1 migration/application state remain separate operational gates.
-- No production resource, credential, branch-protection setting, device, Telegram account, or external provider account was changed in this checkpoint.
+### Hub PR queue and cleanup
+- PR #476, #477, and #478 are merged. PR #477 exact-head matrix passed all 13 checks; its Python 3.11 backend run reported 1,380 passed, 2 skipped, 86% coverage.
+- PR #475 was closed as superseded by #477. PR #472 and #474 were closed because their dated status/HQ snapshots were stale. No branch or source history was deleted.
+- This follow-up documentation correction is intentionally separate from merged PR #478 and must pass exact-head CI before merge.
+
+### Governance and operational gates
+- A fresh read of all four default branch metadata reports `protected=false`. Required status-check enforcement is not verified as enabled. The connected GitHub action surface exposes no branch-protection/ruleset write operation; issues #304 (Hub), #70 (Website), #27 (EL_AGENT), and #5 (EL_AI) track administrator-side enforcement. Do not claim the governance gate is remediated.
+- Hub issue #305 tracks dedicated isolated Cloudflare Staging provisioning and authenticated acceptance. No dedicated staging Worker deployment or Hub-side secret configuration was verified here. Do not reuse the Website Gateway, Preview, `gahop`, or Gshop resources.
+- Website issue #120 tracks Cloudflare source/deployment drift and rollback verification. No Worker version, route, DNS, D1, secret, or Production resource was changed.
+- Hub issue #182 tracks provider-backed video generation; provider registry remains intentionally unavailable until a provider is explicitly selected/configured. No paid provider was enabled.
+- EL_AGENT Windows and Android consumers require physical-device and Staging acceptance before leaving Draft. No device operation or live credential was used.
+- EL_AI Telegram runtime acceptance remains blocked on secure bot-token configuration and live owner-controlled verification. No token was created or exposed.
+- No production resource, credential, branch-protection setting, device, Telegram account, paid provider, or external service was changed in this checkpoint.
 
 ### Immediate next work
-1. Continue source-level review of the four repositories and keep changes on isolated branches with exact-head CI.
-2. Preserve PR #23 and #25 as Draft until device and Staging acceptance evidence exists.
-3. Keep branch-protection issues open until an administrator applies and verifies the required rules.
-4. Do not repurpose Website Preview or any Gshop resource as Hub staging; do not deploy Website Production from source-drift evidence alone.
+1. Complete post-merge Hub main CI and record the final result for `d72163f`.
+2. Merge this follow-up checkpoint only after exact-head CI passes.
+3. Keep EL_AGENT PR #23 and #25 Draft until device and isolated Staging acceptance can be performed.
+4. Keep governance issues open until administrators apply and verify required branch rules.
+5. Do not deploy Cloudflare Production from dated source-drift evidence alone; require fresh inventory, backup/rollback validation, exact-candidate smoke tests, and owner-controlled release acceptance.
+
+
+## Correction — Hub continuation after PRs #479 and #481 — 2026-11-22 UTC
+
+This correction supersedes the Hub-head and post-merge CI statements in the preceding 2026-11-22 checkpoint. It is based on fresh GitHub reads after the two health-readiness fixes merged.
+
+- **Hub `main`:** `41a0a111caae40377e81be5f0c1badf2363f699f`.
+- **PR #479** (`fix(health): distinguish stale worker heartbeats`) merged as `1dbba378eae7a39b20600d75dce56ee06d069e98`. The health endpoint now distinguishes a live worker heartbeat from stale or absent detection; required-worker readiness does not treat stale heartbeat data as healthy.
+- **PR #481** (`fix(health): reject future worker heartbeat timestamps`) merged as `41a0a111caae40377e81be5f0c1badf2363f699f`. Future-dated worker heartbeat timestamps are rejected as evidence of liveness, with regression coverage for optional and required readiness.
+- PR #481 exact-head checks completed **15/15 successfully** before merge. The merged commit is the current `main` head.
+- **Current-main post-merge CI** was still running at the latest read: 10/14 check-runs successful, 0 failed, and 4 pending (`test (3.11)`, `test (3.12)`, `test`, and `windows-backup-and-device-regression`). Do not describe current-main CI as fully green until those finish.
+- This documentation correction PR #480 has **9/9 exact-head checks successful**. It remains a documentation-only change; no live Cloudflare, staging, production, device, Telegram, secret, or GShop operation is represented or authorized by this record.
+
+The previously recorded Website, EL_AGENT, and EL_AI heads in the earlier checkpoint are historical snapshots and must be refreshed before decisions in those repositories. Operational gates listed above remain open unless separately verified with fresh evidence.
+
+
+### Commit attribution correction — 2026-11-22 UTC
+
+A review of the PR metadata identified one incorrect merge-SHA attribution in the earlier checkpoint text above:
+- PR #477 (test: isolate integration tests from local launcher environment) merged as ff15b26009d642ffe3cdfdfa7c9fca60a4fb9f3b.
+- PR #479 (fix(health): distinguish stale worker heartbeats) merged as 1dbba378eae7a39b20600d75dce56ee06d069e98.
+The later PR #479 correction section above contains the correct attribution. This note supersedes the earlier sentence that assigned PR #479's SHA to PR #477.
+
+
+### Follow-up correction — PR #480 and current Hub main — 2026-11-22 UTC
+
+This note supersedes the preceding statement that PR #480 had 9/9 successful checks and the earlier instruction to finish CI for the former Hub head.
+
+- Current Hub `main` was re-read as `41a0a111caae40377e81be5f0c1badf2363f699f` (after PRs #479 and #481).
+- PR #480 branch head at this read was `0ec2d0e3c14a97beec30547cc7a3f090480cfce1`, based on `d72163f1a48c6ed56869e263f931050e5575f8de`; comparison against current `main` showed 6 commits ahead and 1 commit behind.
+- Exact-head check-runs for `0ec2d0e3c14a97beec30547cc7a3f090480cfce1`: 6/9 successful, 3 in progress, 0 failures. The three running checks were `test (3.11)`, `test (3.12)`, and `test`. Therefore PR #480 was not yet eligible for merge at this read.
+- The PR branch requires a fresh documentation checkpoint because the preceding 9/9 claim was premature and the branch is behind current `main`. Do not merge until the corrected commit is tested at its exact head and all required checks succeed.
+- The two changed files remain documentation-only. No production, Cloudflare, staging, device, Telegram, credential, paid-provider, or GShop operation was performed.
+
+
+## Current operational checkpoint — 2026-11-22 UTC
+
+This section supersedes earlier repository-head and CI snapshots above where they conflict. It records GitHub source and CI evidence only; it does not imply live deployment, Staging, Telegram, or physical-device acceptance.
+
+### Verified default branches
+- **Hub:** `41a0a111caae40377e81be5f0c1badf2363f699f`; exact-main CI 14/14 successful.
+- **Website:** `fe48ad35320b5f595c2b14ec0f199967449aa87d`; exact-main CI 7/7 successful.
+- **EL_AGENT:** `d2511f57abe00451ada4b84e5fe1196742393505`; exact-main CI 4/4 successful.
+- **EL_AI:** `6bbd8fea0ccb827ac0c2d1429daf707fe4a976d2`; exact-main CI 4/4 successful.
+
+### Current integration gates
+- Hub PR #479 and #481 are merged. The current device companion guide below reflects the merged Hub pairing/task contract and the current EL_AGENT consumer PRs.
+- EL_AGENT PR #23 (Windows) and #25 (Android) remain Draft. Physical-device acceptance and authenticated Hub Staging round-trips, including expiry and revocation, are not complete.
+- The latest read-only Cloudflare inventory found no dedicated Hub Staging Worker. No production Worker, D1, route, DNS, or secret mutation was performed.
+- All four default branches remain unprotected; administrator-side branch-protection/ruleset configuration and enforcement verification are outstanding.
+- No live Telegram message delivery, production deployment, paid-provider request, or physical-device action is claimed.
+
+This documentation PR must pass exact-head CI before merge. All checks must be evaluated against its final head; cancelled checks are not passes.
+
+
+### Post-merge correction — PR #483 — 2026-11-22 UTC
+
+- PR #483 merged to Hub `main` as `8793043639d2b8e26590cb5943fd896641a04527`.
+- The PR added only regression tests for timezone-naive and malformed worker heartbeat timestamps, covering optional and required-worker readiness behavior.
+- Exact PR-head validation on `2542c01121d8b617b2c46dbbc471415d2bfd9a31`: all six observed workflows succeeded (Backend CI, CI matrix, Workflow Security Audit, Defensive Python Scan, Video Render Integration, and Windows Launcher Validation).
+- The earlier 14/14 Hub main CI count above belongs to parent main `41a0a111caae40377e81be5f0c1badf2363f699f` and is a pre-#483 snapshot. Do not interpret it as post-merge CI for `8793043`; that post-merge state was not established by this PR-only workflow query.
+
+
+### Post-merge correction — PR #486 — 2026-11-22 UTC
+
+- PR #486 merged into Hub `main` as `fbf85fae4bcdc001a66675aee6367b8a66c2f0e1`.
+- It adds fail-closed validation of the migration registry before SQLite DDL: a non-empty list of positive, non-boolean integer versions in strictly increasing order.
+- Regression cases cover duplicate, out-of-order, zero, boolean, and empty registries, and assert that invalid definitions do not create `schema_migrations`.
+- Exact PR-head validation on `ff1997562931aa3c543572714be9977fdb4c3e68`: all six workflows passed (Backend CI, CI matrix, Workflow Security Audit, Defensive Python Scan, Video Render Integration, Windows Launcher Validation). Backend CI reported 1,394 passed, 2 skipped, 86% coverage.
+- This is source/CI acceptance evidence, not a production database migration. No production database was changed.
