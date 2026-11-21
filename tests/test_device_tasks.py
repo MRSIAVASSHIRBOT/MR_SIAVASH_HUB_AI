@@ -312,6 +312,7 @@ def test_outcome_requires_the_claim_lease_and_remains_unverified(tmp_path, monke
     owner_view = client.get(f"/devices/{device_id}/tasks/{task_id}")
     assert rejected.status_code == 409
     assert accepted.status_code == 200
+    assert accepted.json()["task"]["task_id"] == task_id
     assert accepted.json()["task"]["status"] == "reported_succeeded"
     assert accepted.json()["task"]["outcome_verified"] is False
     assert duplicate.status_code == 409
