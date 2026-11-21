@@ -1460,8 +1460,21 @@ class SchemaMigrator:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
+    def _validate_migration_registry(self) -> None:
+        """Reject invalid version definitions before touching the database."""
+        versions = tuple(migration.version for migration in MIGRATIONS)
+        if not versions or any(type(version) is not int or version < 1 for version in versions):
+            raise MigrationError(
+                "Migration registry versions must be positive integers"
+            )
+        if any(current <= previous for previous, current in zip(versions, versions[1:])):
+            raise MigrationError(
+                "Migration registry versions must be strictly increasing"
+            )
+
     def migrate(self) -> list[int]:
         """Apply pending migrations without locking an already-current database."""
+        self._validate_migration_registry()
         connection = self.connection
         connection.execute(
             """CREATE TABLE IF NOT EXISTS schema_migrations (
