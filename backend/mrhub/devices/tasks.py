@@ -554,9 +554,16 @@ class DeviceTaskRepository:
         return self._serialize(updated)
 
     def revoke_device_tasks(
-        self, connection: sqlite3.Connection, *, device_id: str, now_text: str
+        self,
+        connection: sqlite3.Connection,
+        *,
+        device_id: str,
+        now_text: str,
+        actor_type: str = "owner",
+        actor_id: str | None = None,
     ) -> None:
-        """Cancel queued work and fence claimed work when the owner revokes a device."""
+        """Cancel queued work and fence claimed work after device revocation."""
+
         rows = connection.execute(
             """SELECT task_id,owner_user_id,action,required_scope,status
                FROM personal_device_tasks
@@ -587,8 +594,8 @@ class DeviceTaskRepository:
                 outcome=next_status,
                 task_id=row["task_id"],
                 owner_user_id=row["owner_user_id"],
-                actor_type="owner",
-                actor_id=row["owner_user_id"],
+                actor_type=actor_type,
+                actor_id=actor_id if actor_id is not None else row["owner_user_id"],
                 action=row["action"],
                 required_scope=row["required_scope"],
                 reason_code=reason_code,
