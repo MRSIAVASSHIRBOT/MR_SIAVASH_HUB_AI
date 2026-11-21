@@ -112,3 +112,14 @@ Before any implementation, merge, or release decision:
 - verify branch pagination and branch protection metadata;
 - compare relevant source contracts and migration state;
 - update this snapshot with timestamp, SHA, evidence links, and unresolved limitations.
+
+
+## Exact-head CI refresh — 2026-11-21 19:05 UTC
+
+This addendum supersedes the open-PR CI state above; repository main SHAs are unchanged.
+
+- HUB PR #472 head `b6e6974edc000091f37eac0a2988dd076f1114ce`: Workflow Security Audit, Defensive Python Scan and Video Render Integration passed. CI was cancelled; Backend CI remained in progress at the latest read. Cancelled is not PASS.
+- HUB PR #473 head `1eb1b95f79c7f200dfd9a9ac5acbb6d3cd6fba3c`: Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; Windows Launcher Validation failed; CI was cancelled; Backend CI remained in progress at the latest read.
+- The failed Windows job executed 70 targeted database/device/backup tests: 69 passed and 1 failed. Failure: `tests/test_device_tasks.py::test_model_device_task_creation_uses_time_after_write_lock_for_grants` — expected `DeviceTaskPermissionError`, but none was raised. See [exact Windows run](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/44938460022).
+- Root cause is not yet established. PR #473 is not accepted for merge until the failing regression is understood, fixed if needed, and the exact updated head passes all required checks.
+- New HQ documentation PR #474 is open at head `6d58c02da0f74c7f2c5d2c8e2be485cba5ae981d`. Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; CI and Backend CI were still running at this refresh. See [PR #474](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/474).
