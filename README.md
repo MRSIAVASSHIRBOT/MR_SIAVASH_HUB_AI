@@ -176,7 +176,7 @@ The current device-dispatch implementation branch proposes a narrow Hub-owned ta
 - Queue size is bounded per device. Queued work can be cancelled; claimed work cannot be represented as safely cancelled. Device revocation cancels queued tasks and fences claimed tasks as unknown outcome.
 - Arbitrary shell commands, caller-provided executable paths, URLs, unrestricted file access, keystroke capture, and model-authored executable payloads are not supported.
 
-The base Hub device-task API is on `main`. The owner-authorized Agent tool registry in this PR is still under review; Windows and Android consumers are tracked separately in EL_AGENT PRs #23 and #24. Both require a live Staging round-trip and physical-device acceptance before release.
+The base Hub device-task API and owner-authorized Agent tool registry are now on `main` (PR #465). Windows and Android consumers are tracked separately in EL_AGENT PRs #23 and #25. Both require a live Staging round-trip, grant revocation/expiry checks, and physical-device acceptance before release. No production Worker deployment is claimed.
 
 ## Model-driven device tools — owner-authorized, time-limited
 
