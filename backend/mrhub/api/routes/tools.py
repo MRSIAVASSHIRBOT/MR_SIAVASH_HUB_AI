@@ -46,9 +46,9 @@ def _permission_service(repository: TaskRepository) -> ToolPermissionService:
     return ToolPermissionService(repository, AuditLogger(repository))
 
 
-@router.get("", dependencies=[Depends(require_user)])
-def list_tools() -> list[dict[str, object]]:
-    return build_tool_registry().catalog()
+@router.get("")
+def list_tools(user: CurrentUser) -> list[dict[str, object]]:
+    return build_tool_registry(owner_user_id=user.user_id).catalog()
 
 
 @router.get("/grants")
@@ -107,7 +107,7 @@ def invoke_tool(
 ) -> dict[str, object]:
     response.headers["Cache-Control"] = "no-store"
     correlation_id = str(uuid4())
-    registry = build_tool_registry(correlation_id=correlation_id)
+    registry = build_tool_registry(correlation_id=correlation_id, owner_user_id=user.user_id)
     audit = AuditLogger(repository)
     permissions = _permission_service(repository).active_permissions(user.user_id)
 

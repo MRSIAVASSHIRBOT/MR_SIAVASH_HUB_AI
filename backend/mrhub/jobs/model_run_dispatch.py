@@ -24,6 +24,8 @@ from mrhub.jobs.payload_envelope import (
 )
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.providers.base import ProviderError
+from mrhub.security.audit import AuditLogger
+from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
 
@@ -106,7 +108,10 @@ class ModelRunWorkerHandler:
                 include_stub=False,
                 max_timeout_seconds=30.0,
             )
-            tool_registry = build_tool_registry()
+            tool_registry = build_tool_registry(
+                correlation_id=str(workflow_id),
+                owner_user_id=owner_user_id,
+            )
             agent_registry = build_default_agent_registry(tool_registry)
             orchestrator = AgentOrchestrator(model_router, tool_registry, agent_registry)
         except (ValueError, TypeError, LookupError, ProviderError, OSError):
@@ -138,8 +143,20 @@ class ModelRunWorkerHandler:
                 ).fetchone()
             return bool(execution and execution["error_code"] == "cancellation_requested")
 
+        permission_service = ToolPermissionService(
+            self.repository,
+            AuditLogger(self.repository),
+        )
+
+        def permission_provider() -> frozenset[str]:
+            return permission_service.active_permissions(owner_user_id)
+
         try:
-            result = orchestrator.run(request, should_cancel=should_cancel)
+            result = orchestrator.run(
+                request,
+                should_cancel=should_cancel,
+                permission_provider=permission_provider,
+            )
             if should_cancel() and result.get("status") != "cancelled":
                 result = {**result, "status": "cancelled", "error_code": "cancelled"}
         except (

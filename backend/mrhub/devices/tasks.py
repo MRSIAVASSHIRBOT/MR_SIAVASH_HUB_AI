@@ -194,6 +194,7 @@ class DeviceTaskRepository:
         scheduled_at: datetime | None,
         expires_in_seconds: int,
         timeout_seconds: int,
+        required_owner_permissions: frozenset[str] = frozenset(),
     ) -> tuple[dict[str, object], bool]:
         now = self._now()
         if scheduled_at is None:
@@ -219,6 +220,9 @@ class DeviceTaskRepository:
         )
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            # Read the authorization clock only after acquiring the write lock.
+            # A grant can expire while BEGIN IMMEDIATE waits for another writer.
+            transaction_now = self._now()
             device = connection.execute(
                 """SELECT owner_user_id,status,scopes_json
                    FROM personal_devices WHERE device_id=?""",
@@ -231,7 +235,20 @@ class DeviceTaskRepository:
             if required_scope not in json.loads(device["scopes_json"]):
                 raise DeviceTaskPermissionError("Device lacks the required action scope")
 
-            self._reconcile(connection, device_id=device_id, now_text=now.isoformat())
+            # Re-check owner grants inside the same write transaction as task creation.
+            # This closes the revoke-after-policy-snapshot race for model-driven dispatch.
+            for permission in sorted(required_owner_permissions):
+                active_grant = connection.execute(
+                    """SELECT 1 FROM tool_permission_grants
+                       WHERE owner_user_id=? AND permission=? AND expires_at>?""",
+                    (owner_user_id, permission, transaction_now.isoformat()),
+                ).fetchone()
+                if active_grant is None:
+                    raise DeviceTaskPermissionError(
+                        "Owner lacks an active grant for the requested device action"
+                    )
+
+            self._reconcile(connection, device_id=device_id, now_text=transaction_now.isoformat())
             existing = connection.execute(
                 """SELECT * FROM personal_device_tasks
                    WHERE owner_user_id=? AND idempotency_key_hash=?""",
@@ -243,15 +260,15 @@ class DeviceTaskRepository:
                 return self._serialize(existing), False
 
             if (
-                scheduled < now - timedelta(seconds=30)
-                or scheduled > now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
+                scheduled < transaction_now - timedelta(seconds=30)
+                or scheduled > transaction_now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
             ):
                 raise DeviceTaskError("Scheduled time must be now or within the next 30 days")
             expires_at = scheduled + timedelta(seconds=expires_in_seconds)
-            if expires_at <= now:
+            if expires_at <= transaction_now:
                 raise DeviceTaskError("Task expiry must be in the future")
             if action == "screen.capture" and (
-                scheduled > now + timedelta(minutes=5) or expires_in_seconds > 300
+                scheduled > transaction_now + timedelta(minutes=5) or expires_in_seconds > 300
             ):
                 raise DeviceTaskError("Sensitive screenshot tasks must be confirmed for near-term execution")
 
@@ -276,7 +293,7 @@ class DeviceTaskRepository:
                     json.dumps(parameters, sort_keys=True, separators=(",", ":")),
                     required_scope, request_digest, self._hash(idempotency_key), timeout_seconds,
                     scheduled.isoformat(), expires_at.isoformat(), int(owner_confirmed),
-                    now.isoformat(), now.isoformat(),
+                    transaction_now.isoformat(), transaction_now.isoformat(),
                 ),
             )
             self._audit(
@@ -549,6 +566,7 @@ class DeviceTaskRepository:
         actor_id: str | None = None,
     ) -> None:
         """Cancel queued work and fence claimed work after device revocation."""
+
         rows = connection.execute(
             """SELECT task_id,owner_user_id,action,required_scope,status
                FROM personal_device_tasks

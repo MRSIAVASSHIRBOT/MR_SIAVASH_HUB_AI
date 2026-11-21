@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mrhub.config import get_settings
-from mrhub.devices.tasks import DeviceTaskNotFound, DeviceTaskRepository
+from mrhub.devices.tasks import DeviceTaskNotFound, DeviceTaskPermissionError, DeviceTaskRepository
 from mrhub.main import create_app
 
 
@@ -468,3 +468,108 @@ def test_tasks_are_isolated_between_two_paired_devices(tmp_path, monkeypatch):
     assert right_device_claim.json()["task"]["task_id"] == submitted.json()["task"]["task_id"]
     get_settings.cache_clear()
 
+
+
+
+def test_model_device_task_creation_rechecks_active_owner_grants_atomically(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+
+    for permission in ("device.registry.read", "device.app_launch"):
+        granted = client.put(
+            f"/tools/grants/{permission}",
+            json={"expires_in_seconds": 600},
+        )
+        assert granted.status_code == 200
+
+    repository = DeviceTaskRepository(database_path)
+    required = frozenset({"device.registry.read", "device.app_launch"})
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+    common = {
+        "owner_user_id": owner_user_id,
+        "device_id": device_id,
+        "action": "app.launch",
+        "app": "notepad",
+        "required_scope": "app.launch",
+        "owner_confirmed": False,
+        "scheduled_at": datetime.now(UTC),
+        "expires_in_seconds": 300,
+        "timeout_seconds": 30,
+        "required_owner_permissions": required,
+    }
+
+    allowed, created = repository.create(
+        **common,
+        idempotency_key="owner-grant-atomic-allow-001",
+    )
+    assert created is True
+    assert allowed["status"] == "queued"
+
+    revoked = client.delete("/tools/grants/device.app_launch")
+    assert revoked.status_code == 204
+    with pytest.raises(DeviceTaskPermissionError) as denied:
+        repository.create(
+            **common,
+            idempotency_key="owner-grant-atomic-deny-001",
+        )
+    assert "active grant" in str(denied.value).lower()
+    with sqlite3.connect(database_path) as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM personal_device_tasks WHERE idempotency_key_hash=?",
+            (hashlib.sha256(b"owner-grant-atomic-deny-001").hexdigest(),),
+        ).fetchone()[0]
+    assert count == 0
+    get_settings.cache_clear()
+
+
+def test_model_device_task_creation_uses_time_after_write_lock_for_grants(tmp_path, monkeypatch):
+    client, database_path = _owner_client(tmp_path, monkeypatch)
+    device_id, _ = _paired_device(client)
+
+    for permission in ("device.registry.read", "device.app_launch"):
+        granted = client.put(
+            f"/tools/grants/{permission}",
+            json={"expires_in_seconds": 600},
+        )
+        assert granted.status_code == 200
+
+    before_lock = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
+    after_lock = before_lock + timedelta(seconds=10)
+    expires_at = (before_lock + timedelta(seconds=5)).isoformat()
+    with sqlite3.connect(database_path) as db:
+        owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
+        db.execute(
+            "UPDATE tool_permission_grants SET expires_at=? WHERE owner_user_id=?",
+            (expires_at, owner_user_id),
+        )
+        db.commit()
+
+    times = iter((before_lock, after_lock))
+    monkeypatch.setattr(DeviceTaskRepository, "_now", staticmethod(lambda: next(times)))
+    repository = DeviceTaskRepository(database_path)
+    with pytest.raises(DeviceTaskPermissionError):
+        repository.create(
+            owner_user_id=owner_user_id,
+            device_id=device_id,
+            action="app.launch",
+            app="notepad",
+            required_scope="app.launch",
+            idempotency_key="owner-grant-expiry-after-lock-001",
+            owner_confirmed=False,
+            scheduled_at=before_lock,
+            expires_in_seconds=300,
+            timeout_seconds=30,
+            required_owner_permissions=frozenset({
+                "device.registry.read",
+                "device.app_launch",
+            }),
+        )
+
+    with sqlite3.connect(database_path) as db:
+        count = db.execute(
+            "SELECT COUNT(*) FROM personal_device_tasks WHERE idempotency_key_hash=?",
+            (hashlib.sha256(b"owner-grant-expiry-after-lock-001").hexdigest(),),
+        ).fetchone()[0]
+    assert count == 0
+    get_settings.cache_clear()

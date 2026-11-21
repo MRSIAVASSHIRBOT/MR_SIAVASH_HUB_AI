@@ -17,9 +17,14 @@ def test_tool_catalog_is_authenticated_and_exposes_contracts():
     response = client.get("/tools")
     assert response.status_code == 200
     catalog = response.json()
-    assert [item["name"] for item in catalog] == ["text.echo"]
-    assert catalog[0]["input_schema"]["properties"]["text"]["maxLength"] == 500
-    assert catalog[0]["external_side_effect"] is False
+    names = {item["name"] for item in catalog}
+    assert names == {"text.echo", "device.registry.list", "device.app_launch.submit"}
+    echo = next(item for item in catalog if item["name"] == "text.echo")
+    assert echo["input_schema"]["properties"]["text"]["maxLength"] == 500
+    assert echo["external_side_effect"] is False
+    app_launch = next(item for item in catalog if item["name"] == "device.app_launch.submit")
+    assert set(app_launch["required_permissions"]) == {"device.registry.read", "device.app_launch"}
+    assert app_launch["risk_class"] == "low"
 
 
 def test_tool_invoke_executes_only_registered_safe_tool():
@@ -262,3 +267,191 @@ def test_dashboard_exposes_explicit_cloudflare_grant_and_inventory_controls():
     assert "if (response.status === 401)" in script
     assert "این عملیات به مجوز فعال نیاز دارد." in script
     assert "response.status === 401 || response.status === 403" not in script
+
+
+def test_dashboard_exposes_owner_granted_device_controls_without_automatic_execution():
+    client = authenticated_client()
+    html = client.get("/ui").text
+    script = client.get("/ui/app.js").text
+
+    for element_id in (
+        "device-agent-panel",
+        "device-registry-grant-button",
+        "device-app-launch-grant-button",
+        "device-agent-grants-refresh",
+        "device-registry-refresh-button",
+        "device-app-launch-form",
+        "device-app-launch-submit",
+        "device-app-launch-result",
+    ):
+        assert f'id="{element_id}"' in html
+
+    assert '"/tools/device.registry.list/invoke"' in script
+    assert '"/tools/device.app_launch.submit/invoke"' in script
+    assert '"/tools/grants/" + encodeURIComponent(permission)' in script
+    assert "crypto.randomUUID()" in script
+    assert "window.confirm(" in script
+    assert "اجرای برنامه هنوز تأیید نشده است" in script
+    assert "device.screen_capture" not in script
+
+
+def _pair_device(client, *, platform="windows", scopes=None):
+    from uuid import uuid4
+
+    device_id = str(uuid4())
+    scopes = scopes or ["device.heartbeat", "app.launch"]
+    challenge = client.post("/devices/pairing-challenges", json={
+        "device_id": device_id,
+        "platform": platform,
+        "label": "Agent test device",
+        "advertised_capabilities": ["device.heartbeat", "app.launch"],
+        "scopes": scopes,
+    })
+    assert challenge.status_code == 201
+    exchanged = client.post("/devices/pair", json={
+        "pairing_code": challenge.json()["pairing_code"],
+        "device_id": device_id,
+        "agent_version": "0.2.0",
+        "os_version": "Windows 11",
+    })
+    assert exchanged.status_code == 200
+    return device_id
+
+
+def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
+    from mrhub.devices.tasks import DeviceTaskRepository
+
+    client = authenticated_client()
+    device_id = _pair_device(client)
+    listed_denied = client.post("/tools/device.registry.list/invoke", json={"payload": {}})
+    assert listed_denied.status_code == 403
+
+    assert client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600}).status_code == 200
+    listed = client.post("/tools/device.registry.list/invoke", json={"payload": {}})
+    assert listed.status_code == 200
+    summaries = listed.json()["result"]["devices"]
+    assert len(summaries) == 1
+    assert summaries[0]["device_id"] == device_id
+    assert summaries[0]["granted_scopes"] == sorted(["device.heartbeat", "app.launch"])
+    assert "access_token" not in str(summaries)
+
+    payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "b631e9a0-a3bc-4df7-a7ef-2e4c96ff9c99",
+    }
+    denied_launch = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert denied_launch.status_code == 403
+
+    assert client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600}).status_code == 200
+    monkeypatch_result = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert monkeypatch_result.status_code == 200
+    result = monkeypatch_result.json()["result"]
+    assert result["task"]["status"] == "queued"
+    assert result["task"]["action"] == "app.launch"
+    assert result["task"]["app"] == "notepad"
+    assert result["idempotent_replay"] is False
+
+    replay = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert replay.status_code == 200
+    assert replay.json()["result"]["task"]["task_id"] == result["task"]["task_id"]
+    assert replay.json()["result"]["idempotent_replay"] is True
+
+    repository = DeviceTaskRepository(get_settings().database_path)
+    rows = repository.list_for_owner(owner_user_id="local-owner", device_id=device_id)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "queued"
+
+
+def test_agent_device_tool_denies_if_owner_grant_is_revoked_before_atomic_enqueue(monkeypatch):
+    from mrhub.devices.tasks import DeviceTaskRepository
+
+    client = authenticated_client()
+    device_id = _pair_device(client)
+    for permission in ("device.registry.read", "device.app_launch"):
+        granted = client.put(
+            f"/tools/grants/{permission}",
+            json={"expires_in_seconds": 600},
+        )
+        assert granted.status_code == 200
+
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.security.audit import AuditLogger
+    from mrhub.security.tool_permissions import ToolPermissionService
+
+    permission_repository = TaskRepository(get_settings().database_path)
+    permission_service = ToolPermissionService(
+        permission_repository,
+        AuditLogger(permission_repository),
+    )
+    original_create = DeviceTaskRepository.create
+
+    def revoke_before_enqueue(device_repository, **kwargs):
+        assert permission_service.revoke("local-owner", "device.app_launch") is True
+        return original_create(device_repository, **kwargs)
+
+    monkeypatch.setattr(DeviceTaskRepository, "create", revoke_before_enqueue)
+    response = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "9bce5f6c-0b42-4c41-9d18-4c9aef8a3210",
+        }
+    })
+    assert response.status_code == 403
+    assert response.json()["detail"]["decision"] == "deny"
+
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert tasks == []
+
+
+def test_agent_device_tool_rejects_device_without_app_launch_scope():
+    client = authenticated_client()
+    device_id = _pair_device(client, scopes=["device.heartbeat"])
+    client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
+    client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
+
+    response = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
+        }
+    })
+    assert response.status_code == 403
+    assert response.json()["detail"]["decision"] == "deny"
+
+    from mrhub.devices.tasks import DeviceTaskRepository
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert tasks == []
+
+
+def test_agent_device_tool_enforces_platform_specific_app_aliases():
+    client = authenticated_client()
+    device_id = _pair_device(client, platform="android")
+    client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
+    client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
+
+    unsupported = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "a4e4a0cf-fbbd-4d82-b870-8d752f519304",
+        }
+    })
+    assert unsupported.status_code == 403
+    assert unsupported.json()["detail"]["decision"] == "deny"
+
+    supported = client.post("/tools/device.app_launch.submit/invoke", json={
+        "payload": {
+            "device_id": device_id,
+            "app": "chatgpt",
+            "idempotency_key": "f5d63d78-fde6-4e9f-9136-7d0634ddc3d2",
+        }
+    })
+    assert supported.status_code == 200
+    assert supported.json()["result"]["task"]["app"] == "chatgpt"
