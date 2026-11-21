@@ -536,12 +536,13 @@ def test_model_device_task_creation_uses_time_after_write_lock_for_grants(tmp_pa
 
     before_lock = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
     after_lock = before_lock + timedelta(seconds=10)
+    granted_at = (before_lock - timedelta(seconds=60)).isoformat()
     expires_at = (before_lock + timedelta(seconds=5)).isoformat()
     with sqlite3.connect(database_path) as db:
         owner_user_id = db.execute("SELECT user_id FROM auth_users LIMIT 1").fetchone()[0]
         db.execute(
-            "UPDATE tool_permission_grants SET expires_at=? WHERE owner_user_id=?",
-            (expires_at, owner_user_id),
+            "UPDATE tool_permission_grants SET granted_at=?,expires_at=? WHERE owner_user_id=?",
+            (granted_at, expires_at, owner_user_id),
         )
         db.commit()
 
