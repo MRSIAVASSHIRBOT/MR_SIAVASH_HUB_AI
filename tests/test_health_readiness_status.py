@@ -81,3 +81,26 @@ def test_readiness_keeps_missing_worker_distinct(monkeypatch, tmp_path):
 
     assert result["worker"] == "not_detected"
     assert result["worker_heartbeat_age_seconds"] is None
+
+
+def test_future_worker_heartbeat_is_not_accepted_as_live(monkeypatch, tmp_path):
+    heartbeat = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    _configure_readiness(monkeypatch, tmp_path, (heartbeat,))
+
+    result = health.readiness()
+
+    assert result["worker"] == "not_detected"
+    assert result["worker_heartbeat_age_seconds"] is None
+
+
+def test_required_worker_rejects_future_heartbeat(monkeypatch, tmp_path):
+    heartbeat = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+    _configure_readiness(
+        monkeypatch, tmp_path, (heartbeat,), require_worker=True
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        health.readiness()
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Worker process is not ready"
