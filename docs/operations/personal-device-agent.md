@@ -59,7 +59,7 @@ A task's dispatch or a successful local API response must never be described as 
 
 ## Staging and deployment boundary
 
-The last recorded read-only Cloudflare inventory on 2026-11-20 reported that the dedicated `mr-siavash-hub-gateway-staging` Worker was absent. This is a historical observation, not a fresh inventory. No current Hub Staging deployment or authenticated device round-trip is claimed.
+A fresh read-only Cloudflare inventory on 2026-11-22 found no dedicated `mr-siavash-hub-gateway-staging` Worker and no custom Worker domain configured for the account. The visible Workers are separate services, not an accepted Hub Staging deployment. No current Hub Staging deployment or authenticated device round-trip is claimed; no Worker, route, D1, secret, or deployment setting was changed.
 
 Staging requires an owner-approved isolated resource scope, a dedicated least-privilege provider token, and a separate Hub-to-gateway bearer secret stored server-side. Do not reuse Website Gateway Preview, the ChatGPT Cloudflare connector credential, or any GShop resource. No production Worker deployment, live pairing, device task, screenshot, or application launch is implied by merged source or green CI.
 
