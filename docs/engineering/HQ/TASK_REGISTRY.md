@@ -119,3 +119,10 @@
 - QA remains independent from the implementation owner.
 - Mark DONE only after acceptance evidence is attached.
 - Update this registry when the task state changes; do not infer completion from code generation or PR creation.
+
+
+## Exact-head CI status correction — 2026-11-21 19:05 UTC
+
+- **HQ-001 / PR #473:** BLOCKED pending investigation of Windows failure `test_model_device_task_creation_uses_time_after_write_lock_for_grants` (69 passed, 1 failed). CI was cancelled and Backend CI was still running at last read. Do not merge until the failure is understood and every required check passes on the updated exact head.
+- **HQ-002 / PR #472:** IN PROGRESS. Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; CI was cancelled and Backend CI remained in progress. Cancelled is not PASS.
+- **HQ initialization / PR #474:** documentation-only PR containing these five reference files. Workflow Security Audit, Defensive Python Scan and Video Render Integration passed; CI and Backend CI were still running at last read.
