@@ -1122,3 +1122,36 @@ def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(
         )
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
+
+
+@pytest.mark.parametrize(
+    "versions",
+    (
+        (1, 1),
+        (2, 1),
+        (0, 1),
+        (True, 1),
+        (),
+    ),
+)
+def test_invalid_migration_registry_fails_before_database_ddl(
+    tmp_path, monkeypatch, versions
+):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    registry = tuple(
+        migrations_module.Migration.build(version, f"invalid_{index}", ())
+        for index, version in enumerate(versions)
+    )
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", registry)
+    connection = connect(tmp_path / "invalid-migration-registry.sqlite3")
+
+    with pytest.raises(MigrationError, match="Migration registry versions"):
+        migrations_module.SchemaMigrator(connection).migrate()
+
+    schema_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'schema_migrations'"
+    ).fetchone()
+    assert schema_table is None
+    connection.close()
