@@ -316,7 +316,7 @@ def test_agent_run_exposes_approval_required_without_invoking_external_tool(monk
     ))
     monkeypatch.setattr(
         "mrhub.api.routes.agent_run.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     response = client.post(
@@ -454,7 +454,7 @@ def test_agent_run_uses_only_active_server_side_owner_tool_grants(monkeypatch):
     ))
     monkeypatch.setattr(
         "mrhub.api.routes.agent_run.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     tool_proposal = json.dumps({
@@ -550,6 +550,93 @@ def test_agent_run_uses_only_active_server_side_owner_tool_grants(monkeypatch):
     assert denied_after_revoke.json()["execution"]["status"] == "tool_denied"
     assert denied_after_revoke.json()["execution"]["error_code"] == "tool_policy_denied"
     assert calls == ["read"]
+
+
+def test_agent_run_can_queue_only_owner_granted_and_device_scoped_app_launch(monkeypatch):
+    from uuid import uuid4
+
+    from mrhub.devices.tasks import DeviceTaskRepository
+
+    client = authenticated_client()
+    device_id = str(uuid4())
+    challenge = client.post("/devices/pairing-challenges", json={
+        "device_id": device_id,
+        "platform": "windows",
+        "label": "Agent run acceptance device",
+        "advertised_capabilities": ["device.heartbeat", "app.launch"],
+        "scopes": ["device.heartbeat", "app.launch"],
+    })
+    assert challenge.status_code == 201
+    paired = client.post("/devices/pair", json={
+        "pairing_code": challenge.json()["pairing_code"],
+        "device_id": device_id,
+        "agent_version": "0.2.0",
+        "os_version": "Windows 11",
+    })
+    assert paired.status_code == 200
+
+    grants = [
+        client.put(f"/tools/grants/{permission}", json={"expires_in_seconds": 600})
+        for permission in ("device.registry.read", "device.app_launch")
+    ]
+    assert all(response.status_code == 200 for response in grants)
+
+    proposal = json.dumps({
+        "type": "tool_call",
+        "name": "device.app_launch.submit",
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "c9b5d7c2-56ad-4b17-8c91-8ae2102f3eb5",
+        },
+    })
+    class SequenceProvider(ScriptedProvider):
+        def generate(self, request):
+            self.requests.append(request)
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text=self.outputs.pop(0),
+            )
+
+    sequence_provider = SequenceProvider(proposal)
+    sequence_provider.outputs = [
+        proposal,
+        json.dumps({
+            "type": "final",
+            "answer": "The launch request was queued for the paired workstation.",
+        }),
+    ]
+    router = ModelRouter()
+    router.register_provider(sequence_provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        lambda **_kwargs: router,
+    )
+
+    response = client.post("/agent/run", json={
+        "goal": "Queue opening Notepad on my paired Windows workstation.",
+        "provider_mode": "local",
+        "include_memory": False,
+        "include_knowledge": False,
+        "max_turns": 2,
+    })
+    assert response.status_code == 200
+    execution = response.json()["execution"]
+    assert execution["status"] == "completed"
+    assert execution["tool_calls"] == 1
+    assert execution["answer"] == "The launch request was queued for the paired workstation."
+    assert "device.registry.list" in sequence_provider.requests[0].input_text
+    assert "device.app_launch.submit" in sequence_provider.requests[0].input_text
+    assert "device.screen_capture" not in sequence_provider.requests[0].input_text
+
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert len(tasks) == 1
+    assert tasks[0]["status"] == "queued"
+    assert tasks[0]["app"] == "notepad"
+
 
 
 def test_agent_run_maps_remote_mode_to_registered_kimi_provider(monkeypatch):

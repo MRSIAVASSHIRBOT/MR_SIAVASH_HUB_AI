@@ -539,7 +539,7 @@ def test_durable_model_run_preserves_approval_required_without_side_effect(monke
     ))
     monkeypatch.setattr(
         "mrhub.jobs.model_run_dispatch.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     submitted = client.post(
@@ -663,3 +663,111 @@ def test_queued_model_run_rejects_unknown_project_before_provider_selection(monk
     assert response.status_code == 404
     assert response.json()["detail"] == "Project is not enrolled"
     assert calls == []
+
+
+def test_durable_agent_run_uses_owner_grants_to_queue_device_app_launch(monkeypatch):
+    from uuid import uuid4
+
+    from mrhub.devices.tasks import DeviceTaskRepository
+
+    client = authenticated_client()
+    device_id = str(uuid4())
+    challenge = client.post("/devices/pairing-challenges", json={
+        "device_id": device_id,
+        "platform": "windows",
+        "label": "Durable Agent test device",
+        "advertised_capabilities": ["device.heartbeat", "app.launch"],
+        "scopes": ["device.heartbeat", "app.launch"],
+    })
+    assert challenge.status_code == 201
+    paired = client.post("/devices/pair", json={
+        "pairing_code": challenge.json()["pairing_code"],
+        "device_id": device_id,
+        "agent_version": "0.2.0",
+        "os_version": "Windows 11",
+    })
+    assert paired.status_code == 200
+    for permission in ("device.registry.read", "device.app_launch"):
+        assert client.put(
+            f"/tools/grants/{permission}",
+            json={"expires_in_seconds": 600},
+        ).status_code == 200
+
+    tool_proposal = json.dumps({
+        "type": "tool_call",
+        "name": "device.app_launch.submit",
+        "payload": {
+            "device_id": device_id,
+            "app": "notepad",
+            "idempotency_key": "9a5327bb-2796-4af2-a23c-5ef0c18526f1",
+        },
+    })
+
+    class SequenceProvider(ScriptedProvider):
+        def __init__(self, outputs):
+            super().__init__(outputs[0])
+            self.outputs = list(outputs)
+
+        def generate(self, request):
+            self.calls += 1
+            self.requests.append(request)
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text=self.outputs.pop(0),
+            )
+
+    provider = SequenceProvider([
+        tool_proposal,
+        json.dumps({
+            "type": "final",
+            "answer": "The Notepad launch request is queued for the Windows device.",
+        }),
+    ])
+    router = _router(provider)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **kwargs: router,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        lambda **kwargs: router,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-device-launch-001"},
+        json={
+            "goal": "Queue opening Notepad on my paired Windows workstation.",
+            "provider_mode": "local",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 2,
+            "max_output_tokens": 128,
+        },
+    )
+    assert submitted.status_code == 202
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider.calls == 2
+    assert "device.app_launch.submit" in provider.requests[0].input_text
+    assert '"device.app_launch"' in provider.requests[0].input_text
+    assert '"device.registry.read"' in provider.requests[0].input_text
+
+    finished = client.get(
+        f"/agent/model-run-workflows/{submitted.json()['workflow_id']}"
+    )
+    assert finished.status_code == 200
+    assert finished.json()["status"] == "succeeded"
+    execution = finished.json()["result"]["execution"]
+    assert execution["status"] == "completed"
+    assert execution["tool_calls"] == 1
+    assert execution["answer"] == "The Notepad launch request is queued for the Windows device."
+
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert len(tasks) == 1
+    assert tasks[0]["status"] == "queued"
+    assert tasks[0]["app"] == "notepad"
