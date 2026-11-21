@@ -196,9 +196,8 @@ class DeviceTaskRepository:
         timeout_seconds: int,
         required_owner_permissions: frozenset[str] = frozenset(),
     ) -> tuple[dict[str, object], bool]:
-        now = self._now()
         if scheduled_at is None:
-            scheduled = now
+            scheduled = None
             digest_scheduled_at = None
         else:
             if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
@@ -223,6 +222,8 @@ class DeviceTaskRepository:
             # Read the authorization clock only after acquiring the write lock.
             # A grant can expire while BEGIN IMMEDIATE waits for another writer.
             transaction_now = self._now()
+            if scheduled is None:
+                scheduled = transaction_now
             device = connection.execute(
                 """SELECT owner_user_id,status,scopes_json
                    FROM personal_devices WHERE device_id=?""",
@@ -321,10 +322,10 @@ class DeviceTaskRepository:
         device_id: str,
         granted_scopes: frozenset[str],
     ) -> dict[str, object] | None:
-        now = self._now()
-        now_text = now.isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now = self._now()
+            now_text = now.isoformat()
             device = connection.execute(
                 """SELECT status,owner_user_id FROM personal_devices WHERE device_id=?""",
                 (device_id,),
@@ -406,9 +407,9 @@ class DeviceTaskRepository:
         error_code: str | None,
         duration_ms: int,
     ) -> dict[str, object] | None:
-        now_text = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now_text = self._now().isoformat()
             row = connection.execute(
                 """SELECT * FROM personal_device_tasks
                    WHERE task_id=? AND owner_user_id=? AND device_id=?""",
@@ -472,9 +473,9 @@ class DeviceTaskRepository:
         self, *, owner_user_id: str, device_id: str, limit: int = 100
     ) -> list[dict[str, object]]:
         bounded_limit = max(1, min(limit, 100))
-        now_text = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now_text = self._now().isoformat()
             device = connection.execute(
                 "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
                 (owner_user_id, device_id),
@@ -493,9 +494,9 @@ class DeviceTaskRepository:
     def get_for_owner(
         self, *, owner_user_id: str, device_id: str, task_id: str
     ) -> dict[str, object] | None:
-        now_text = self._now().isoformat()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now_text = self._now().isoformat()
             device = connection.execute(
                 "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
                 (owner_user_id, device_id),
@@ -513,9 +514,11 @@ class DeviceTaskRepository:
     def cancel_for_owner(
         self, *, owner_user_id: str, device_id: str, task_id: str
     ) -> dict[str, object] | None:
-        now_text = self._now().isoformat()
+        conflict = False
+        updated = None
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            now_text = self._now().isoformat()
             device = connection.execute(
                 "SELECT 1 FROM personal_devices WHERE owner_user_id=? AND device_id=?",
                 (owner_user_id, device_id),
@@ -531,29 +534,35 @@ class DeviceTaskRepository:
             if row is None:
                 return None
             if row["status"] != "queued":
-                raise DeviceTaskConflict("Only queued device tasks can be cancelled safely")
-            connection.execute(
-                """UPDATE personal_device_tasks
-                   SET status='cancelled',updated_at=?,completed_at=?
-                   WHERE task_id=? AND status='queued'""",
-                (now_text, now_text, task_id),
-            )
-            self._audit(
-                connection,
-                event_type="device.task_cancelled",
-                outcome="cancelled",
-                task_id=task_id,
-                owner_user_id=owner_user_id,
-                actor_type="owner",
-                actor_id=owner_user_id,
-                action=row["action"],
-                required_scope=row["required_scope"],
-                reason_code="owner_cancelled_before_claim",
-            )
-            updated = connection.execute(
-                "SELECT * FROM personal_device_tasks WHERE task_id=?",
-                (task_id,),
-            ).fetchone()
+                conflict = True
+                updated = row
+            else:
+                connection.execute(
+                    """UPDATE personal_device_tasks
+                       SET status='cancelled',updated_at=?,completed_at=?
+                       WHERE task_id=? AND status='queued'""",
+                    (now_text, now_text, task_id),
+                )
+                self._audit(
+                    connection,
+                    event_type="device.task_cancelled",
+                    outcome="cancelled",
+                    task_id=task_id,
+                    owner_user_id=owner_user_id,
+                    actor_type="owner",
+                    actor_id=owner_user_id,
+                    action=row["action"],
+                    required_scope=row["required_scope"],
+                    reason_code="owner_cancelled_before_claim",
+                )
+                updated = connection.execute(
+                    "SELECT * FROM personal_device_tasks WHERE task_id=?",
+                    (task_id,),
+                ).fetchone()
+        if conflict:
+            raise DeviceTaskConflict("Only queued device tasks can be cancelled safely")
+        if updated is None:
+            return None
         return self._serialize(updated)
 
     def revoke_device_tasks(
