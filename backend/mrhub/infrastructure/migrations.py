@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from dataclasses import dataclass
+from itertools import pairwise
 
 
 class MigrationError(RuntimeError):
@@ -1460,8 +1461,28 @@ class SchemaMigrator:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
+    def _validate_migration_registry(self) -> None:
+        """Reject invalid version definitions before touching the database."""
+        versions = tuple(migration.version for migration in MIGRATIONS)
+        if not versions or any(
+            not isinstance(version, int)
+            or isinstance(version, bool)
+            or version < 1
+            for version in versions
+        ):
+            raise MigrationError(
+                "Migration registry versions must be positive integers"
+            )
+        if any(
+            current <= previous for previous, current in pairwise(versions)
+        ):
+            raise MigrationError(
+                "Migration registry versions must be strictly increasing"
+            )
+
     def migrate(self) -> list[int]:
         """Apply pending migrations without locking an already-current database."""
+        self._validate_migration_registry()
         connection = self.connection
         connection.execute(
             """CREATE TABLE IF NOT EXISTS schema_migrations (
