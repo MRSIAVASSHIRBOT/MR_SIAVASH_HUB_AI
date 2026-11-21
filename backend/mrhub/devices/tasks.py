@@ -220,6 +220,9 @@ class DeviceTaskRepository:
         )
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            # Read the authorization clock only after acquiring the write lock.
+            # A grant can expire while BEGIN IMMEDIATE waits for another writer.
+            transaction_now = self._now()
             device = connection.execute(
                 """SELECT owner_user_id,status,scopes_json
                    FROM personal_devices WHERE device_id=?""",
@@ -238,14 +241,14 @@ class DeviceTaskRepository:
                 active_grant = connection.execute(
                     """SELECT 1 FROM tool_permission_grants
                        WHERE owner_user_id=? AND permission=? AND expires_at>?""",
-                    (owner_user_id, permission, now.isoformat()),
+                    (owner_user_id, permission, transaction_now.isoformat()),
                 ).fetchone()
                 if active_grant is None:
                     raise DeviceTaskPermissionError(
                         "Owner lacks an active grant for the requested device action"
                     )
 
-            self._reconcile(connection, device_id=device_id, now_text=now.isoformat())
+            self._reconcile(connection, device_id=device_id, now_text=transaction_now.isoformat())
             existing = connection.execute(
                 """SELECT * FROM personal_device_tasks
                    WHERE owner_user_id=? AND idempotency_key_hash=?""",
@@ -257,15 +260,15 @@ class DeviceTaskRepository:
                 return self._serialize(existing), False
 
             if (
-                scheduled < now - timedelta(seconds=30)
-                or scheduled > now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
+                scheduled < transaction_now - timedelta(seconds=30)
+                or scheduled > transaction_now + timedelta(seconds=self.MAX_SCHEDULE_AHEAD_SECONDS)
             ):
                 raise DeviceTaskError("Scheduled time must be now or within the next 30 days")
             expires_at = scheduled + timedelta(seconds=expires_in_seconds)
-            if expires_at <= now:
+            if expires_at <= transaction_now:
                 raise DeviceTaskError("Task expiry must be in the future")
             if action == "screen.capture" and (
-                scheduled > now + timedelta(minutes=5) or expires_in_seconds > 300
+                scheduled > transaction_now + timedelta(minutes=5) or expires_in_seconds > 300
             ):
                 raise DeviceTaskError("Sensitive screenshot tasks must be confirmed for near-term execution")
 
@@ -290,7 +293,7 @@ class DeviceTaskRepository:
                     json.dumps(parameters, sort_keys=True, separators=(",", ":")),
                     required_scope, request_digest, self._hash(idempotency_key), timeout_seconds,
                     scheduled.isoformat(), expires_at.isoformat(), int(owner_confirmed),
-                    now.isoformat(), now.isoformat(),
+                    transaction_now.isoformat(), transaction_now.isoformat(),
                 ),
             )
             self._audit(
