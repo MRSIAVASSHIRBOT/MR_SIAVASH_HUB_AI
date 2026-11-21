@@ -27,12 +27,12 @@ PROJECTS: tuple[dict[str, str | None], ...] = (
         "description": "وب‌سایت و هویت دیجیتال شخصی",
     },
     {
-        "project_id": "gshop",
-        "name": "Gshop",
-        "repository": "MRSIAVASSHIRBOT/Gshop",
-        "repository_url": "https://github.com/MRSIAVASSHIRBOT/Gshop",
-        "service_url": "https://gshop11.ir/",
-        "description": "فروشگاه اینترنتی و پنل مدیریت",
+        "project_id": "mr-siavash-el-agent",
+        "name": "MR_SIAVASH_EL_AGENT",
+        "repository": "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT",
+        "repository_url": "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT",
+        "service_url": None,
+        "description": "عامل مستقل اجرای محلی Windows و Android و اتصال کنترل‌شده به Hub",
     },
     {
         "project_id": "mr-siavash-el-ai",
