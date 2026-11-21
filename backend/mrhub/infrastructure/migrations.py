@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from dataclasses import dataclass
+from itertools import pairwise
 
 
 class MigrationError(RuntimeError):
@@ -1473,8 +1474,7 @@ class SchemaMigrator:
                 "Migration registry versions must be positive integers"
             )
         if any(
-            current <= previous
-            for previous, current in zip(versions, versions[1:])
+            current <= previous for previous, current in pairwise(versions)
         ):
             raise MigrationError(
                 "Migration registry versions must be strictly increasing"
