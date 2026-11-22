@@ -581,3 +581,132 @@ def test_persisted_plan_read_hides_records_owned_by_another_user(monkeypatch):
         )
 
     assert error.value.status_code == 404
+
+
+def test_persisted_plan_read_rejects_digest_mismatch_before_registry_use(monkeypatch):
+    from datetime import UTC, datetime
+    from uuid import UUID, uuid4
+
+    owner = "owner-digest"
+    plan_id = str(uuid4())
+    key = b"p" * 32
+    work_order = WorkOrder(
+        goal="Review the registered capability",
+        intent="Review only",
+        required_capabilities=["tool.alpha"],
+        acceptance_criteria=["The plan digest is checked"],
+        verification_steps=["Recompute the canonical digest"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        rationale="One review step",
+        steps=[
+            PlanStep(
+                step_id="review",
+                description="Review the persisted plan",
+                required_capabilities=["tool.alpha"],
+                verifies_criteria=["The plan digest is checked"],
+                verification="Compare the canonical digest",
+            )
+        ],
+    )
+    payload = {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+    }
+    envelope = encrypt_plan_payload(
+        payload,
+        plan_id=plan_id,
+        owner_user_id=owner,
+        key=key,
+    )
+    record = SimpleNamespace(
+        plan_id=plan_id,
+        owner_user_id=owner,
+        status="active",
+        plan_digest="0" * 64,
+        envelope=envelope,
+        created_at=datetime(2026, 11, 22, tzinfo=UTC).isoformat(),
+        expires_at=datetime(2026, 11, 22, 20, 15, tzinfo=UTC).isoformat(),
+    )
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakePlanRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def get(self, requested_plan_id, *, owner_user_id):
+            assert requested_plan_id == plan_id
+            assert owner_user_id == owner
+            return record
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+    monkeypatch.setattr(agent_routes, "load_payload_key", lambda: key)
+    monkeypatch.setattr(
+        agent_routes,
+        "build_tool_registry",
+        lambda **_kwargs: pytest.fail("registry must not be read after digest failure"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.get_persisted_goal_work_order_plan(
+            UUID(plan_id),
+            SimpleNamespace(user_id=owner),
+            Response(),
+        )
+
+    assert error.value.status_code == 409
+    assert error.value.detail == "Plan record failed integrity or schema validation"
+
+
+def test_persisted_plan_read_returns_gone_for_expired_records_before_decryption(monkeypatch):
+    from uuid import uuid4
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakePlanRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def get(self, _plan_id, *, owner_user_id):
+            assert owner_user_id == "owner-expired"
+            return SimpleNamespace(status="expired")
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+    monkeypatch.setattr(
+        agent_routes,
+        "load_payload_key",
+        lambda: pytest.fail("expired records must not be decrypted"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.get_persisted_goal_work_order_plan(
+            uuid4(),
+            SimpleNamespace(user_id="owner-expired"),
+            Response(),
+        )
+
+    assert error.value.status_code == 410
