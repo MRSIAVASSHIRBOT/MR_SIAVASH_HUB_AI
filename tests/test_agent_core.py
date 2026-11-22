@@ -937,3 +937,69 @@ def test_agent_plan_request_canonical_payload_includes_explicit_dependencies():
 
     assert request.canonical_payload()["tools"][0]["depends_on"] == ["step-3"]
     assert request.canonical_payload()["tools"][1]["depends_on"] == []
+
+
+def test_agent_execute_follows_request_declared_dag_dependencies():
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute explicit DAG dependencies in topological order",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second-request-tool",
+        "first-request-tool",
+    ]
+    assert events == [
+        (2, "running", None),
+        (2, "succeeded", None),
+        (3, "running", None),
+        (3, "succeeded", None),
+    ]
+
+
+def test_agent_execute_resumes_explicit_dag_by_durable_execution_position():
+    events = []
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Resume the remaining step in an explicit DAG",
+            tools=[
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "first-request-tool"},
+                    "depends_on": ["step-3"],
+                },
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "second-request-tool"},
+                    "depends_on": [],
+                },
+            ],
+        ),
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "first-request-tool"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
