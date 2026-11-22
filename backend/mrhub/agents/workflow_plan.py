@@ -10,7 +10,6 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-
 MAX_STEPS = 100
 MAX_STEP_ID_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1_000
