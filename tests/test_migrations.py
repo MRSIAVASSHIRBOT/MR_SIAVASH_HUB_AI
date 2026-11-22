@@ -1185,7 +1185,7 @@ def test_v53_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
         for row in connection.execute("PRAGMA foreign_key_list(agent_work_order_plans)")
     }
     assert ("auth_users", "owner_user_id", "user_id", "CASCADE") in foreign_keys
-    assert ("workflow_runs", "workflow_id", "workflow_id", "SET NULL") in foreign_keys
+    assert ("workflow_runs", "workflow_id", "workflow_id", "CASCADE") in foreign_keys
 
     applied = connection.execute(
         "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
