@@ -5,8 +5,8 @@ capabilities; descriptions are not treated as executable capability identifiers.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 
 MAX_REQUIRED_CAPABILITIES = 50
