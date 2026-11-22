@@ -137,6 +137,15 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
 
 def test_goal_plan_endpoint_blocks_prohibited_goal_before_planning(monkeypatch):
     router = build_router(work_order_output())
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
     monkeypatch.setattr(
         agent_routes,
@@ -214,6 +223,15 @@ def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monk
     def reject_remote_request(_owner_id):
         raise HTTPException(status_code=429, detail="rate limited")
 
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
     monkeypatch.setattr(agent_routes, "_enforce_kimi_request_limit", reject_remote_request)
 
