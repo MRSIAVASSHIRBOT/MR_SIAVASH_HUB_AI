@@ -121,12 +121,14 @@ def validate_plan_execution_payload(
     if not isinstance(binding, dict) or set(binding) != {
         "plan_id",
         "plan_digest",
+        "request_digest",
         "step_bindings",
     }:
         raise PlanExecutionBindingError("Plan binding metadata is invalid")
 
     plan_id = binding.get("plan_id")
     plan_digest = binding.get("plan_digest")
+    request_digest = binding.get("request_digest")
     entries = binding.get("step_bindings")
     try:
         canonical_plan_id = str(UUID(plan_id))
@@ -136,6 +138,8 @@ def validate_plan_execution_payload(
         raise PlanExecutionBindingError("Plan identifier is not canonical")
     if not isinstance(plan_digest, str) or not _DIGEST_RE.fullmatch(plan_digest):
         raise PlanExecutionBindingError("Plan digest is invalid")
+    if not isinstance(request_digest, str) or not _DIGEST_RE.fullmatch(request_digest):
+        raise PlanExecutionBindingError("Execution request digest is invalid")
     if (
         not isinstance(entries, list)
         or not 1 <= len(entries) <= MAX_EXECUTABLE_STEPS
