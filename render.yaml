@@ -1,14 +1,12 @@
-# Single-instance deployment: Hub API, Hub worker, and EL_AI bridge consumer
-# share one persistent volume. SQLite requires one service instance.
+# Hub API + SQLite worker and an isolated EL_AI background worker.
+# The EL_AI worker has its own runtime, environment, and persistent disk.
 services:
   - type: web
     name: mr-siavash-hub-ai
     runtime: python
     plan: starter
     region: frankfurt
-    buildCommand: >-
-      pip install . &&
-      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@e8cb136c22ba5a343cb5725763b23cadb47f55de"
+    buildCommand: pip install .
     startCommand: bash scripts/start-render.sh
     healthCheckPath: /ready
     autoDeploy: true
@@ -29,15 +27,33 @@ services:
         value: /var/data/mrhub.sqlite3
       - key: MRH_REQUIRE_WORKER_FOR_READINESS
         value: "true"
+      # Hub-only secrets. They are not copied to the EL_AI worker.
       - key: MRH_WORKFLOW_PAYLOAD_KEY
         sync: false
       - key: MRH_OWNER_SETUP_TOKEN
         sync: false
-      # EL_AI runs beside the Hub and consumes the deployed Cloudflare bridge.
+
+  - type: worker
+    name: mr-siavash-el-ai-bridge
+    runtime: python
+    plan: starter
+    region: frankfurt
+    buildCommand: >-
+      pip install . &&
+      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@e8cb136c22ba5a343cb5725763b23cadb47f55de"
+    startCommand: python -m el_ai
+    autoDeploy: true
+    disk:
+      name: el-ai-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.18
       - key: EL_AI_ENVIRONMENT
         value: production
       - key: EL_AI_STATE_DIR
-        value: /var/data/el-ai
+        value: /var/data
       - key: EL_AI_CREDENTIAL_STORE
         value: encrypted_file
       - key: EL_AI_CREDENTIAL_ENCRYPTION_KEY
@@ -56,7 +72,14 @@ services:
         value: "false"
       - key: HUB_INTEGRATION_ENABLED
         value: "true"
+      # Render injects the Hub private host:port; EL_AI accepts this bare
+      # host:port only with HUB_ALLOW_RENDER_PRIVATE_NETWORK=true.
       - key: HUB_API_BASE_URL
-        value: http://127.0.0.1:10000
+        fromService:
+          name: mr-siavash-hub-ai
+          type: web
+          property: hostport
       - key: HUB_ALLOW_REMOTE
         value: "false"
+      - key: HUB_ALLOW_RENDER_PRIVATE_NETWORK
+        value: "true"

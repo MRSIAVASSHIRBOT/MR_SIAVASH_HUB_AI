@@ -1,39 +1,63 @@
-# Render deployment (single-instance, persistent runtime)
+# Render deployment: isolated Hub and EL_AI services
 
-This deployment target is deliberately a **single paid web service**. The Hub API, Hub pull worker, and EL_AI Cloudflare-bridge consumer run as three supervised processes in one instance. The Hub API and worker share one durable SQLite file; EL_AI uses a separate state directory on the same persistent disk. Do not scale this service horizontally or create a second Hub worker service with the same SQLite file.
+This Blueprint defines two separate paid services in Frankfurt:
 
-## Required host configuration
+1. **Hub web service** — runs the Hub API and its SQLite-backed worker. These two processes share the Hub service's persistent disk because the current database is SQLite.
+2. **EL_AI background worker** — runs the Cloudflare Telegram bridge consumer in a separate Render service, with its own environment, process identity, and persistent disk. It has no Hub database mount and receives neither Hub master secret nor the one-time owner-setup token.
 
-The repository includes `render.yaml`. Before creating the service, review Render's current Starter plan and 10 GB persistent-disk pricing in the Render dashboard. At the currently published rates, Starter compute is about $7/month and a 10 GB persistent disk is about $2.50/month, for a base estimate of $9.50/month before bandwidth overages, taxes, or other account charges. Starter has 0.5 CPU and 512 MB RAM; this is a constrained size for three Python processes and FFmpeg workloads, so production suitability is not yet established. A Standard service is currently listed at about $25/month (1 CPU, 2 GB RAM), making the same disk configuration about $27.50/month before extras. The blueprint remains on Starter pending explicit budget review; do not deploy until the account owner/guardian has reviewed the exact dashboard charges and approved them. Disk capacity is finite; production media retention still needs monitoring and a cleanup/quota policy before high-volume use.
+Render background workers can send requests over the private network but do not expose a public URL. Persistent disks are private to the service instance that owns them. See [Render private networking](https://render.com/docs/private-network) and [persistent disks](https://render.com/docs/disks).
 
-The following values are intentionally not synchronized from the repository and must be entered through Render's secret environment UI. Never put their values in Git or chat:
+## Service boundary and network policy
 
-- `MRH_WORKFLOW_PAYLOAD_KEY`: generate a URL-safe Base64 encoding of exactly 32 cryptographically random bytes. Keep it stable and back it up securely; losing it makes queued encrypted workflow payloads unreadable.
-- `MRH_OWNER_SETUP_TOKEN`: a separate, high-entropy one-time bootstrap credential. Do not reuse the workflow key or any Telegram/Cloudflare secret.
-- `EL_AI_CREDENTIAL_ENCRYPTION_KEY`: base64-encoded 32 random bytes used by the AES-256-GCM file store. Keep it stable and back it up securely; losing it makes the paired Hub credentials unreadable.
-- `TELEGRAM_BRIDGE_SHARED_SECRET`: must exactly match the Cloudflare Worker `BRIDGE_SHARED_SECRET` value. Do not read it back or expose it in logs.
-- `TELEGRAM_OWNER_IDS`: numeric Telegram owner ID(s) used by the Python runtime. For the current single-owner Worker deployment, this must match the Cloudflare plain-text binding `ALLOWED_TELEGRAM_USER_ID` exactly. Keep the ID out of logs and screenshots.
+The EL_AI worker receives the Hub API's private `host:port` through Blueprint `fromService.property: hostport`. It passes this value as a bare host:port in `HUB_API_BASE_URL`. EL_AI accepts that form only when `HUB_ALLOW_RENDER_PRIVATE_NETWORK=true`, and only when it is a single-label internal hostname with an explicit port. It rejects public DNS names, IP addresses, malformed hostnames, and ordinary HTTP URLs under this setting. Public Hub URLs still require HTTPS and `HUB_ALLOW_REMOTE=true`.
 
-The service sets `MRH_REQUIRE_WORKER_FOR_READINESS=true`. The `/ready` endpoint therefore remains unhealthy until the database migrations and the Hub worker heartbeat are both healthy. EL_AI starts the Cloudflare bridge consumer and stores only AES-GCM encrypted Hub credentials under `/var/data/el-ai`; its 32-byte encryption key is supplied through Render's secret environment UI. The persistent disk is mounted at `/var/data`.
+The Hub service remains a web service so existing authenticated Hub API clients can continue to reach it. The EL_AI worker uses Render's private hostname instead of the public URL. Hub authorization remains application-level: owner-initiated pairing issues scoped credentials, and EL_AI calls only the dedicated Telegram integration routes. The worker must never receive the Hub database file, `MRH_WORKFLOW_PAYLOAD_KEY`, or `MRH_OWNER_SETUP_TOKEN`.
 
-## Initialize the owner account
+## Resource and cost review
 
-After deployment, send one HTTPS request to `POST /auth/setup` with a JSON body containing a unique password of at least 14 characters and the header `X-MRH-Owner-Setup-Token` containing the one-time bootstrap credential. Do not put either value in source control, chat messages, URL parameters, or logs.
+The Blueprint currently declares:
+- Hub web service: Starter plan, Frankfurt, 10 GB persistent disk.
+- EL_AI background worker: Starter plan, Frankfurt, separate 1 GB persistent disk.
 
-The endpoint compares the supplied credential in constant time, ignores forwarded-IP headers, and still rejects a second initialization. Immediately after receiving `owner_initialized`:
+This is a two-compute-service design and therefore costs more than the previous single-service layout. Exact current compute and disk charges, taxes, bandwidth, and workspace-specific pricing must be reviewed by the account owner/guardian in the Render Dashboard before any Blueprint approval. No Render service or disk is created by changing this repository, and this work does not authorize provisioning. Keep Blueprint auto-sync disabled until the first sync plan and its complete cost are reviewed and explicitly approved.
 
-1. Remove `MRH_OWNER_SETUP_TOKEN` from the Render environment and redeploy.
+Starter resources remain unverified for production workload. The Hub and EL_AI worker need runtime memory/CPU measurements; FFmpeg processing should remain disabled or separately provisioned until capacity is validated. Keep one Hub instance while using SQLite.
+
+## Required secrets
+
+Enter secret values only in the Render service's Environment page. Never place them in Git, chat, URLs, or logs.
+
+**Hub service only**
+- `MRH_WORKFLOW_PAYLOAD_KEY`: URL-safe Base64 encoding of exactly 32 random bytes. Keep stable and back it up securely; losing it makes queued encrypted workflow payloads unreadable.
+- `MRH_OWNER_SETUP_TOKEN`: separate, high-entropy one-time bootstrap credential. Do not reuse another secret.
+
+**EL_AI worker only**
+- `EL_AI_CREDENTIAL_ENCRYPTION_KEY`: base64-encoded 32 random bytes for AES-256-GCM encrypted credential storage. Keep stable and back it up securely.
+- `TELEGRAM_BRIDGE_SHARED_SECRET`: must exactly match the Cloudflare Worker `BRIDGE_SHARED_SECRET`.
+- `TELEGRAM_OWNER_IDS`: numeric Telegram owner ID(s). For the current single-owner Worker, this must match `ALLOWED_TELEGRAM_USER_ID` exactly.
+
+The Cloudflare Worker retains its own secret bindings. No Worker secret value should be read back or copied into Git.
+
+## Initialize the Hub owner
+
+After the Hub web service is deployed, send one HTTPS request to `POST /auth/setup` with a unique password of at least 14 characters and header `X-MRH-Owner-Setup-Token`. Do not put either value in source control, chat, URL parameters, or logs.
+
+The endpoint compares the supplied credential in constant time, ignores forwarded-IP headers, and rejects a second initialization. Immediately after receiving `owner_initialized`:
+
+1. Remove `MRH_OWNER_SETUP_TOKEN` from the Hub service's Render environment and redeploy.
 2. Log in through `POST /auth/login` over HTTPS.
 3. Store the returned session token only in the intended trusted client/secret store.
-4. Confirm `/ready` reports both the database and worker ready.
+4. Confirm `/ready` reports both the database and Hub worker ready.
 
 The local loopback-only setup path remains supported for local development. A remote setup request without the one-time deployment credential is rejected.
 
 ## Operational boundaries
 
-- Keep exactly one service instance while using SQLite.
-- Do not enable horizontal scaling; SQLite is not a distributed database.
-- The API, Hub worker, and EL_AI bridge consumer are supervised by one startup script and share the same service environment. Shutdown signals are forwarded to all three processes, and an unexpected exit of any process terminates the service. The EL_AI package is pinned to reviewed squash-merge commit `e8cb136c22ba5a343cb5725763b23cadb47f55de` from `MR_SIAVASH_EL_AI`. The encrypted-file backend is POSIX-only; Windows deployments must use the OS keyring.
-- The local Ollama, local code engine, and loopback-only MCP integrations remain disabled/unavailable in this cloud deployment unless separately redesigned and secured.
-- A successful Render deployment is not proof that Telegram webhook ingress, bridge consumption, Hub authentication, or message replies work. Run the full end-to-end acceptance checklist before declaring the bot online.
-- Never store real Telegram bot tokens, Cloudflare bridge secrets, owner passwords, or session tokens in Git.
+- Keep exactly one Hub service instance while using SQLite. Do not horizontally scale it or add a second Hub worker against the same database.
+- Hub API and Hub worker remain supervised together; signals are forwarded to both, and an unexpected exit stops the service.
+- EL_AI runs independently as a background worker. Its state and encrypted paired credentials live only on its own disk.
+- The EL_AI package is pinned to the reviewed credential-store commit in the worker build command. Update this pin only after the corresponding EL_AI change has been merged and reviewed.
+- The EL_AI worker uses Cloudflare bridge mode and must never start Telegram `getUpdates`; local polling and an active webhook must not run simultaneously.
+- The local Ollama, local code engine, and loopback-only MCP integrations are unavailable in this cloud deployment unless separately redesigned and secured.
+- Successful deployment does not prove Telegram ingress, queue consumption, Hub pairing, or message replies. Run the complete end-to-end acceptance checklist before declaring the bot online.
+- Never store real Telegram/Cloudflare secrets, owner passwords, or session tokens in Git.

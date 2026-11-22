@@ -1,36 +1,51 @@
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_render_supervisor_starts_and_stops_all_runtime_processes():
+def test_render_supervisor_starts_and_stops_only_hub_processes():
     script = (ROOT / "scripts" / "start-render.sh").read_text(encoding="utf-8")
 
     assert "python -m mrhub.worker_service &" in script
     assert 'python -m uvicorn mrhub.main:app --host "$MRH_HOST" --port "$MRH_PORT" &' in script
-    assert "python -m el_ai &" in script
-    assert 'wait -n "$API_PID" "$WORKER_PID" "$EL_AI_PID"' in script
-    assert 'kill -TERM "$API_PID" "$WORKER_PID" "$EL_AI_PID"' in script
-    assert 'STATUS=1' in script
-    assert 'trap shutdown TERM INT EXIT' in script
+    assert 'wait -n "$API_PID" "$WORKER_PID"' in script
+    assert 'kill -TERM "$API_PID" "$WORKER_PID"' in script
+    assert "python -m el_ai" not in script
+    assert "EL_AI_PID" not in script
+    assert "STATUS=1" in script
+    assert "trap shutdown TERM INT EXIT" in script
 
 
-def test_render_blueprint_keeps_secrets_private_and_public_bot_disabled():
+def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     blueprint = (ROOT / "render.yaml").read_text(encoding="utf-8")
+    assert "name: mr-siavash-hub-ai" in blueprint
+    assert "name: mr-siavash-el-ai-bridge" in blueprint
+    assert "type: worker" in blueprint
+    assert "property: hostport" in blueprint
+    assert "HUB_ALLOW_RENDER_PRIVATE_NETWORK" in blueprint
+    assert 'value: "true"' in blueprint
+    assert "@e8cb136c22ba5a343cb5725763b23cadb47f55de" in blueprint
+    assert "mountPath: /var/data" in blueprint
 
-    for key in (
-        "MRH_WORKFLOW_PAYLOAD_KEY",
-        "MRH_OWNER_SETUP_TOKEN",
+    hub, bridge = blueprint.split("  - type: worker", 1)
+    for hub_secret in ("MRH_WORKFLOW_PAYLOAD_KEY", "MRH_OWNER_SETUP_TOKEN"):
+        assert f"key: {hub_secret}\n        sync: false" in hub
+        assert hub_secret not in bridge
+
+    for bridge_secret in (
         "EL_AI_CREDENTIAL_ENCRYPTION_KEY",
         "TELEGRAM_BRIDGE_SHARED_SECRET",
         "TELEGRAM_OWNER_IDS",
     ):
-        assert f"key: {key}\n        sync: false" in blueprint
+        assert f"key: {bridge_secret}\n        sync: false" in bridge
+        assert bridge_secret not in hub
 
-    assert "TELEGRAM_TRANSPORT" in blueprint
-    assert "value: cloudflare_bridge" in blueprint
-    assert "TELEGRAM_PUBLIC_ENABLED" in blueprint
-    assert 'value: "false"' in blueprint
-    assert "EL_AI_CREDENTIAL_STORE" in blueprint
-    assert "value: encrypted_file" in blueprint
-    assert "@e8cb136c22ba5a343cb5725763b23cadb47f55de" in blueprint
+    assert "TELEGRAM_TRANSPORT" not in hub
+    assert "EL_AI_STATE_DIR" not in hub
+    assert "MRH_DATABASE_PATH" not in bridge
+    assert "MRH_WORKFLOW_PAYLOAD_KEY" not in bridge
+    assert "MRH_OWNER_SETUP_TOKEN" not in bridge
+    assert 'value: "false"' in bridge
+    assert "plan: starter" in hub
+    assert "plan: starter" in bridge
