@@ -1,7 +1,5 @@
 """Authenticated agent planning API."""
 
-import hashlib
-import json
 import sqlite3
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
