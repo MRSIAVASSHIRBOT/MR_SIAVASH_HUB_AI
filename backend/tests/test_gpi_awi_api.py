@@ -9,9 +9,9 @@ from fastapi import HTTPException, Response
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.work_order import WorkOrder
+from mrhub.api.routes import agent as agent_routes
 from mrhub.domain.tasks import RiskClass
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_plan_payload
-from mrhub.api.routes import agent as agent_routes
 from mrhub.providers.base import ProviderHealth, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
 
@@ -567,7 +567,6 @@ def test_persisted_plan_read_hides_records_owned_by_another_user(monkeypatch):
 
         def get(self, _plan_id, *, owner_user_id):
             assert owner_user_id == "owner-2"
-            return None
 
     monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
