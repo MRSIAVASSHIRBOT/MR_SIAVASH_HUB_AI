@@ -613,7 +613,11 @@ def test_dag_resume_uses_topological_checkpoint_positions(monkeypatch):
     assert result["result"]["evaluation"]["unknown"] == 0
 
 
-def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeypatch):
+def test_resume_rejects_mismatched_persisted_step_input_digest(monkeypatch):
+    import hashlib
+    import json
+    import pytest
+
     from mrhub.tools.builtins import build_tool_registry
 
     client = authenticated_client()
@@ -635,44 +639,8 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
         lambda **kwargs: registry,
     )
 
-    reverse_order = {"enabled": True}
-    original_plan = AgentCore.plan
-
-    def dynamic_plan(self, request):
-        plan = original_plan(self, request)
-        if len(request.tools) == 2:
-            if reverse_order["enabled"]:
-                execution_ids = ["step-3", "step-2"]
-            else:
-                execution_ids = ["step-2", "step-3"]
-            descriptions = {
-                "step-1": "Select the model provider",
-                "step-2": "Execute the first request tool",
-                "step-3": "Execute the second request tool",
-            }
-            plan["dependency_plan"] = {
-                "ordered_steps": [
-                    {
-                        "step_id": "step-1",
-                        "description": descriptions["step-1"],
-                        "depends_on": [],
-                    },
-                    *[
-                        {
-                            "step_id": step_id,
-                            "description": descriptions[step_id],
-                            "depends_on": ["step-1"],
-                        }
-                        for step_id in execution_ids
-                    ],
-                ],
-                "dependency_levels": [["step-1"], execution_ids],
-            }
-        return plan
-
-    monkeypatch.setattr(AgentCore, "plan", dynamic_plan)
     request = {
-        "goal": "Reject a changed planner mapping for repeated tool names",
+        "goal": "Reject a tampered durable input identity for repeated tool names",
         "tools": [
             {"name": "text.echo", "payload": {"text": "first-payload"}},
             {"name": "text.echo", "payload": {"text": "second-payload"}},
@@ -683,9 +651,6 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
     workflow_id = UUID(created.json()["workflow"]["workflow_id"])
 
     def digest_echo(text_value):
-        import hashlib
-        import json
-
         output = {"text": text_value, "character_count": len(text_value)}
         encoded = json.dumps(
             output, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -694,7 +659,7 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
 
     original_execute = AgentCore.execute
 
-    def interrupt_after_first_ordered_step(
+    def interrupt_after_first_safe_step(
         self,
         agent_request,
         *,
@@ -704,13 +669,11 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
     ):
         assert on_step is not None and on_step_result is not None
         on_step(2, "running", None)
-        on_step_result(2, digest_echo("second-payload"))
+        on_step_result(2, digest_echo("first-payload"))
         on_step(2, "succeeded", None)
-        raise RuntimeError("simulated interruption after first ordered step")
+        raise RuntimeError("simulated interruption after first durable input checkpoint")
 
-    monkeypatch.setattr(AgentCore, "execute", interrupt_after_first_ordered_step)
-    import pytest
-
+    monkeypatch.setattr(AgentCore, "execute", interrupt_after_first_safe_step)
     with pytest.raises(RuntimeError, match="Workflow execution stopped"):
         run_worker_once()
 
@@ -718,19 +681,27 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
     recovery = WorkflowRecoveryRepository(repository.database_path)
     paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert paused is not None and paused["status"] == "paused"
-    typed_request = AgentPlanRequest.model_validate(request)
-    second_tool_digest = AgentCore.workflow_step_input_digest(
-        3, typed_request.tools[1]
-    )
-    first_tool_digest = AgentCore.workflow_step_input_digest(
-        2, typed_request.tools[0]
-    )
-    assert paused["steps"][1]["input_digest"] == second_tool_digest
-    assert paused["steps"][1]["input_digest"] != first_tool_digest
 
-    # A planner that maps the same tool names to different request payloads must
-    # not be allowed to resume against the old durable checkpoint numbering.
-    reverse_order["enabled"] = False
+    typed_request = AgentPlanRequest.model_validate(request)
+    first_digest = AgentCore.workflow_step_input_digest(2, typed_request.tools[0])
+    second_digest = AgentCore.workflow_step_input_digest(3, typed_request.tools[1])
+    assert paused["steps"][1]["input_digest"] == first_digest
+    assert paused["steps"][2]["input_digest"] == second_digest
+    assert first_digest != second_digest
+
+    # Simulate corruption or an altered durable request-to-step mapping. Resume
+    # must compare the original tool identity before enqueuing any work.
+    with repository._connection() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE workflow_steps
+            SET input_digest = ?
+            WHERE workflow_id = ? AND step_number = 2
+            """,
+            ("0" * 64, str(workflow_id)),
+        )
+        assert cursor.rowcount == 1
+
     monkeypatch.setattr(AgentCore, "execute", original_execute)
     response = client.post(
         f"/agent/workflows/{workflow_id}/resume",
@@ -743,7 +714,6 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
     assert after is not None and after["status"] == "paused"
     assert after["steps"][1]["status"] == "succeeded"
     assert after["steps"][2]["status"] == "pending"
-
 
 def test_workflow_request_digest_preserves_legacy_none_free_serialization():
     import hashlib
