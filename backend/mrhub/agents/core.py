@@ -95,18 +95,18 @@ class AgentCore:
         }
         workflow_plan = plan.get("workflow_plan")
         if not isinstance(workflow_plan, dict):
-            raise RuntimeError("Agent plan is missing its validated workflow graph")
+            raise TypeError("Agent plan is missing its validated workflow graph")
         ordered_steps = workflow_plan.get("ordered_steps")
         if not isinstance(ordered_steps, list):
-            raise RuntimeError("Agent workflow graph has no ordered steps")
+            raise TypeError("Agent workflow graph has no ordered steps")
 
         ordered_step_ids: list[str] = []
         for workflow_step in ordered_steps:
             if not isinstance(workflow_step, dict):
-                raise RuntimeError("Agent workflow graph contains an invalid step")
+                raise TypeError("Agent workflow graph contains an invalid step")
             step_id = workflow_step.get("step_id")
             if not isinstance(step_id, str):
-                raise RuntimeError("Agent workflow graph contains an invalid step identifier")
+                raise TypeError("Agent workflow graph contains an invalid step identifier")
             ordered_step_ids.append(step_id)
 
         expected_step_ids = {"provider-selection", *tools_by_step}
@@ -288,7 +288,7 @@ class AgentCore:
 
         # The current AgentPlanRequest contract is an ordered tool sequence.
         # Materialize that contract as an explicit dependency graph so downstream
-        # workflow persistence, visualization, and recovery share one validated plan.
+        # workflow persistence and visualization consume one canonical structure.
         graph_steps = [
             WorkflowStep(
                 step_id="provider-selection",
