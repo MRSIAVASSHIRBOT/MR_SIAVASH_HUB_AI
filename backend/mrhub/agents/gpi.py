@@ -25,6 +25,10 @@ _MODERATE_RISK_TERMS = (
 _PROHIBITED_PATTERNS = (
     "steal credentials", "credential theft", "deploy malware",
     "bypass authorization", "evade detection", "unauthorized access",
+    "phishing page", "phishing website", "phishing site",
+    "credential harvesting", "harvest credentials", "collect passwords",
+    "collects passwords", "capture passwords", "steal passwords",
+    "fake login page", "fake sign-in page", "password harvesting",
 )
 
 
