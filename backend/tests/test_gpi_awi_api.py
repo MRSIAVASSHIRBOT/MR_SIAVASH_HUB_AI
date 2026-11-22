@@ -20,6 +20,7 @@ class QueueProvider:
         local: bool = True,
     ) -> None:
         self.outputs = list(outputs)
+        self.calls = 0
         self.descriptor = ModelDescriptor(
             provider=provider,
             model="queue-v1",
@@ -30,6 +31,7 @@ class QueueProvider:
         )
 
     def generate(self, request):
+        self.calls += 1
         return ProviderResponse(
             provider=self.descriptor.provider,
             model=self.descriptor.model,
@@ -197,3 +199,29 @@ def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
 
     # Work-order generation and AWI planning each issue one remote model request.
     assert limited_owners == ["owner-remote", "owner-remote"]
+
+
+
+def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monkeypatch):
+    router = build_router(
+        work_order_output(),
+        plan_output(),
+        provider="moonshot",
+        local=False,
+    )
+    provider = router.registry.get("moonshot", "queue-v1")
+
+    def reject_remote_request(_owner_id):
+        raise HTTPException(status_code=429, detail="rate limited")
+
+    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    monkeypatch.setattr(agent_routes, "_enforce_kimi_request_limit", reject_remote_request)
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.create_goal_work_order_plan(
+            agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
+            SimpleNamespace(user_id="owner-remote"),
+        )
+
+    assert error.value.status_code == 429
+    assert provider.calls == 0
