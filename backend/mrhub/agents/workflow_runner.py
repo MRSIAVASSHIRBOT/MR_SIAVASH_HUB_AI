@@ -508,6 +508,7 @@ class AgentWorkflowRunner:
             workflow_id,
             owner_user_id=owner_user_id,
             request_digest=request_digest,
+            definition_version=int(_workflow["definition_version"]),
         )
         AuditLogger(self.repository).record(
             event_type="workflow.resume_queued",
