@@ -518,3 +518,60 @@ def test_agent_execute_resumes_from_the_requested_workflow_step():
     assert [item["result"]["text"] for item in response["results"]] == ["resume here"]
     assert events == [(3, "running", None), (3, "succeeded", None)]
 
+
+def test_agent_plan_reports_required_capability_coverage():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Check whether the requested capability is registered",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+            required_capabilities=["text.echo", "missing.lookup"],
+        )
+    )
+
+    assert plan["capability_gaps"] == {
+        "required": ["text.echo", "missing.lookup"],
+        "available": ["text.echo"],
+        "missing": ["missing.lookup"],
+        "complete": False,
+    }
+    assert plan["execution_ready"] is False
+
+
+def test_agent_execute_fails_closed_when_required_capabilities_are_missing():
+    core = make_core()
+    calls = []
+    original_invoke = core.tool_registry.invoke
+
+    def track_invoke(*args, **kwargs):
+        calls.append(args[0])
+        return original_invoke(*args, **kwargs)
+
+    core.tool_registry.invoke = track_invoke
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Do not execute with an unresolved capability gap",
+            tools=[{"name": "text.echo", "payload": {"text": "must not run"}}],
+            required_capabilities=["filesystem.read"],
+        )
+    )
+
+    assert response["blocked"] is True
+    assert response["execution_started"] is False
+    assert response["tools_executed"] is False
+    assert response["plan"]["capability_gaps"]["missing"] == ["filesystem.read"]
+    assert calls == []
+
+
+def test_agent_plan_accepts_a_complete_registered_capability_set():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Check a fully registered capability set",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+            required_capabilities=["TEXT.ECHO"],
+        )
+    )
+
+    assert plan["capability_gaps"]["complete"] is True
+    assert plan["capability_gaps"]["missing"] == []
+    assert plan["execution_ready"] is True
+
