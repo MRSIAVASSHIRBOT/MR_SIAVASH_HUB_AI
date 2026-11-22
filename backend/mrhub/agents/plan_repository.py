@@ -68,7 +68,7 @@ class AgentWorkOrderPlanRepository:
         owner_user_id: str,
         plan_digest: str,
         envelope: EncryptedPayload,
-        expires_at: datetime,
+        ttl_seconds: int = 900,
     ) -> AgentWorkOrderPlanRecord:
         """Create one short-lived encrypted plan record for its authenticated owner."""
         try:
@@ -91,15 +91,15 @@ class AgentWorkOrderPlanRepository:
             or not 1 <= len(envelope.ciphertext_b64) <= 1_500_000
         ):
             raise AgentWorkOrderPlanError("Encrypted plan envelope is invalid")
-        if expires_at.tzinfo is None:
-            raise AgentWorkOrderPlanError("Plan expiry must be timezone-aware")
-
-        now = self._now()
-        expiry = expires_at.astimezone(UTC)
-        ttl = (expiry - now).total_seconds()
-        if not MIN_PLAN_TTL_SECONDS <= ttl <= MAX_PLAN_TTL_SECONDS:
+        if (
+            isinstance(ttl_seconds, bool)
+            or not isinstance(ttl_seconds, int)
+            or not MIN_PLAN_TTL_SECONDS <= ttl_seconds <= MAX_PLAN_TTL_SECONDS
+        ):
             raise AgentWorkOrderPlanError("Plan expiry is outside the allowed TTL range")
 
+        now = self._now()
+        expiry = now + timedelta(seconds=ttl_seconds)
         created_at = now.isoformat()
         expires_at_text = expiry.isoformat()
         with self._connect() as connection:
