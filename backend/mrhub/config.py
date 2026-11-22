@@ -25,17 +25,16 @@ class Settings(BaseSettings):
     database_path: Path = Path("./data/mrhub.sqlite3")
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
     session_ttl_hours: int = Field(default=12, ge=1, le=168)
+    # Optional one-time remote owner bootstrap credential. Keep it in the host secret store.
+    owner_setup_token: SecretStr | None = None
     local_inference_enabled: bool = False
     local_inference_base_url: str = "http://127.0.0.1:11434"
     local_inference_model: str | None = None
     local_inference_timeout_seconds: float = Field(default=60.0, ge=1.0, le=300.0)
-    # Local vision is a separate opt-in; it never falls back to a remote provider.
     local_vision_enabled: bool = False
     local_vision_model: str | None = None
     local_vision_timeout_seconds: float = Field(default=120.0, ge=1.0, le=180.0)
-    # Shared by the API and pull worker to encrypt durable Agent workflow payloads.
     workflow_payload_key: SecretStr | None = None
-    # Moonshot Kimi K3.1 Pro is a separate, explicit remote provider.
     kimi_inference_enabled: bool = False
     kimi_api_key: SecretStr | None = None
     kimi_model: str = "kimi-k3.1-pro"
@@ -50,13 +49,11 @@ class Settings(BaseSettings):
     instagram_graph_api_version: str | None = None
     public_media_base_url: str | None = None
     public_media_signing_key: SecretStr | None = None
-    # Optional local assistant gateway bridge; disabled unless explicitly configured.
     assistant_gateway_enabled: bool = False
     assistant_gateway_base_url: str | None = None
     assistant_gateway_health_path: str = Field(default="/health", min_length=1, max_length=200)
     assistant_gateway_timeout_seconds: float = Field(default=2.0, ge=0.2, le=10.0)
     assistant_gateway_max_response_bytes: int = Field(default=8192, ge=256, le=16384)
-    # Optional isolated Cloudflare Workers gateway; the provider token never enters the Hub.
     cloudflare_gateway_enabled: bool = False
     cloudflare_gateway_base_url: str | None = None
     cloudflare_gateway_token: SecretStr | None = None
@@ -64,13 +61,11 @@ class Settings(BaseSettings):
     cloudflare_gateway_max_response_bytes: int = Field(
         default=1_048_576, ge=256, le=1_048_576
     )
-    # Optional local coding service; shares the same fail-closed health contract.
     code_engine_enabled: bool = False
     code_engine_base_url: str | None = None
     code_engine_health_path: str = Field(default="/health", min_length=1, max_length=200)
     code_engine_timeout_seconds: float = Field(default=2.0, ge=0.2, le=10.0)
     code_engine_max_response_bytes: int = Field(default=8192, ge=256, le=16384)
-    # MCP is a separate, opt-in local process; numeric loopback literals only.
     mcp_enabled: bool = False
     mcp_host: Literal["127.0.0.1", "::1"] = "127.0.0.1"
     mcp_port: int = Field(default=8765, ge=1, le=65535)
