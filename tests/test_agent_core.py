@@ -562,6 +562,108 @@ def test_agent_execute_fails_closed_when_required_capabilities_are_missing():
     assert calls == []
 
 
+
+
+def test_agent_plan_preserves_legacy_sequential_dependencies():
+    request = AgentPlanRequest(
+        goal="Preserve legacy sequential tool execution",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+
+    graph = make_core().plan(request)["dependency_plan"]
+
+    assert graph["ordered_steps"] == [
+        {
+            "step_id": "step-1",
+            "description": "Select the model provider",
+            "depends_on": [],
+        },
+        {
+            "step_id": "step-2",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1"],
+        },
+        {
+            "step_id": "step-3",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-2"],
+        },
+    ]
+
+
+def test_agent_plan_supports_explicit_tool_dependency_order():
+    request = AgentPlanRequest(
+        goal="Run the second request tool before the first",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+
+    plan = make_core().plan(request)
+
+    assert plan["dependency_plan"]["ordered_steps"] == [
+        {
+            "step_id": "step-1",
+            "description": "Select the model provider",
+            "depends_on": [],
+        },
+        {
+            "step_id": "step-3",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1"],
+        },
+        {
+            "step_id": "step-2",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1", "step-3"],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "tools",
+    [
+        [
+            {"name": "text.echo", "depends_on": ["step-6"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-2"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-3"]},
+            {"name": "text.echo", "depends_on": ["step-2"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-1", "step-1"]},
+        ],
+    ],
+    ids=[
+        "unknown-dependency",
+        "self-dependency",
+        "dependency-cycle",
+        "duplicate-dependency",
+    ],
+)
+def test_agent_plan_rejects_invalid_explicit_tool_dependencies(tools):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(
+            goal="Reject malformed tool dependency declarations",
+            tools=tools,
+        )
+
+
 def test_agent_plan_accepts_a_complete_registered_capability_set():
     plan = make_core().plan(
         AgentPlanRequest(
@@ -791,3 +893,113 @@ def test_workflow_step_input_digest_binds_stable_request_identity_and_payload():
     assert len(second_digest) == 64
     assert first_digest != second_digest
     assert first_digest == AgentCore.workflow_step_input_digest(2, first)
+
+
+def test_agent_plan_request_canonical_payload_preserves_legacy_digest_shape():
+    legacy_request = AgentPlanRequest(
+        goal="Keep existing workflow request identity stable",
+        tools=[{"name": "text.echo", "payload": {"text": "legacy"}}],
+    )
+
+    assert legacy_request.canonical_payload() == {
+        "goal": "Keep existing workflow request identity stable",
+        "requires_text": True,
+        "requires_vision": False,
+        "requires_audio": False,
+        "requires_tool_calling": False,
+        "prefer_local": False,
+        "tools": [
+            {
+                "name": "text.echo",
+                "payload": {"text": "legacy"},
+            }
+        ],
+        "required_capabilities": [],
+    }
+
+
+def test_agent_plan_request_canonical_payload_includes_explicit_dependencies():
+    request = AgentPlanRequest(
+        goal="Include explicit dependencies in the request identity",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
+        ],
+    )
+
+    assert request.canonical_payload()["tools"][0]["depends_on"] == ["step-3"]
+    assert request.canonical_payload()["tools"][1]["depends_on"] == []
+
+
+def test_agent_execute_follows_request_declared_dag_dependencies():
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute explicit DAG dependencies in topological order",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second-request-tool",
+        "first-request-tool",
+    ]
+    assert events == [
+        (2, "running", None),
+        (2, "succeeded", None),
+        (3, "running", None),
+        (3, "succeeded", None),
+    ]
+
+
+def test_agent_execute_resumes_explicit_dag_by_durable_execution_position():
+    events = []
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Resume the remaining step in an explicit DAG",
+            tools=[
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "first-request-tool"},
+                    "depends_on": ["step-3"],
+                },
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "second-request-tool"},
+                    "depends_on": [],
+                },
+            ],
+        ),
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "first-request-tool"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]

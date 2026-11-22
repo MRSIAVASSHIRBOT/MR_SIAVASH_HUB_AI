@@ -3,14 +3,20 @@
 import hashlib
 import json
 from collections.abc import Callable
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from mrhub.agents.capability_gaps import MAX_NAME_LENGTH, evaluate_capability_gaps
-from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
+from mrhub.agents.workflow_plan import WorkflowPlanError, WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
+
+
+WorkflowDependencyId = Annotated[
+    str, Field(min_length=6, max_length=6, pattern=r"^step-[2-6]$")
+]
 
 
 class AgentToolRequest(BaseModel):
@@ -18,6 +24,9 @@ class AgentToolRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     payload: dict[str, object] = Field(default_factory=dict)
+    # None preserves legacy sequential request order. An explicit list declares
+    # dependencies on other request steps; provider selection is always implicit.
+    depends_on: list[WorkflowDependencyId] | None = Field(default=None, max_length=5)
 
     @field_validator("name")
     @classmethod
@@ -26,6 +35,15 @@ class AgentToolRequest(BaseModel):
         if not normalized:
             raise ValueError("tool name must not be blank")
         return normalized
+
+    @field_validator("depends_on")
+    @classmethod
+    def reject_duplicate_dependencies(
+        cls, dependencies: list[str] | None
+    ) -> list[str] | None:
+        if dependencies is not None and len(dependencies) != len(set(dependencies)):
+            raise ValueError("tool dependencies must be unique")
+        return dependencies
 
 
 class AgentPlanRequest(BaseModel):
@@ -60,6 +78,40 @@ class AgentPlanRequest(BaseModel):
                 f"required capability names cannot exceed {MAX_NAME_LENGTH} characters"
             )
         return normalized
+
+    def workflow_steps(self) -> list[WorkflowStep]:
+        """Materialize the request's explicit or legacy-sequential dependencies."""
+        steps = [WorkflowStep("step-1", "Select the model provider")]
+        for number, requested_tool in enumerate(self.tools, start=2):
+            if requested_tool.depends_on is None:
+                dependencies = (f"step-{number - 1}",)
+            else:
+                dependencies = tuple(dict.fromkeys(("step-1", *requested_tool.depends_on)))
+            steps.append(
+                WorkflowStep(
+                    f"step-{number}",
+                    f"Execute registered tool: {requested_tool.name}",
+                    dependencies,
+                )
+            )
+        return steps
+
+    @model_validator(mode="after")
+    def validate_tool_dependency_graph(self) -> "AgentPlanRequest":
+        """Reject unknown, cyclic, or otherwise invalid dependencies at ingress."""
+        try:
+            build_workflow_plan(self.workflow_steps())
+        except (WorkflowPlanError, TypeError) as exc:
+            raise ValueError("tool dependency graph is invalid") from exc
+        return self
+
+    def canonical_payload(self) -> dict[str, object]:
+        """Serialize requests without implicit None fields to preserve old digests.
+
+        New optional dependency declarations remain part of the digest when
+        explicitly supplied, while legacy requests keep their pre-DAG identity.
+        """
+        return self.model_dump(mode="json", exclude_none=True)
 
 
 class AgentCore:
@@ -381,18 +433,7 @@ class AgentCore:
             for step in steps
             if step["kind"] == "tool"
         ) and capability_gaps.complete
-        workflow_steps = [
-            WorkflowStep("step-1", "Select the model provider")
-        ]
-        for index, requested_tool in enumerate(request.tools, start=2):
-            workflow_steps.append(
-                WorkflowStep(
-                    f"step-{index}",
-                    f"Execute registered tool: {requested_tool.name}",
-                    (f"step-{index - 1}",),
-                )
-            )
-        dependency_plan = build_workflow_plan(workflow_steps).as_dict()
+        dependency_plan = build_workflow_plan(request.workflow_steps()).as_dict()
         return {
             "goal_length": len(request.goal),
             "analysis_mode": "declarative_request",
