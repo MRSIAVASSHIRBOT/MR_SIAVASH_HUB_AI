@@ -53,3 +53,13 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     assert 'value: "false"' in bridge
     assert "plan: starter" in hub
     assert "plan: starter" in bridge
+
+
+def test_render_deployment_docs_require_blueprint_auto_sync_to_remain_disabled():
+    docs = (ROOT / "docs" / "operations" / "render-deployment.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Blueprint **Auto Sync** is a separate workspace setting" in docs
+    assert "`autoSync=false`" in docs
+    assert "must also remain disabled" in docs
