@@ -195,4 +195,5 @@ def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
         SimpleNamespace(user_id="owner-remote"),
     )
 
-    assert limited_owners == ["owner-remote"]
+    # Work-order generation and AWI planning each issue one remote model request.
+    assert limited_owners == ["owner-remote", "owner-remote"]
