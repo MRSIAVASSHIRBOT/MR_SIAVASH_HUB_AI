@@ -19,6 +19,14 @@ class AgentToolRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     payload: dict[str, object] = Field(default_factory=dict)
 
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("tool name must not be blank")
+        return normalized
+
 
 class AgentPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -31,6 +39,14 @@ class AgentPlanRequest(BaseModel):
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
     required_capabilities: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("goal")
+    @classmethod
+    def normalize_goal(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("goal must not be blank")
+        return normalized
 
     @field_validator("required_capabilities")
     @classmethod
