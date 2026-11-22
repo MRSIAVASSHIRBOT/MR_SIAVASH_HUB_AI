@@ -17,10 +17,14 @@ _HIGH_RISK_TERMS = (
     "delete", "destroy", "drop database", "deploy", "publish", "send email",
     "send message", "payment", "purchase", "transfer funds", "change permissions",
     "revoke access", "rotate secret", "production",
+    "حذف", "استقرار", "انتشار", "ارسال ایمیل", "ارسال پیام", "پرداخت",
+    "خرید", "انتقال وجه", "تغییر مجوز", "لغو دسترسی", "محیط عملیاتی",
 )
 _MODERATE_RISK_TERMS = (
     "personal data", "private data", "export data", "external api",
     "third-party", "third party", "notify", "message",
+    "اطلاعات شخصی", "داده خصوصی", "خروجی گرفتن از داده", "رابط برنامه نویسی خارجی",
+    "اعلان", "پیام",
 )
 _PROHIBITED_PATTERNS = (
     "steal credentials", "credential theft", "deploy malware",
@@ -29,7 +33,24 @@ _PROHIBITED_PATTERNS = (
     "credential harvesting", "harvest credentials", "collect passwords",
     "collects passwords", "capture passwords", "steal passwords",
     "fake login page", "fake sign-in page", "password harvesting",
+    "صفحه فیشینگ", "ساخت فیشینگ برای سرقت", "سرقت رمز عبور",
+    "سرقت گذرواژه", "سرقت اعتبارنامه", "جمع آوری رمز عبور",
+    "جمع آوری گذرواژه", "دزدیدن رمز عبور", "صفحه ورود جعلی",
+    "دور زدن احراز هویت", "دور زدن مجوز", "دسترسی غیرمجاز",
+    "استقرار بدافزار", "گریز از شناسایی",
 )
+
+
+def _normalize_risk_text(value: str) -> str:
+    """Normalize common Persian/Arabic variants and joiner characters."""
+    return (
+        value.casefold()
+        .replace("ي", "ی")
+        .replace("ك", "ک")
+        .replace("\u200c", " ")
+        .replace("\u200f", "")
+        .replace("\u200e", "")
+    )
 
 
 class WorkOrderGenerationError(ValueError):
@@ -58,7 +79,7 @@ def derive_server_risk_class(goal: str, proposed: dict[str, object]) -> RiskClas
         value = proposed.get(key, [])
         if isinstance(value, list):
             values.extend(item for item in value if isinstance(item, str))
-    text = " ".join(values).casefold()
+    text = _normalize_risk_text(" ".join(values))
     if any(term in text for term in _PROHIBITED_PATTERNS):
         return RiskClass.PROHIBITED
     if any(term in text for term in _HIGH_RISK_TERMS):
