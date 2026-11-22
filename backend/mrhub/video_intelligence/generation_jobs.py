@@ -182,12 +182,14 @@ class VideoGenerationJobRepository:
                     generation_id, owner_user_id, source_analysis_id, provider, model,
                     status, provider_job_id, progress_percent, output_asset_id,
                     output_bytes, output_duration_seconds, output_width, output_height,
-                    error_code, created_at, updated_at
+                    error_code, requested_aspect_ratio, requested_duration_seconds,
+                    requested_resolution, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, 'prepared', NULL, NULL, NULL,
-                          NULL, NULL, NULL, NULL, NULL, ?, ?)""",
+                          NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)""",
                 (
                     str(generation_id), owner_user_id, str(source_analysis_id),
-                    provider, model, now, now,
+                    provider, model, request_data["aspect_ratio"],
+                    request_data["duration_seconds"], request_data["resolution"], now, now,
                 ),
             )
             connection.execute(
@@ -1003,36 +1005,28 @@ class VideoGenerationJobRepository:
 
         with self.tasks._connection() as connection:
             request_row = connection.execute(
-                """SELECT j.status, p.envelope_version, p.nonce_b64, p.ciphertext_b64
-                   FROM video_generation_jobs AS j
-                   LEFT JOIN video_generation_payloads AS p
-                     ON p.generation_id = j.generation_id
-                    AND p.owner_user_id = j.owner_user_id
-                   WHERE j.generation_id = ? AND j.owner_user_id = ?""",
+                """SELECT status, requested_aspect_ratio,
+                          requested_duration_seconds, requested_resolution
+                   FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
                 (str(generation_id), owner_user_id),
             ).fetchone()
         if request_row is None:
             return None
         requested_output = None
         if request_row["status"] != "succeeded":
-            if any(
-                request_row[field] is None
-                for field in ("envelope_version", "nonce_b64", "ciphertext_b64")
-            ):
-                raise ValueError("Generation request is unavailable for output validation")
-            requested_output = decrypt_payload(
-                EncryptedPayload(
-                    version=int(request_row["envelope_version"]),
-                    nonce_b64=str(request_row["nonce_b64"]),
-                    ciphertext_b64=str(request_row["ciphertext_b64"]),
-                ),
-                workflow_id=str(generation_id),
-                task_id=str(generation_id),
-                owner_user_id=owner_user_id,
-                key=load_payload_key(),
+            contract_fields = (
+                "requested_aspect_ratio",
+                "requested_duration_seconds",
+                "requested_resolution",
             )
-            if not isinstance(requested_output, dict):
-                raise ValueError("Generation request is invalid for output validation")
+            if any(request_row[field] is None for field in contract_fields):
+                raise ValueError("Generation output contract is unavailable for validation")
+            requested_output = {
+                "aspect_ratio": request_row["requested_aspect_ratio"],
+                "duration_seconds": request_row["requested_duration_seconds"],
+                "resolution": request_row["requested_resolution"],
+            }
 
         metadata = probe_video(output_path)
         if (
