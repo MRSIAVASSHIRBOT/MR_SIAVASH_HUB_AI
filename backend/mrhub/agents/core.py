@@ -3,8 +3,9 @@
 import hashlib
 import json
 from collections.abc import Callable
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from mrhub.agents.capability_gaps import evaluate_capability_gaps
 from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
@@ -20,6 +21,9 @@ class AgentToolRequest(BaseModel):
     payload: dict[str, object] = Field(default_factory=dict)
 
 
+CapabilityIdentifier = Annotated[str, Field(min_length=1, max_length=80)]
+
+
 class AgentPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -30,7 +34,17 @@ class AgentPlanRequest(BaseModel):
     requires_tool_calling: bool = False
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
-    required_capabilities: list[str] = Field(default_factory=list, max_length=50)
+    required_capabilities: list[CapabilityIdentifier] = Field(
+        default_factory=list, max_length=50
+    )
+
+    @field_validator("required_capabilities")
+    @classmethod
+    def normalize_required_capabilities(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("required capability names must not be blank")
+        return normalized
 
 
 class AgentCore:
@@ -308,9 +322,12 @@ class AgentCore:
             previous_step = step_id
         workflow_plan = build_workflow_plan(graph_steps).as_dict()
 
+        # The full catalog is only needed when the caller declares requirements.
+        # Avoid the evaluator's catalog bound for ordinary requests with no gaps
+        # to assess, including registries that legitimately contain >200 tools.
         capability_gaps = evaluate_capability_gaps(
             request.required_capabilities,
-            self.tool_registry.catalog(),
+            self.tool_registry.catalog() if request.required_capabilities else (),
         )
         executable = all(
             step["status"] == "ready"
