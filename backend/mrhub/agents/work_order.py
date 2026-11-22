@@ -23,7 +23,7 @@ class WorkOrder(BaseModel):
     required_capabilities: list[str] = Field(default_factory=list, max_length=20)
     acceptance_criteria: list[str] = Field(min_length=1, max_length=12)
     verification_steps: list[str] = Field(min_length=1, max_length=12)
-    risk_class: RiskClass = RiskClass.MODERATE
+    risk_class: RiskClass
 
     @field_validator(
         "assumptions", "constraints", "dependencies", "required_capabilities",
