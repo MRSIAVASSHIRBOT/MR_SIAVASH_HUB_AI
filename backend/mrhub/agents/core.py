@@ -168,6 +168,11 @@ class AgentCore:
             "step_id": f"step-{request_step_number}",
             "tool_name": requested_tool.name,
             "payload": requested_tool.payload,
+            "depends_on": (
+                list(requested_tool.depends_on)
+                if requested_tool.depends_on is not None
+                else None
+            ),
         }
         encoded = json.dumps(
             definition, ensure_ascii=False, sort_keys=True, separators=(",", ":")

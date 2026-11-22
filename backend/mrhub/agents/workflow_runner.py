@@ -50,6 +50,44 @@ class AgentWorkflowRunner:
         ).encode()
         return hashlib.sha256(encoded).hexdigest()
 
+    def _durable_step_metadata(
+        self,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+    ) -> tuple[list[dict[str, object]], dict[int, object]]:
+        """Build durable checkpoints and tool lookups in validated DAG order."""
+        ordered_tools = self.core.ordered_tool_steps(request, plan)
+        if len(ordered_tools) != len(request.tools):
+            raise ValueError("Validated workflow graph does not cover every requested tool")
+
+        step_specs: list[dict[str, object]] = [
+            {
+                "step_number": 1,
+                "kind": "provider_selection",
+                "name": "provider_selection",
+                "input_digest": None,
+            }
+        ]
+        tools_by_execution_step: dict[int, object] = {}
+        for runtime_step_number, request_step_number, requested_tool in ordered_tools:
+            definition = self.core.tool_registry.get(requested_tool.name)
+            step_specs.append(
+                {
+                    "step_number": runtime_step_number,
+                    "kind": (
+                        "external_tool"
+                        if definition.external_side_effect
+                        else "safe_tool"
+                    ),
+                    "name": requested_tool.name,
+                    "input_digest": self.core.workflow_step_input_digest(
+                        request_step_number, requested_tool
+                    ),
+                }
+            )
+            tools_by_execution_step[runtime_step_number] = definition
+        return step_specs, tools_by_execution_step
+
     def _evaluate_workflow_tools(
         self,
         workflow_id: UUID,
@@ -160,35 +198,14 @@ class AgentWorkflowRunner:
         Worker dispatch must reuse its existing task, workflow, and lease instead
         of creating duplicate durable state or competing lease heartbeats.
         """
+        if not plan.get("execution_ready"):
+            raise ValueError("Workflow plan is not executable")
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise ValueError("Workflow plan contains no executable steps")
-        ordered_tools = self.core.ordered_tool_steps(request, plan)
-        ordered_tools_by_runtime_step = {
-            runtime_number: requested_tool
-            for runtime_number, _request_number, requested_tool in ordered_tools
-        }
-        step_specs = [
-            {
-                "step_number": 1,
-                "kind": "provider_selection",
-                "name": "provider_selection",
-                "input_digest": None,
-            }
-        ]
-        for runtime_number, request_number, requested_tool in ordered_tools:
-            definition = self.core.tool_registry.get(requested_tool.name)
-            kind = "external_tool" if definition.external_side_effect else "safe_tool"
-            step_specs.append(
-                {
-                    "step_number": runtime_number,
-                    "kind": kind,
-                    "name": requested_tool.name,
-                    "input_digest": self.core.workflow_step_input_digest(
-                        request_number, requested_tool
-                    ),
-                }
-            )
+        step_specs, tools_by_execution_step = self._durable_step_metadata(
+            request, plan
+        )
         worker_owned_lease = lease is not None
         if worker_owned_lease:
             if workflow_id is None or task is None or lease_lost is None:
@@ -258,8 +275,9 @@ class AgentWorkflowRunner:
                 elif status == "failed":
                     attempt = attempts.get(number)
                     if attempt is not None:
-                        requested_tool = ordered_tools_by_runtime_step[number]
-                        definition = self.core.tool_registry.get(requested_tool.name)
+                        definition = tools_by_execution_step.get(number)
+                        if definition is None:
+                            raise RuntimeError("Failed workflow step has no DAG tool mapping")
                         failure_code = error_code or "tool_execution_failed"
                         self.recovery.fail_step(
                             workflow_id,
@@ -403,20 +421,18 @@ class AgentWorkflowRunner:
         raw_steps = plan.get("steps", [])
         if not plan.get("execution_ready") or not isinstance(raw_steps, list):
             raise ValueError("Current request is not executable")
-        expected = [(1, "provider_selection", "provider_selection", None)]
-        for runtime_number, request_number, tool in self.core.ordered_tool_steps(
+        expected_specs, _tools_by_execution_step = self._durable_step_metadata(
             request, plan
-        ):
-            definition = self.core.tool_registry.get(tool.name)
-            kind = "external_tool" if definition.external_side_effect else "safe_tool"
-            expected.append(
-                (
-                    runtime_number,
-                    kind,
-                    tool.name,
-                    self.core.workflow_step_input_digest(request_number, tool),
-                )
+        )
+        expected = [
+            (
+                int(step["step_number"]),
+                str(step["kind"]),
+                str(step["name"]),
+                step.get("input_digest"),
             )
+            for step in expected_specs
+        ]
         stored = [
             (
                 int(step["step_number"]),
@@ -578,11 +594,9 @@ class AgentWorkflowRunner:
                     )
                     start_step = 2
 
-                ordered_tools_by_runtime_step = {
-                    runtime_number: requested_tool
-                    for runtime_number, _request_number, requested_tool
-                    in self.core.ordered_tool_steps(request, plan)
-                }
+                _step_specs, tools_by_execution_step = self._durable_step_metadata(
+                    request, plan
+                )
 
                 def on_step(
                     number: int, status: str, error_code: str | None
@@ -596,8 +610,9 @@ class AgentWorkflowRunner:
                     elif status == "failed":
                         attempt = attempts.get(number)
                         if attempt is not None:
-                            requested_tool = ordered_tools_by_runtime_step[number]
-                            definition = self.core.tool_registry.get(requested_tool.name)
+                            definition = tools_by_execution_step.get(number)
+                            if definition is None:
+                                raise RuntimeError("Failed workflow step has no DAG tool mapping")
                             self.recovery.fail_step(
                                 workflow_id,
                                 attempt,
