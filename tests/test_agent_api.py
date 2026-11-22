@@ -632,3 +632,16 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert denied_after_revoke.status_code == 200
     assert denied_after_revoke.json()["blocked"] is True
     assert calls == ["read"]
+
+
+def test_agent_plan_rejects_blank_and_oversized_capability_names():
+    client = authenticated_client()
+    for capability in ("   ", "x" * 81):
+        response = client.post(
+            "/agent/plan",
+            json={
+                "goal": "Reject malformed required capability names",
+                "required_capabilities": [capability],
+            },
+        )
+        assert response.status_code == 422
