@@ -167,7 +167,7 @@ class AgentWorkOrderPlanRepository:
 
         now = self._now()
         now_text = now.isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 """
