@@ -510,40 +510,19 @@ def test_dag_resume_uses_topological_checkpoint_positions(monkeypatch):
         lambda **kwargs: registry,
     )
 
-    original_plan = AgentCore.plan
-
-    def plan_with_reordered_independent_steps(self, request):
-        plan = original_plan(self, request)
-        if len(request.tools) == 2:
-            plan["dependency_plan"] = {
-                "ordered_steps": [
-                    {
-                        "step_id": "step-1",
-                        "description": "Select the model provider",
-                        "depends_on": [],
-                    },
-                    {
-                        "step_id": "step-3",
-                        "description": "Run the second request tool first",
-                        "depends_on": ["step-1"],
-                    },
-                    {
-                        "step_id": "step-2",
-                        "description": "Run the first request tool second",
-                        "depends_on": ["step-1"],
-                    },
-                ],
-                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
-            }
-        return plan
-
-    monkeypatch.setattr(AgentCore, "plan", plan_with_reordered_independent_steps)
-
     request = {
-        "goal": "Resume an independent DAG by its durable execution position",
+        "goal": "Resume an explicit DAG by its durable execution position",
         "tools": [
-            {"name": "text.echo", "payload": {"text": "first-request-tool"}},
-            {"name": "text.echo", "payload": {"text": "second-request-tool"}},
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
         ],
     }
     created = client.post("/agent/workflows", json=request)
