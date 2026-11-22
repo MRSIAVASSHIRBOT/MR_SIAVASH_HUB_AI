@@ -30,4 +30,8 @@ set +e
 wait -n "$API_PID" "$WORKER_PID" "$EL_AI_PID"
 STATUS=$?
 set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  echo "A supervised runtime process exited unexpectedly" >&2
+  STATUS=1
+fi
 exit "$STATUS"
