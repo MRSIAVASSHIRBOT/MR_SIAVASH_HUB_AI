@@ -1,7 +1,7 @@
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.core import AgentCore, AgentPlanRequest, AgentToolRequest
 from mrhub.domain.tasks import RiskClass
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
@@ -37,6 +37,10 @@ def test_agent_core_selects_provider_and_plans_registered_tool_without_execution
     assert plan["model_inference_started"] is False
     assert plan["tools_executed"] is False
     assert plan["steps"][1]["status"] == "ready"
+    assert plan["dependency_plan"]["dependency_levels"] == [
+        ["step-1"],
+        ["step-2"],
+    ]
 
 
 def test_agent_core_blocks_unknown_tools():
@@ -447,3 +451,343 @@ def test_agent_core_fails_closed_when_owner_grant_lookup_fails():
     assert plan["execution_ready"] is False
     assert plan["steps"][1]["decision"] == PolicyDecision.DENY.value
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "ordered_steps",
+    [
+        [
+            {"step_id": "step-1", "description": "Select provider", "depends_on": []},
+            {"step_id": "step-2", "description": "First tool", "depends_on": ["step-1"]},
+            {"step_id": "step-2", "description": "Duplicate tool", "depends_on": ["step-1"]},
+        ],
+        [
+            {"step_id": "step-1", "description": "Select provider", "depends_on": []},
+            {"step_id": "step-2", "description": "First tool", "depends_on": ["step-1"]},
+        ],
+    ],
+    ids=["duplicate-tool-step", "missing-tool-step"],
+)
+def test_agent_execute_rejects_incomplete_or_duplicate_workflow_graph_before_invocation(
+    monkeypatch, ordered_steps
+):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Reject malformed workflow plans before invoking tools",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {"ordered_steps": ordered_steps},
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="every expected step exactly once"):
+        core.execute(request)
+
+    assert calls == []
+
+
+def test_agent_execute_resumes_from_the_requested_workflow_step():
+    events = []
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Resume from the second tool step",
+            tools=[
+                {"name": "text.echo", "payload": {"text": "already completed"}},
+                {"name": "text.echo", "payload": {"text": "resume here"}},
+            ],
+        ),
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == ["resume here"]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_plan_reports_required_capability_coverage():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Check whether the requested capability is registered",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+            required_capabilities=["text.echo", "missing.lookup"],
+        )
+    )
+
+    assert plan["capability_gaps"] == {
+        "required": ["text.echo", "missing.lookup"],
+        "available": ["text.echo"],
+        "missing": ["missing.lookup"],
+        "complete": False,
+    }
+    assert plan["execution_ready"] is False
+
+
+def test_agent_execute_fails_closed_when_required_capabilities_are_missing():
+    core = make_core()
+    calls = []
+    original_invoke = core.tool_registry.invoke
+
+    def track_invoke(*args, **kwargs):
+        calls.append(args[0])
+        return original_invoke(*args, **kwargs)
+
+    core.tool_registry.invoke = track_invoke
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Do not execute with an unresolved capability gap",
+            tools=[{"name": "text.echo", "payload": {"text": "must not run"}}],
+            required_capabilities=["filesystem.read"],
+        )
+    )
+
+    assert response["blocked"] is True
+    assert response["execution_started"] is False
+    assert response["tools_executed"] is False
+    assert response["plan"]["capability_gaps"]["missing"] == ["filesystem.read"]
+    assert calls == []
+
+
+def test_agent_plan_accepts_a_complete_registered_capability_set():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Check a fully registered capability set",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+            required_capabilities=["TEXT.ECHO"],
+        )
+    )
+
+    assert plan["capability_gaps"]["complete"] is True
+    assert plan["capability_gaps"]["missing"] == []
+    assert plan["execution_ready"] is True
+
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 81])
+def test_agent_plan_rejects_blank_or_oversized_required_capability_names(name):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(
+            goal="Validate capability request input",
+            required_capabilities=[name],
+        )
+
+
+def test_agent_plan_normalizes_required_capability_names():
+    request = AgentPlanRequest(
+        goal="Normalize capability request input",
+        required_capabilities=["  text.echo  "],
+    )
+
+    assert request.required_capabilities == ["text.echo"]
+
+
+@pytest.mark.parametrize("goal", ["", "   "])
+def test_agent_plan_rejects_blank_goal(goal):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(goal=goal)
+
+
+def test_agent_plan_normalizes_goal():
+    request = AgentPlanRequest(goal="  Review workflow state  ")
+    assert request.goal == "Review workflow state"
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_agent_tool_request_rejects_blank_tool_name(name):
+    with pytest.raises(ValidationError):
+        AgentToolRequest(name=name)
+
+
+def test_agent_tool_request_normalizes_tool_name():
+    request = AgentToolRequest(name="  text.echo  ")
+    assert request.name == "text.echo"
+
+
+def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute independent tools in validated graph order",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute second request tool",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute first request tool",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+            },
+        },
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second",
+        "first",
+    ]
+    # Durable callback positions follow the topological execution order.
+    assert events == [
+        (2, "running", None),
+        (2, "succeeded", None),
+        (3, "running", None),
+        (3, "succeeded", None),
+    ]
+
+
+def test_agent_execute_resumes_by_topological_position_not_request_index(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Resume by durable topological execution position",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first-request-tool"}},
+            {"name": "text.echo", "payload": {"text": "second-request-tool"}},
+        ],
+    )
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute second request tool",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute first request tool",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+            },
+        },
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "first-request-tool"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Reject a graph whose order violates its dependencies",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Must wait for step 3",
+                        "depends_on": ["step-3"],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Prerequisite",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    with pytest.raises(RuntimeError, match="not in deterministic topological order"):
+        core.execute(request)
+
+    assert calls == []
+
+
+def test_workflow_step_input_digest_binds_stable_request_identity_and_payload():
+    first = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "first"},
+    )
+    second = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "second"},
+    )
+
+    first_digest = AgentCore.workflow_step_input_digest(2, first)
+    second_digest = AgentCore.workflow_step_input_digest(3, second)
+
+    assert len(first_digest) == 64
+    assert len(second_digest) == 64
+    assert first_digest != second_digest
+    assert first_digest == AgentCore.workflow_step_input_digest(2, first)

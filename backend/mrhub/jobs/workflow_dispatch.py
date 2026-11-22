@@ -140,6 +140,8 @@ class WorkflowWorkerHandler:
                 "model_inference_started": bool(execution.get("model_inference_started")),
                 "tools_executed": bool(execution.get("tools_executed")),
                 "error_code": execution.get("error_code"),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             }
         return {"workflow_id": str(workflow_id), "execution_completed": False}
 

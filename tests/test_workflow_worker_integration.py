@@ -4,7 +4,8 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from client_helpers import authenticated_client, run_worker_once
-from mrhub.agents.core import AgentCore
+from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
@@ -70,6 +71,11 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
     assert worker_result is not None
     assert worker_result["result"]["execution_completed"] is True
     assert worker_result["result"]["executed_tool_count"] == 1
+    evaluation = worker_result["result"]["evaluation"]
+    assert worker_result["result"]["evaluation_scope"] == "tool_execution_only"
+    assert evaluation["decision"] == "accept"
+    assert evaluation["passed"] == 1
+    assert evaluation["unknown"] == 0
 
 
 def test_workflow_payload_is_not_readable_by_another_owner() -> None:
@@ -376,6 +382,43 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
     assert recovery_worker.run_once() is None
     assert external_effects == ["publish accepted by remote system"]
 
+    # The durable unknown outcome must remain unknown in the evaluator too.
+    runner = object.__new__(AgentWorkflowRunner)
+    runner.recovery = recovery
+    runner.core = object.__new__(AgentCore)
+    evaluation_request = AgentPlanRequest.model_validate(
+        {
+            "goal": "Simulate a publish action whose response is lost",
+            "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
+        }
+    )
+    evaluation_plan = {
+        "dependency_plan": {
+            "ordered_steps": [
+                {
+                    "step_id": "step-1",
+                    "description": "Select provider",
+                    "depends_on": [],
+                },
+                {
+                    "step_id": "step-2",
+                    "description": "Execute tool",
+                    "depends_on": ["step-1"],
+                },
+            ]
+        }
+    }
+    evaluation = runner._evaluate_workflow_tools(
+        workflow_id,
+        evaluation_request,
+        evaluation_plan,
+        "local-owner",
+    )
+    assert evaluation is not None
+    assert evaluation["decision"] == "review_required"
+    assert evaluation["unknown"] == 1
+    assert evaluation["passed"] == 0
+
 
 
 def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeypatch):
@@ -440,3 +483,279 @@ def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeyp
     )
     assert first_history.json()["status"] == "succeeded"
     assert second_history.json()["status"] == "failed"
+
+
+def test_dag_resume_uses_topological_checkpoint_positions(monkeypatch):
+    import hashlib
+    import json
+
+    from mrhub.tools.builtins import build_tool_registry
+
+    client = authenticated_client()
+    registry = build_tool_registry()
+    invoked = []
+    original_invoke = registry.invoke
+
+    def track_invoke(name, payload, **kwargs):
+        invoked.append(payload.get("text"))
+        return original_invoke(name, payload, **kwargs)
+
+    registry.invoke = track_invoke
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+
+    original_plan = AgentCore.plan
+
+    def plan_with_reordered_independent_steps(self, request):
+        plan = original_plan(self, request)
+        if len(request.tools) == 2:
+            plan["dependency_plan"] = {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Run the second request tool first",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Run the first request tool second",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+            }
+        return plan
+
+    monkeypatch.setattr(AgentCore, "plan", plan_with_reordered_independent_steps)
+
+    request = {
+        "goal": "Resume an independent DAG by its durable execution position",
+        "tools": [
+            {"name": "text.echo", "payload": {"text": "first-request-tool"}},
+            {"name": "text.echo", "payload": {"text": "second-request-tool"}},
+        ],
+    }
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200
+    workflow_id = UUID(created.json()["workflow"]["workflow_id"])
+    task_id = UUID(created.json()["workflow"]["task_id"])
+
+    def digest_echo(text_value):
+        output = {
+            "text": text_value,
+            "character_count": len(text_value),
+        }
+        encoded = json.dumps(
+            output, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    original_execute = AgentCore.execute
+
+    def interrupt_after_first_topological_step(
+        self,
+        agent_request,
+        *,
+        on_step=None,
+        on_step_result=None,
+        **kwargs,
+    ):
+        assert on_step is not None and on_step_result is not None
+        on_step(2, "running", None)
+        on_step_result(2, digest_echo("second-request-tool"))
+        on_step(2, "succeeded", None)
+        raise RuntimeError("simulated interruption after first topological checkpoint")
+
+    monkeypatch.setattr(
+        AgentCore, "execute", interrupt_after_first_topological_step
+    )
+    interrupted = run_worker_once()
+    assert interrupted is not None
+    assert invoked == []
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert paused is not None and paused["status"] == "paused"
+    assert paused["steps"][1]["status"] == "succeeded"
+    assert paused["steps"][2]["status"] == "pending"
+    assert paused["steps"][1]["output_digest"] == digest_echo("second-request-tool")
+    typed_request = AgentPlanRequest.model_validate(request)
+    assert paused["steps"][1]["input_digest"] == AgentCore.workflow_step_input_digest(
+        3, typed_request.tools[1]
+    )
+    assert paused["steps"][2]["input_digest"] == AgentCore.workflow_step_input_digest(
+        2, typed_request.tools[0]
+    )
+    task = repository.get(task_id)
+    assert task is not None and task.status.value == "waiting_approval"
+
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
+    queued = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+    assert queued.status_code == 200
+    assert queued.json()["queued"] is True
+
+    completed = run_worker_once()
+    assert completed is not None and completed.status.value == "succeeded"
+    assert invoked == ["first-request-tool"]
+
+    finished = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert finished is not None and finished["status"] == "succeeded"
+    assert [step["status"] for step in finished["steps"]] == [
+        "succeeded",
+        "succeeded",
+        "succeeded",
+    ]
+    assert finished["steps"][2]["output_digest"] == digest_echo("first-request-tool")
+
+    from mrhub.jobs.worker import WorkerEngine
+
+    result = WorkerEngine(repository).get_result(task_id)
+    assert result is not None
+    assert result["result"]["execution_completed"] is True
+    assert result["result"]["evaluation"]["decision"] == "accept"
+    assert result["result"]["evaluation"]["passed"] == 2
+    assert result["result"]["evaluation"]["unknown"] == 0
+
+
+def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeypatch):
+    from mrhub.tools.builtins import build_tool_registry
+
+    client = authenticated_client()
+    registry = build_tool_registry()
+    invoked = []
+    original_invoke = registry.invoke
+
+    def track_invoke(name, payload, **kwargs):
+        invoked.append(payload.get("text"))
+        return original_invoke(name, payload, **kwargs)
+
+    registry.invoke = track_invoke
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+
+    reverse_order = {"enabled": True}
+    original_plan = AgentCore.plan
+
+    def dynamic_plan(self, request):
+        plan = original_plan(self, request)
+        if len(request.tools) == 2:
+            if reverse_order["enabled"]:
+                execution_ids = ["step-3", "step-2"]
+            else:
+                execution_ids = ["step-2", "step-3"]
+            descriptions = {
+                "step-1": "Select the model provider",
+                "step-2": "Execute the first request tool",
+                "step-3": "Execute the second request tool",
+            }
+            plan["dependency_plan"] = {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": descriptions["step-1"],
+                        "depends_on": [],
+                    },
+                    *[
+                        {
+                            "step_id": step_id,
+                            "description": descriptions[step_id],
+                            "depends_on": ["step-1"],
+                        }
+                        for step_id in execution_ids
+                    ],
+                ],
+                "dependency_levels": [["step-1"], execution_ids],
+            }
+        return plan
+
+    monkeypatch.setattr(AgentCore, "plan", dynamic_plan)
+    request = {
+        "goal": "Reject a changed planner mapping for repeated tool names",
+        "tools": [
+            {"name": "text.echo", "payload": {"text": "first-payload"}},
+            {"name": "text.echo", "payload": {"text": "second-payload"}},
+        ],
+    }
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200
+    workflow_id = UUID(created.json()["workflow"]["workflow_id"])
+
+    def digest_echo(text_value):
+        import hashlib
+        import json
+
+        output = {"text": text_value, "character_count": len(text_value)}
+        encoded = json.dumps(
+            output, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    original_execute = AgentCore.execute
+
+    def interrupt_after_first_ordered_step(
+        self,
+        agent_request,
+        *,
+        on_step=None,
+        on_step_result=None,
+        **kwargs,
+    ):
+        assert on_step is not None and on_step_result is not None
+        on_step(2, "running", None)
+        on_step_result(2, digest_echo("second-payload"))
+        on_step(2, "succeeded", None)
+        raise RuntimeError("simulated interruption after first ordered step")
+
+    monkeypatch.setattr(AgentCore, "execute", interrupt_after_first_ordered_step)
+    run_worker_once()
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert paused is not None and paused["status"] == "paused"
+    typed_request = AgentPlanRequest.model_validate(request)
+    second_tool_digest = AgentCore.workflow_step_input_digest(
+        3, typed_request.tools[1]
+    )
+    first_tool_digest = AgentCore.workflow_step_input_digest(
+        2, typed_request.tools[0]
+    )
+    assert paused["steps"][1]["input_digest"] == second_tool_digest
+    assert paused["steps"][1]["input_digest"] != first_tool_digest
+
+    # A planner that maps the same tool names to different request payloads must
+    # not be allowed to resume against the old durable checkpoint numbering.
+    reverse_order["enabled"] = False
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
+    response = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+
+    assert response.status_code == 409
+    assert invoked == []
+    after = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert after is not None and after["status"] == "paused"
+    assert after["steps"][1]["status"] == "succeeded"
+    assert after["steps"][2]["status"] == "pending"

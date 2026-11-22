@@ -10,6 +10,11 @@ from threading import Event, Thread
 from uuid import UUID, uuid4
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.evaluation import (
+    CriterionStatus,
+    EvaluationCriterion,
+    evaluate_criteria,
+)
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
@@ -44,6 +49,61 @@ class AgentWorkflowRunner:
             value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode()
         return hashlib.sha256(encoded).hexdigest()
+
+    def _evaluate_workflow_tools(
+        self,
+        workflow_id: UUID,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+        owner_user_id: str,
+    ) -> dict[str, object] | None:
+        """Evaluate persisted tool outcomes in the same order used by DAG execution."""
+        ordered_tools = self.core.ordered_tool_steps(request, plan)
+        if not ordered_tools:
+            return None
+        workflow = self.recovery.get_run(
+            workflow_id, owner_user_id=owner_user_id
+        )
+        stored_steps = {
+            int(step["step_number"]): step
+            for step in (workflow or {}).get("steps", [])
+        }
+        criteria = []
+        for runtime_number, _request_number, requested_tool in ordered_tools:
+            step = stored_steps.get(runtime_number, {})
+            status = step.get("status")
+            if status == "succeeded":
+                outcome = CriterionStatus.PASSED
+                evidence_digest = step.get("output_digest")
+            elif status == "failed":
+                outcome = CriterionStatus.FAILED
+                # Bind the digest to this persisted failure checkpoint rather than
+                # hashing only the error code, which would collide across workflows.
+                evidence_digest = self._digest(
+                    {
+                        "workflow_id": str(workflow_id),
+                        "step_number": runtime_number,
+                        "status": status,
+                        "error_code": step.get("error_code") or "tool_execution_failed",
+                        "attempt_count": step.get("attempt_count"),
+                        "started_at": step.get("started_at"),
+                        "finished_at": step.get("finished_at"),
+                    }
+                )
+            else:
+                # Includes unknown_outcome, retry_wait, pending and running.
+                # An ambiguous or unfinished action must never be called passed.
+                outcome = CriterionStatus.UNKNOWN
+                evidence_digest = None
+            criteria.append(
+                EvaluationCriterion(
+                    criterion_id=f"tool-step-{runtime_number}",
+                    description=f"Tool execution completed: {requested_tool.name}",
+                    status=outcome,
+                    evidence_digest=evidence_digest,
+                )
+            )
+        return evaluate_criteria(criteria).as_dict()
 
     def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lost: Event) -> None:
         interval = max(0.1, self.lease_seconds / 3)
@@ -103,21 +163,31 @@ class AgentWorkflowRunner:
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise ValueError("Workflow plan contains no executable steps")
-        step_specs = []
-        for step in raw_steps:
-            if not isinstance(step, dict):
-                continue
-            number = int(step["step"])
-            if number == 1:
-                kind = "provider_selection"
-                name = "provider_selection"
-            else:
-                requested_tool = request.tools[number - 2]
-                definition = self.core.tool_registry.get(requested_tool.name)
-                kind = "external_tool" if definition.external_side_effect else "safe_tool"
-                name = requested_tool.name
+        ordered_tools = self.core.ordered_tool_steps(request, plan)
+        ordered_tools_by_runtime_step = {
+            runtime_number: requested_tool
+            for runtime_number, _request_number, requested_tool in ordered_tools
+        }
+        step_specs = [
+            {
+                "step_number": 1,
+                "kind": "provider_selection",
+                "name": "provider_selection",
+                "input_digest": None,
+            }
+        ]
+        for runtime_number, request_number, requested_tool in ordered_tools:
+            definition = self.core.tool_registry.get(requested_tool.name)
+            kind = "external_tool" if definition.external_side_effect else "safe_tool"
             step_specs.append(
-                {"step_number": number, "kind": kind, "name": name}
+                {
+                    "step_number": runtime_number,
+                    "kind": kind,
+                    "name": requested_tool.name,
+                    "input_digest": self.core.workflow_step_input_digest(
+                        request_number, requested_tool
+                    ),
+                }
             )
         worker_owned_lease = lease is not None
         if worker_owned_lease:
@@ -188,12 +258,13 @@ class AgentWorkflowRunner:
                 elif status == "failed":
                     attempt = attempts.get(number)
                     if attempt is not None:
-                        requested_tool = request.tools[number - 2]
+                        requested_tool = ordered_tools_by_runtime_step[number]
                         definition = self.core.tool_registry.get(requested_tool.name)
+                        failure_code = error_code or "tool_execution_failed"
                         self.recovery.fail_step(
                             workflow_id,
                             attempt,
-                            error_code or "tool_execution_failed",
+                            failure_code,
                             unknown_outcome=definition.external_side_effect,
                             lease=lease,
                         )
@@ -230,6 +301,14 @@ class AgentWorkflowRunner:
                 on_step_result=on_step_result,
                 should_cancel=should_cancel,
             )
+            evaluation = self._evaluate_workflow_tools(
+                workflow_id, request, plan, owner_user_id
+            )
+            execution = {
+                **execution,
+                "evaluation": evaluation,
+                "evaluation_scope": "tool_execution_only" if request.tools else None,
+            }
             # Close the race between the final in-loop cancellation check and
             # workflow finalization, including workflows with zero tool steps.
             if not execution.get("cancelled") and should_cancel():
@@ -293,6 +372,8 @@ class AgentWorkflowRunner:
                 "tools_executed": execution["tools_executed"],
                 "error_code": execution.get("error_code"),
                 "executed_tool_count": len(execution["results"]),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             },
         }
 
@@ -322,23 +403,37 @@ class AgentWorkflowRunner:
         raw_steps = plan.get("steps", [])
         if not plan.get("execution_ready") or not isinstance(raw_steps, list):
             raise ValueError("Current request is not executable")
-        expected = []
-        for item in raw_steps:
-            if not isinstance(item, dict):
-                continue
-            number = int(item["step"])
-            if number == 1:
-                expected.append((1, "provider_selection", "provider_selection"))
-            else:
-                tool = request.tools[number - 2]
-                definition = self.core.tool_registry.get(tool.name)
-                kind = "external_tool" if definition.external_side_effect else "safe_tool"
-                expected.append((number, kind, tool.name))
+        expected = [(1, "provider_selection", "provider_selection", None)]
+        for runtime_number, request_number, tool in self.core.ordered_tool_steps(
+            request, plan
+        ):
+            definition = self.core.tool_registry.get(tool.name)
+            kind = "external_tool" if definition.external_side_effect else "safe_tool"
+            expected.append(
+                (
+                    runtime_number,
+                    kind,
+                    tool.name,
+                    self.core.workflow_step_input_digest(request_number, tool),
+                )
+            )
         stored = [
-            (int(step["step_number"]), step["step_kind"], step["step_name"])
+            (
+                int(step["step_number"]),
+                step["step_kind"],
+                step["step_name"],
+                step.get("input_digest"),
+            )
             for step in workflow["steps"]
         ]
-        if expected != stored:
+        if len(expected) != len(stored) or any(
+            expected_step[:3] != stored_step[:3]
+            or (
+                stored_step[3] is not None
+                and expected_step[3] != stored_step[3]
+            )
+            for expected_step, stored_step in zip(expected, stored, strict=True)
+        ):
             raise ValueError("Current workflow plan differs from the stored definition")
 
         provider_step = next(
@@ -483,6 +578,12 @@ class AgentWorkflowRunner:
                     )
                     start_step = 2
 
+                ordered_tools_by_runtime_step = {
+                    runtime_number: requested_tool
+                    for runtime_number, _request_number, requested_tool
+                    in self.core.ordered_tool_steps(request, plan)
+                }
+
                 def on_step(
                     number: int, status: str, error_code: str | None
                 ) -> None:
@@ -495,9 +596,8 @@ class AgentWorkflowRunner:
                     elif status == "failed":
                         attempt = attempts.get(number)
                         if attempt is not None:
-                            definition = self.core.tool_registry.get(
-                                request.tools[number - 2].name
-                            )
+                            requested_tool = ordered_tools_by_runtime_step[number]
+                            definition = self.core.tool_registry.get(requested_tool.name)
                             self.recovery.fail_step(
                                 workflow_id,
                                 attempt,
@@ -525,6 +625,14 @@ class AgentWorkflowRunner:
                     should_cancel=should_cancel,
                 )
 
+            evaluation = self._evaluate_workflow_tools(
+                workflow_id, request, plan, owner_user_id
+            )
+            execution = {
+                **execution,
+                "evaluation": evaluation,
+                "evaluation_scope": "tool_execution_only" if request.tools else None,
+            }
             if not execution.get("cancelled") and should_cancel():
                 execution = {
                     **execution,
@@ -596,5 +704,7 @@ class AgentWorkflowRunner:
                 "tools_executed": execution["tools_executed"],
                 "error_code": execution.get("error_code"),
                 "executed_tool_count": len(execution["results"]),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             },
         }
