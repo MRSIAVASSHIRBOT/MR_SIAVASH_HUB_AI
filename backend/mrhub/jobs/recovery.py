@@ -143,8 +143,9 @@ class WorkflowRecoveryRepository:
         payload_envelope: dict[str, object] | None = None,
         workflow_id: UUID | None = None,
         idempotency_binding: dict[str, str] | None = None,
+        plan_consumption: dict[str, str] | None = None,
     ) -> UUID:
-        """Atomically create workflow/job, encrypted payload, and optional idempotency binding."""
+        """Atomically create workflow/job, encrypted payload, idempotency, and plan consumption."""
         self._validate_digest(request_digest, "Request digest")
         if task is not None and task_id is not None:
             raise WorkflowRecoveryError("Provide either task or task_id, not both")
@@ -154,6 +155,40 @@ class WorkflowRecoveryRepository:
             task_id = str(task.task_id)
         if definition_version < 1:
             raise WorkflowRecoveryError("Definition version must be positive")
+        normalized_plan_consumption: tuple[str, str, str] | None = None
+        if plan_consumption is not None:
+            if not isinstance(plan_consumption, dict) or set(plan_consumption) != {
+                "plan_id",
+                "owner_user_id",
+                "plan_digest",
+            }:
+                raise WorkflowRecoveryError("Plan consumption binding is invalid")
+            plan_id = plan_consumption.get("plan_id")
+            plan_owner = plan_consumption.get("owner_user_id")
+            plan_digest = plan_consumption.get("plan_digest")
+            try:
+                canonical_plan_id = str(UUID(plan_id))
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise WorkflowRecoveryError("Plan consumption identifier is invalid") from exc
+            if (
+                canonical_plan_id != plan_id
+                or not isinstance(plan_owner, str)
+                or not plan_owner.strip()
+                or plan_owner != owner_user_id
+            ):
+                raise WorkflowRecoveryError("Plan consumption owner binding is invalid")
+            if not isinstance(plan_digest, str):
+                raise WorkflowRecoveryError("Plan consumption digest is invalid")
+            self._validate_digest(plan_digest, "Plan consumption digest")
+            if task is None or not owner_user_id:
+                raise WorkflowRecoveryError(
+                    "Plan consumption requires an owner-bound queued workflow task"
+                )
+            normalized_plan_consumption = (
+                canonical_plan_id,
+                plan_owner,
+                plan_digest,
+            )
         if not steps:
             raise WorkflowRecoveryError("A workflow must contain at least one step")
 
@@ -214,6 +249,30 @@ class WorkflowRecoveryRepository:
                     definition_version, now, now, owner_user_id,
                 ),
             )
+            if normalized_plan_consumption is not None:
+                plan_id, plan_owner, plan_digest = normalized_plan_consumption
+                consumed = connection.execute(
+                    """
+                    UPDATE agent_work_order_plans
+                    SET status = 'consumed', consumed_at = ?, workflow_id = ?,
+                        nonce_b64 = 'consumed', ciphertext_b64 = 'consumed'
+                    WHERE plan_id = ? AND owner_user_id = ? AND status = 'active'
+                      AND plan_digest = ? AND expires_at > ?
+                    """,
+                    (
+                        now,
+                        str(workflow_id),
+                        plan_id,
+                        plan_owner,
+                        plan_digest,
+                        now,
+                    ),
+                )
+                if consumed.rowcount != 1:
+                    raise WorkflowRecoveryError(
+                        "Plan is not active, owned, unexpired, or has changed"
+                    )
+
             if idempotency_binding is not None:
                 scope = idempotency_binding.get("scope")
                 key = idempotency_binding.get("key")
