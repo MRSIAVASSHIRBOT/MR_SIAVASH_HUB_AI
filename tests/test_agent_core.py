@@ -815,13 +815,13 @@ def test_agent_execute_resumes_by_topological_position_not_request_index(monkeyp
                     },
                     {
                         "step_id": "step-3",
-                        "description": "Execute second request tool",
+                        "description": "Execute registered tool: text.echo",
                         "depends_on": ["step-1"],
                     },
                     {
                         "step_id": "step-2",
-                        "description": "Execute first request tool",
-                        "depends_on": ["step-1"],
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1", "step-3"],
                     },
                 ],
                 "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
@@ -875,12 +875,12 @@ def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypat
                     },
                     {
                         "step_id": "step-2",
-                        "description": "Must wait for step 3",
-                        "depends_on": ["step-3"],
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1", "step-3"],
                     },
                     {
                         "step_id": "step-3",
-                        "description": "Prerequisite",
+                        "description": "Execute registered tool: text.echo",
                         "depends_on": ["step-1"],
                     },
                 ],
