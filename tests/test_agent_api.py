@@ -602,7 +602,7 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert denied_after_revoke.json()["blocked"] is True
     assert calls == ["read"]
 
- 
+
 
 def test_agent_plan_rejects_invalid_required_capability_names():
     client = authenticated_client()
