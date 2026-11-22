@@ -40,7 +40,11 @@ from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
-from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
+from mrhub.jobs.idempotency import (
+    IdempotencyConflict,
+    IdempotencyError,
+    IdempotencyRepository,
+)
 from mrhub.jobs.payload_envelope import (
     PayloadEnvelopeError,
     decrypt_plan_payload,
@@ -411,6 +415,355 @@ def get_persisted_goal_work_order_plan(
         "risk_class_is_authoritative": False,
         "planning_only": True,
         "execution_ready": False,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
+
+
+@router.post("/work-orders/plans/{plan_id}/execute")
+def execute_persisted_goal_work_order_plan(
+    plan_id: UUID,
+    request: ExecutePersistedPlanRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=255),
+    ],
+) -> dict[str, object]:
+    """Queue a low-risk, explicitly bound plan through the existing durable worker path."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    owner_user_id = current_user.user_id
+    registry = build_tool_registry(owner_user_id=owner_user_id)
+
+    # Normalize payloads using the live server-owned input schemas. This also
+    # makes idempotent replays independent of the plan's now-consumed ciphertext.
+    normalized_bindings: list[dict[str, object]] = []
+    contract_digests: dict[str, str] = {}
+    definitions = {}
+    try:
+        for binding in request.bindings:
+            definition = registry.get(binding.tool_name)
+            if (
+                definition.risk_class is not RiskClass.LOW
+                or definition.external_side_effect
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="V1 plan execution only supports low-risk tools without external side effects",
+                )
+            validated = definition.input_model.model_validate(binding.payload)
+            normalized_payload = validated.model_dump(mode="json")
+            normalized_bindings.append(
+                {
+                    "step_id": binding.step_id,
+                    "tool_name": binding.tool_name,
+                    "payload": normalized_payload,
+                }
+            )
+            contract_digests[binding.tool_name] = tool_contract_digest(definition)
+            definitions[binding.tool_name] = definition
+    except LookupError as exc:
+        raise HTTPException(status_code=422, detail="A bound tool is not registered") from exc
+    except (TypeError, ValueError) as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=422, detail="A bound tool payload is invalid") from exc
+
+    request_digest = execution_request_digest(
+        plan_id=str(plan_id),
+        plan_digest=request.plan_digest,
+        bindings=normalized_bindings,
+    )
+    idempotency_scope = f"awi-plan-exec:{owner_user_id}"
+    idempotency = IdempotencyRepository(settings.database_path)
+    recovery = WorkflowRecoveryRepository(settings.database_path)
+
+    existing = idempotency.get(idempotency_scope, idempotency_key)
+    if existing is not None:
+        if not hmac.compare_digest(existing.request_digest, request_digest):
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key was already used for a different request",
+            )
+        if not existing.workflow_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The idempotent workflow reservation is incomplete",
+            )
+        stored_workflow = recovery.get_run(
+            UUID(existing.workflow_id),
+            owner_user_id=owner_user_id,
+        )
+        if stored_workflow is None:
+            raise HTTPException(status_code=409, detail="The original workflow is unavailable")
+        return {
+            "workflow": stored_workflow,
+            "execution": None,
+            "queued": stored_workflow["status"] in {"queued", "running", "paused"},
+            "idempotent_replay": True,
+            "plan_consumed": True,
+            "execution_started": stored_workflow["status"] != "queued",
+            "tools_executed": False,
+            "permissions_changed": False,
+        }
+
+    record = AgentWorkOrderPlanRepository(settings.database_path).get(
+        str(plan_id),
+        owner_user_id=owner_user_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Plan record not found")
+    if record.status == "expired":
+        raise HTTPException(status_code=410, detail="Plan record has expired")
+    if record.status != "active":
+        raise HTTPException(status_code=409, detail="Plan record is not active")
+    if not hmac.compare_digest(record.plan_digest, request.plan_digest):
+        raise HTTPException(status_code=409, detail="Plan digest does not match the stored plan")
+
+    try:
+        key = load_payload_key()
+        stored_payload = decrypt_plan_payload(
+            record.envelope,
+            plan_id=record.plan_id,
+            owner_user_id=record.owner_user_id,
+            key=key,
+        )
+        if set(stored_payload) != {"work_order", "plan"}:
+            raise PayloadEnvelopeError("Persisted plan payload shape is invalid")
+        work_order = WorkOrder.model_validate(stored_payload["work_order"])
+        execution_plan = ExecutionPlan.model_validate(stored_payload["plan"])
+        canonical_payload = {
+            "work_order": work_order.model_dump(mode="json"),
+            "plan": execution_plan.model_dump(mode="json"),
+        }
+        actual_digest = _canonical_plan_digest(canonical_payload)
+        if not hmac.compare_digest(actual_digest, record.plan_digest):
+            raise PayloadEnvelopeError("Persisted plan digest does not match")
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan failed envelope or integrity validation",
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan failed schema validation",
+        ) from exc
+
+    try:
+        ordered_steps = topological_plan_steps(execution_plan)
+    except PlanExecutionBindingError as exc:
+        raise HTTPException(status_code=409, detail="Plan dependency graph is invalid") from exc
+    if len(ordered_steps) != len(request.bindings):
+        raise HTTPException(
+            status_code=422,
+            detail="Every executable plan step must have exactly one explicit tool binding",
+        )
+
+    by_step_id = {binding.step_id: binding for binding in request.bindings}
+    if len(by_step_id) != len(request.bindings):
+        raise HTTPException(status_code=422, detail="Duplicate plan step bindings are not allowed")
+    ordered_bindings: list[PersistedPlanStepBinding] = []
+    for step in ordered_steps:
+        binding = by_step_id.get(step.step_id)
+        if binding is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Every plan step must have one explicit tool binding",
+            )
+        if len(step.required_capabilities) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="V1 requires exactly one declared capability per plan step",
+            )
+        if binding.tool_name != step.required_capabilities[0]:
+            raise HTTPException(
+                status_code=422,
+                detail="Tool name must exactly match the step's declared capability",
+            )
+        ordered_bindings.append(binding)
+
+    if set(by_step_id) != {step.step_id for step in ordered_steps}:
+        raise HTTPException(status_code=422, detail="Unexpected plan step bindings were supplied")
+
+    risk_material = work_order.model_dump(mode="json")
+    risk_material["verification_steps"] = [
+        *risk_material.get("verification_steps", []),
+        *[
+            f"{step.description} {step.verification}"
+            for step in execution_plan.steps
+        ],
+    ]
+    derived_risk = derive_server_risk_class(work_order.goal, risk_material)
+    if derived_risk is not RiskClass.LOW or work_order.risk_class is not RiskClass.LOW:
+        raise HTTPException(
+            status_code=403,
+            detail="V1 plan execution is restricted to server-classified low-risk goals",
+        )
+
+    permission_service = ToolPermissionService(tasks, AuditLogger(tasks))
+    core = AgentCore(
+        build_model_router(),
+        registry,
+        permission_provider=lambda: permission_service.active_permissions(owner_user_id),
+    )
+    tool_requests: list[AgentToolRequest] = []
+    step_bindings: list[dict[str, str]] = []
+    for binding in ordered_bindings:
+        definition = definitions[binding.tool_name]
+        normalized = definition.input_model.model_validate(binding.payload)
+        tool_requests.append(
+            AgentToolRequest(
+                name=binding.tool_name,
+                payload=normalized.model_dump(mode="json"),
+            )
+        )
+        step_bindings.append(
+            {
+                "step_id": binding.step_id,
+                "tool_name": binding.tool_name,
+                "tool_contract_digest": contract_digests[binding.tool_name],
+            }
+        )
+
+    agent_request = AgentPlanRequest(
+        goal=work_order.goal,
+        requires_text=True,
+        requires_tool_calling=False,
+        tools=tool_requests,
+    )
+    try:
+        agent_plan = core.plan(agent_request)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Agent execution planning is unavailable") from exc
+    if not agent_plan.get("execution_ready"):
+        raise HTTPException(
+            status_code=403,
+            detail="Current owner permissions or server policy do not allow this workflow",
+        )
+
+    execution_payload = {
+        "format": PLAN_EXECUTION_FORMAT,
+        "request": agent_request.model_dump(mode="json"),
+        "plan_binding": {
+            "plan_id": record.plan_id,
+            "plan_digest": record.plan_digest,
+            "step_bindings": step_bindings,
+        },
+    }
+    task = TaskRecord(
+        task_type="agent.workflow",
+        description="GPI/AWI plan execution",
+        risk_class=RiskClass.LOW,
+    )
+    workflow_id = uuid4()
+    try:
+        workflow_envelope = encrypt_payload(
+            execution_payload,
+            workflow_id=str(workflow_id),
+            task_id=str(task.task_id),
+            owner_user_id=owner_user_id,
+            key=load_payload_key(),
+        )
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="The workflow payload could not be encrypted safely",
+        ) from exc
+
+    workflow_steps: list[dict[str, object]] = [
+        {
+            "step_number": 1,
+            "kind": "provider_selection",
+            "name": "provider_selection",
+        }
+    ]
+    for index, binding in enumerate(ordered_bindings, start=2):
+        definition = definitions[binding.tool_name]
+        workflow_steps.append(
+            {
+                "step_number": index,
+                "kind": "external_tool" if definition.external_side_effect else "safe_tool",
+                "name": binding.tool_name,
+            }
+        )
+
+    try:
+        recovery.create_run(
+            request_digest,
+            workflow_steps,
+            task=task,
+            owner_user_id=owner_user_id,
+            payload_envelope=workflow_envelope.model_dump(mode="json"),
+            workflow_id=workflow_id,
+            idempotency_binding={
+                "scope": idempotency_scope,
+                "key": idempotency_key,
+            },
+            plan_consumption={
+                "plan_id": record.plan_id,
+                "owner_user_id": owner_user_id,
+                "plan_digest": record.plan_digest,
+            },
+        )
+    except WorkflowRecoveryError as exc:
+        raise HTTPException(status_code=409, detail="Plan could not be consumed atomically") from exc
+    except sqlite3.IntegrityError:
+        # A concurrent identical request may have won the idempotency race.
+        existing = idempotency.get(idempotency_scope, idempotency_key)
+        if existing is None or not hmac.compare_digest(
+            existing.request_digest,
+            request_digest,
+        ) or not existing.workflow_id:
+            raise HTTPException(status_code=409, detail="Plan or idempotency binding changed")
+        stored_workflow = recovery.get_run(
+            UUID(existing.workflow_id),
+            owner_user_id=owner_user_id,
+        )
+        if stored_workflow is None:
+            raise HTTPException(status_code=409, detail="The original workflow is unavailable")
+        return {
+            "workflow": stored_workflow,
+            "execution": None,
+            "queued": True,
+            "idempotent_replay": True,
+            "plan_consumed": True,
+            "execution_started": False,
+            "tools_executed": False,
+            "permissions_changed": False,
+        }
+    except sqlite3.Error as exc:
+        raise HTTPException(status_code=503, detail="Workflow storage is unavailable") from exc
+
+    AuditLogger(tasks).record(
+        event_type="agent.plan_execution_queued",
+        outcome="queued",
+        actor_type="user",
+        actor_id=owner_user_id,
+        subject_type="workflow",
+        subject_id=str(workflow_id),
+        metadata={
+            "plan_id": record.plan_id,
+            "plan_digest": record.plan_digest,
+            "step_count": len(ordered_bindings),
+            "tool_names": [binding.tool_name for binding in ordered_bindings],
+        },
+    )
+    stored_workflow = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+    return {
+        "workflow": stored_workflow,
+        "execution": None,
+        "queued": True,
+        "idempotent_replay": False,
+        "plan_consumed": True,
         "execution_started": False,
         "tools_executed": False,
         "permissions_changed": False,
