@@ -80,13 +80,20 @@ class WorkflowWorkerHandler:
                     "failed",
                     "cancelled",
                 }:
-                    AgentWorkOrderPlanRepository(
-                        self.repository.database_path
-                    ).erase_consumed(
-                        str(plan_binding["plan_id"]),
-                        owner_user_id=owner_user_id,
-                        workflow_id=str(workflow_id),
-                    )
+                    try:
+                        self.recovery.delete_encrypted_payload(
+                            workflow_id,
+                            owner_user_id=owner_user_id,
+                        )
+                        AgentWorkOrderPlanRepository(
+                            self.repository.database_path
+                        ).erase_consumed(
+                            str(plan_binding["plan_id"]),
+                            owner_user_id=owner_user_id,
+                            workflow_id=str(workflow_id),
+                        )
+                    except sqlite3.Error:
+                        result["payload_cleanup_pending"] = True
             return result
 
         permissions = ToolPermissionService(
@@ -231,18 +238,25 @@ class WorkflowWorkerHandler:
         else:
             return fail_closed("workflow_state_not_dispatchable")
         current = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+        payload_cleanup_pending = False
         if current is not None and current["status"] in {"succeeded", "failed", "cancelled"}:
-            self.recovery.delete_encrypted_payload(
-                workflow_id, owner_user_id=owner_user_id
-            )
-            if plan_binding is not None:
-                AgentWorkOrderPlanRepository(
-                    self.repository.database_path
-                ).erase_consumed(
-                    str(plan_binding["plan_id"]),
+            try:
+                self.recovery.delete_encrypted_payload(
+                    workflow_id,
                     owner_user_id=owner_user_id,
-                    workflow_id=str(workflow_id),
                 )
+                if plan_binding is not None:
+                    AgentWorkOrderPlanRepository(
+                        self.repository.database_path
+                    ).erase_consumed(
+                        str(plan_binding["plan_id"]),
+                        owner_user_id=owner_user_id,
+                        workflow_id=str(workflow_id),
+                    )
+            except sqlite3.Error:
+                # The workflow has reached a terminal state. Keep the result stable
+                # and expose only that encrypted-payload cleanup needs reconciliation.
+                payload_cleanup_pending = True
         execution = result.get("execution")
         if isinstance(execution, dict):
             return {
@@ -252,8 +266,13 @@ class WorkflowWorkerHandler:
                 "model_inference_started": bool(execution.get("model_inference_started")),
                 "tools_executed": bool(execution.get("tools_executed")),
                 "error_code": execution.get("error_code"),
+                "payload_cleanup_pending": payload_cleanup_pending,
             }
-        return {"workflow_id": str(workflow_id), "execution_completed": False}
+        return {
+            "workflow_id": str(workflow_id),
+            "execution_completed": False,
+            "payload_cleanup_pending": payload_cleanup_pending,
+        }
 
     def _fail_closed(
         self,
