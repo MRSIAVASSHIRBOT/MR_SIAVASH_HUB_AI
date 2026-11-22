@@ -9,7 +9,6 @@ from mrhub.agents.plan_repository import (
 )
 from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.idempotency import IdempotencyRepository
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
@@ -394,8 +393,8 @@ def test_plan_consumption_failure_rolls_back_task_workflow_and_payload(tmp_path)
             },
             plan_consumption={
                 "plan_id": plan_id,
-                "owner_user_id": "another-owner",
-                "plan_digest": "e" * 64,
+                "owner_user_id": owner,
+                "plan_digest": "d" * 64,
             },
         )
 
