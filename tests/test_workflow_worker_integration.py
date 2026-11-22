@@ -302,25 +302,79 @@ def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     assert second.status_code == 200
     assert second.json()["status"] == "cancelled"
 
-def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeypatch) -> None:
-    """An effect accepted before process death must not be invoked again on recovery."""
+def test_worker_crash_after_reordered_external_side_effect_requires_reconciliation(monkeypatch):
+    """A reordered external DAG step stays quarantined after an ambiguous result."""
     import pytest
 
     from mrhub.agents.core import AgentCore
     from mrhub.domain.tasks import TaskStatus
     from mrhub.jobs.worker import WorkerEngine
+    from mrhub.security.policy import PolicyDecision, PolicyEngine, PolicyResult
 
     class SimulatedWorkerProcessCrash(BaseException):
         """Bypass normal exception recovery to model abrupt worker termination."""
 
-    client = authenticated_client()
-    response = client.post(
-        "/agent/workflows",
-        json={
-            "goal": "Simulate a publish action whose response is lost",
-            "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
-        },
+    class TestOnlyAllowPolicy(PolicyEngine):
+        def evaluate(self, _request):
+            # This test verifies durable classification, not approval UI behavior.
+            return PolicyResult(
+                decision=PolicyDecision.ALLOW,
+                reason="test-only policy",
+            )
+
+    class EmptyInput(BaseModel):
+        pass
+
+    class ToolOutput(BaseModel):
+        accepted: bool
+
+    registry = ToolRegistry(policy=TestOnlyAllowPolicy())
+    registry.register(
+        ToolDefinition(
+            name="test.publish",
+            description="A simulated external publication action.",
+            input_model=EmptyInput,
+            output_model=ToolOutput,
+            handler=lambda _payload: {"accepted": True},
+            external_side_effect=True,
+        )
     )
+    registry.register(
+        ToolDefinition(
+            name="test.prepare",
+            description="A safe preparation step.",
+            input_model=EmptyInput,
+            output_model=ToolOutput,
+            handler=lambda _payload: {"accepted": True},
+            external_side_effect=False,
+        )
+    )
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda **_kwargs: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda **_kwargs: registry,
+    )
+
+    client = authenticated_client()
+    request = {
+        "goal": "Run the safe prerequisite before external publication",
+        "tools": [
+            {
+                "name": "test.publish",
+                "payload": {},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "test.prepare",
+                "payload": {},
+                "depends_on": [],
+            },
+        ],
+    }
+    response = client.post("/agent/workflows", json=request)
     assert response.status_code == 200
     workflow = response.json()["workflow"]
     workflow_id = UUID(workflow["workflow_id"])
@@ -328,21 +382,35 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
 
     repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
-    # Model a registered external-side-effect step for this fault-injection test.
     with repository._connection() as connection:
-        connection.execute(
-            "UPDATE workflow_steps SET step_kind = 'external_tool' "
-            "WHERE workflow_id = ? AND step_number = 2",
+        durable_steps = connection.execute(
+            """
+            SELECT step_number, step_kind, step_name
+            FROM workflow_steps
+            WHERE workflow_id = ?
+            ORDER BY step_number
+            """,
             (str(workflow_id),),
-        )
+        ).fetchall()
+
+    # Request order is publish -> prepare, but the validated DAG runs prepare -> publish.
+    assert [
+        (row["step_number"], row["step_kind"], row["step_name"])
+        for row in durable_steps
+    ] == [
+        (1, "provider_selection", "provider_selection"),
+        (2, "safe_tool", "test.prepare"),
+        (3, "external_tool", "test.publish"),
+    ]
 
     external_effects: list[str] = []
 
-    def crash_after_remote_acceptance(self, request, **callbacks):
-        # The runner must durably record the active attempt before the external
-        # effect. Simulate the remote system accepting it, then kill the process
-        # before on_step_result can persist a checkpoint.
+    def crash_after_remote_acceptance(self, agent_request, **callbacks):
+        # Persist the safe prerequisite, then start the external side effect at
+        # runtime position 3 before simulating process death.
         callbacks["on_step"](2, "running", None)
+        callbacks["on_step_result"](2, "a" * 64)
+        callbacks["on_step"](3, "running", None)
         external_effects.append("publish accepted by remote system")
         raise SimulatedWorkerProcessCrash()
 
@@ -367,7 +435,6 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
             ),
         )
 
-    # A new process performs stale-worker recovery before claiming new work.
     recovery_worker = WorkerEngine(repository)
     assert recovery_worker.run_once() is None
 
@@ -375,51 +442,55 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
     task = repository.get(task_id)
     assert task is not None and task.status is TaskStatus.WAITING_APPROVAL
     assert stored is not None and stored["status"] == "recovery_required"
-    assert stored["steps"][1]["status"] == "unknown_outcome"
-
-    # The workflow is no longer claimable, so the simulated remote action stays
-    # at one invocation rather than being blindly repeated by a later worker.
+    assert stored["steps"][1]["status"] == "succeeded"
+    assert stored["steps"][2]["status"] == "unknown_outcome"
     assert recovery_worker.run_once() is None
     assert external_effects == ["publish accepted by remote system"]
 
-    # The durable unknown outcome must remain unknown in the evaluator too.
+    typed_request = AgentPlanRequest.model_validate(request)
+    assert stored["steps"][1]["input_digest"] == AgentCore.workflow_step_input_digest(
+        3, typed_request.tools[1]
+    )
+    assert stored["steps"][2]["input_digest"] == AgentCore.workflow_step_input_digest(
+        2, typed_request.tools[0]
+    )
+
+    # The evaluator must retain the safe success and ambiguous external outcome.
     runner = object.__new__(AgentWorkflowRunner)
     runner.recovery = recovery
     runner.core = object.__new__(AgentCore)
-    evaluation_request = AgentPlanRequest.model_validate(
-        {
-            "goal": "Simulate a publish action whose response is lost",
-            "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
-        }
-    )
     evaluation_plan = {
         "dependency_plan": {
             "ordered_steps": [
                 {
                     "step_id": "step-1",
-                    "description": "Select provider",
+                    "description": "Select the model provider",
                     "depends_on": [],
                 },
                 {
-                    "step_id": "step-2",
-                    "description": "Execute tool",
+                    "step_id": "step-3",
+                    "description": "Execute registered tool: test.prepare",
                     "depends_on": ["step-1"],
                 },
-            ]
+                {
+                    "step_id": "step-2",
+                    "description": "Execute registered tool: test.publish",
+                    "depends_on": ["step-1", "step-3"],
+                },
+            ],
+            "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
         }
     }
     evaluation = runner._evaluate_workflow_tools(
         workflow_id,
-        evaluation_request,
+        typed_request,
         evaluation_plan,
         "local-owner",
     )
     assert evaluation is not None
     assert evaluation["decision"] == "review_required"
+    assert evaluation["passed"] == 1
     assert evaluation["unknown"] == 1
-    assert evaluation["passed"] == 0
-
-
 
 def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeypatch):
     client = authenticated_client()

@@ -127,8 +127,13 @@ def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
                 ]
             }
 
+    class StoredCore:
+        def ordered_tool_steps(self, request, _plan):
+            return [(2, 2, request.tools[0])]
+
     runner = object.__new__(AgentWorkflowRunner)
     runner.recovery = StoredFailure()
+    runner.core = StoredCore()
     request = AgentPlanRequest(
         goal="Evaluate a persisted failed tool step",
         tools=[{"name": "text.echo", "payload": {"text": "example"}}],
@@ -150,8 +155,12 @@ def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
             ]
         }
     }
-    first = runner._evaluate_workflow_tools(uuid4(), request, plan, "owner")
-    second = runner._evaluate_workflow_tools(uuid4(), request, plan, "owner")
+    first = runner._evaluate_workflow_tools(
+        uuid4(), request, plan=plan, owner_user_id="owner"
+    )
+    second = runner._evaluate_workflow_tools(
+        uuid4(), request, plan=plan, owner_user_id="owner"
+    )
 
     assert first is not None and second is not None
     first_digest = first["criteria"][0]["evidence_digest"]

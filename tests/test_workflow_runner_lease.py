@@ -105,16 +105,19 @@ def test_durable_step_metadata_tracks_topological_order_and_external_tool_identi
             "step_number": 1,
             "kind": "provider_selection",
             "name": "provider_selection",
+            "input_digest": None,
         },
         {
             "step_number": 2,
             "kind": "safe_tool",
             "name": "state.read",
+            "input_digest": core.workflow_step_input_digest(3, request.tools[1]),
         },
         {
             "step_number": 3,
             "kind": "external_tool",
             "name": "publish.external",
+            "input_digest": core.workflow_step_input_digest(2, request.tools[0]),
         },
     ]
     assert tools_by_execution_step[2].name == "state.read"

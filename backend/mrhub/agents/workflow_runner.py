@@ -50,6 +50,57 @@ class AgentWorkflowRunner:
         ).encode()
         return hashlib.sha256(encoded).hexdigest()
 
+    @staticmethod
+    def request_digest(request: AgentPlanRequest) -> str:
+        """Return the version-stable digest shared by API and worker replay."""
+        return AgentWorkflowRunner._digest(request.canonical_payload())
+
+    @staticmethod
+    def build_durable_step_metadata(
+        core: AgentCore,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+    ) -> tuple[list[dict[str, object]], dict[int, object]]:
+        """Build durable checkpoints and tool lookups in validated DAG order."""
+        ordered_tools = core.ordered_tool_steps(request, plan)
+        if len(ordered_tools) != len(request.tools):
+            raise ValueError("Validated workflow graph does not cover every requested tool")
+
+        step_specs: list[dict[str, object]] = [
+            {
+                "step_number": 1,
+                "kind": "provider_selection",
+                "name": "provider_selection",
+                "input_digest": None,
+            }
+        ]
+        tools_by_execution_step: dict[int, object] = {}
+        for runtime_step_number, request_step_number, requested_tool in ordered_tools:
+            definition = core.tool_registry.get(requested_tool.name)
+            step_specs.append(
+                {
+                    "step_number": runtime_step_number,
+                    "kind": (
+                        "external_tool"
+                        if definition.external_side_effect
+                        else "safe_tool"
+                    ),
+                    "name": requested_tool.name,
+                    "input_digest": core.workflow_step_input_digest(
+                        request_step_number, requested_tool
+                    ),
+                }
+            )
+            tools_by_execution_step[runtime_step_number] = definition
+        return step_specs, tools_by_execution_step
+
+    def _durable_step_metadata(
+        self,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+    ) -> tuple[list[dict[str, object]], dict[int, object]]:
+        return self.build_durable_step_metadata(self.core, request, plan)
+
     def _durable_step_metadata(
         self,
         request: AgentPlanRequest,
