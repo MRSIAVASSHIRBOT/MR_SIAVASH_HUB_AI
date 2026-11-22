@@ -39,7 +39,6 @@ class WorkOrder(BaseModel):
         return items
 
 
-
 MAX_REGISTERED_TOOL_COUNT = 200
 MAX_REGISTERED_TOOL_NAME_LENGTH = 80
 
