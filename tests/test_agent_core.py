@@ -893,3 +893,47 @@ def test_workflow_step_input_digest_binds_stable_request_identity_and_payload():
     assert len(second_digest) == 64
     assert first_digest != second_digest
     assert first_digest == AgentCore.workflow_step_input_digest(2, first)
+
+
+def test_agent_plan_request_canonical_payload_preserves_legacy_digest_shape():
+    legacy_request = AgentPlanRequest(
+        goal="Keep existing workflow request identity stable",
+        tools=[{"name": "text.echo", "payload": {"text": "legacy"}}],
+    )
+
+    assert legacy_request.canonical_payload() == {
+        "goal": "Keep existing workflow request identity stable",
+        "requires_text": True,
+        "requires_vision": False,
+        "requires_audio": False,
+        "requires_tool_calling": False,
+        "prefer_local": False,
+        "tools": [
+            {
+                "name": "text.echo",
+                "payload": {"text": "legacy"},
+            }
+        ],
+        "required_capabilities": [],
+    }
+
+
+def test_agent_plan_request_canonical_payload_includes_explicit_dependencies():
+    request = AgentPlanRequest(
+        goal="Include explicit dependencies in the request identity",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
+        ],
+    )
+
+    assert request.canonical_payload()["tools"][0]["depends_on"] == ["step-3"]
+    assert request.canonical_payload()["tools"][1]["depends_on"] == []
