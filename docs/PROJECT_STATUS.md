@@ -1098,3 +1098,49 @@ This documentation PR must pass exact-head CI before merge. All checks must be e
 - Regression cases cover duplicate, out-of-order, zero, boolean, and empty registries, and assert that invalid definitions do not create `schema_migrations`.
 - Exact PR-head validation on `ff1997562931aa3c543572714be9977fdb4c3e68`: all six workflows passed (Backend CI, CI matrix, Workflow Security Audit, Defensive Python Scan, Video Render Integration, Windows Launcher Validation). Backend CI reported 1,394 passed, 2 skipped, 86% coverage.
 - This is source/CI acceptance evidence, not a production database migration. No production database was changed.
+
+
+
+## Coordinated three-repository checkpoint — 2026-11-22 UTC
+
+This checkpoint supersedes earlier default-branch and CI snapshots above where they conflict. It records GitHub source/CI evidence and previously dated operational observations; it does not claim a new production deployment, live device acceptance, or Telegram message delivery.
+
+### Current requested repositories
+
+| Repository | Default branch | Current main SHA | Exact-main CI evidence |
+| --- | --- | --- | --- |
+| MR_SIAVASH_HUB_AI | `main` | `b065cabf137bee6462f90f37a9f4641b7c021b47` | Backend CI [45013464294](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464294), CI [45013464292](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464292), Defensive Python Scan [45013464287](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464287), Workflow Security Audit [45013464304](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464304), Scorecard [45013464338](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464338), Video Render Integration [45013464281](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464281), and Windows Launcher Validation [45013464277](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45013464277): all succeeded. |
+| MR_SIAVASH_AI | `main` | `fe48ad35320b5f595c2b14ec0f199967449aa87d` | Quality/Pages [44950311746](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44950311746), Gateway CI [44950311810](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44950311810), Workflow Security Audit [44950311790](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44950311790), Scorecard [44950311821](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44950311821), Production Runtime Smoke [44950311773](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44950311773), and Preview Runtime Smoke [44950311840](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/44950311840): all succeeded. The Quality workflow's static Pages deployment job succeeded. |
+| MR_SIAVASH_EL_AI | `main` | `919f3d0ba4564db8ade6ef1f77ce1109ca9b868a` | CI [45017549224](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45017549224), Workflow Security Audit [45017549243](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45017549243), and OpenSSF Scorecard [45017549232](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45017549232): all succeeded, including Python 3.11 and 3.12 test jobs. |
+
+### Repository and dependency boundaries
+
+- Hub is the authoritative owner-scoped API for tasks, memory, Agent orchestration, approvals, tool policy, and audit.
+- Website is a public static application and public-knowledge Gateway. It is not the private Hub API and must not receive private Hub context or credentials.
+- EL_AI owns Telegram transport, identity mapping, command routing, and delivery. Private Hub access remains owner-paired and scoped; public Gateway requests contain only the current public question.
+- The separate EL_AGENT Windows/Android companion remains an integration dependency in the current Hub registry. The last checked-in operational ledger lists its Windows and Android consumer work as Draft and physical-device/Hub-Staging acceptance as incomplete; this run did not refresh the external companion repository's branch state.
+
+### Open integration review
+
+Hub PR [#488](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/488) is open. Its branch is 9 commits ahead and 1 behind current Hub `main`, and GitHub reports `mergeable=false`. The exact-head CI/security workflow runs observed for the PR head succeeded, but the diff removes `mr-siavash-el-agent` from the registry. Since `get_project_context()` resolves context from that registry, this can break Agent context requests for the active companion dependency. A review follow-up was posted: keep dependency context resolvable while separating the three core dashboard cards from integration dependencies. Do not merge #488 as-is; update the branch, address the finding, and rerun exact-head checks.
+
+### Deployment and privacy gates
+
+- Hub `render.yaml` now describes a **paid** Render Starter service in Frankfurt with a 10 GB persistent disk, one API/worker instance, and `autoDeploy: true`. It has not been deployed. The account owner must review charges, persistent-disk capacity, secret setup, backup/restore, and single-instance constraints before creating the service. This is not a free hosting path.
+- Website GitHub compare against the last recorded Production Worker source annotation `1616545a2e204cb378e2c824299412ca20ef598b` reports **106 ahead / 0 behind** for current `main`. This is source drift, not proof that the current source is deployed to Cloudflare.
+- The last recorded live Cloudflare audit (2026-11-21) identified Production Worker version 14 on the older source annotation and Preview query-string redaction as false. The source-side redaction fix is merged, but no Preview redeployment or Production Worker deployment was performed in this checkpoint.
+- EL_AI README PR #88 refreshed the Website source SHA and comparison count; it changed documentation only. The repository's 2026-11-22 read-only edge-Worker checkpoint records healthy `/health` and `/ready` responses and secret-binding names, but does not prove Telegram token validity, webhook registration, bridge pull/complete, or end-to-end message delivery.
+
+### Governance and reproducibility
+
+- GitHub branch metadata reports `protected=false` on all three requested `main` branches; required-status-check enforcement is off and the required context list is empty. No branch-protection, ruleset, permission, or access-control setting was changed.
+- Hub and EL_AI declare Python dependencies in `pyproject.toml`; no committed Python lockfile was found in the inspected project roots. Website's Gateway `package.json` has no runtime dependencies and runs Node's built-in test runner; no package lockfile was found.
+- No secret values, production data, Worker routes, D1 rows, Telegram credentials, or deployment settings were read or changed in this checkpoint.
+
+### Next actions
+
+1. Resolve the EL_AGENT context regression and stale base on Hub PR #488 before merge.
+2. Keep Website Worker release manual; perform fresh Cloudflare inventory, Preview privacy readback, backup/rollback checks, and exact-candidate smoke before owner-approved deployment.
+3. Complete EL_AI bridge/webhook and private Hub round-trip acceptance with owner-controlled credentials; do not infer it from Worker health or CI.
+4. Have repository administrators configure and test branch protection for all three repositories.
+5. Add reproducible dependency lockfiles and validate clean Linux/Windows installs.
