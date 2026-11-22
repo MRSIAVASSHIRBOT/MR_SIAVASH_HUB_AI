@@ -1,9 +1,8 @@
-"""Deterministic CGI capability-gap evaluation against registered tools.
+""""Deterministic CGI capability-gap evaluation against registered tools.
 
 This evaluator reports gaps only. It does not discover, install, grant, or execute
 capabilities; descriptions are not treated as executable capability identifiers.
 """
-from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -72,8 +71,14 @@ def evaluate_capability_gaps(
 
     matched = required_keys & available_keys
     # Preserve the user's requirement order in all report sections.
-    available_required = tuple(name for name in required if _normalize_name(name, "Required capability") in matched)
-    missing = tuple(name for name in required if _normalize_name(name, "Required capability") not in available_keys)
+    available_required = tuple(
+        name for name in required if _normalize_name(name, "Required capability") in matched
+    )
+    missing = tuple(
+        name
+        for name in required
+        if _normalize_name(name, "Required capability") not in available_keys
+    )
     return CapabilityGapReport(
         required=tuple(required),
         available=available_required,
