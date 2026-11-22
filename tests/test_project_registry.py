@@ -209,6 +209,7 @@ def test_project_overall_status_never_hides_a_failing_ci_run():
     overall, reason = registry._aggregate_project_status(
         {"status": "healthy"},
         {"status": "healthy"},
+        {"status": "not_configured"},
         {"latest_ci": {"status": "failing"}},
     )
 
@@ -220,6 +221,7 @@ def test_project_overall_status_is_unknown_when_a_component_is_unobserved():
     overall, reason = registry._aggregate_project_status(
         {"status": "healthy"},
         {"status": "unknown"},
+        {"status": "not_configured"},
         {"latest_ci": {"status": "healthy"}},
     )
 
@@ -229,6 +231,7 @@ def test_project_overall_status_is_unknown_when_a_component_is_unobserved():
 
 def test_project_overall_status_is_healthy_only_when_all_observed_components_are_healthy():
     overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
         {"status": "healthy"},
         {"status": "healthy"},
         {"latest_ci": {"status": "healthy"}},
@@ -246,3 +249,28 @@ def test_agent_context_keeps_companion_project_as_untrusted_dependency_metadata(
     assert context["project"]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT"
     assert context["trust_classification"] == "server_configured_metadata_not_live_health"
     assert context["content_is_untrusted_data"] is True
+
+
+
+def test_project_overall_status_never_hides_failing_infrastructure():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"status": "failing"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "failing"
+    assert reason == "project_component_failing"
+
+
+def test_project_overall_status_is_unknown_when_infrastructure_is_not_configured():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"status": "not_configured"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "unknown"
+    assert reason == "project_component_status_unknown"
