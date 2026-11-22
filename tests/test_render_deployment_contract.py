@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -34,4 +33,4 @@ def test_render_blueprint_keeps_secrets_private_and_public_bot_disabled():
     assert 'value: "false"' in blueprint
     assert "EL_AI_CREDENTIAL_STORE" in blueprint
     assert "value: encrypted_file" in blueprint
-    assert "@1605626f9ed8e84ab1a73ff00e18ddf91f4b6d98" in blueprint
+    assert "@e8cb136c22ba5a343cb5725763b23cadb47f55de" in blueprint
