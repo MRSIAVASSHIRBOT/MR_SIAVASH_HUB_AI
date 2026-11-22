@@ -7,7 +7,7 @@ import sqlite3
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
@@ -233,8 +233,12 @@ def create_goal_work_order_plan(
 def create_persisted_goal_work_order_plan(
     request: PersistedGoalPlanningRequest,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
 ) -> dict[str, object]:
     """Create a short-lived encrypted plan record; this endpoint still never executes tools."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
@@ -306,8 +310,12 @@ def create_persisted_goal_work_order_plan(
 def get_persisted_goal_work_order_plan(
     plan_id: UUID,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
 ) -> dict[str, object]:
     """Read and authenticate one encrypted plan record belonging to the current owner."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
     settings = get_settings()
     TaskRepository(settings.database_path).initialize()
     record = AgentWorkOrderPlanRepository(settings.database_path).get(
