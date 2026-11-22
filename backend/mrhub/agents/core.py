@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from mrhub.agents.capability_gaps import evaluate_capability_gaps
 from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
@@ -29,6 +30,7 @@ class AgentPlanRequest(BaseModel):
     requires_tool_calling: bool = False
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
+    required_capabilities: list[str] = Field(default_factory=list, max_length=50)
 
 
 class AgentCore:
@@ -306,17 +308,22 @@ class AgentCore:
             previous_step = step_id
         workflow_plan = build_workflow_plan(graph_steps).as_dict()
 
+        capability_gaps = evaluate_capability_gaps(
+            request.required_capabilities,
+            self.tool_registry.catalog(),
+        )
         executable = all(
             step["status"] == "ready"
             for step in steps
             if step["kind"] == "tool"
-        )
+        ) and capability_gaps.complete
         return {
             "goal_length": len(request.goal),
             "analysis_mode": "declarative_request",
             "selected_provider": selection.model_dump(),
             "steps": steps,
             "workflow_plan": workflow_plan,
+            "capability_gaps": capability_gaps.as_dict(),
             "step_count": len(steps),
             "execution_ready": executable,
             "decision_mode": "plan_only",
