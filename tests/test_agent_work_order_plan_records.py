@@ -206,7 +206,7 @@ def test_plan_record_rejects_unknown_or_noncanonical_plan_identifiers(tmp_path):
     plans = AgentWorkOrderPlanRepository(database.database_path)
 
     assert plans.get("missing", owner_user_id="owner-plan-1") is None
-    assert plans.get(str(uuid4()).upper(), owner_user_id="owner-plan-1") is None
+    assert plans.get("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", owner_user_id="owner-plan-1") is None
 
 
 def test_plan_payload_rejects_non_json_and_oversized_values():
