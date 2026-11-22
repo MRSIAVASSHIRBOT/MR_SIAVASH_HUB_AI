@@ -173,13 +173,21 @@ class AgentWorkflowRunner:
                 "step_number": 1,
                 "kind": "provider_selection",
                 "name": "provider_selection",
+                "input_digest": None,
             }
         ]
-        for runtime_number, _request_number, requested_tool in ordered_tools:
+        for runtime_number, request_number, requested_tool in ordered_tools:
             definition = self.core.tool_registry.get(requested_tool.name)
             kind = "external_tool" if definition.external_side_effect else "safe_tool"
             step_specs.append(
-                {"step_number": runtime_number, "kind": kind, "name": requested_tool.name}
+                {
+                    "step_number": runtime_number,
+                    "kind": kind,
+                    "name": requested_tool.name,
+                    "input_digest": self.core.workflow_step_input_digest(
+                        request_number, requested_tool
+                    ),
+                }
             )
         worker_owned_lease = lease is not None
         if worker_owned_lease:
@@ -395,18 +403,37 @@ class AgentWorkflowRunner:
         raw_steps = plan.get("steps", [])
         if not plan.get("execution_ready") or not isinstance(raw_steps, list):
             raise ValueError("Current request is not executable")
-        expected = [(1, "provider_selection", "provider_selection")]
-        for runtime_number, _request_number, tool in self.core.ordered_tool_steps(
+        expected = [(1, "provider_selection", "provider_selection", None)]
+        for runtime_number, request_number, tool in self.core.ordered_tool_steps(
             request, plan
         ):
             definition = self.core.tool_registry.get(tool.name)
             kind = "external_tool" if definition.external_side_effect else "safe_tool"
-            expected.append((runtime_number, kind, tool.name))
+            expected.append(
+                (
+                    runtime_number,
+                    kind,
+                    tool.name,
+                    self.core.workflow_step_input_digest(request_number, tool),
+                )
+            )
         stored = [
-            (int(step["step_number"]), step["step_kind"], step["step_name"])
+            (
+                int(step["step_number"]),
+                step["step_kind"],
+                step["step_name"],
+                step.get("input_digest"),
+            )
             for step in workflow["steps"]
         ]
-        if expected != stored:
+        if len(expected) != len(stored) or any(
+            expected_step[:3] != stored_step[:3]
+            or (
+                stored_step[3] is not None
+                and expected_step[3] != stored_step[3]
+            )
+            for expected_step, stored_step in zip(expected, stored, strict=True)
+        ):
             raise ValueError("Current workflow plan differs from the stored definition")
 
         provider_step = next(
