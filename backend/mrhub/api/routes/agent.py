@@ -7,16 +7,18 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.gpi import WorkOrderGenerationError, generate_work_order
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
-from mrhub.api.routes.models import build_model_router
+from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord
@@ -25,6 +27,8 @@ from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.providers.base import ProviderError
+from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.tool_permissions import ToolPermissionService
@@ -56,6 +60,91 @@ class WorkflowReconciliationRequest(BaseModel):
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+class GoalPlanningRequest(BaseModel):
+    """Bounded natural-language goal submitted for planning only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal: str = Field(min_length=1, max_length=1_000)
+
+
+@router.post("/work-orders/plan")
+def create_goal_work_order_plan(
+    request: GoalPlanningRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Convert a goal into a validated plan without executing tools."""
+    model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
+    try:
+        selection = model_router.select(ModelRequest(requires_text=True))
+        if selection.provider == "moonshot":
+            _enforce_kimi_request_limit(current_user.user_id)
+        work_order = generate_work_order(request.goal, model_router)
+        if work_order.risk_class.value == "prohibited":
+            raise HTTPException(
+                status_code=422,
+                detail="The requested goal is outside the supported safety policy",
+            )
+        if selection.provider == "moonshot":
+            _enforce_kimi_request_limit(current_user.user_id)
+        plan = generate_execution_plan(work_order, model_router)
+    except (WorkOrderGenerationError, PlanningError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="No configured non-stub model provider is available",
+        ) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
+
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    registry = build_tool_registry(owner_user_id=current_user.user_id)
+    try:
+        assessment = assess_work_order_capabilities(work_order, registry.catalog())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Registered tool catalog is not valid for capability assessment",
+        ) from exc
+
+    AuditLogger(tasks).record(
+        event_type="agent.work_order_planned",
+        outcome="planned",
+        actor_type="user",
+        actor_id=current_user.user_id,
+        subject_type="work_order",
+        metadata={
+            "provider_mode": "local" if selection.local else "kimi",
+            "selected_provider": selection.provider,
+            "status": "planned",
+            "required_capability_count": len(assessment.required),
+            "available_capability_count": len(assessment.available),
+            "missing_capability_count": len(assessment.missing),
+            "declared_risk_class": work_order.risk_class.value,
+            "declared_risk_is_authoritative": False,
+        },
+    )
+    return {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+        "capability_assessment": {
+            "required": list(assessment.required),
+            "available": list(assessment.available),
+            "missing": list(assessment.missing),
+            "complete": assessment.complete,
+            "authorization_checked": False,
+        },
+        "risk_class_is_authoritative": False,
+        "planning_only": True,
+        "execution_ready": False,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
 
 
 @router.post("/work-orders/assess")
