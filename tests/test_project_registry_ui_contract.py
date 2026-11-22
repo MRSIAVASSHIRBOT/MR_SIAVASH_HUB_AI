@@ -45,3 +45,4 @@ def test_project_registry_service_links_only_include_active_website():
 
     assert '"https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"' in source
     assert "gshop11.ir" not in source
+    assert 'project.overall_status || project.repository_status || "unknown"' in source
