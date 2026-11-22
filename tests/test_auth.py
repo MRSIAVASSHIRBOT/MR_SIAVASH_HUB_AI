@@ -65,7 +65,6 @@ def test_invalid_password_does_not_create_session(tmp_path, monkeypatch) -> None
     assert client.get("/tasks").status_code == 401
 
 
-
 def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "login-limit.sqlite3"))
     get_settings.cache_clear()
@@ -104,9 +103,9 @@ def test_login_throttles_repeated_failures_and_success_resets_limit(tmp_path, mo
     assert 1 <= int(limited.headers["Retry-After"]) <= 300
 
 
-
 def test_owner_setup_rejects_non_loopback_client(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "remote-setup.sqlite3"))
+    monkeypatch.delenv("MRH_OWNER_SETUP_TOKEN", raising=False)
     get_settings.cache_clear()
     client = TestClient(create_app(), client=("203.0.113.10", 43120))
     response = client.post(
@@ -115,6 +114,35 @@ def test_owner_setup_rejects_non_loopback_client(tmp_path, monkeypatch) -> None:
         headers={"X-Forwarded-For": "127.0.0.1"},
     )
     assert response.status_code == 403
+
+
+def test_remote_owner_setup_requires_exact_one_time_token(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "remote-authorized-setup.sqlite3"))
+    monkeypatch.setenv("MRH_OWNER_SETUP_TOKEN", "deployment-bootstrap-secret-for-tests")
+    get_settings.cache_clear()
+    client = TestClient(create_app(), client=("203.0.113.10", 43120))
+    password = "test-only-strong-password-2026"
+
+    denied = client.post(
+        "/auth/setup",
+        json={"password": password},
+        headers={"X-MRH-Owner-Setup-Token": "wrong-token"},
+    )
+    assert denied.status_code == 403
+
+    setup = client.post(
+        "/auth/setup",
+        json={"password": password},
+        headers={"X-MRH-Owner-Setup-Token": "deployment-bootstrap-secret-for-tests"},
+    )
+    assert setup.status_code == 201
+
+    replay = client.post(
+        "/auth/setup",
+        json={"password": password},
+        headers={"X-MRH-Owner-Setup-Token": "deployment-bootstrap-secret-for-tests"},
+    )
+    assert replay.status_code == 409
 
 
 def test_login_response_is_not_cacheable(tmp_path, monkeypatch) -> None:
