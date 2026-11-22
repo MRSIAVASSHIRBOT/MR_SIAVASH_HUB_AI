@@ -63,6 +63,16 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "mr-siavash-ai",
         "mr-siavash-el-ai",
     ]
+    assert [project["overall_status"] for project in payload["projects"]] == [
+        "degraded",
+        "unknown",
+        "unknown",
+    ]
+    assert [project["overall_status_reason_code"] for project in payload["projects"]] == [
+        "project_component_degraded",
+        "project_component_status_unknown",
+        "project_component_status_unknown",
+    ]
     assert all(project["repository_status"] == "healthy" for project in payload["projects"])
     assert all(
         project["status_observations"]["repository"]["source"] == "github_public_api"
@@ -193,3 +203,36 @@ def test_hub_runtime_fails_closed_when_local_readiness_is_unavailable(monkeypatc
     assert observation["status"] == "failing"
     assert observation["reason_code"] == "hub_readiness_failed"
     assert observation["details"]["database"] == "unavailable"
+
+
+def test_project_overall_status_never_hides_a_failing_ci_run():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"latest_ci": {"status": "failing"}},
+    )
+
+    assert overall == "failing"
+    assert reason == "project_component_failing"
+
+
+def test_project_overall_status_is_unknown_when_a_component_is_unobserved():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "unknown"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "unknown"
+    assert reason == "project_component_status_unknown"
+
+
+def test_project_overall_status_is_healthy_only_when_all_observed_components_are_healthy():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "healthy"
+    assert reason == "all_observed_components_healthy"
