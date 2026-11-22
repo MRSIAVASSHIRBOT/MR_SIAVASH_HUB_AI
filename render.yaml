@@ -8,7 +8,7 @@ services:
     region: frankfurt
     buildCommand: >-
       pip install . &&
-      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@1605626f9ed8e84ab1a73ff00e18ddf91f4b6d98"
+      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@e8cb136c22ba5a343cb5725763b23cadb47f55de"
     startCommand: bash scripts/start-render.sh
     healthCheckPath: /ready
     autoDeploy: true
