@@ -117,7 +117,7 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
         SimpleNamespace(user_id="owner-1"),
     )
 
-    assert captured == {"include_stub": False}
+    assert captured == {"include_stub": False, "max_timeout_seconds": 60}
     assert result["capability_assessment"]["available"] == ["tool.alpha"]
     assert result["capability_assessment"]["missing"] == ["tool.missing"]
     assert result["capability_assessment"]["authorization_checked"] is False
