@@ -243,3 +243,44 @@ def test_plan_envelope_rejects_tampered_ciphertext():
             owner_user_id="owner-plan-1",
             key=KEY,
         )
+
+
+def test_expiry_sweep_erases_only_a_bounded_batch(tmp_path):
+    database = TaskRepository(tmp_path / "expiry-sweep.sqlite3")
+    owner = create_owner(database)
+    clock = MutableClock()
+    plans = AgentWorkOrderPlanRepository(database.database_path, clock=clock)
+    plan_ids = [str(uuid4()) for _ in range(3)]
+
+    for plan_id in plan_ids:
+        _payload, envelope = encrypted_plan(plan_id, owner)
+        plans.create(
+            plan_id=plan_id,
+            owner_user_id=owner,
+            plan_digest="d" * 64,
+            envelope=envelope,
+            ttl_seconds=60,
+        )
+
+    clock.current += timedelta(seconds=61)
+    assert plans.expire_due(limit=2) == 2
+    assert plans.expire_due(limit=2) == 1
+    assert plans.expire_due(limit=2) == 0
+
+    with database._connection() as connection:
+        rows = connection.execute(
+            "SELECT status, nonce_b64, ciphertext_b64 FROM agent_work_order_plans"
+        ).fetchall()
+    assert len(rows) == 3
+    assert all(row["status"] == "expired" for row in rows)
+    assert all(row["nonce_b64"] == "expired" for row in rows)
+    assert all(row["ciphertext_b64"] == "expired" for row in rows)
+
+
+@pytest.mark.parametrize("limit", [0, -1, 501, True, "100"])
+def test_expiry_sweep_rejects_unbounded_or_invalid_limits(tmp_path, limit):
+    database = TaskRepository(tmp_path / "expiry-sweep-limit.sqlite3")
+    plans = AgentWorkOrderPlanRepository(database.database_path)
+
+    with pytest.raises(AgentWorkOrderPlanError, match="Expiry sweep limit"):
+        plans.expire_due(limit=limit)
