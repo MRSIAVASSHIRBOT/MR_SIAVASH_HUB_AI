@@ -71,6 +71,7 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
     assert worker_result["result"]["execution_completed"] is True
     assert worker_result["result"]["executed_tool_count"] == 1
     evaluation = worker_result["result"]["evaluation"]
+    assert worker_result["result"]["evaluation_scope"] == "tool_execution_only"
     assert evaluation["decision"] == "accept"
     assert evaluation["passed"] == 1
     assert evaluation["unknown"] == 0

@@ -262,7 +262,11 @@ class AgentWorkflowRunner:
                         )
                     )
                 evaluation = evaluate_criteria(criteria).as_dict()
-            execution = {**execution, "evaluation": evaluation}
+            execution = {
+                **execution,
+                "evaluation": evaluation,
+                "evaluation_scope": "tool_execution_only" if request.tools else None,
+            }
             # Close the race between the final in-loop cancellation check and
             # workflow finalization, including workflows with zero tool steps.
             if not execution.get("cancelled") and should_cancel():
