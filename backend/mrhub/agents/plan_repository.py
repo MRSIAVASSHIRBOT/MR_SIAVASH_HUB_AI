@@ -173,7 +173,8 @@ class AgentWorkOrderPlanRepository:
                 connection.execute(
                     """
                     UPDATE agent_work_order_plans
-                    SET status = 'expired'
+                    SET status = 'expired', nonce_b64 = 'expired',
+                        ciphertext_b64 = 'expired'
                     WHERE plan_id = ? AND owner_user_id = ? AND status = 'active'
                     """,
                     (normalized_plan_id, owner_user_id),
