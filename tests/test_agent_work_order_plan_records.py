@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -121,7 +121,7 @@ def test_plan_record_is_owner_scoped_and_stores_only_ciphertext(tmp_path):
         owner_user_id=owner,
         plan_digest="a" * 64,
         envelope=envelope,
-        expires_at=clock.current + timedelta(minutes=15),
+        ttl_seconds=900,
     )
 
     assert record.status == "active"
@@ -160,7 +160,7 @@ def test_expired_plan_is_marked_and_never_returned_as_active(tmp_path):
         owner_user_id=owner,
         plan_digest="b" * 64,
         envelope=envelope,
-        expires_at=clock.current + timedelta(seconds=60),
+        ttl_seconds=60,
     )
     clock.current += timedelta(seconds=61)
 
@@ -194,7 +194,7 @@ def test_invalid_plan_record_inputs_are_rejected(tmp_path, plan_id, owner, diges
             owner_user_id=actual_owner,
             plan_digest=digest,
             envelope=envelope,
-            expires_at=clock.current + timedelta(seconds=ttl),
+            ttl_seconds=ttl,
         )
 
 
