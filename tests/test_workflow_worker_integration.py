@@ -753,3 +753,152 @@ def test_workflow_request_digest_preserves_legacy_none_free_serialization():
         ],
     )
     assert _workflow_digest(explicit) != expected
+
+
+def test_persisted_awi_plan_is_consumed_once_and_executed_by_existing_worker():
+    from uuid import uuid4
+
+    from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
+    from mrhub.agents.plan_execution import canonical_digest
+    from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
+    from mrhub.agents.work_order import WorkOrder
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.jobs.payload_envelope import encrypt_plan_payload, load_payload_key
+
+    client = authenticated_client()
+    database = TaskRepository(get_settings().database_path)
+    database.initialize()
+    with database._connection() as connection:
+        owner_row = connection.execute(
+            "SELECT user_id FROM auth_users ORDER BY created_at LIMIT 1"
+        ).fetchone()
+    assert owner_row is not None
+    owner_user_id = owner_row["user_id"]
+
+    plan_id = str(uuid4())
+    work_order = WorkOrder(
+        goal="Review the supplied text safely",
+        intent="Execute one bounded local text operation",
+        scope="No external side effects",
+        assumptions=[],
+        constraints=["Use only a registered local tool"],
+        dependencies=[],
+        required_capabilities=["text.echo"],
+        acceptance_criteria=["The typed request is validated"],
+        verification_steps=["Validate the registered input schema"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        rationale="One low-risk step bound to the existing echo tool",
+        steps=[
+            PlanStep(
+                step_id="echo",
+                description="Validate and echo the supplied text",
+                depends_on=[],
+                required_capabilities=["text.echo"],
+                verifies_criteria=["The typed request is validated"],
+                verification="Check the registered echo input and output schemas",
+            )
+        ],
+    )
+    plan_payload = {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+    }
+    key = load_payload_key()
+    plan_envelope = encrypt_plan_payload(
+        plan_payload,
+        plan_id=plan_id,
+        owner_user_id=owner_user_id,
+        key=key,
+    )
+    plans = AgentWorkOrderPlanRepository(database.database_path)
+    saved_plan = plans.create(
+        plan_id=plan_id,
+        owner_user_id=owner_user_id,
+        plan_digest=canonical_digest(plan_payload),
+        envelope=plan_envelope,
+        ttl_seconds=900,
+    )
+
+    execute_payload = {
+        "step_bindings": [
+            {
+                "step_id": "echo",
+                "tool_name": "text.echo",
+                "payload": {"text": "worker-executed-plan"},
+            }
+        ]
+    }
+    headers = {"Idempotency-Key": "awi-plan-worker-once"}
+    queued = client.post(
+        f"/agent/work-orders/plans/{plan_id}/execute",
+        json=execute_payload,
+        headers=headers,
+    )
+    assert queued.status_code == 200
+    queued_body = queued.json()
+    workflow_id = UUID(queued_body["workflow"]["workflow_id"])
+    task_id = UUID(queued_body["workflow"]["task_id"])
+    assert queued_body["queued"] is True
+    assert queued_body["execution_started"] is False
+    assert queued_body["tools_executed"] is False
+    assert queued_body["workflow"]["status"] == "queued"
+
+    consumed = plans.get(plan_id, owner_user_id=owner_user_id)
+    assert consumed is not None
+    assert consumed.status == "consumed"
+    assert consumed.workflow_id == str(workflow_id)
+    assert consumed.plan_digest == saved_plan.plan_digest
+
+    recovery = WorkflowRecoveryRepository(database.database_path)
+    encrypted_workflow = recovery.get_encrypted_payload(
+        workflow_id,
+        owner_user_id=owner_user_id,
+    )
+    assert encrypted_workflow is not None
+    assert encrypted_workflow["task_id"] == str(task_id)
+
+    completed = run_worker_once()
+    assert completed is not None
+    assert completed.task_id == task_id
+    assert completed.status.value == "succeeded"
+
+    stored_workflow = recovery.get_run(
+        workflow_id,
+        owner_user_id=owner_user_id,
+    )
+    assert stored_workflow is not None
+    assert stored_workflow["status"] == "succeeded"
+    assert stored_workflow["steps"][1]["status"] == "succeeded"
+    assert recovery.get_encrypted_payload(
+        workflow_id,
+        owner_user_id=owner_user_id,
+    ) is None
+
+    erased_plan = plans.get(plan_id, owner_user_id=owner_user_id)
+    assert erased_plan is not None
+    assert erased_plan.status == "consumed"
+    assert erased_plan.envelope.nonce_b64 == "consumed"
+    assert erased_plan.envelope.ciphertext_b64 == "consumed"
+
+    replay = client.post(
+        f"/agent/work-orders/plans/{plan_id}/execute",
+        json=execute_payload,
+        headers=headers,
+    )
+    assert replay.status_code == 200
+    assert replay.json()["idempotent_replay"] is True
+    assert replay.json()["workflow"]["workflow_id"] == str(workflow_id)
+    assert replay.json()["execution_started"] is True
+    assert replay.json()["tools_executed"] is True
+
+    with database._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM workflow_runs WHERE workflow_id = ?",
+            (str(workflow_id),),
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM tasks WHERE task_id = ?",
+            (str(task_id),),
+        ).fetchone()[0] == 1
