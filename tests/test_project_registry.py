@@ -61,8 +61,17 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
     assert [project["project_id"] for project in payload["projects"]] == [
         "mr-siavash-hub-ai",
         "mr-siavash-ai",
-        "mr-siavash-el-agent",
         "mr-siavash-el-ai",
+    ]
+    assert [project["overall_status"] for project in payload["projects"]] == [
+        "degraded",
+        "unknown",
+        "unknown",
+    ]
+    assert [project["overall_status_reason_code"] for project in payload["projects"]] == [
+        "project_component_degraded",
+        "project_component_status_unknown",
+        "project_component_status_unknown",
     ]
     assert all(project["repository_status"] == "healthy" for project in payload["projects"])
     assert all(
@@ -74,17 +83,14 @@ def test_project_registry_lists_only_explicit_active_projects(tmp_path, monkeypa
         "degraded",
         "unknown",
         "unknown",
-        "unknown",
     ]
     assert all(
         project["infrastructure_status"] == "not_configured"
         for project in payload["projects"]
     )
     assert payload["projects"][1]["service_url"] == "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"
-    assert payload["projects"][2]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT"
+    assert payload["projects"][2]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI"
     assert payload["projects"][2]["service_url"] is None
-    assert payload["projects"][3]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI"
-    assert payload["projects"][3]["service_url"] is None
     for project in payload["projects"]:
         observations = project["status_observations"]
         assert set(observations) == {"repository", "runtime", "infrastructure"}
@@ -197,3 +203,74 @@ def test_hub_runtime_fails_closed_when_local_readiness_is_unavailable(monkeypatc
     assert observation["status"] == "failing"
     assert observation["reason_code"] == "hub_readiness_failed"
     assert observation["details"]["database"] == "unavailable"
+
+
+def test_project_overall_status_never_hides_a_failing_ci_run():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"status": "not_configured"},
+        {"latest_ci": {"status": "failing"}},
+    )
+
+    assert overall == "failing"
+    assert reason == "project_component_failing"
+
+
+def test_project_overall_status_is_unknown_when_a_component_is_unobserved():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "unknown"},
+        {"status": "not_configured"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "unknown"
+    assert reason == "project_component_status_unknown"
+
+
+def test_project_overall_status_is_healthy_only_when_all_observed_components_are_healthy():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "healthy"
+    assert reason == "all_observed_components_healthy"
+
+
+
+def test_agent_context_keeps_companion_project_as_untrusted_dependency_metadata():
+    context = registry.get_project_context("mr-siavash-el-agent")
+
+    assert context is not None
+    assert context["project"]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT"
+    assert context["trust_classification"] == "server_configured_metadata_not_live_health"
+    assert context["content_is_untrusted_data"] is True
+
+
+
+def test_project_overall_status_never_hides_failing_infrastructure():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"status": "failing"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "failing"
+    assert reason == "project_component_failing"
+
+
+def test_project_overall_status_is_unknown_when_infrastructure_is_not_configured():
+    overall, reason = registry._aggregate_project_status(
+        {"status": "healthy"},
+        {"status": "healthy"},
+        {"status": "not_configured"},
+        {"latest_ci": {"status": "healthy"}},
+    )
+
+    assert overall == "unknown"
+    assert reason == "project_component_status_unknown"
