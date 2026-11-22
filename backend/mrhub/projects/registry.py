@@ -27,14 +27,6 @@ PROJECTS: tuple[dict[str, str | None], ...] = (
         "description": "وب‌سایت و هویت دیجیتال شخصی",
     },
     {
-        "project_id": "mr-siavash-el-agent",
-        "name": "MR_SIAVASH_EL_AGENT",
-        "repository": "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT",
-        "repository_url": "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT",
-        "service_url": None,
-        "description": "عامل مستقل اجرای محلی Windows و Android و اتصال کنترل‌شده به Hub",
-    },
-    {
         "project_id": "mr-siavash-el-ai",
         "name": "MR_SIAVASH_EL_AI",
         "repository": "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI",
