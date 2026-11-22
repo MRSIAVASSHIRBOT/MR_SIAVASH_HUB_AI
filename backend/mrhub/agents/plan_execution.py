@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.core import AgentPlanRequest
+from mrhub.agents.gpi import derive_server_risk_class
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import PolicyDecision
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
@@ -44,6 +45,7 @@ def tool_contract_digest(tool: ToolDefinition) -> str:
     return canonical_digest(
         {
             "name": tool.name,
+            "description": tool.description,
             "input_schema": tool.input_model.model_json_schema(),
             "output_schema": tool.output_model.model_json_schema(),
             "risk_class": tool.risk_class.value,
@@ -180,7 +182,13 @@ def validate_plan_bindings_against_snapshot(
 
     if not isinstance(work_order, WorkOrder):
         raise PlanExecutionBindingError("Persisted work order failed validation")
-    if work_order.risk_class is not RiskClass.LOW:
+    server_risk = derive_server_risk_class(
+        work_order.goal,
+        work_order.model_dump(mode="json"),
+    )
+    if server_risk is not work_order.risk_class:
+        raise PlanExecutionBindingError("Persisted work-order risk no longer matches server policy")
+    if server_risk is not RiskClass.LOW:
         raise PlanExecutionBindingError("Only low-risk work orders are executable in v1")
     if request.goal != work_order.goal:
         raise PlanExecutionBindingError("Execution goal does not match the persisted work order")
