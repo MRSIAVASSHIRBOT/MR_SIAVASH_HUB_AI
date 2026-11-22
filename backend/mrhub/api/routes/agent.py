@@ -479,14 +479,16 @@ def execute_persisted_goal_work_order_plan(
                 )
             validated = definition.input_model.model_validate(binding.payload)
             normalized_payload = validated.model_dump(mode="json")
+            contract_digest = tool_contract_digest(definition)
             normalized_bindings.append(
                 {
                     "step_id": binding.step_id,
                     "tool_name": binding.tool_name,
                     "payload": normalized_payload,
+                    "tool_contract_digest": contract_digest,
                 }
             )
-            contract_digests[binding.tool_name] = tool_contract_digest(definition)
+            contract_digests[binding.tool_name] = contract_digest
             definitions[binding.tool_name] = definition
     except LookupError as exc:
         raise HTTPException(status_code=422, detail="A bound tool is not registered") from exc
@@ -507,6 +509,8 @@ def execute_persisted_goal_work_order_plan(
             detail="Plan execution bindings are not valid finite JSON data",
         ) from exc
     idempotency_scope = f"awi-plan-exec:{owner_user_id}"
+    if len(idempotency_scope) > 120 or not idempotency_key.strip():
+        raise HTTPException(status_code=422, detail="Idempotency scope or key is invalid")
     idempotency = IdempotencyRepository(settings.database_path)
     recovery = WorkflowRecoveryRepository(settings.database_path)
 
