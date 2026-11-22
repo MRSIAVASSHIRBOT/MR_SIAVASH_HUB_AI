@@ -99,6 +99,7 @@ def make_binding(registry, *, contract_digest=None):
     return {
         "plan_id": str(uuid4()),
         "plan_digest": "a" * 64,
+        "request_digest": "c" * 64,
         "step_bindings": [
             {
                 "step_id": "review",
