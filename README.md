@@ -10,8 +10,8 @@ An integrated, modular AI workspace designed for local-first and hybrid executio
 MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabilities for agents, memory, workflows, developer assistance, content production, integrations, and defensive security.
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
-
 **Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).
+
 
 ## Engineering principles
 - **Local-first, hybrid-capable:** run feasible workloads locally and route heavier tasks to explicitly configured providers.
@@ -31,7 +31,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\start-local.ps1
 ```
 
-Open the operator UI at `http://127.0.0.1:8000/ui/` or the API docs at `http://127.0.0.1:8000/docs`. Stop the processes with ` .\scripts\stop-local.ps1` (remove the leading space when copying). See [Windows local quick start](docs/operations/windows-quickstart.md) for requirements, security boundaries, and troubleshooting.
+Open the operator UI at `http://127.0.0.1:8000/ui/` or the API docs at `http://127.0.0.1:8000/docs`. Stop the processes with `.\scripts\stop-local.ps1`. See [Windows local quick start](docs/operations/windows-quickstart.md) for requirements, security boundaries, and troubleshooting.
 
 For manual development setup, create and activate a Python 3.11 virtual environment, run `python -m pip install -e ".[dev]"`, then start the API with `uvicorn mrhub.main:app --host 127.0.0.1 --port 8000`. Start the worker separately with `python -m mrhub.worker_service` when processing queued jobs. Durable agent workflows also require the same persistent `MRH_WORKFLOW_PAYLOAD_KEY` in both process environments; see the worker runbook.
 
@@ -79,3 +79,120 @@ External publishing, spending, destructive operations, access to sensitive data,
 
 ## Current status
 The repository now contains a modular FastAPI/SQLite control plane, owner authentication, policy and approval gates, structured audit events, a typed model registry, local memory and source-backed knowledge APIs, content drafts, and owner-scoped local media assets with bounded FFmpeg processing. The Job and Workflow Engine supports durable task state, idempotency, checkpoints, lease/fencing checks, interrupted-step recovery, safe resume, cancellation, and a separate pull-driven worker. Both initial workflow execution and resume execution are worker-owned; HTTP requests validate and enqueue rather than executing workflow steps.
+
+The deterministic stub is available for tests. Ollama local inference and Moonshot Kimi inference remain separate opt-in providers and are disabled by default; neither silently falls back to another provider. The worker is started explicitly as a separate process. This is not yet a claim of production-grade distributed-worker high availability or forced interruption of synchronous handlers. Arbitrary shell execution, arbitrary code execution, and external social publishing remain disabled.
+
+
+## Durable agent workflow execution
+
+Workflow submission is asynchronous. POST /agent/workflows validates the request, stores only a digest plus a separately encrypted execution envelope, and returns the queued workflow/job identifiers. The worker decrypts the envelope only when the canonical worker lease is held; authentication failure, an absent key, or a mismatched owner/resource binding fails closed.
+
+1. Install the project and dependencies: `python -m pip install -e .`
+2. On Windows, create the local settings file once: `Copy-Item .env.example .env`. Generate a fresh workflow key and append it without printing it to the console:
+   ```powershell
+   $payloadKey = py -3.11 -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+   Add-Content -Path .env -Value "MRH_WORKFLOW_PAYLOAD_KEY=$payloadKey"
+   Remove-Variable payloadKey
+   ```
+   `MRH_WORKFLOW_PAYLOAD_KEY` is loaded through the same settings system as the other `MRH_` values, so both the API and worker read the same `.env` file. The file is git-ignored. For non-Windows deployments, use the deployment secret manager or process environment instead.
+3. Keep the key stable across API/worker restarts and back it up securely. Do not commit it, reuse the test key, or rotate it without a migration plan for queued payloads. Losing the key makes encrypted queued requests/results unreadable.
+4. Start the API process as usual, then start a worker in a separate process from the repository root:
+   `python -m mrhub.worker_service`
+5. Poll GET /agent/workflows/{workflow_id} for durable state. The API does not silently start a worker; the separate process is an explicit operational choice.
+6. Open `http://127.0.0.1:8000/ui/` for the authenticated operator console. It displays queue metrics and owner-scoped workflow history, and provides explicit cancellation, safe-resume enqueueing, and externally verified outcome reconciliation.
+
+Workflow resume is asynchronous too: POST /agent/workflows/{workflow_id}/resume validates the original request and enqueues the existing job. Only the pull worker executes resumed steps under its lease and fencing token. The original request must be supplied again because plaintext inputs are not stored in workflow history. A resume request never runs tools inside the HTTP process. The console can inspect the resume decision before enqueueing.
+
+The encrypted envelope is bound with authenticated associated data to the workflow ID, task ID, and owner ID. Raw request/tool inputs are not written to workflow history or logs. External-side-effect steps must not be blindly replayed after an ambiguous outcome.
+
+
+## Documentation
+- `docs/architecture/overview.md` — system architecture
+- `docs/architecture/module-boundaries.md` — module ownership and contracts
+- `docs/security/threat-model.md` — trust boundaries and security controls
+- `docs/roadmap/implementation-plan.md` — staged delivery plan
+
+## License
+License selection is pending. No license grant should be inferred until a license file is added.
+
+
+## Model resource planning
+
+A conservative RAM-fit estimator is available in `mrhub.diagnostics.resource_advisor`. It consumes the read-only hardware report and an explicit model profile, reserves system memory, reports uncertainty, and never starts inference. See `docs/operations/model-resource-advisor.md`.
+
+
+A static, local model-profile registry is available through the authenticated `GET /models/profiles` endpoint. Its sample entries are explicitly unverified estimates, not model compatibility guarantees. See `docs/operations/model-profiles.md`.
+
+The initial owner-scoped memory API supports explicit private notes, SQLite FTS5 lexical search, update/delete, expiry, and owner-only JSON export. It is not automatically injected into agent context. See `docs/operations/memory.md`.
+
+The source-backed knowledge API accepts bounded user-submitted text, stores source provenance, chunks documents for SQLite FTS5 retrieval, and returns citation references. It never fetches supplied URLs and is not automatically injected into agent context. See `docs/operations/knowledge.md`.
+
+
+The self-hosted RTL operator dashboard is served at `/ui/`; it provides status, task and Job Engine metrics, owner-scoped Workflow history, step inspection, cancellation, safe-resume enqueueing, external-outcome reconciliation, provider, memory, knowledge, content-draft, and explicit model-inference controls without external web assets. See `docs/operations/operator-ui.md`.
+
+The content draft API provides owner-scoped draft/version management, deduplication, explicit approval/revocation, archive/restore, and audit events. It does not publish externally. See `docs/operations/content-drafts.md`.
+
+
+## Verified integration status — 2026-11-02
+
+- Instagram Graph API image publishing is implemented as an explicit opt-in adapter.
+- Approved Instagram drafts can reference owner-scoped JPEG/PNG assets. The pull-driven dispatcher generates a short-lived HMAC-signed HTTPS media URL instead of passing a local filesystem path.
+- Public media delivery is disabled until `MRH_PUBLIC_MEDIA_BASE_URL` and `MRH_PUBLIC_MEDIA_SIGNING_KEY` are configured. Instagram publishing additionally requires valid professional-account credentials and permissions.
+- CI verifies the signed URL generation, expiry/signature handling, and scheduled dispatcher handoff using test doubles. It does not verify public network reachability or publish to a real Instagram account.
+- External reachability, edge rate limiting, and a controlled live-account acceptance test remain deployment gates. Production publishing must not be described as end-to-end verified until those gates pass.
+
+
+## Defensive Python static analysis
+
+Bandit runs a report-only scan of the application package on pull requests, pushes to `main`, and a weekly schedule. It complements (and does not replace) NEXUS static checks, Ruff, tests, and dependency auditing. See `docs/security/bandit.md` for scope and operational guidance.
+
+
+## Optional MCP tool interoperability
+
+The optional MCP bridge exposes the canonical Hub tool registry to compatible MCP hosts through a separate, loopback-only Streamable HTTP process. It is disabled by default and does not start with the API or worker.
+
+Install and run it with:
+
+```powershell
+python -m pip install -e ".[mcp]"
+$env:MRH_MCP_ENABLED = "true"
+$env:MRH_MCP_HOST = "127.0.0.1"
+$env:MRH_MCP_PORT = "8765"
+mrhub-mcp
+```
+
+The endpoint is `http://127.0.0.1:8765/mcp`. The bridge exposes `hub.list_tools` and `hub.invoke_tool`; every invocation goes through the existing Hub registry and policy engine without implicit permission grants. It currently exposes only registered built-in tools (initially the deterministic `text.echo`). It does not launch stdio subprocesses or connect to arbitrary MCP servers. See [MCP Tool Bridge](docs/integrations/mcp-tool-bridge.md) for security boundaries and validation.
+
+## Engineering governance
+
+The repository's continuous execution, evidence-based reporting, pull-request integration, quality gates, and owner-controlled action standard is documented in [Continuous Execution and Engineering Governance](docs/management/CONTINUOUS_EXECUTION_STANDARD.md).
+
+## Personal device task dispatch — merged Hub API; companion acceptance pending
+
+The Hub-owned device-task API on `main` provides a narrow task contract for paired devices. It supports only allow-listed application launch and explicitly owner-confirmed near-term screenshot capture (maximum five-minute scheduling horizon and 300-second TTL). Every request is owner-scoped, bound to a paired device and exact granted scope, idempotent, scheduled with a bounded expiry/runtime, and recorded in the audit log.
+
+- Owner API: `POST /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks`, `GET /devices/{device_id}/tasks/{task_id}`, and `DELETE /devices/{device_id}/tasks/{task_id}`.
+- Device API: `POST /devices/tasks/claim` and `POST /devices/tasks/{task_id}/complete`.
+- The device receives one short-lived claim lease. Only a hash is persisted; an expired lease becomes `unknown_outcome` and is never replayed automatically.
+- Completion is recorded as a device-reported result, not independent proof: `reported_succeeded` / `reported_failed`, with `outcome_verified=false`.
+- Queue size is bounded per device. Queued work can be cancelled; claimed work cannot be represented as safely cancelled. Device revocation cancels queued tasks and fences claimed tasks as unknown outcome.
+- Arbitrary shell commands, caller-provided executable paths, URLs, unrestricted file access, keystroke capture, and model-authored executable payloads are not supported.
+
+The base Hub device-task API and owner-authorized Agent tool registry are now on `main` (PR #465). Windows and Android consumers are tracked separately in EL_AGENT PRs #23 and #25. Both require a live Staging round-trip, grant revocation/expiry checks, and physical-device acceptance before release. No production Worker deployment is claimed.
+
+## Model-driven device tools — owner-authorized, time-limited
+
+The Agent tool registry exposes two device tools only inside an authenticated owner's context:
+
+- `device.registry.list` requires the owner's `device.registry.read` grant. It returns that owner's paired-device metadata and granted scopes, never access or refresh credentials.
+- `device.app_launch.submit` requires both `device.registry.read` and `device.app_launch` owner grants, plus the selected paired device's exact `app.launch` scope. It queues only an allow-listed app alias; it does not claim that an app was opened.
+- Owner grants use the existing grant API: `PUT /tools/grants/device.registry.read` and `PUT /tools/grants/device.app_launch`, each with `expires_in_seconds` from 60 to 86,400. Use `GET /tools/grants` to inspect and `DELETE /tools/grants/{permission}` to revoke.
+- Device-side scope is separate from the owner's Hub permission. The device must have been paired with `app.launch`; an owner grant cannot manufacture a missing device scope.
+- The tool applies platform-specific aliases: Windows supports the five existing fixed aliases; Android supports only ChatGPT and browser. No arbitrary commands, executable paths, URLs, screenshots, file access, shell or browser form submission are exposed to the model.
+- Direct and durable Agent runs both read the active owner grants at each tool decision, so expiry or revocation during inference is enforced before action dispatch.
+
+The owner-authorized Agent tool integration is merged into Hub `main` as PR #465 (`4d737b2`). This confirms source integration only: the Hub Staging Worker has not been verified as deployed, and no physical device has completed a live task round-trip.
+
+## Cloud deployment
+
+A single-instance Render deployment blueprint is available in `render.yaml`. It uses a persistent disk because the current runtime stores state in SQLite and runs the API and pull worker together. Review the plan and disk charges before deployment; see [Render deployment](docs/operations/render-deployment.md) for the one-time remote owner bootstrap and operational constraints.
