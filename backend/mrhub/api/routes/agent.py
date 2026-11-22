@@ -215,14 +215,8 @@ def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depen
 
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
-    """Fingerprint the complete in-memory request without persisting its contents."""
-    encoded = json.dumps(
-        request.canonical_payload(),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    """Use the version-stable request digest shared with worker replay."""
+    return AgentWorkflowRunner.request_digest(request)
 
 
 @router.get("/workflows")
@@ -313,29 +307,9 @@ def execute_agent_workflow(
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
-        step_specs = [
-            {
-                "step_number": 1,
-                "kind": "provider_selection",
-                "name": "provider_selection",
-                "input_digest": None,
-            }
-        ]
-        for runtime_number, request_number, tool in core.ordered_tool_steps(
-            request, plan
-        ):
-            definition = core.tool_registry.get(tool.name)
-            kind = "external_tool" if definition.external_side_effect else "safe_tool"
-            step_specs.append(
-                {
-                    "step_number": runtime_number,
-                    "kind": kind,
-                    "name": tool.name,
-                    "input_digest": core.workflow_step_input_digest(
-                        request_number, tool
-                    ),
-                }
-            )
+        step_specs, _tools_by_execution_step = (
+            AgentWorkflowRunner.build_durable_step_metadata(core, request, plan)
+        )
 
         try:
             recovery.create_run(
