@@ -133,25 +133,29 @@ def create_goal_work_order_plan(
         ) from exc
 
     try:
-        model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
-        selection = model_router.select(ModelRequest(requires_text=True))
-        if selection.provider == "moonshot":
-            _enforce_kimi_request_limit(current_user.user_id)
+        # GPI/AWI planning is local-only in the zero-cost runtime profile.
+        # Paid providers remain available only through their dedicated, explicit endpoints.
+        model_router = build_model_router(
+            provider_mode="local",
+            include_stub=False,
+            max_timeout_seconds=60,
+        )
+        selection = model_router.select(
+            ModelRequest(requires_text=True, prefer_local=True)
+        )
         work_order = generate_work_order(request.goal, model_router)
         if work_order.risk_class.value == "prohibited":
             raise HTTPException(
                 status_code=422,
                 detail="The requested goal is outside the supported safety policy",
             )
-        if selection.provider == "moonshot":
-            _enforce_kimi_request_limit(current_user.user_id)
         plan = generate_execution_plan(work_order, model_router)
     except (WorkOrderGenerationError, PlanningError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
-            detail="No configured non-stub model provider is available",
+            detail="No configured non-stub local model provider is available",
         ) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=exc.code) from exc
