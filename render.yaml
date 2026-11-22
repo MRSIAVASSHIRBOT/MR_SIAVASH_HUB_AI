@@ -36,6 +36,8 @@ services:
   - type: worker
     name: mr-siavash-el-ai-bridge
     runtime: python
+    repo: https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git
+    branch: main
     plan: starter
     region: frankfurt
     buildCommand: >-
