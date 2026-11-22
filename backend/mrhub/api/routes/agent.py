@@ -9,8 +9,8 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
+from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.gpi import WorkOrderGenerationError, generate_work_order
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
@@ -29,6 +29,7 @@ from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepositor
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.tool_permissions import ToolPermissionService
+from mrhub.providers.base import ProviderError
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
@@ -73,7 +74,6 @@ def create_goal_work_order_plan(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Convert a goal into a validated work order and plan without executing tools."""
-    del current_user
     model_router = build_model_router(include_stub=False)
     try:
         work_order = generate_work_order(request.goal, model_router)
@@ -91,13 +91,12 @@ def create_goal_work_order_plan(
             detail="No configured non-stub model provider is available",
         ) from exc
     except Exception as exc:
-        from mrhub.providers.base import ProviderError
-
+        
         if isinstance(exc, ProviderError):
             raise HTTPException(status_code=503, detail=exc.code) from exc
         raise
 
-    tool_catalog = build_tool_registry().catalog()
+    tool_catalog = build_tool_registry(owner_user_id=current_user.user_id).catalog()
     available_names = {
         item["name"].strip().casefold()
         for item in tool_catalog
