@@ -78,8 +78,8 @@ def create_goal_work_order_plan(
     """Convert a goal into a validated plan without executing tools."""
     tasks = TaskRepository(get_settings().database_path)
     tasks.initialize()
-    model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
     try:
+        model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
         selection = model_router.select(ModelRequest(requires_text=True))
         if selection.provider == "moonshot":
             _enforce_kimi_request_limit(current_user.user_id)
