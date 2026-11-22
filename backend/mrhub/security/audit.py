@@ -53,6 +53,11 @@ class AuditLogger:
         "contradiction_count",
         "proposal_count",
         "state_changed",
+        "required_capability_count",
+        "available_capability_count",
+        "missing_capability_count",
+        "declared_risk_class",
+        "declared_risk_is_authoritative",
     })
 
     def __init__(self, repository: TaskRepository) -> None:
