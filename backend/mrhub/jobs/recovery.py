@@ -143,6 +143,7 @@ class WorkflowRecoveryRepository:
         payload_envelope: dict[str, object] | None = None,
         workflow_id: UUID | None = None,
         idempotency_binding: dict[str, str] | None = None,
+        plan_consumption: dict[str, str] | None = None,
     ) -> UUID:
         """Atomically create workflow/job, encrypted payload, and optional idempotency binding."""
         self._validate_digest(request_digest, "Request digest")
@@ -156,6 +157,27 @@ class WorkflowRecoveryRepository:
             raise WorkflowRecoveryError("Definition version must be positive")
         if not steps:
             raise WorkflowRecoveryError("A workflow must contain at least one step")
+        if plan_consumption is not None:
+            plan_id = plan_consumption.get("plan_id")
+            plan_owner_id = plan_consumption.get("owner_user_id")
+            plan_digest = plan_consumption.get("plan_digest")
+            try:
+                canonical_plan_id = str(UUID(plan_id))
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise WorkflowRecoveryError("Plan consumption identifier is invalid") from exc
+            if (
+                canonical_plan_id != plan_id
+                or not isinstance(plan_owner_id, str)
+                or not plan_owner_id.strip()
+                or plan_owner_id != owner_user_id
+                or not isinstance(plan_digest, str)
+            ):
+                raise WorkflowRecoveryError("Plan consumption binding is invalid")
+            self._validate_digest(plan_digest, "Plan digest")
+            if task is None or payload_envelope is None or owner_user_id is None:
+                raise WorkflowRecoveryError(
+                    "Plan consumption requires an owner-bound encrypted workflow task"
+                )
 
         normalized: list[tuple[int, str, str, str | None]] = []
         seen_numbers: set[int] = set()
@@ -276,6 +298,31 @@ class WorkflowRecoveryRepository:
                         input_digest, now, now,
                     ),
                 )
+
+            if plan_consumption is not None:
+                cursor = connection.execute(
+                    """
+                    UPDATE agent_work_order_plans
+                    SET status = 'consumed', consumed_at = ?, workflow_id = ?
+                    WHERE plan_id = ?
+                      AND owner_user_id = ?
+                      AND plan_digest = ?
+                      AND status = 'active'
+                      AND expires_at > ?
+                    """,
+                    (
+                        now,
+                        str(workflow_id),
+                        plan_consumption["plan_id"],
+                        plan_consumption["owner_user_id"],
+                        plan_consumption["plan_digest"],
+                        now,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise WorkflowRecoveryError(
+                        "Plan is expired, consumed, revoked, or no longer matches this request"
+                    )
         return workflow_id
 
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
