@@ -217,7 +217,7 @@ def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depen
 def _workflow_digest(request: AgentPlanRequest) -> str:
     """Fingerprint the complete in-memory request without persisting its contents."""
     encoded = json.dumps(
-        request.model_dump(mode="json"),
+        request.canonical_payload(),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -270,7 +270,7 @@ def execute_agent_workflow(
         workflow_id = uuid4()
         try:
             encrypted = encrypt_payload(
-                request.model_dump(mode="json"),
+                request.canonical_payload(),
                 workflow_id=str(workflow_id),
                 task_id=str(task.task_id),
                 owner_user_id=current_user.user_id,
