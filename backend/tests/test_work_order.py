@@ -1,5 +1,5 @@
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
 from mrhub.agents.work_order import WorkOrder
 from mrhub.domain.tasks import RiskClass
