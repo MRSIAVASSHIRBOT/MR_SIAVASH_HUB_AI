@@ -17,7 +17,7 @@ from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
-from mrhub.api.routes.models import build_model_router
+from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import TaskRecord
@@ -27,6 +27,7 @@ from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.providers.base import ProviderError
+from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.tool_permissions import ToolPermissionService
@@ -76,6 +77,9 @@ def create_goal_work_order_plan(
     """Convert a goal into a validated work order and plan without executing tools."""
     model_router = build_model_router(include_stub=False)
     try:
+        selection = model_router.select(ModelRequest(requires_text=True))
+        if selection.provider == "moonshot":
+            _enforce_kimi_request_limit(current_user.user_id)
         work_order = generate_work_order(request.goal, model_router)
         if work_order.risk_class.value == "prohibited":
             raise HTTPException(
@@ -102,6 +106,20 @@ def create_goal_work_order_plan(
     required = list(work_order.required_capabilities)
     available = [name for name in required if name.casefold() in available_names]
     missing = [name for name in required if name.casefold() not in available_names]
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    AuditLogger(tasks).record(
+        event_type="agent.work_order_planned",
+        outcome="planned",
+        actor_type="user",
+        actor_id=current_user.user_id,
+        subject_type="work_order",
+        metadata={
+            "provider_mode": "local" if selection.local else "kimi",
+            "selected_provider": selection.provider,
+            "status": "planned",
+        },
+    )
     return {
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
