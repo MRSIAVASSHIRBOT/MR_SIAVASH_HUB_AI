@@ -91,6 +91,10 @@ def test_gpi_rejects_blank_goal_without_provider_call():
 def test_risk_classifier_is_conservative_for_external_changes():
     assert derive_server_risk_class("Send email to the customer", {}) is RiskClass.HIGH
     assert derive_server_risk_class("Review personal data handling", {}) is RiskClass.MODERATE
+    assert derive_server_risk_class(
+        "Prepare a safe plan",
+        {"verification_steps": ["Delete production database"]},
+    ) is RiskClass.HIGH
 
 
 def test_execution_plan_rejects_cycles_and_unknown_dependencies():
