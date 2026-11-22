@@ -7,7 +7,7 @@ from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ToolDefinition
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 class EmptyInput(BaseModel):
@@ -1116,3 +1116,30 @@ def test_agent_execute_resumes_explicit_dag_by_durable_execution_position():
         "first-request-tool"
     ]
     assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_core_accepts_large_registry_when_no_capabilities_are_required():
+    registry = ToolRegistry()
+    for index in range(201):
+        registry.register(
+            ToolDefinition(
+                name=f"custom.catalog_probe_{index}",
+                description="Registered tool for a large-catalog regression test.",
+                input_model=EmptyInput,
+                output_model=EmptyOutput,
+                handler=lambda _payload: {"accepted": True},
+                risk_class=RiskClass.LOW,
+            )
+        )
+
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry)
+
+    plan = core.plan(AgentPlanRequest(goal="Plan without capability requirements"))
+
+    assert plan["execution_ready"] is True
+    assert plan["capability_gaps"]["required"] == []
+    assert plan["capability_gaps"]["available"] == []
+    assert plan["capability_gaps"]["missing"] == []
+    assert plan["capability_gaps"]["complete"] is True
