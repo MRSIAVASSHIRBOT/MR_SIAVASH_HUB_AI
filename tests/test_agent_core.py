@@ -772,3 +772,22 @@ def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypat
         core.execute(request)
 
     assert calls == []
+
+
+def test_workflow_step_input_digest_binds_stable_request_identity_and_payload():
+    first = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "first"},
+    )
+    second = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "second"},
+    )
+
+    first_digest = AgentCore.workflow_step_input_digest(2, first)
+    second_digest = AgentCore.workflow_step_input_digest(3, second)
+
+    assert len(first_digest) == 64
+    assert len(second_digest) == 64
+    assert first_digest != second_digest
+    assert first_digest == AgentCore.workflow_step_input_digest(2, first)
