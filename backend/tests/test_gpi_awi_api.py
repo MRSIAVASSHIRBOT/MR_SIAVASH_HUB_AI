@@ -11,7 +11,7 @@ from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.work_order import WorkOrder
 from mrhub.api.routes import agent as agent_routes
 from mrhub.domain.tasks import RiskClass
-from mrhub.jobs.payload_envelope import EncryptedPayload, PayloadEnvelopeError, encrypt_plan_payload
+from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_plan_payload
 from mrhub.providers.base import ProviderHealth, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
 
