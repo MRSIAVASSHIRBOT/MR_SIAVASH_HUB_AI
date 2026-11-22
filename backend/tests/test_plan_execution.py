@@ -298,3 +298,115 @@ def test_worker_payload_rejects_request_digest_mismatch_with_encrypted_arguments
 
     with pytest.raises(PlanExecutionBindingError, match="digest does not match"):
         validate_plan_execution_payload(payload)
+
+
+class CoercingNumberInput(BaseModel):
+    value: int
+
+
+class CoercingNumberOutput(BaseModel):
+    value: int
+
+
+def test_raw_binding_digest_can_match_a_schema_normalized_worker_payload():
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="data.normalize",
+            description="Normalize a bounded integer input.",
+            input_model=CoercingNumberInput,
+            output_model=CoercingNumberOutput,
+            handler=lambda value: {"value": value.value},
+            risk_class=RiskClass.LOW,
+            external_side_effect=False,
+        )
+    )
+    work_order = WorkOrder(
+        goal="Normalize a small integer input safely",
+        intent="Validate integer input",
+        scope="No external effects",
+        assumptions=[],
+        constraints=[],
+        dependencies=[],
+        required_capabilities=["data.normalize"],
+        acceptance_criteria=["The numeric input is normalized"],
+        verification_steps=["Validate the typed integer"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        rationale="One bounded number normalization step",
+        steps=[
+            PlanStep(
+                step_id="normalize",
+                description="Normalize the integer field",
+                depends_on=[],
+                required_capabilities=["data.normalize"],
+                verifies_criteria=["The numeric input is normalized"],
+                verification="Compare normalized integer value",
+            )
+        ],
+    )
+    raw_payload = {"value": "7"}
+    normalized_payload = {"value": 7}
+    plan_id = str(uuid4())
+    plan_digest = "d" * 64
+    raw_bindings = [
+        {
+            "step_id": "normalize",
+            "tool_name": "data.normalize",
+            "payload": raw_payload,
+        }
+    ]
+    request = AgentPlanRequest(
+        goal=work_order.goal,
+        tools=[{"name": "data.normalize", "payload": normalized_payload}],
+    )
+    binding = {
+        "plan_id": plan_id,
+        "plan_digest": plan_digest,
+        "request_digest": execution_request_digest(
+            plan_id=plan_id,
+            plan_digest=plan_digest,
+            bindings=raw_bindings,
+        ),
+        "step_bindings": [
+            {
+                "step_id": "normalize",
+                "tool_name": "data.normalize",
+                "tool_contract_digest": tool_contract_digest(
+                    registry.get("data.normalize")
+                ),
+                "payload": raw_payload,
+            }
+        ],
+    }
+    envelope = {
+        "format": PLAN_EXECUTION_FORMAT,
+        "request": request.model_dump(mode="json"),
+        "plan_binding": binding,
+    }
+
+    parsed_request, parsed_binding = validate_plan_execution_payload(envelope)
+    validate_plan_bindings_against_snapshot(
+        request=parsed_request,
+        binding=parsed_binding,
+        work_order=work_order,
+        plan=plan,
+        registry=registry,
+        granted_permissions=frozenset(),
+    )
+
+
+def test_worker_payload_digest_rejects_a_modified_raw_binding():
+    request = make_execution_request()
+    binding = make_binding(make_registry()[0])
+    binding["step_bindings"][0]["payload"] = {"text": "tampered"}
+
+    with pytest.raises(PlanExecutionBindingError, match="digest does not match"):
+        validate_plan_execution_payload(
+            {
+                "format": PLAN_EXECUTION_FORMAT,
+                "request": request.model_dump(mode="json"),
+                "plan_binding": binding,
+            }
+        )
