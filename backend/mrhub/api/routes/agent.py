@@ -23,6 +23,7 @@ from mrhub.agents.plan_execution import (
     execution_request_digest,
     tool_contract_digest,
     topological_plan_steps,
+    validate_plan_bindings_against_snapshot,
 )
 from mrhub.agents.plan_repository import (
     AgentWorkOrderPlanError,
@@ -666,6 +667,19 @@ def execute_persisted_goal_work_order_plan(
             requires_tool_calling=False,
             prefer_local=True,
         )
+        execution_binding = {
+            "plan_id": record.plan_id,
+            "plan_digest": record.plan_digest,
+            "step_bindings": persisted_step_bindings,
+        }
+        validate_plan_bindings_against_snapshot(
+            request=execution_request,
+            binding=execution_binding,
+            work_order=work_order,
+            plan=plan,
+            registry=registry,
+            granted_permissions=active_permissions,
+        )
         workflow_id = uuid4()
         task = TaskRecord(
             task_type="agent.workflow",
@@ -674,11 +688,7 @@ def execute_persisted_goal_work_order_plan(
         workflow_payload = {
             "format": PLAN_EXECUTION_FORMAT,
             "request": execution_request.model_dump(mode="json"),
-            "plan_binding": {
-                "plan_id": record.plan_id,
-                "plan_digest": record.plan_digest,
-                "step_bindings": persisted_step_bindings,
-            },
+            "plan_binding": execution_binding,
         }
         encrypted = encrypt_payload(
             workflow_payload,
@@ -687,6 +697,11 @@ def execute_persisted_goal_work_order_plan(
             owner_user_id=current_user.user_id,
             key=load_payload_key(),
         )
+    except PlanExecutionBindingError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Plan bindings failed final server-side validation",
+        ) from exc
     except PayloadEnvelopeError as exc:
         raise HTTPException(
             status_code=503,
