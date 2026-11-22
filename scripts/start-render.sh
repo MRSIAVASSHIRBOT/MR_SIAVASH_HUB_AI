@@ -8,10 +8,21 @@ export MRH_PORT="${PORT:-${MRH_PORT:-10000}}"
 python -m mrhub.worker_service &
 WORKER_PID=$!
 
-cleanup() {
-  kill -TERM "$WORKER_PID" 2>/dev/null || true
+python -m uvicorn mrhub.main:app --host "$MRH_HOST" --port "$MRH_PORT" &
+API_PID=$!
+
+shutdown() {
+  trap - TERM INT EXIT
+  kill -TERM "$API_PID" "$WORKER_PID" 2>/dev/null || true
+  wait "$API_PID" 2>/dev/null || true
   wait "$WORKER_PID" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
 
-python -m uvicorn mrhub.main:app --host "$MRH_HOST" --port "$MRH_PORT"
+trap shutdown TERM INT EXIT
+
+# If either process exits unexpectedly, stop the other instead of leaving a partial service.
+set +e
+wait -n "$API_PID" "$WORKER_PID"
+STATUS=$?
+set -e
+exit "$STATUS"
