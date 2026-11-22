@@ -10,6 +10,11 @@ from threading import Event, Thread
 from uuid import UUID, uuid4
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.evaluation import (
+    CriterionStatus,
+    EvaluationCriterion,
+    evaluate_criteria,
+)
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
@@ -166,6 +171,7 @@ class AgentWorkflowRunner:
             )
             heartbeat.start()
         attempts: dict[int, StepAttempt] = {}
+        criterion_outcomes: dict[int, tuple[CriterionStatus, str | None]] = {}
 
         try:
             self._record_execution_start(
@@ -190,12 +196,21 @@ class AgentWorkflowRunner:
                     if attempt is not None:
                         requested_tool = request.tools[number - 2]
                         definition = self.core.tool_registry.get(requested_tool.name)
+                        failure_code = error_code or "tool_execution_failed"
                         self.recovery.fail_step(
                             workflow_id,
                             attempt,
-                            error_code or "tool_execution_failed",
+                            failure_code,
                             unknown_outcome=definition.external_side_effect,
                             lease=lease,
+                        )
+                        criterion_outcomes[number] = (
+                            CriterionStatus.UNKNOWN
+                            if definition.external_side_effect
+                            else CriterionStatus.FAILED,
+                            None
+                            if definition.external_side_effect
+                            else self._digest({"error_code": failure_code}),
                         )
 
             def on_step_result(number: int, output_digest: str) -> None:
@@ -207,6 +222,7 @@ class AgentWorkflowRunner:
                 self.recovery.complete_step(
                     workflow_id, attempt, output_digest, lease=lease
                 )
+                criterion_outcomes[number] = (CriterionStatus.PASSED, output_digest)
                 del attempts[number]
 
             def should_cancel() -> bool:
@@ -230,6 +246,23 @@ class AgentWorkflowRunner:
                 on_step_result=on_step_result,
                 should_cancel=should_cancel,
             )
+            evaluation = None
+            if request.tools:
+                criteria = []
+                for index, requested_tool in enumerate(request.tools, start=2):
+                    status, evidence_digest = criterion_outcomes.get(
+                        index, (CriterionStatus.UNKNOWN, None)
+                    )
+                    criteria.append(
+                        EvaluationCriterion(
+                            criterion_id=f"tool-step-{index}",
+                            description=f"Tool execution completed: {requested_tool.name}",
+                            status=status,
+                            evidence_digest=evidence_digest,
+                        )
+                    )
+                evaluation = evaluate_criteria(criteria).as_dict()
+            execution = {**execution, "evaluation": evaluation}
             # Close the race between the final in-loop cancellation check and
             # workflow finalization, including workflows with zero tool steps.
             if not execution.get("cancelled") and should_cancel():
