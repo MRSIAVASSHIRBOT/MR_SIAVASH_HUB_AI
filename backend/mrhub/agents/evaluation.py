@@ -7,10 +7,10 @@ or retry workflow steps.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
+import re
 
 
 MAX_CRITERIA = 100
