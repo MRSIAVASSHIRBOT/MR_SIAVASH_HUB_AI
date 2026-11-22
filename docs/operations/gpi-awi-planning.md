@@ -30,7 +30,7 @@ The request body rejects unknown fields. `goal` must contain 1–1,000 character
 
 ## Processing model
 
-The endpoint selects a configured text-capable, non-stub provider. It does not silently fall back to the development stub.
+The endpoint selects a configured **local-only**, text-capable, non-stub provider (for example, the locally running Ollama model). It does not register Moonshot/Kimi, invoke a paid provider, or silently fall back to the development stub. If no local model is configured and available, planning fails closed with `503`.
 
 - GPI asks the provider for a structured work order. The original normalized user goal is retained as the authoritative `goal`; model-supplied `risk_class` is ignored.
 - The server derives an advisory risk class from the user goal and selected generated scope fields. Prohibited classifications are rejected before AWI planning.
@@ -39,7 +39,7 @@ The endpoint selects a configured text-capable, non-stub provider. It does not s
 - The endpoint compares required capabilities with the authenticated owner's tool catalog and reports missing capabilities. Presence in the catalog does not imply authorization.
 - A planning audit event is recorded for successful planning.
 
-GPI and AWI each make one model-generation request. When the selected provider is Moonshot/Kimi, each remote generation request is independently subject to the per-owner Kimi request limiter. No remote provider fallback is introduced.
+GPI and AWI each make one local model-generation request. The dedicated Kimi endpoints remain separate and require their own explicit use and rate limiting; this planning endpoint never calls them.
 
 ## Response guarantees
 
@@ -58,7 +58,6 @@ The risk classification is not an authorization decision. Actual execution, if a
 | --- | --- |
 | `401/403` | Missing or invalid authenticated session / access denied. |
 | `422` | Invalid goal, malformed provider output, incomplete plan, or prohibited goal. |
-| `429` | Per-owner Moonshot/Kimi request limit reached; honor `Retry-After`. |
 | `503` | No configured non-stub provider or provider failure. |
 
 Provider output is untrusted input. Validation errors are returned without accepting malformed work orders or plans. Do not put credentials, private keys, or sensitive personal data into goals.
@@ -69,7 +68,7 @@ Provider output is untrusted input. Validation errors are returned without accep
 - Provider output may be incomplete or incorrect; schema validity does not prove the plan is substantively correct.
 - Capability presence is descriptive only; authorization is deliberately not evaluated by this planning endpoint.
 - No plan persistence, task creation, tool execution, automatic retry, or autonomous follow-through is performed here.
-- Local inference requires explicit configuration. Remote inference may incur provider cost and is governed by the configured provider and request limiter.
+- Local inference requires explicit configuration and a running local provider. GPI/AWI planning intentionally has no remote-provider fallback so a planning request cannot incur paid model usage.
 
 ## Verification
 
