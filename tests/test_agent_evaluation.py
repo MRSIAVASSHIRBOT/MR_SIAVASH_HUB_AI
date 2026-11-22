@@ -1,10 +1,8 @@
-import pytest
-
 from uuid import uuid4
 
-from mrhub.agents.core import AgentPlanRequest
-from mrhub.agents.workflow_runner import AgentWorkflowRunner
+import pytest
 
+from mrhub.agents.core import AgentPlanRequest
 from mrhub.agents.evaluation import (
     CriterionStatus,
     EvaluationCriterion,
@@ -12,6 +10,7 @@ from mrhub.agents.evaluation import (
     EvaluationInputError,
     evaluate_criteria,
 )
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
 
 
 DIGEST_A = "a" * 64
@@ -144,4 +143,3 @@ def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
     assert first["decision"] == "reject"
     assert len(first_digest) == 64
     assert first_digest != second_digest
-
