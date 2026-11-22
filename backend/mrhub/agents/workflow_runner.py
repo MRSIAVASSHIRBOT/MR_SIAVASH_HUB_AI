@@ -101,44 +101,6 @@ class AgentWorkflowRunner:
     ) -> tuple[list[dict[str, object]], dict[int, object]]:
         return self.build_durable_step_metadata(self.core, request, plan)
 
-    def _durable_step_metadata(
-        self,
-        request: AgentPlanRequest,
-        plan: dict[str, object],
-    ) -> tuple[list[dict[str, object]], dict[int, object]]:
-        """Build durable checkpoints and tool lookups in validated DAG order."""
-        ordered_tools = self.core.ordered_tool_steps(request, plan)
-        if len(ordered_tools) != len(request.tools):
-            raise ValueError("Validated workflow graph does not cover every requested tool")
-
-        step_specs: list[dict[str, object]] = [
-            {
-                "step_number": 1,
-                "kind": "provider_selection",
-                "name": "provider_selection",
-                "input_digest": None,
-            }
-        ]
-        tools_by_execution_step: dict[int, object] = {}
-        for runtime_step_number, request_step_number, requested_tool in ordered_tools:
-            definition = self.core.tool_registry.get(requested_tool.name)
-            step_specs.append(
-                {
-                    "step_number": runtime_step_number,
-                    "kind": (
-                        "external_tool"
-                        if definition.external_side_effect
-                        else "safe_tool"
-                    ),
-                    "name": requested_tool.name,
-                    "input_digest": self.core.workflow_step_input_digest(
-                        request_step_number, requested_tool
-                    ),
-                }
-            )
-            tools_by_execution_step[runtime_step_number] = definition
-        return step_specs, tools_by_execution_step
-
     def _evaluate_workflow_tools(
         self,
         workflow_id: UUID,
@@ -278,6 +240,7 @@ class AgentWorkflowRunner:
                 request_digest,
                 step_specs,
                 task=task,
+                definition_version=2,
                 owner_user_id=owner_user_id,
             )
             AuditLogger(self.repository).record(
@@ -493,11 +456,12 @@ class AgentWorkflowRunner:
             )
             for step in workflow["steps"]
         ]
+        definition_version = int(workflow["definition_version"])
         if len(expected) != len(stored) or any(
             expected_step[:3] != stored_step[:3]
             or (
-                stored_step[3] is not None
-                and expected_step[3] != stored_step[3]
+                expected_step[3] != stored_step[3]
+                and not (definition_version < 2 and stored_step[3] is None)
             )
             for expected_step, stored_step in zip(expected, stored, strict=True)
         ):
