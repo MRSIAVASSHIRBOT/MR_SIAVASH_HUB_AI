@@ -66,10 +66,8 @@ def assess_work_order_capabilities(
     being mistaken for an executable capability. No tool is invoked.
     """
     available_names: set[str] = set()
-    count = 0
-    for entry in registered_tools:
-        count += 1
-        if count > MAX_REGISTERED_TOOL_COUNT:
+    for index, entry in enumerate(registered_tools, start=1):
+        if index > MAX_REGISTERED_TOOL_COUNT:
             raise ValueError("Registered tool catalog exceeds the supported limit")
         if not isinstance(entry, Mapping):
             raise TypeError("Registered tool entries must be mappings")
