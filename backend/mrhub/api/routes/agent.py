@@ -159,6 +159,26 @@ def _canonical_plan_digest(payload: dict[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _workflow_execution_flags(workflow: dict[str, object]) -> dict[str, bool]:
+    """Report durable execution evidence from workflow and step states."""
+    status = workflow.get("status")
+    steps = workflow.get("steps")
+    step_rows = steps if isinstance(steps, list) else []
+    succeeded_tool_steps = [
+        step
+        for step in step_rows
+        if isinstance(step, dict)
+        and isinstance(step.get("step_number"), int)
+        and step["step_number"] >= 2
+        and step.get("status") == "succeeded"
+    ]
+    return {
+        "execution_started": status not in {None, "queued"},
+        # Only succeeded checkpoints are positive evidence that a tool completed.
+        "tools_executed": bool(succeeded_tool_steps),
+    }
+
+
 @router.post("/work-orders/plan")
 def create_goal_work_order_plan(
     request: GoalPlanningRequest,
@@ -538,8 +558,7 @@ def execute_persisted_goal_work_order_plan(
             "queued": stored_workflow["status"] in {"queued", "running", "paused"},
             "idempotent_replay": True,
             "plan_consumed": True,
-            "execution_started": stored_workflow["status"] != "queued",
-            "tools_executed": False,
+            **_workflow_execution_flags(stored_workflow),
             "permissions_changed": False,
         }
 
@@ -784,11 +803,10 @@ def execute_persisted_goal_work_order_plan(
         return {
             "workflow": stored_workflow,
             "execution": None,
-            "queued": True,
+            "queued": stored_workflow["status"] in {"queued", "running", "paused"},
             "idempotent_replay": True,
             "plan_consumed": True,
-            "execution_started": False,
-            "tools_executed": False,
+            **_workflow_execution_flags(stored_workflow),
             "permissions_changed": False,
         }
     except sqlite3.Error as exc:
