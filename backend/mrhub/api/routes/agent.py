@@ -11,7 +11,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
-from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.core import AgentCore, AgentPlanRequest, AgentToolRequest
+from mrhub.agents.plan_execution import (
+    PLAN_EXECUTION_FORMAT,
+    PlanExecutionBindingError,
+    execution_request_digest,
+    topological_plan_steps,
+    tool_contract_digest,
+)
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
@@ -97,6 +104,25 @@ class PersistedGoalPlanningRequest(GoalPlanningRequest):
     """Bounded request for a short-lived, encrypted plan record."""
 
     expires_in_seconds: int = Field(default=900, ge=60, le=86_400)
+
+
+class PersistedPlanStepBinding(BaseModel):
+    """Explicit user-supplied mapping from one AWI step to one typed tool payload."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    step_id: str = Field(min_length=1, max_length=40, pattern=r"^[a-z][a-z0-9_-]{0,39}$")
+    tool_name: str = Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9_.-]{0,79}$")
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class ExecutePersistedPlanRequest(BaseModel):
+    """Exact plan digest and one explicit tool binding per executable step."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plan_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    bindings: list[PersistedPlanStepBinding] = Field(min_length=1, max_length=5)
 
 
 def _canonical_plan_digest(payload: dict[str, object]) -> str:
