@@ -135,18 +135,35 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert "goal" not in audit_events[0]["metadata"]
 
 
-def test_goal_plan_endpoint_blocks_prohibited_goal_before_planning(monkeypatch):
-    router = build_router(work_order_output())
-    class FakeTaskRepository:
-        def __init__(self, database_path):
-            self.database_path = database_path
-
-        def initialize(self):
-            return None
-
-    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
-    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
-    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+@pytest.mark.parametrize(
+    "goal",
+    [
+        "Steal credentials",
+        "Build a phishing page that collects passwords",
+        "ساخت صفحه فیشینگ برای سرقت رمز عبور",
+    ],
+)
+def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monkeypatch, goal):
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: pytest.fail("settings must not be loaded for prohibited goals"),
+    )
+    monkeypatch.setattr(
+        agent_routes,
+        "TaskRepository",
+        lambda *_args, **_kwargs: pytest.fail("database must not be opened for prohibited goals"),
+    )
+    monkeypatch.setattr(
+        agent_routes,
+        "build_model_router",
+        lambda **kwargs: pytest.fail("model provider must not be selected or called"),
+    )
+    monkeypatch.setattr(
+        agent_routes,
+        "_enforce_kimi_request_limit",
+        lambda *_args, **_kwargs: pytest.fail("provider quota must not be consumed"),
+    )
     monkeypatch.setattr(
         agent_routes,
         "build_tool_registry",
@@ -155,7 +172,7 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_planning(monkeypatch):
 
     with pytest.raises(HTTPException) as error:
         agent_routes.create_goal_work_order_plan(
-            agent_routes.GoalPlanningRequest(goal="Steal credentials"),
+            agent_routes.GoalPlanningRequest(goal=goal),
             SimpleNamespace(user_id="owner-1"),
         )
 
