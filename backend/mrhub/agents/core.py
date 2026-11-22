@@ -4,9 +4,9 @@ import hashlib
 import json
 from collections.abc import Callable
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from mrhub.agents.capability_gaps import evaluate_capability_gaps
+from mrhub.agents.capability_gaps import MAX_NAME_LENGTH, evaluate_capability_gaps
 from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
@@ -31,6 +31,19 @@ class AgentPlanRequest(BaseModel):
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
     required_capabilities: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("required_capabilities")
+    @classmethod
+    def normalize_required_capabilities(cls, values: list[str]) -> list[str]:
+        """Reject blank or oversized names at the request validation boundary."""
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("required capabilities must not contain blank names")
+        if any(len(value) > MAX_NAME_LENGTH for value in normalized):
+            raise ValueError(
+                f"required capability names cannot exceed {MAX_NAME_LENGTH} characters"
+            )
+        return normalized
 
 
 class AgentCore:
