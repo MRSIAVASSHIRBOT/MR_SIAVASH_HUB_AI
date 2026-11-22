@@ -752,6 +752,7 @@ def test_resume_rejects_mismatched_persisted_step_input_digest(monkeypatch):
     recovery = WorkflowRecoveryRepository(repository.database_path)
     paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert paused is not None and paused["status"] == "paused"
+    assert paused["definition_version"] == 2
 
     typed_request = AgentPlanRequest.model_validate(request)
     first_digest = AgentCore.workflow_step_input_digest(2, typed_request.tools[0])
@@ -781,6 +782,25 @@ def test_resume_rejects_mismatched_persisted_step_input_digest(monkeypatch):
 
     assert response.status_code == 409
     assert invoked == []
+
+    # A version-2 workflow must not treat a deleted digest as a legacy record.
+    with repository._connection() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE workflow_steps
+            SET input_digest = NULL
+            WHERE workflow_id = ? AND step_number = 2
+            """,
+            (str(workflow_id),),
+        )
+        assert cursor.rowcount == 1
+    missing_digest = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+    assert missing_digest.status_code == 409
+    assert invoked == []
+
     after = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert after is not None and after["status"] == "paused"
     assert after["steps"][1]["status"] == "succeeded"
