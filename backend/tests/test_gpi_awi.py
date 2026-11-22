@@ -15,7 +15,7 @@ from mrhub.agents.gpi import (
     derive_server_risk_class,
     generate_work_order,
 )
-from mrhub.agents.work_order import WorkOrder
+from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.domain.tasks import RiskClass
 from mrhub.providers.base import ProviderHealth, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
@@ -293,3 +293,26 @@ def test_work_order_normalizes_optional_scope_before_serialization():
     work_order = WorkOrder.model_validate(payload)
 
     assert work_order.scope == "Backend-only planning"
+
+
+def test_work_order_capability_assessment_serializes_one_stable_presence_contract():
+    payload = {
+        "goal": "Build a validated plan",
+        "risk_class": RiskClass.LOW,
+        **valid_work_order_payload(
+            required_capabilities=["text.echo", "tool.missing", "TEXT.ECHO"],
+        ),
+    }
+    work_order = WorkOrder.model_validate(payload)
+
+    report = assess_work_order_capabilities(
+        work_order,
+        [{"name": "TEXT.ECHO"}, {"name": "other.tool"}],
+    )
+
+    assert report.as_dict() == {
+        "required": ["text.echo", "tool.missing"],
+        "available": ["text.echo"],
+        "missing": ["tool.missing"],
+        "complete": False,
+    }
