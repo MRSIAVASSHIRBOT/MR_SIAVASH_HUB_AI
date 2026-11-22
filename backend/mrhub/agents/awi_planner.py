@@ -24,6 +24,22 @@ class PlanStep(BaseModel):
     verifies_criteria: list[str] = Field(min_length=1, max_length=12)
     verification: str = Field(min_length=1, max_length=500)
 
+    @field_validator("description", "verification")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("step text must not be blank")
+        return normalized
+
+    @field_validator("depends_on", "required_capabilities", "verifies_criteria")
+    @classmethod
+    def normalize_nonblank_items(cls, items: list[str]) -> list[str]:
+        normalized = [item.strip() for item in items]
+        if any(not item for item in normalized):
+            raise ValueError("step list entries must not be blank")
+        return normalized
+
 
 class ExecutionPlan(BaseModel):
     """Validated plan with explicit evidence coverage and no executable payloads."""
@@ -32,6 +48,14 @@ class ExecutionPlan(BaseModel):
 
     steps: list[PlanStep] = Field(min_length=1, max_length=12)
     rationale: str = Field(min_length=1, max_length=1_000)
+
+    @field_validator("rationale")
+    @classmethod
+    def normalize_rationale(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("rationale must not be blank")
+        return normalized
 
     @model_validator(mode="after")
     def validate_graph(self) -> "ExecutionPlan":
