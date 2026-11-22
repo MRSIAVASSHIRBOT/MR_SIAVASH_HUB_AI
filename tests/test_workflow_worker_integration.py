@@ -743,3 +743,41 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
     assert after is not None and after["status"] == "paused"
     assert after["steps"][1]["status"] == "succeeded"
     assert after["steps"][2]["status"] == "pending"
+
+
+def test_workflow_request_digest_preserves_legacy_none_free_serialization():
+    import hashlib
+    import json
+
+    from mrhub.api.routes.agent import _workflow_digest
+
+    request = AgentPlanRequest(
+        goal="Keep legacy workflow digest stable",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "legacy"}},
+        ],
+    )
+    legacy_payload = request.model_dump(mode="json", exclude_none=True)
+    expected = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+    assert _workflow_digest(request) == expected
+    assert AgentWorkflowRunner._digest(request.canonical_payload()) == expected
+
+    explicit = AgentPlanRequest(
+        goal="Keep legacy workflow digest stable",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "legacy"},
+                "depends_on": [],
+            },
+        ],
+    )
+    assert _workflow_digest(explicit) != expected
