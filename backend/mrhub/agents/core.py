@@ -98,13 +98,29 @@ class AgentCore:
         if not isinstance(ordered_steps, list):
             raise RuntimeError("Agent workflow graph has no ordered steps")
 
+        ordered_step_ids: list[str] = []
         for workflow_step in ordered_steps:
             if not isinstance(workflow_step, dict):
                 raise RuntimeError("Agent workflow graph contains an invalid step")
             step_id = workflow_step.get("step_id")
-            if step_id == "provider-selection":
-                continue
-            if not isinstance(step_id, str) or step_id not in tools_by_step:
+            if not isinstance(step_id, str):
+                raise RuntimeError("Agent workflow graph contains an invalid step identifier")
+            ordered_step_ids.append(step_id)
+
+        expected_step_ids = {"provider-selection", *tools_by_step}
+        if (
+            not ordered_step_ids
+            or ordered_step_ids[0] != "provider-selection"
+            or len(ordered_step_ids) != len(expected_step_ids)
+            or len(set(ordered_step_ids)) != len(ordered_step_ids)
+            or set(ordered_step_ids) != expected_step_ids
+        ):
+            raise RuntimeError(
+                "Agent workflow graph must contain every expected step exactly once"
+            )
+
+        for step_id in ordered_step_ids[1:]:
+            if step_id not in tools_by_step:
                 raise RuntimeError("Agent workflow graph references an unknown tool step")
             step_number, requested_tool = tools_by_step[step_id]
             if step_number < start_step:
