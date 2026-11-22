@@ -96,10 +96,22 @@ def make_execution_request():
 
 def make_binding(registry, *, contract_digest=None):
     definition = registry.get("text.echo")
+    plan_id = str(uuid4())
+    plan_digest = "a" * 64
     return {
-        "plan_id": str(uuid4()),
-        "plan_digest": "a" * 64,
-        "request_digest": "c" * 64,
+        "plan_id": plan_id,
+        "plan_digest": plan_digest,
+        "request_digest": execution_request_digest(
+            plan_id=plan_id,
+            plan_digest=plan_digest,
+            bindings=[
+                {
+                    "step_id": "review",
+                    "tool_name": "text.echo",
+                    "payload": {"text": "hello"},
+                }
+            ],
+        ),
         "step_bindings": [
             {
                 "step_id": "review",
@@ -272,3 +284,16 @@ def test_execution_request_digest_is_stable_and_binds_every_payload_field():
 def test_canonical_digest_rejects_non_finite_json_values():
     with pytest.raises(PlanExecutionBindingError, match="finite JSON"):
         canonical_digest({"value": float("nan")})
+
+
+def test_worker_payload_rejects_request_digest_mismatch_with_encrypted_arguments():
+    request = make_execution_request()
+    payload = {
+        "format": PLAN_EXECUTION_FORMAT,
+        "request": request.model_dump(mode="json"),
+        "plan_binding": make_binding(make_registry()[0]),
+    }
+    payload["plan_binding"]["request_digest"] = "0" * 64
+
+    with pytest.raises(PlanExecutionBindingError, match="digest does not match"):
+        validate_plan_execution_payload(payload)
