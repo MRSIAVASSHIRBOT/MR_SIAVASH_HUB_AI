@@ -4,8 +4,10 @@ import hashlib
 import json
 from collections.abc import Callable
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from mrhub.agents.capability_gaps import MAX_NAME_LENGTH, evaluate_capability_gaps
+from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
@@ -16,6 +18,14 @@ class AgentToolRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     payload: dict[str, object] = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("tool name must not be blank")
+        return normalized
 
 
 class AgentPlanRequest(BaseModel):
@@ -28,6 +38,28 @@ class AgentPlanRequest(BaseModel):
     requires_tool_calling: bool = False
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
+    required_capabilities: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("goal")
+    @classmethod
+    def normalize_goal(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("goal must not be blank")
+        return normalized
+
+    @field_validator("required_capabilities")
+    @classmethod
+    def normalize_required_capabilities(cls, values: list[str]) -> list[str]:
+        """Reject blank or oversized names at the request validation boundary."""
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("required capabilities must not contain blank names")
+        if any(len(value) > MAX_NAME_LENGTH for value in normalized):
+            raise ValueError(
+                f"required capability names cannot exceed {MAX_NAME_LENGTH} characters"
+            )
+        return normalized
 
 
 class AgentCore:
@@ -59,6 +91,96 @@ class AgentCore:
         except Exception:  # noqa: BLE001 - permission lookup failures must fail closed
             return frozenset()
 
+    @staticmethod
+    def workflow_step_input_digest(
+        request_step_number: int,
+        requested_tool: AgentToolRequest,
+    ) -> str:
+        """Bind a durable step to its stable request identity and exact input payload."""
+        if request_step_number < 2:
+            raise ValueError("Tool request step number must be at least 2")
+        definition = {
+            "step_id": f"step-{request_step_number}",
+            "tool_name": requested_tool.name,
+            "payload": requested_tool.payload,
+        }
+        encoded = json.dumps(
+            definition, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def ordered_tool_steps(
+        self,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+    ) -> list[tuple[int, int, AgentToolRequest]]:
+        """Return tools in validated topological order with durable runtime positions.
+
+        The first tuple field is the persisted execution-order position (provider
+        selection is step 1). The second field is the original request step number.
+        Keeping both values prevents recovery checkpoints from confusing request
+        order with DAG execution order.
+        """
+        dependency_plan = plan.get("dependency_plan")
+        if not isinstance(dependency_plan, dict):
+            raise RuntimeError("Agent plan is missing its validated dependency graph")
+        ordered_steps = dependency_plan.get("ordered_steps")
+        if not isinstance(ordered_steps, list):
+            raise RuntimeError("Agent dependency graph has no ordered steps")
+
+        expected_step_ids = {
+            "step-1",
+            *(f"step-{number}" for number in range(2, len(request.tools) + 2)),
+        }
+        ordered_step_ids: list[str] = []
+        graph_steps: list[WorkflowStep] = []
+        for workflow_step in ordered_steps:
+            if not isinstance(workflow_step, dict):
+                raise RuntimeError("Agent dependency graph contains an invalid step")
+            step_id = workflow_step.get("step_id")
+            description = workflow_step.get("description")
+            dependencies = workflow_step.get("depends_on")
+            if (
+                not isinstance(step_id, str)
+                or not isinstance(description, str)
+                or not isinstance(dependencies, list)
+                or any(not isinstance(item, str) for item in dependencies)
+            ):
+                raise RuntimeError("Agent dependency graph contains invalid step metadata")
+            ordered_step_ids.append(step_id)
+            graph_steps.append(WorkflowStep(step_id, description, tuple(dependencies)))
+
+        if (
+            not ordered_step_ids
+            or ordered_step_ids[0] != "step-1"
+            or len(ordered_step_ids) != len(expected_step_ids)
+            or len(set(ordered_step_ids)) != len(ordered_step_ids)
+            or set(ordered_step_ids) != expected_step_ids
+        ):
+            raise RuntimeError(
+                "Agent dependency graph must contain every expected step exactly once"
+            )
+
+        try:
+            validated_ids = [
+                item["step_id"]
+                for item in build_workflow_plan(graph_steps).as_dict()["ordered_steps"]
+            ]
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Agent dependency graph is invalid") from exc
+        if validated_ids != ordered_step_ids:
+            raise RuntimeError(
+                "Agent dependency graph is not in deterministic topological order"
+            )
+
+        ordered_tools: list[tuple[int, int, AgentToolRequest]] = []
+        for runtime_step_number, step_id in enumerate(ordered_step_ids[1:], start=2):
+            request_step_number = int(step_id.removeprefix("step-"))
+            ordered_tools.append(
+                (runtime_step_number, request_step_number, request.tools[request_step_number - 2])
+            )
+        return ordered_tools
+
     def execute(
         self,
         request: AgentPlanRequest,
@@ -86,8 +208,10 @@ class AgentCore:
         if start_step < 2:
             raise ValueError("Tool execution start step must be at least 2")
 
-        for step_number, requested_tool in enumerate(request.tools, start=2):
-            if step_number < start_step:
+        for runtime_step_number, _request_step_number, requested_tool in (
+            self.ordered_tool_steps(request, plan)
+        ):
+            if runtime_step_number < start_step:
                 continue
             if should_cancel is not None and should_cancel():
                 return {
@@ -103,7 +227,7 @@ class AgentCore:
                     "blocked": False,
                 }
             if on_step is not None:
-                on_step(step_number, "running", None)
+                on_step(runtime_step_number, "running", None)
             try:
                 result = self.tool_registry.invoke(
                     requested_tool.name,
@@ -117,7 +241,7 @@ class AgentCore:
                     else "policy_denied"
                 )
                 if on_step is not None:
-                    on_step(step_number, "failed", error_code)
+                    on_step(runtime_step_number, "failed", error_code)
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
@@ -132,7 +256,7 @@ class AgentCore:
                 }
             except (ToolExecutionError, ValueError, TypeError, KeyError, RuntimeError):
                 if on_step is not None:
-                    on_step(step_number, "failed", "tool_execution_failed")
+                    on_step(runtime_step_number, "failed", "tool_execution_failed")
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
@@ -150,9 +274,9 @@ class AgentCore:
                 output_bytes = json.dumps(
                     result, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 ).encode()
-                on_step_result(step_number, hashlib.sha256(output_bytes).hexdigest())
+                on_step_result(runtime_step_number, hashlib.sha256(output_bytes).hexdigest())
             if on_step is not None:
-                on_step(step_number, "succeeded", None)
+                on_step(runtime_step_number, "succeeded", None)
             if should_cancel is not None and should_cancel():
                 return {
                     "decision_mode": "controlled_tool_execution",
@@ -169,7 +293,7 @@ class AgentCore:
 
         return {
             "decision_mode": "controlled_tool_execution",
-            "execution_started": bool(request.tools),
+            "execution_started": bool(results),
             "execution_completed": True,
             "model_inference_started": False,
             "tools_executed": bool(results),
@@ -248,17 +372,35 @@ class AgentCore:
                 }
             )
 
+        capability_gaps = evaluate_capability_gaps(
+            request.required_capabilities,
+            self.tool_registry.catalog(),
+        )
         executable = all(
             step["status"] == "ready"
             for step in steps
             if step["kind"] == "tool"
-        )
+        ) and capability_gaps.complete
+        workflow_steps = [
+            WorkflowStep("step-1", "Select the model provider")
+        ]
+        for index, requested_tool in enumerate(request.tools, start=2):
+            workflow_steps.append(
+                WorkflowStep(
+                    f"step-{index}",
+                    f"Execute registered tool: {requested_tool.name}",
+                    (f"step-{index - 1}",),
+                )
+            )
+        dependency_plan = build_workflow_plan(workflow_steps).as_dict()
         return {
             "goal_length": len(request.goal),
             "analysis_mode": "declarative_request",
             "selected_provider": selection.model_dump(),
             "steps": steps,
             "step_count": len(steps),
+            "dependency_plan": dependency_plan,
+            "capability_gaps": capability_gaps.as_dict(),
             "execution_ready": executable,
             "decision_mode": "plan_only",
             "model_inference_started": False,
