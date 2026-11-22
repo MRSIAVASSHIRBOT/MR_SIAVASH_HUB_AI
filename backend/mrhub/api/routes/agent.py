@@ -447,22 +447,24 @@ def execute_agent_workflow(
                 )
             idempotency_binding = {"scope": scope, "key": idempotency_key}
 
-        step_specs = []
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
-        for step in raw_steps:
-            if not isinstance(step, dict):
-                continue
-            number = int(step["step"])
-            if number == 1:
-                kind, name = "provider_selection", "provider_selection"
-            else:
-                tool = request.tools[number - 2]
-                definition = core.tool_registry.get(tool.name)
-                kind = "external_tool" if definition.external_side_effect else "safe_tool"
-                name = tool.name
-            step_specs.append({"step_number": number, "kind": kind, "name": name})
+        step_specs = [
+            {
+                "step_number": 1,
+                "kind": "provider_selection",
+                "name": "provider_selection",
+            }
+        ]
+        for runtime_number, _request_number, tool in core.ordered_tool_steps(
+            request, plan
+        ):
+            definition = core.tool_registry.get(tool.name)
+            kind = "external_tool" if definition.external_side_effect else "safe_tool"
+            step_specs.append(
+                {"step_number": runtime_number, "kind": kind, "name": tool.name}
+            )
 
         try:
             recovery.create_run(
