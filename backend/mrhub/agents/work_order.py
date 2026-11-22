@@ -4,6 +4,9 @@ This model validates a proposed work order; it does not authorize tools or actio
 """
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.domain.tasks import RiskClass
@@ -35,10 +38,6 @@ class WorkOrder(BaseModel):
             raise ValueError("list entries must not be blank")
         return items
 
-
-
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
 
 
 MAX_REGISTERED_TOOL_COUNT = 200
