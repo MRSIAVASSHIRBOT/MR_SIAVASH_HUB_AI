@@ -11,7 +11,6 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
     PayloadEnvelopeError,
-    decrypt_payload,
     decrypt_plan_payload,
     encrypt_payload,
     encrypt_plan_payload,
