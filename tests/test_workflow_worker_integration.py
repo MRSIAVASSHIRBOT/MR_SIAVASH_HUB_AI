@@ -580,8 +580,10 @@ def test_dag_resume_uses_topological_checkpoint_positions(monkeypatch):
     monkeypatch.setattr(
         AgentCore, "execute", interrupt_after_first_topological_step
     )
-    interrupted = run_worker_once()
-    assert interrupted is not None
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Workflow execution stopped"):
+        run_worker_once()
     assert invoked == []
 
     repository = TaskRepository(get_settings().database_path)
@@ -728,7 +730,10 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
         raise RuntimeError("simulated interruption after first ordered step")
 
     monkeypatch.setattr(AgentCore, "execute", interrupt_after_first_ordered_step)
-    run_worker_once()
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Workflow execution stopped"):
+        run_worker_once()
 
     repository = TaskRepository(get_settings().database_path)
     recovery = WorkflowRecoveryRepository(repository.database_path)
