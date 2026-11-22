@@ -29,14 +29,15 @@ def test_work_order_requires_acceptance_and_verification():
 
 @pytest.mark.parametrize("field", ["assumptions", "constraints", "dependencies", "required_capabilities", "acceptance_criteria", "verification_steps"])
 def test_work_order_rejects_blank_list_items(field):
+    payload = {
+        "goal": "Task",
+        "intent": "Intent",
+        "acceptance_criteria": ["criterion"],
+        "verification_steps": ["verify"],
+    }
+    payload[field] = [" "]
     with pytest.raises(ValidationError):
-        WorkOrder(
-            goal="Task",
-            intent="Intent",
-            acceptance_criteria=["criterion"],
-            verification_steps=["verify"],
-            **{field: [" "]},
-        )
+        WorkOrder(**payload)
 
 
 def test_work_order_rejects_unknown_fields():
