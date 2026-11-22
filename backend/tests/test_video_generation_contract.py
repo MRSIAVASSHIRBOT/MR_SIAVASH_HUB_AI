@@ -322,3 +322,16 @@ def test_generation_request_remote_consent_fields_are_strict_and_bounded():
         _request(max_remote_cost_usd=10_001)
     with pytest.raises(ValidationError):
         _request(max_remote_cost_usd=float("inf"))
+
+
+
+@pytest.mark.parametrize("duration", [float("nan"), float("inf"), float("-inf")])
+def test_generation_result_rejects_non_finite_duration(duration):
+    with pytest.raises(ValidationError):
+        VideoGenerationResult(
+            provider="test",
+            model="fixture-v1",
+            provider_job_id="job-non-finite",
+            status=GenerationStatus.RUNNING,
+            duration_seconds=duration,
+        )
