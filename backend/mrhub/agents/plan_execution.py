@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from uuid import UUID
@@ -167,6 +168,25 @@ def validate_plan_execution_payload(
             raise PlanExecutionBindingError("Plan step tool binding does not match the request")
         if not isinstance(contract_digest, str) or not _DIGEST_RE.fullmatch(contract_digest):
             raise PlanExecutionBindingError("Tool contract digest is invalid")
+
+    digest_bindings = [
+        {
+            "step_id": entry["step_id"],
+            "tool_name": entry["tool_name"],
+            "payload": request.tools[index].payload,
+        }
+        for index, entry in enumerate(entries)
+    ]
+    digest_bindings.sort(key=lambda item: str(item["step_id"]))
+    expected_request_digest = execution_request_digest(
+        plan_id=canonical_plan_id,
+        plan_digest=plan_digest,
+        bindings=digest_bindings,
+    )
+    if not hmac.compare_digest(expected_request_digest, request_digest):
+        raise PlanExecutionBindingError(
+            "Execution request digest does not match the encrypted tool payloads"
+        )
 
     return request, binding
 
