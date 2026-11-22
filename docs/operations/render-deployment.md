@@ -12,7 +12,7 @@ The following values are intentionally not synchronized from the repository and 
 - `MRH_OWNER_SETUP_TOKEN`: a separate, high-entropy one-time bootstrap credential. Do not reuse the workflow key or any Telegram/Cloudflare secret.
 - `EL_AI_CREDENTIAL_ENCRYPTION_KEY`: base64-encoded 32 random bytes used by the AES-256-GCM file store. Keep it stable and back it up securely; losing it makes the paired Hub credentials unreadable.
 - `TELEGRAM_BRIDGE_SHARED_SECRET`: must exactly match the Cloudflare Worker `BRIDGE_SHARED_SECRET` value. Do not read it back or expose it in logs.
-- `TELEGRAM_OWNER_IDS`: numeric Telegram owner ID(s); these must match the Cloudflare Worker allowlist.
+- `TELEGRAM_OWNER_IDS`: numeric Telegram owner ID(s) used by the Python runtime. For the current single-owner Worker deployment, this must match the Cloudflare plain-text binding `ALLOWED_TELEGRAM_USER_ID` exactly. Keep the ID out of logs and screenshots.
 
 The service sets `MRH_REQUIRE_WORKER_FOR_READINESS=true`. The `/ready` endpoint therefore remains unhealthy until the database migrations and the Hub worker heartbeat are both healthy. EL_AI starts the Cloudflare bridge consumer and stores only AES-GCM encrypted Hub credentials under `/var/data/el-ai`; its 32-byte encryption key is supplied through Render's secret environment UI. The persistent disk is mounted at `/var/data`.
 
