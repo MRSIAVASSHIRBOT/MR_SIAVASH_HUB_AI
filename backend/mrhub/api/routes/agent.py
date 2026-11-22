@@ -676,6 +676,7 @@ def execute_persisted_goal_work_order_plan(
         execution_binding = {
             "plan_id": record.plan_id,
             "plan_digest": record.plan_digest,
+            "request_digest": request_digest,
             "step_bindings": persisted_step_bindings,
         }
         validate_plan_bindings_against_snapshot(
