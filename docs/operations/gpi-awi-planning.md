@@ -103,11 +103,63 @@ Expired records are marked expired and their ciphertext fields are erased when a
 | \`410\` | Plan has expired; its ciphertext has been erased. |
 | \`503\` | Encryption key is missing/invalid, or encrypted plan storage is unavailable. |
 
+## Controlled execution of an encrypted plan
+
+The authenticated endpoint `POST /agent/work-orders/plans/{plan_id}/execute` can consume one active persisted plan and enqueue it through the existing durable workflow system. This is a separate operation from planning and does not execute tools inside the HTTP request.
+
+A caller must submit the exact step-to-tool bindings and typed payloads. The request accepts no approval or permission flags:
+
+```http
+POST /agent/work-orders/plans/{plan_id}/execute
+Authorization: Bearer <session-token>
+Idempotency-Key: awi-plan-execution-001
+Content-Type: application/json
+```
+
+```json
+{
+  "step_bindings": [
+    {
+      "step_id": "review",
+      "tool_name": "text.echo",
+      "payload": {
+        "text": "A bounded, schema-validated input"
+      }
+    }
+  ]
+}
+```
+
+V1 execution is deliberately narrow:
+
+- The plan must contain 1–5 steps. Each step must declare exactly one registered capability. The submitted `tool_name` must exactly match that capability and the step ID must match the persisted plan.
+- Payloads are validated by the current registered tool input model. The combined serialized binding request is limited to 64 KiB. Natural-language descriptions are never converted into tool arguments.
+- The server revalidates the persisted WorkOrder, plan graph, digest, risk classification, tool contract, current owner grants, and policy decision. Only server-classified LOW-risk work orders and LOW-risk tools without external side effects, with `PolicyDecision.ALLOW`, are eligible.
+- Tools requiring approval, tools with external side effects, high-risk work, missing/revoked permissions, unknown tools, schema drift, and malformed bindings are rejected. The endpoint cannot grant permissions or approve an action.
+- Plan consumption, the queued task, workflow, ordered step metadata, encrypted workflow payload, and owner-scoped idempotency binding are committed in one database transaction. A failed consume or insert rolls the entire transaction back.
+- The encrypted workflow payload binds the owner, task, workflow, plan ID, plan digest, exact request digest, and tool contract digests. The existing `WorkerEngine` / `WorkflowWorkerHandler` / `AgentWorkflowRunner` path performs execution; the API route does not call a tool handler.
+- The worker rechecks the consumed-plan association, plan integrity, current registry schema, current owner grants, and policy immediately before dispatch. A matching idempotency replay returns the original workflow; a changed request with the same key conflicts. A consumed plan cannot create another workflow through a different key.
+- The response means **queued**, not completed. It reports `execution_started: false` and `tools_executed: false`. Check the owner-scoped workflow resource for its actual state.
+- When a workflow reaches a terminal state, the workflow payload and consumed plan ciphertext are erased. If cleanup storage fails, the terminal result remains stable and reports `payload_cleanup_pending`; the ciphertext remains encrypted until cleanup is reconciled.
+
+Example response fields include `workflow.workflow_id`, `workflow.status`, `queued: true`, `idempotent_replay: false`, `planning_only: false`, `execution_started: false`, and `tools_executed: false`.
+
+| Status | Meaning |
+| --- | --- |
+| `401/403` | Authentication failure or current policy/permission denies the requested tool binding. |
+| `404` | Plan does not exist or is not owned by the authenticated user. |
+| `409` | Plan is not active, integrity/schema validation fails, a tool contract changed, or an idempotency/consumption conflict occurs. |
+| `410` | The plan has expired and its ciphertext has been erased. |
+| `422` | Binding count, exact step/tool mapping, payload schema, risk boundary, or request size is invalid. |
+| `503` | Encryption key, permission lookup, registry, or durable storage is unavailable. |
+
+The v1 bridge intentionally does not execute high-risk, approval-required, externally visible, or side-effecting tools. A future approval-capable version must add a durable, owner-authenticated, one-time approval record bound to the exact tool, canonical payload digest, tool schema digest, workflow, and expiry. A client boolean must never substitute for that record.
+
 ## Current limitations
 
 - The risk classifier is a bounded heuristic, not a semantic safety proof.
 - Provider output may be incomplete or incorrect; schema validity does not prove the plan is substantively correct.
 - Capability presence is descriptive only; authorization is deliberately not evaluated by either planning endpoint.
-- Persisted plans are reviewable owner-scoped records only. They cannot be consumed to create a workflow or execute tools yet.
-- No automatic retry or autonomous follow-through is performed here.
+- V1 persisted plans can be consumed only for low-risk registered tools without external side effects and only when current server policy returns ALLOW. High-risk and approval-required actions remain non-executable.
+- Ambiguous outcomes are never automatically replayed. Recovery and reconciliation remain explicit workflow operations.
 - Local inference requires explicit configuration. Remote inference may incur provider cost and is governed by the configured provider and request limiter.
