@@ -31,8 +31,8 @@ class QueueProvider:
 
     def generate(self, request):
         return ProviderResponse(
-            provider="test",
-            model="queue-v1",
+            provider=self.descriptor.provider,
+            model=self.descriptor.model,
             output_text=self.outputs.pop(0),
         )
 
