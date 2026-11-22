@@ -54,6 +54,9 @@ def test_planner_preserves_input_order_for_independent_steps():
         [WorkflowStep(" ", "Invalid")],
         [WorkflowStep("a", " ")],
         [WorkflowStep("a", "A", ("b", "b")), WorkflowStep("b", "B")],
+        [WorkflowStep("a", "A", (" ",))],
+        [WorkflowStep("a", "A", (None,))],
+        [WorkflowStep("a", "A", (["b"],))],
     ],
 )
 def test_planner_rejects_invalid_graphs(steps):
@@ -79,3 +82,18 @@ def test_plan_serialization_is_json_friendly():
         ],
         "dependency_levels": [["a"], ["b"]],
     }
+
+
+def test_planner_stops_consuming_oversized_step_iterables():
+    consumed = 0
+
+    def step_stream():
+        nonlocal consumed
+        for index in range(1_000):
+            consumed += 1
+            yield WorkflowStep(f"step-{index}", "Step")
+
+    with pytest.raises(WorkflowPlanError, match="cannot contain more than"):
+        build_workflow_plan(step_stream())
+
+    assert consumed == 101

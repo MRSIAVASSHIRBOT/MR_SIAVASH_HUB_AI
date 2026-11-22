@@ -48,12 +48,18 @@ class WorkflowPlanError(ValueError):
 
 def build_workflow_plan(steps: Iterable[WorkflowStep]) -> WorkflowPlan:
     """Validate and topologically order steps, preserving input order for ties."""
-    items = tuple(steps)
+    iterator = iter(steps)
+    bounded_items: list[WorkflowStep] = []
+    for _ in range(MAX_STEPS + 1):
+        try:
+            bounded_items.append(next(iterator))
+        except StopIteration:
+            break
+    if len(bounded_items) > MAX_STEPS:
+        raise WorkflowPlanError(f"A workflow cannot contain more than {MAX_STEPS} steps")
+    items = tuple(bounded_items)
     if not items:
         raise WorkflowPlanError("A workflow must contain at least one step")
-    if len(items) > MAX_STEPS:
-        raise WorkflowPlanError(f"A workflow cannot contain more than {MAX_STEPS} steps")
-
     by_id: dict[str, WorkflowStep] = {}
     input_index: dict[str, int] = {}
     for index, step in enumerate(items):
@@ -76,6 +82,14 @@ def build_workflow_plan(steps: Iterable[WorkflowStep]) -> WorkflowPlan:
             raise WorkflowPlanError(f"Step {step_id} description is too long")
         if not isinstance(step.depends_on, tuple):
             raise WorkflowPlanError(f"Dependencies for {step_id} must be a tuple")
+        if any(
+            not isinstance(dependency, str)
+            or not dependency.strip()
+            or dependency != dependency.strip()
+            or len(dependency) > MAX_STEP_ID_LENGTH
+            for dependency in step.depends_on
+        ):
+            raise WorkflowPlanError(f"Dependencies for {step_id} must be valid identifiers")
         if len(set(step.depends_on)) != len(step.depends_on):
             raise WorkflowPlanError(f"Step {step_id} repeats a dependency")
         by_id[step_id] = step
