@@ -117,6 +117,7 @@ def make_binding(registry, *, contract_digest=None):
                 "step_id": "review",
                 "tool_name": "text.echo",
                 "tool_contract_digest": contract_digest or tool_contract_digest(definition),
+                "payload": {"text": "hello"},
             }
         ],
     }
