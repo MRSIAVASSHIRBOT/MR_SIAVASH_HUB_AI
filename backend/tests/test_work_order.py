@@ -22,9 +22,17 @@ def test_work_order_accepts_complete_structured_goal():
     assert order.acceptance_criteria == ["The plan includes success criteria"]
 
 
-def test_work_order_requires_acceptance_and_verification():
+def test_work_order_requires_acceptance_verification_and_explicit_risk():
     with pytest.raises(ValidationError):
         WorkOrder(goal="Task", intent="Do the task")
+
+    with pytest.raises(ValidationError):
+        WorkOrder(
+            goal="Task",
+            intent="Do the task",
+            acceptance_criteria=["Done means verified"],
+            verification_steps=["Run tests"],
+        )
 
 
 @pytest.mark.parametrize("field", ["assumptions", "constraints", "dependencies", "required_capabilities", "acceptance_criteria", "verification_steps"])
