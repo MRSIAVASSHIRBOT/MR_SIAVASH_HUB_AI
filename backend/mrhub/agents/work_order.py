@@ -28,15 +28,24 @@ class WorkOrder(BaseModel):
     verification_steps: list[str] = Field(min_length=1, max_length=12)
     risk_class: RiskClass
 
+    @field_validator("goal", "intent")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value must not be blank")
+        return normalized
+
     @field_validator(
         "assumptions", "constraints", "dependencies", "required_capabilities",
         "acceptance_criteria", "verification_steps",
     )
     @classmethod
-    def validate_nonblank_items(cls, items: list[str]) -> list[str]:
-        if any(not item.strip() for item in items):
+    def normalize_nonblank_items(cls, items: list[str]) -> list[str]:
+        normalized = [item.strip() for item in items]
+        if any(not item for item in normalized):
             raise ValueError("list entries must not be blank")
-        return items
+        return normalized
 
 
 MAX_REGISTERED_TOOL_COUNT = 200
