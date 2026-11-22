@@ -71,7 +71,6 @@ def evaluate_capability_gaps(
             available_keys.add(key)
 
     matched = required_keys & available_keys
-    required_by_key = {key: name for key, name in zip(required_keys, required)}
     # Preserve the user's requirement order in all report sections.
     available_required = tuple(name for name in required if _normalize_name(name, "Required capability") in matched)
     missing = tuple(name for name in required if _normalize_name(name, "Required capability") not in available_keys)
