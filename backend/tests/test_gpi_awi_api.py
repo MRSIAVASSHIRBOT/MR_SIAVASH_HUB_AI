@@ -12,14 +12,20 @@ from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
 
 
 class QueueProvider:
-    def __init__(self, outputs: list[str]) -> None:
+    def __init__(
+        self,
+        outputs: list[str],
+        *,
+        provider: str = "test",
+        local: bool = True,
+    ) -> None:
         self.outputs = list(outputs)
         self.descriptor = ModelDescriptor(
-            provider="test",
+            provider=provider,
             model="queue-v1",
             capability=ModelCapability(text=True),
             available=True,
-            local=True,
+            local=local,
             priority=1,
         )
 
@@ -34,9 +40,13 @@ class QueueProvider:
         return ProviderHealth(available=True, reason_code="test_ready")
 
 
-def build_router(*outputs: str) -> ModelRouter:
+def build_router(
+    *outputs: str,
+    provider: str = "test",
+    local: bool = True,
+) -> ModelRouter:
     router = ModelRouter()
-    router.register_provider(QueueProvider(list(outputs)))
+    router.register_provider(QueueProvider(list(outputs), provider=provider, local=local))
     return router
 
 
@@ -139,3 +149,50 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_planning(monkeypatch):
         )
 
     assert error.value.status_code == 422
+
+
+
+def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
+    router = build_router(
+        work_order_output(),
+        plan_output(),
+        provider="moonshot",
+        local=False,
+    )
+    limited_owners = []
+
+    class FakeToolRegistry:
+        def catalog(self):
+            return []
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: FakeToolRegistry())
+    monkeypatch.setattr(
+        agent_routes,
+        "_enforce_kimi_request_limit",
+        lambda owner_id: limited_owners.append(owner_id),
+    )
+    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
+
+    agent_routes.create_goal_work_order_plan(
+        agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
+        SimpleNamespace(user_id="owner-remote"),
+    )
+
+    assert limited_owners == ["owner-remote"]
