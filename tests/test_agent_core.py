@@ -498,3 +498,35 @@ def test_agent_core_includes_dependency_graph_for_blocked_plans_too():
     assert plan["workflow_plan"]["ordered_steps"][-1]["depends_on"] == [
         "provider-selection"
     ]
+
+
+
+def test_agent_core_executes_tools_in_validated_workflow_order():
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute tools in the validated dependency order",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    # Simulate a valid planner result whose topological order differs from
+    # the request's declaration order. Execution must follow the plan.
+    core.plan = lambda _request: {
+        "execution_ready": True,
+        "workflow_plan": {
+            "ordered_steps": [
+                {"step_id": "provider-selection"},
+                {"step_id": "tool-3"},
+                {"step_id": "tool-2"},
+            ]
+        },
+    }
+
+    response = core.execute(request)
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second",
+        "first",
+    ]
