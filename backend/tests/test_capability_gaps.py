@@ -32,14 +32,17 @@ def test_report_is_complete_when_all_requirements_are_registered():
     assert report.missing == ()
 
 
-@pytest.mark.parametrize("required", [[" "], [None], ["x" * 81]])
-def test_invalid_requirement_names_are_rejected(required):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize(
+    ("required", "error"),
+    [([" "], ValueError), ([None], TypeError), (["x" * 81], ValueError)],
+)
+def test_invalid_requirement_names_are_rejected(required, error):
+    with pytest.raises(error):
         evaluate_capability_gaps(required, [])
 
 
 def test_invalid_catalog_entries_are_rejected():
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         evaluate_capability_gaps(["tool"], [{"description": "missing name"}])
 
 
