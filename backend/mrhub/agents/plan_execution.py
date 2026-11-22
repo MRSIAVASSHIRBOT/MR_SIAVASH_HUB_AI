@@ -9,11 +9,10 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from mrhub.domain.tasks import RiskClass
-from mrhub.security.policy import PolicyDecision
-
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.core import AgentPlanRequest
+from mrhub.domain.tasks import RiskClass
+from mrhub.security.policy import PolicyDecision
 from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 PLAN_EXECUTION_FORMAT = "mrhub.awi-plan-execution.v1"
@@ -211,8 +210,8 @@ def validate_plan_bindings_against_snapshot(
     if len(ordered_steps) > MAX_EXECUTABLE_STEPS or len(request.tools) != len(ordered_steps):
         raise PlanExecutionBindingError("Plan exceeds the bounded executable step limit")
 
-    for index, (step, entry, requested_tool) in enumerate(
-        zip(ordered_steps, entries, request.tools, strict=True)
+    for step, entry, requested_tool in zip(
+        ordered_steps, entries, request.tools, strict=True
     ):
         if not isinstance(entry, dict):
             raise PlanExecutionBindingError("Plan step binding is invalid")
@@ -243,7 +242,9 @@ def validate_plan_bindings_against_snapshot(
         try:
             validated_input = definition.input_model.model_validate(requested_tool.payload)
         except ValidationError as exc:
-            raise PlanExecutionBindingError("Bound tool payload failed current schema validation") from exc
+            raise PlanExecutionBindingError(
+                "Bound tool payload failed current schema validation"
+            ) from exc
         if validated_input.model_dump(mode="json") != requested_tool.payload:
             raise PlanExecutionBindingError("Bound tool payload is not in canonical schema form")
 
