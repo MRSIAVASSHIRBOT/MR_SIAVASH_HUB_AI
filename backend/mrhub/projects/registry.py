@@ -126,12 +126,14 @@ def _hub_runtime_observation() -> dict[str, object]:
 def _aggregate_project_status(
     repository_observation: dict[str, object],
     runtime_observation: dict[str, object],
+    infrastructure_observation: dict[str, object],
     repository_details: dict[str, object] | None,
 ) -> tuple[str, str]:
     """Summarize observed components without masking failures or unknowns."""
     statuses = [
         repository_observation.get("status"),
         runtime_observation.get("status"),
+        infrastructure_observation.get("status"),
     ]
     latest_ci = repository_details.get("latest_ci") if isinstance(repository_details, dict) else None
     if isinstance(latest_ci, dict):
@@ -227,6 +229,7 @@ def build_project_registry(*, include_live_status: bool = False) -> dict[str, ob
         overall_status, overall_reason = _aggregate_project_status(
             repository_observation,
             runtime_observation,
+            status_observations["infrastructure"],
             repository_details,
         )
         projects.append(
