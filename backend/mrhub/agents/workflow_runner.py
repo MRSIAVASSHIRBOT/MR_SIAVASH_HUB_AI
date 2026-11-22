@@ -75,8 +75,18 @@ class AgentWorkflowRunner:
                 evidence_digest = step.get("output_digest")
             elif status == "failed":
                 outcome = CriterionStatus.FAILED
+                # Bind the digest to this persisted failure checkpoint rather than
+                # hashing only the error code, which would collide across workflows.
                 evidence_digest = self._digest(
-                    {"error_code": step.get("error_code") or "tool_execution_failed"}
+                    {
+                        "workflow_id": str(workflow_id),
+                        "step_number": number,
+                        "status": status,
+                        "error_code": step.get("error_code") or "tool_execution_failed",
+                        "attempt_count": step.get("attempt_count"),
+                        "started_at": step.get("started_at"),
+                        "finished_at": step.get("finished_at"),
+                    }
                 )
             else:
                 # Includes unknown_outcome, retry_wait, pending and running.
