@@ -1192,3 +1192,62 @@ def test_v53_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
     ).fetchone()
     assert tuple(applied) == (53, "owner_scoped_encrypted_agent_work_order_plans")
     connection.close()
+
+
+def test_consumed_plan_record_is_deleted_with_linked_workflow(tmp_path):
+    from uuid import uuid4
+
+    connection = connect(tmp_path / "plan-workflow-cascade.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    owner_id = "plan-cascade-owner"
+    connection.execute(
+        """
+        INSERT INTO auth_users (
+            user_id, username, salt, password_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            owner_id,
+            "plan-cascade-owner@example.test",
+            "salt",
+            "hash",
+            "2026-11-22T20:00:00+00:00",
+        ),
+    )
+    workflow_id = str(uuid4())
+    plan_id = str(uuid4())
+    now = "2026-11-22T20:00:00+00:00"
+    connection.execute(
+        """
+        INSERT INTO workflow_runs (
+            workflow_id, task_id, status, request_digest,
+            definition_version, current_step, last_error_code,
+            created_at, updated_at, owner_user_id
+        ) VALUES (?, NULL, 'succeeded', ?, 1, 0, NULL, ?, ?, ?)
+        """,
+        (workflow_id, "a" * 64, now, now, owner_id),
+    )
+    connection.execute(
+        """
+        INSERT INTO agent_work_order_plans (
+            plan_id, owner_user_id, status, plan_digest,
+            envelope_version, nonce_b64, ciphertext_b64,
+            created_at, expires_at, consumed_at, workflow_id
+        ) VALUES (?, ?, 'consumed', ?, 1, 'nonce', 'ciphertext', ?, ?, ?, ?)
+        """,
+        (plan_id, owner_id, "b" * 64, now, "2026-11-22T20:15:00+00:00", now, workflow_id),
+    )
+    connection.commit()
+
+    connection.execute(
+        "DELETE FROM workflow_runs WHERE workflow_id = ?",
+        (workflow_id,),
+    )
+    connection.commit()
+
+    assert connection.execute(
+        "SELECT 1 FROM agent_work_order_plans WHERE plan_id = ?",
+        (plan_id,),
+    ).fetchone() is None
+    connection.close()
