@@ -9,9 +9,12 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from mrhub.domain.tasks import RiskClass
+from mrhub.security.policy import PolicyDecision
+
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.core import AgentPlanRequest
-from mrhub.tools.registry import ToolDefinition
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 PLAN_EXECUTION_FORMAT = "mrhub.awi-plan-execution.v1"
 MAX_EXECUTABLE_STEPS = 5
@@ -161,3 +164,95 @@ def validate_plan_execution_payload(
             raise PlanExecutionBindingError("Tool contract digest is invalid")
 
     return request, binding
+
+
+
+def validate_plan_bindings_against_snapshot(
+    *,
+    request: AgentPlanRequest,
+    binding: dict[str, object],
+    work_order: object,
+    plan: ExecutionPlan,
+    registry: ToolRegistry,
+    granted_permissions: frozenset[str],
+) -> None:
+    """Revalidate the encrypted plan snapshot against current tools and owner policy."""
+    from mrhub.agents.work_order import WorkOrder
+
+    if not isinstance(work_order, WorkOrder):
+        raise PlanExecutionBindingError("Persisted work order failed validation")
+    if work_order.risk_class is not RiskClass.LOW:
+        raise PlanExecutionBindingError("Only low-risk work orders are executable in v1")
+    if request.goal != work_order.goal:
+        raise PlanExecutionBindingError("Execution goal does not match the persisted work order")
+
+    declared_capabilities = list(work_order.required_capabilities)
+    if len(declared_capabilities) != len(set(declared_capabilities)):
+        raise PlanExecutionBindingError("Work-order capabilities must be unique")
+    declared_criteria = set(work_order.acceptance_criteria)
+    covered_criteria = {
+        criterion for step in plan.steps for criterion in step.verifies_criteria
+    }
+    if covered_criteria != declared_criteria:
+        raise PlanExecutionBindingError("Persisted plan does not cover the work-order criteria")
+    planned_capabilities = [
+        capability for step in plan.steps for capability in step.required_capabilities
+    ]
+    if (
+        len(planned_capabilities) != len(set(planned_capabilities))
+        or set(planned_capabilities) != set(declared_capabilities)
+    ):
+        raise PlanExecutionBindingError("Persisted plan capability coverage is inconsistent")
+
+    ordered_steps = topological_plan_steps(plan)
+    entries = binding.get("step_bindings")
+    if not isinstance(entries, list) or len(entries) != len(ordered_steps):
+        raise PlanExecutionBindingError("Plan step binding count does not match the plan")
+    if len(ordered_steps) > MAX_EXECUTABLE_STEPS or len(request.tools) != len(ordered_steps):
+        raise PlanExecutionBindingError("Plan exceeds the bounded executable step limit")
+
+    for index, (step, entry, requested_tool) in enumerate(
+        zip(ordered_steps, entries, request.tools, strict=True)
+    ):
+        if not isinstance(entry, dict):
+            raise PlanExecutionBindingError("Plan step binding is invalid")
+        if entry.get("step_id") != step.step_id:
+            raise PlanExecutionBindingError("Plan step bindings do not follow dependency order")
+        if len(step.required_capabilities) != 1:
+            raise PlanExecutionBindingError(
+                "Every executable plan step must require exactly one registered capability"
+            )
+        tool_name = step.required_capabilities[0]
+        if entry.get("tool_name") != tool_name or requested_tool.name != tool_name:
+            raise PlanExecutionBindingError("Tool name does not exactly match the step capability")
+
+        try:
+            definition = registry.get(tool_name)
+        except LookupError as exc:
+            raise PlanExecutionBindingError("A bound tool is no longer registered") from exc
+
+        if definition.risk_class is not RiskClass.LOW or definition.external_side_effect:
+            raise PlanExecutionBindingError(
+                "V1 execution supports only low-risk tools without external side effects"
+            )
+        if not isinstance(entry.get("tool_contract_digest"), str) or (
+            entry["tool_contract_digest"] != tool_contract_digest(definition)
+        ):
+            raise PlanExecutionBindingError("Registered tool contract has changed since binding")
+
+        try:
+            validated_input = definition.input_model.model_validate(requested_tool.payload)
+        except ValidationError as exc:
+            raise PlanExecutionBindingError("Bound tool payload failed current schema validation") from exc
+        if validated_input.model_dump(mode="json") != requested_tool.payload:
+            raise PlanExecutionBindingError("Bound tool payload is not in canonical schema form")
+
+        decision = registry.evaluate_policy(
+            tool_name,
+            granted_permissions=granted_permissions,
+            user_approved=False,
+        )
+        if decision.decision is not PolicyDecision.ALLOW:
+            raise PlanExecutionBindingError(
+                "Current owner permissions or tool policy do not allow this action"
+            )
