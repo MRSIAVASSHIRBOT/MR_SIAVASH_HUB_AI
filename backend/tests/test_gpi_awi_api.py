@@ -5,7 +5,7 @@ import sqlite3
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.work_order import WorkOrder
@@ -346,6 +346,7 @@ def test_persisted_plan_endpoint_fails_before_inference_without_encryption_key(m
         agent_routes.create_persisted_goal_work_order_plan(
             agent_routes.PersistedGoalPlanningRequest(goal="Create a bounded plan"),
             SimpleNamespace(user_id="owner-1"),
+            Response(),
         )
 
     assert error.value.status_code == 503
@@ -422,14 +423,19 @@ def test_persisted_plan_endpoint_encrypts_and_stores_the_plan(monkeypatch):
         lambda *_args, **_kwargs: payload_result,
     )
 
+    response = Response()
     result = agent_routes.create_persisted_goal_work_order_plan(
         agent_routes.PersistedGoalPlanningRequest(
             goal="Create a bounded plan",
             expires_in_seconds=600,
         ),
         SimpleNamespace(user_id=owner),
+        response,
     )
 
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
     assert result["status"] == "active"
     assert result["planning_only"] is True
     assert result["execution_ready"] is False
@@ -525,11 +531,16 @@ def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkey
     monkeypatch.setattr(agent_routes, "load_payload_key", lambda: key)
     monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **_kwargs: FakeToolRegistry())
 
+    response = Response()
     result = agent_routes.get_persisted_goal_work_order_plan(
         uuid4(),
         SimpleNamespace(user_id=owner),
+        response,
     )
 
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
     assert repository_calls == [(plan_id, owner)]
     assert result["plan_id"] == plan_id
     assert result["work_order"]["goal"] == work_order.goal
@@ -566,6 +577,7 @@ def test_persisted_plan_read_hides_records_owned_by_another_user(monkeypatch):
         agent_routes.get_persisted_goal_work_order_plan(
             uuid4(),
             SimpleNamespace(user_id="owner-2"),
+            Response(),
         )
 
     assert error.value.status_code == 404
