@@ -275,14 +275,6 @@ def validate_plan_bindings_against_snapshot(
         raw_payload = entry.get("payload")
         if not isinstance(raw_payload, dict):
             raise PlanExecutionBindingError("Raw bound tool payload must be a JSON object")
-        if canonical_digest(raw_payload) != canonical_digest(
-            binding_payload := {
-                "step_id": step.step_id,
-                "tool_name": tool_name,
-                "payload": raw_payload,
-            }
-        ):
-            raise PlanExecutionBindingError("Raw tool payload binding is invalid")
         try:
             validated_input = definition.input_model.model_validate(raw_payload)
         except ValidationError as exc:
