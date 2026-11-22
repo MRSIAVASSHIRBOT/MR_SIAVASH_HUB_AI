@@ -34,7 +34,7 @@ class CapabilityGapReport:
 
 def _normalize_name(value: object, field: str) -> str:
     if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
+        raise TypeError(f"{field} must be a string")
     normalized = value.strip()
     if not normalized or len(normalized) > MAX_NAME_LENGTH:
         raise ValueError(f"{field} must contain 1 to {MAX_NAME_LENGTH} characters")
@@ -64,7 +64,7 @@ def evaluate_capability_gaps(
     available_keys: set[str] = set()
     for entry in tool_catalog:
         if not isinstance(entry, Mapping):
-            raise ValueError("Tool catalog entries must be mappings")
+            raise TypeError("Tool catalog entries must be mappings")
         key = _normalize_name(entry.get("name"), "Registered tool name")
         if key not in available_keys:
             available.append(str(entry["name"]).strip())
