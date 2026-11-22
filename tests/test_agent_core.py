@@ -494,7 +494,7 @@ def test_agent_execute_rejects_incomplete_or_duplicate_workflow_graph_before_inv
         lambda *args, **kwargs: calls.append((args, kwargs)),
     )
 
-    with pytest.raises(RuntimeError, match="every expected step exactly once"):
+    with pytest.raises(RuntimeError, match="does not match request dependency declarations"):
         core.execute(request)
 
     assert calls == []
@@ -722,10 +722,18 @@ def test_agent_tool_request_normalizes_tool_name():
 def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
     core = make_core()
     request = AgentPlanRequest(
-        goal="Execute independent tools in validated graph order",
+        goal="Execute tools in the declared dependency order",
         tools=[
-            {"name": "text.echo", "payload": {"text": "first"}},
-            {"name": "text.echo", "payload": {"text": "second"}},
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
         ],
     )
     monkeypatch.setattr(
@@ -742,16 +750,16 @@ def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
                     },
                     {
                         "step_id": "step-3",
-                        "description": "Execute second request tool",
+                        "description": "Execute registered tool: text.echo",
                         "depends_on": ["step-1"],
                     },
                     {
                         "step_id": "step-2",
-                        "description": "Execute first request tool",
-                        "depends_on": ["step-1"],
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1", "step-3"],
                     },
                 ],
-                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
             },
         },
     )
@@ -781,8 +789,16 @@ def test_agent_execute_resumes_by_topological_position_not_request_index(monkeyp
     request = AgentPlanRequest(
         goal="Resume by durable topological execution position",
         tools=[
-            {"name": "text.echo", "payload": {"text": "first-request-tool"}},
-            {"name": "text.echo", "payload": {"text": "second-request-tool"}},
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
         ],
     )
     monkeypatch.setattr(
@@ -808,7 +824,7 @@ def test_agent_execute_resumes_by_topological_position_not_request_index(monkeyp
                         "depends_on": ["step-1"],
                     },
                 ],
-                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
             },
         },
     )
@@ -832,8 +848,16 @@ def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypat
     request = AgentPlanRequest(
         goal="Reject a graph whose order violates its dependencies",
         tools=[
-            {"name": "text.echo", "payload": {"text": "first"}},
-            {"name": "text.echo", "payload": {"text": "second"}},
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
         ],
     )
     calls = []
@@ -870,7 +894,70 @@ def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypat
         lambda *args, **kwargs: calls.append(args),
     )
 
-    with pytest.raises(RuntimeError, match="not in deterministic topological order"):
+    with pytest.raises(RuntimeError, match="does not match request dependency declarations"):
+        core.execute(request)
+
+    assert calls == []
+
+
+
+
+def test_agent_execute_rejects_valid_graph_that_drops_a_declared_dependency(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Do not silently remove a declared tool dependency",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "must-run-second"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "must-run-first"},
+                "depends_on": [],
+            },
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                # This graph is internally valid and topologically ordered, but
+                # it has dropped the request's step-2 -> step-3 dependency.
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-2", "step-3"]],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    with pytest.raises(
+        RuntimeError, match="does not match request dependency declarations"
+    ):
         core.execute(request)
 
     assert calls == []
