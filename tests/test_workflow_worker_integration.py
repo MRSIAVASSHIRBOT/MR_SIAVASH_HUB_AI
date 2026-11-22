@@ -385,14 +385,33 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
     # The durable unknown outcome must remain unknown in the evaluator too.
     runner = object.__new__(AgentWorkflowRunner)
     runner.recovery = recovery
+    runner.core = object.__new__(AgentCore)
+    evaluation_request = AgentPlanRequest.model_validate(
+        {
+            "goal": "Simulate a publish action whose response is lost",
+            "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
+        }
+    )
+    evaluation_plan = {
+        "dependency_plan": {
+            "ordered_steps": [
+                {
+                    "step_id": "step-1",
+                    "description": "Select provider",
+                    "depends_on": [],
+                },
+                {
+                    "step_id": "step-2",
+                    "description": "Execute tool",
+                    "depends_on": ["step-1"],
+                },
+            ]
+        }
+    }
     evaluation = runner._evaluate_workflow_tools(
         workflow_id,
-        AgentPlanRequest.model_validate(
-            {
-                "goal": "Simulate a publish action whose response is lost",
-                "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
-            }
-        ),
+        evaluation_request,
+        evaluation_plan,
         "local-owner",
     )
     assert evaluation is not None
