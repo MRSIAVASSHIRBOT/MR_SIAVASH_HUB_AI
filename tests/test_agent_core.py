@@ -633,19 +633,142 @@ def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
             "execution_ready": True,
             "dependency_plan": {
                 "ordered_steps": [
-                    {"step_id": "step-1"},
-                    {"step_id": "step-3"},
-                    {"step_id": "step-2"},
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute second request tool",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute first request tool",
+                        "depends_on": ["step-1"],
+                    },
                 ],
                 "dependency_levels": [["step-1"], ["step-3", "step-2"]],
             },
         },
     )
+    events = []
 
-    response = core.execute(request)
+    response = core.execute(
+        request,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
 
     assert response["execution_completed"] is True
     assert [item["result"]["text"] for item in response["results"]] == [
         "second",
         "first",
     ]
+    # Durable callback positions follow the topological execution order.
+    assert events == [
+        (2, "running", None),
+        (2, "succeeded", None),
+        (3, "running", None),
+        (3, "succeeded", None),
+    ]
+
+
+def test_agent_execute_resumes_by_topological_position_not_request_index(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Resume by durable topological execution position",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first-request-tool"}},
+            {"name": "text.echo", "payload": {"text": "second-request-tool"}},
+        ],
+    )
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute second request tool",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute first request tool",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+            },
+        },
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "first-request-tool"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Reject a graph whose order violates its dependencies",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Must wait for step 3",
+                        "depends_on": ["step-3"],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Prerequisite",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    with pytest.raises(RuntimeError, match="not in deterministic topological order"):
+        core.execute(request)
+
+    assert calls == []
