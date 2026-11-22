@@ -167,6 +167,8 @@ def test_expired_plan_is_marked_and_never_returned_as_active(tmp_path):
     loaded = plans.get(plan_id, owner_user_id=owner)
     assert loaded is not None
     assert loaded.status == "expired"
+    assert loaded.envelope.nonce_b64 == "expired"
+    assert loaded.envelope.ciphertext_b64 == "expired"
     assert plans.get(plan_id, owner_user_id=owner).status == "expired"
 
 
