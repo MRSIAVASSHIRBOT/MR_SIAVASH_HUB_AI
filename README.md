@@ -191,3 +191,6 @@ The Agent tool registry exposes two device tools only inside an authenticated ow
 
 The owner-authorized Agent tool integration is merged into Hub `main` as PR #465 (`4d737b2`). This confirms source integration only: the Hub Staging Worker has not been verified as deployed, and no physical device has completed a live task round-trip.
 
+## Cloud deployment
+
+A single-instance Render deployment blueprint is available in `render.yaml`. It uses a persistent disk because the current runtime stores state in SQLite and runs the API and pull worker together. Review the plan and disk charges before deployment; see [Render deployment](docs/operations/render-deployment.md) for the one-time remote owner bootstrap and operational constraints.
