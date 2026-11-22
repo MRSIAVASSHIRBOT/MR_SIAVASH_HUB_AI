@@ -500,14 +500,20 @@ def execute_persisted_goal_work_order_plan(
                 status_code=409,
                 detail="Original workflow is unavailable; manual recovery is required",
             )
+        tool_steps = [
+            step
+            for step in existing_workflow.get("steps", [])
+            if step.get("step_kind") != "provider_selection"
+        ]
+        tool_states = {step.get("status") for step in tool_steps}
         return {
             "plan_id": record.plan_id,
             "workflow": existing_workflow,
             "queued": existing_workflow["status"] == "queued",
             "idempotent_replay": True,
             "planning_only": False,
-            "execution_started": existing_workflow["status"] not in {"queued", "paused"},
-            "tools_executed": False,
+            "execution_started": any(status != "pending" for status in tool_states),
+            "tools_executed": bool(tool_states.intersection({"succeeded", "unknown_outcome"})),
         }
 
     replay = existing_replay()
