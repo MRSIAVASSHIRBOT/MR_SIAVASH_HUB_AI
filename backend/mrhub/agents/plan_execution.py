@@ -154,6 +154,7 @@ def validate_plan_execution_payload(
             "step_id",
             "tool_name",
             "tool_contract_digest",
+            "payload",
         }:
             raise PlanExecutionBindingError("Plan step binding entry is invalid")
         step_id = entry.get("step_id")
@@ -173,9 +174,9 @@ def validate_plan_execution_payload(
         {
             "step_id": entry["step_id"],
             "tool_name": entry["tool_name"],
-            "payload": request.tools[index].payload,
+            "payload": entry["payload"],
         }
-        for index, entry in enumerate(entries)
+        for entry in entries
     ]
     digest_bindings.sort(key=lambda item: str(item["step_id"]))
     expected_request_digest = execution_request_digest(
@@ -271,14 +272,27 @@ def validate_plan_bindings_against_snapshot(
         ):
             raise PlanExecutionBindingError("Registered tool contract has changed since binding")
 
+        raw_payload = entry.get("payload")
+        if not isinstance(raw_payload, dict):
+            raise PlanExecutionBindingError("Raw bound tool payload must be a JSON object")
+        if canonical_digest(raw_payload) != canonical_digest(
+            binding_payload := {
+                "step_id": step.step_id,
+                "tool_name": tool_name,
+                "payload": raw_payload,
+            }
+        ):
+            raise PlanExecutionBindingError("Raw tool payload binding is invalid")
         try:
-            validated_input = definition.input_model.model_validate(requested_tool.payload)
+            validated_input = definition.input_model.model_validate(raw_payload)
         except ValidationError as exc:
             raise PlanExecutionBindingError(
                 "Bound tool payload failed current schema validation"
             ) from exc
         if validated_input.model_dump(mode="json") != requested_tool.payload:
-            raise PlanExecutionBindingError("Bound tool payload is not in canonical schema form")
+            raise PlanExecutionBindingError(
+                "Normalized workflow payload does not match the submitted tool payload"
+            )
 
         decision = registry.evaluate_policy(
             tool_name,
