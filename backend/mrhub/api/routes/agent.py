@@ -79,8 +79,6 @@ def create_goal_work_order_plan(
     try:
         selection = model_router.select(ModelRequest(requires_text=True))
         if selection.provider == "moonshot":
-            # GPI generation and AWI planning each make one remote inference call.
-            _enforce_kimi_request_limit(current_user.user_id)
             _enforce_kimi_request_limit(current_user.user_id)
         work_order = generate_work_order(request.goal, model_router)
         if work_order.risk_class.value == "prohibited":
