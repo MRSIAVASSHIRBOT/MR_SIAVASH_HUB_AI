@@ -20,7 +20,6 @@ from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
 
-
 WorkflowDependencyId = Annotated[
     str, Field(min_length=6, max_length=6, pattern=r"^step-[2-6]$")
 ]
@@ -193,7 +192,7 @@ class AgentCore:
         """
         dependency_plan = plan.get("dependency_plan")
         if not isinstance(dependency_plan, dict):
-            raise RuntimeError("Agent plan is missing its validated dependency graph")
+            raise TypeError("Agent plan is missing its validated dependency graph")
 
         try:
             expected_plan = build_workflow_plan(request.workflow_steps()).as_dict()
