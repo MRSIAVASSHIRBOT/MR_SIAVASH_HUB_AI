@@ -7,6 +7,8 @@ capabilities; descriptions are not treated as executable capability identifiers.
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from mrhub.tools.registry import ToolRegistry
+
 MAX_REQUIRED_CAPABILITIES = 50
 MAX_TOOL_CATALOG_ENTRIES = 200
 MAX_NAME_LENGTH = 80
@@ -86,3 +88,16 @@ def evaluate_capability_gaps(
         available=available_required,
         missing=missing,
     )
+
+
+
+def evaluate_registered_tool_gaps(
+    required_capabilities: Iterable[str],
+    tool_registry: ToolRegistry,
+) -> CapabilityGapReport:
+    """Evaluate requirements against the live, server-owned ToolRegistry catalog.
+
+    Only registered tool names are considered. Descriptions and schemas remain
+    metadata, and this function never invokes a handler or changes permissions.
+    """
+    return evaluate_capability_gaps(required_capabilities, tool_registry.catalog())
