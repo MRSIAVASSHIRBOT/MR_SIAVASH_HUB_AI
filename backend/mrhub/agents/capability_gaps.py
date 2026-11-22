@@ -9,8 +9,8 @@ from dataclasses import dataclass
 
 from mrhub.tools.registry import ToolRegistry
 
-
 MAX_REQUIRED_CAPABILITIES = 50
+MAX_TOOL_CATALOG_ENTRIES = 200
 MAX_NAME_LENGTH = 80
 
 
@@ -53,20 +53,25 @@ def evaluate_capability_gaps(
     """
     required: list[str] = []
     required_keys: set[str] = set()
-    for raw in required_capabilities:
+    for required_count, raw in enumerate(required_capabilities, start=1):
+        if required_count > MAX_REQUIRED_CAPABILITIES:
+            raise ValueError("Too many required capabilities")
         key = _normalize_name(raw, "Required capability")
         if key not in required_keys:
             required.append(raw.strip())
             required_keys.add(key)
-        if len(required) > MAX_REQUIRED_CAPABILITIES:
-            raise ValueError("Too many required capabilities")
 
+    available: list[str] = []
     available_keys: set[str] = set()
-    for entry in tool_catalog:
+    for catalog_count, entry in enumerate(tool_catalog, start=1):
+        if catalog_count > MAX_TOOL_CATALOG_ENTRIES:
+            raise ValueError("Tool catalog exceeds the supported limit")
         if not isinstance(entry, Mapping):
             raise TypeError("Tool catalog entries must be mappings")
         key = _normalize_name(entry.get("name"), "Registered tool name")
-        available_keys.add(key)
+        if key not in available_keys:
+            available.append(str(entry["name"]).strip())
+            available_keys.add(key)
 
     matched = required_keys & available_keys
     # Preserve the user's requirement order in all report sections.
@@ -83,6 +88,7 @@ def evaluate_capability_gaps(
         available=available_required,
         missing=missing,
     )
+
 
 
 def evaluate_registered_tool_gaps(
