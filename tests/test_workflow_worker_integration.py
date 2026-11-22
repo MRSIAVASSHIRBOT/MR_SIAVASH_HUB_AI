@@ -4,7 +4,8 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from client_helpers import authenticated_client, run_worker_once
-from mrhub.agents.core import AgentCore
+from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
@@ -380,6 +381,24 @@ def test_worker_crash_after_external_side_effect_requires_reconciliation(monkeyp
     # at one invocation rather than being blindly repeated by a later worker.
     assert recovery_worker.run_once() is None
     assert external_effects == ["publish accepted by remote system"]
+
+    # The durable unknown outcome must remain unknown in the evaluator too.
+    runner = object.__new__(AgentWorkflowRunner)
+    runner.recovery = recovery
+    evaluation = runner._evaluate_workflow_tools(
+        workflow_id,
+        AgentPlanRequest.model_validate(
+            {
+                "goal": "Simulate a publish action whose response is lost",
+                "tools": [{"name": "text.echo", "payload": {"text": "publish-once"}}],
+            }
+        ),
+        "local-owner",
+    )
+    assert evaluation is not None
+    assert evaluation["decision"] == "review_required"
+    assert evaluation["unknown"] == 1
+    assert evaluation["passed"] == 0
 
 
 
