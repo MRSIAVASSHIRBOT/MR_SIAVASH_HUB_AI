@@ -1,5 +1,6 @@
-"""One-time local owner setup and session endpoints."""
+"""One-time local or secret-authorized owner setup and session endpoints."""
 
+import hmac
 import ipaddress
 import sqlite3
 from typing import Annotated
@@ -9,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import bearer_scheme, get_auth_service, require_user
+from mrhub.config import get_settings
 from mrhub.security.auth import AuthenticatedUser, AuthService, LoginAttemptLimiter
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -43,8 +45,22 @@ def setup_owner(
             is_loopback = ipaddress.ip_address(host).is_loopback
         except ValueError:
             is_loopback = False
+
     if not is_loopback:
-        raise HTTPException(status_code=403, detail="Initial setup is available only locally")
+        configured_token = get_settings().owner_setup_token
+        supplied_token = request.headers.get("X-MRH-Owner-Setup-Token", "")
+        if (
+            configured_token is None
+            or not supplied_token
+            or not hmac.compare_digest(
+                supplied_token, configured_token.get_secret_value()
+            )
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Initial setup requires the one-time deployment credential",
+            )
+
     if service.repository.auth_user_exists():
         raise HTTPException(status_code=409, detail="Owner account is already initialized")
     try:
