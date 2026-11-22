@@ -12,14 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
-from mrhub.agents.plan_repository import (
-    AgentWorkOrderPlanError,
-    AgentWorkOrderPlanRepository,
-)
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
     generate_work_order,
+)
+from mrhub.agents.plan_repository import (
+    AgentWorkOrderPlanError,
+    AgentWorkOrderPlanRepository,
 )
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
