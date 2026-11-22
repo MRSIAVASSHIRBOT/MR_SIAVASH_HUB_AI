@@ -22,6 +22,8 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     assert "name: mr-siavash-hub-ai" in blueprint
     assert "name: mr-siavash-el-ai-bridge" in blueprint
     assert "type: worker" in blueprint
+    assert "repo: https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git" in blueprint
+    assert "branch: main" in blueprint
     assert "property: hostport" in blueprint
     assert "HUB_ALLOW_RENDER_PRIVATE_NETWORK" in blueprint
     assert 'value: "true"' in blueprint
