@@ -1,0 +1,37 @@
+# Single-instance deployment: API and pull worker share one persistent SQLite volume.
+# This intentionally uses a paid Starter instance because Render free services do not
+# provide the persistent disk required by the current SQLite-first architecture.
+services:
+  - type: web
+    name: mr-siavash-hub-ai
+    runtime: python
+    plan: starter
+    region: frankfurt
+    buildCommand: pip install .
+    startCommand: bash scripts/start-render.sh
+    healthCheckPath: /ready
+    autoDeploy: true
+    disk:
+      name: mrhub-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: MRH_ENVIRONMENT
+        value: production
+      - key: MRH_HOST
+        value: 0.0.0.0
+      - key: MRH_PORT
+        value: 10000
+      - key: MRH_DATABASE_PATH
+        value: /var/data/mrhub.sqlite3
+      - key: MRH_REQUIRE_WORKER_FOR_READINESS
+        value: "true"
+      # Supply these two values through Render's secret environment-variable UI.
+      # MRH_WORKFLOW_PAYLOAD_KEY must be URL-safe Base64 for exactly 32 random bytes.
+      - key: MRH_WORKFLOW_PAYLOAD_KEY
+        sync: false
+      # One-time remote owner bootstrap credential; remove after the owner is initialized.
+      - key: MRH_OWNER_SETUP_TOKEN
+        sync: false
