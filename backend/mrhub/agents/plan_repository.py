@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Callable
 from uuid import UUID
 
@@ -61,6 +63,18 @@ class AgentWorkOrderPlanRepository:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def create(
         self,
         *,
@@ -102,7 +116,7 @@ class AgentWorkOrderPlanRepository:
         expiry = now + timedelta(seconds=ttl_seconds)
         created_at = now.isoformat()
         expires_at_text = expiry.isoformat()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO agent_work_order_plans (
