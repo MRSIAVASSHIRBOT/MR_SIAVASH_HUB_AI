@@ -215,14 +215,8 @@ def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depen
 
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
-    """Fingerprint the complete in-memory request without persisting its contents."""
-    encoded = json.dumps(
-        request.canonical_payload(),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    """Use the same canonical legacy-compatible digest at API and worker boundaries."""
+    return AgentWorkflowRunner.request_digest(request)
 
 
 @router.get("/workflows")
