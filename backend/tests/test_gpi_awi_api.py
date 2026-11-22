@@ -13,6 +13,7 @@ from mrhub.agents.work_order import WorkOrder
 from mrhub.api.routes import agent as agent_routes
 from mrhub.domain.tasks import RiskClass
 from mrhub.jobs.payload_envelope import (
+    EncryptedPayload,
     PayloadEnvelopeError,
     decrypt_payload,
     encrypt_plan_payload,
@@ -558,7 +559,7 @@ def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkey
 
 
 def test_persisted_plan_read_hides_records_owned_by_another_user(monkeypatch):
-    from uuid import uuid4
+    from uuid import UUID, uuid4
 
     class FakeTaskRepository:
         def __init__(self, database_path):
@@ -733,8 +734,6 @@ class PlanExecutionEchoOutput(BaseModel):
 def test_execute_persisted_plan_queues_only_validated_bindings(monkeypatch):
     from datetime import UTC, datetime
     from uuid import uuid4
-
-    from mrhub.domain.tasks import TaskRecord
 
     owner = "owner-exec-1"
     plan_id = str(uuid4())
@@ -928,7 +927,7 @@ def test_execute_persisted_plan_queues_only_validated_bindings(monkeypatch):
     workflow_id = captured["enqueue"]["workflow_id"]
     task = captured["enqueue"]["task"]
     decoded = decrypt_payload(
-        agent_routes.EncryptedPayload(
+        EncryptedPayload(
             version=encrypted_workflow["version"],
             nonce_b64=encrypted_workflow["nonce_b64"],
             ciphertext_b64=encrypted_workflow["ciphertext_b64"],
