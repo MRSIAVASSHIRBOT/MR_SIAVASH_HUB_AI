@@ -12,9 +12,9 @@ from pydantic import BaseModel, Field
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
+from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
-from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
