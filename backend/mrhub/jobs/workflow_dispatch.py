@@ -1,15 +1,24 @@
 """Worker-owned dispatch for durable, encrypted agent workflows."""
 from __future__ import annotations
 
+import hmac
+import sqlite3
 from threading import Event
 from uuid import UUID
 
 from pydantic import ValidationError
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.plan_execution import (
+    PLAN_EXECUTION_FORMAT,
+    canonical_digest,
+    tool_contract_digest,
+    validate_plan_execution_payload,
+)
+from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.routes.models import build_model_router
-from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import WorkerLease
@@ -39,7 +48,7 @@ class WorkflowWorkerHandler:
         with self.repository._connection() as connection:
             row = connection.execute(
                 """
-                SELECT workflow_id, owner_user_id, status, last_error_code
+                SELECT workflow_id, owner_user_id, status, last_error_code, request_digest
                 FROM workflow_runs WHERE task_id = ?
                 """,
                 (str(task.task_id),),
@@ -70,8 +79,58 @@ class WorkflowWorkerHandler:
                 owner_user_id=owner_user_id,
                 key=load_payload_key(),
             )
-            request = AgentPlanRequest.model_validate(payload)
-        except (PayloadEnvelopeError, ValidationError, TypeError, ValueError):
+            registry = build_tool_registry(owner_user_id=owner_user_id)
+            if isinstance(payload, dict) and payload.get("format") == PLAN_EXECUTION_FORMAT:
+                request, binding = validate_plan_execution_payload(payload)
+                if not hmac.compare_digest(
+                    canonical_digest(payload),
+                    str(row["request_digest"]),
+                ):
+                    raise PayloadEnvelopeError("Plan execution request digest does not match")
+                plan_record = AgentWorkOrderPlanRepository(
+                    self.repository.database_path
+                ).get(
+                    str(binding["plan_id"]),
+                    owner_user_id=owner_user_id,
+                )
+                if (
+                    plan_record is None
+                    or plan_record.status != "consumed"
+                    or plan_record.workflow_id != str(workflow_id)
+                    or not hmac.compare_digest(
+                        plan_record.plan_digest,
+                        str(binding["plan_digest"]),
+                    )
+                ):
+                    raise PayloadEnvelopeError("Consumed plan binding is unavailable")
+                step_bindings = binding["step_bindings"]
+                for index, requested_tool in enumerate(request.tools):
+                    definition = registry.get(requested_tool.name)
+                    if (
+                        definition.risk_class is not RiskClass.LOW
+                        or definition.external_side_effect
+                    ):
+                        raise PayloadEnvelopeError("Plan execution tool is outside v1 policy")
+                    expected_digest = str(step_bindings[index]["tool_contract_digest"])
+                    if not hmac.compare_digest(
+                        tool_contract_digest(definition),
+                        expected_digest,
+                    ):
+                        raise PayloadEnvelopeError("Registered tool contract changed")
+                request_digest = str(row["request_digest"])
+            else:
+                request = AgentPlanRequest.model_validate(payload)
+                request_digest = AgentWorkflowRunner._digest(
+                    request.model_dump(mode="json")
+                )
+        except (
+            PayloadEnvelopeError,
+            ValidationError,
+            TypeError,
+            ValueError,
+            LookupError,
+            sqlite3.Error,
+        ):
             return self._fail_closed(
                 task, lease, workflow_id, "workflow_payload_unavailable"
             )
@@ -85,7 +144,7 @@ class WorkflowWorkerHandler:
         )
         core = AgentCore(
             build_model_router(),
-            build_tool_registry(),
+            registry,
             permission_provider=lambda: permissions.active_permissions(owner_user_id),
         )
         plan = core.plan(request)
@@ -94,7 +153,6 @@ class WorkflowWorkerHandler:
                 task, lease, workflow_id, "workflow_plan_not_executable"
             )
         runner = AgentWorkflowRunner(self.repository, core)
-        request_digest = AgentWorkflowRunner._digest(request.model_dump(mode="json"))
         if row["status"] == "paused" and row["last_error_code"] == "resume_queued":
             try:
                 result = runner.resume(
