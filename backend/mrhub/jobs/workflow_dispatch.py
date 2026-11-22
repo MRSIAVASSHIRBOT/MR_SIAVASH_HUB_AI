@@ -66,6 +66,7 @@ class WorkflowWorkerHandler:
             )
         owner_user_id = row["owner_user_id"]
         plan_binding: dict[str, object] | None = None
+        persisted_request_digest: str | None = None
 
         def fail_closed(error_code: str) -> dict[str, object]:
             result = self._fail_closed(task, lease, workflow_id, error_code)
@@ -128,6 +129,19 @@ class WorkflowWorkerHandler:
                     raise PlanExecutionBindingError(
                         "Consumed plan is not bound to this owner and workflow"
                     )
+                stored_workflow = self.recovery.get_run(
+                    workflow_id,
+                    owner_user_id=owner_user_id,
+                )
+                if (
+                    stored_workflow is None
+                    or stored_workflow.get("request_digest")
+                    != plan_binding["request_digest"]
+                ):
+                    raise PlanExecutionBindingError(
+                        "Workflow request digest does not match its encrypted plan binding"
+                    )
+                persisted_request_digest = str(stored_workflow["request_digest"])
                 stored_plan = decrypt_plan_payload(
                     plan_record.envelope,
                     plan_id=plan_record.plan_id,
@@ -184,7 +198,11 @@ class WorkflowWorkerHandler:
         if not plan.get("execution_ready"):
             return fail_closed("workflow_plan_not_executable")
         runner = AgentWorkflowRunner(self.repository, core)
-        request_digest = AgentWorkflowRunner._digest(request.model_dump(mode="json"))
+        request_digest = (
+            persisted_request_digest
+            if plan_binding is not None and persisted_request_digest is not None
+            else AgentWorkflowRunner._digest(request.model_dump(mode="json"))
+        )
         if row["status"] == "paused" and row["last_error_code"] == "resume_queued":
             try:
                 result = runner.resume(
