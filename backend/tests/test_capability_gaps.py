@@ -1,6 +1,11 @@
 import pytest
+from pydantic import BaseModel
 
-from mrhub.agents.capability_gaps import evaluate_capability_gaps
+from mrhub.agents.capability_gaps import (
+    evaluate_capability_gaps,
+    evaluate_registered_tool_gaps,
+)
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 def test_capability_gaps_uses_exact_registered_names():
@@ -60,3 +65,40 @@ def test_tool_catalog_size_is_bounded():
     catalog = [{"name": f"tool.{index}"} for index in range(201)]
     with pytest.raises(ValueError, match="Tool catalog exceeds"):
         evaluate_capability_gaps(["tool.read"], catalog)
+
+
+
+def test_registered_tool_gaps_reads_live_registry_without_invoking_tools():
+    class EmptyModel(BaseModel):
+        pass
+
+    invoked = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="browser.search",
+            description="Search the web",
+            input_model=EmptyModel,
+            output_model=EmptyModel,
+            handler=lambda _payload: invoked.append(True) or {},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="system.clock",
+            description="Read the local clock",
+            input_model=EmptyModel,
+            output_model=EmptyModel,
+            handler=lambda _payload: {},
+        )
+    )
+
+    report = evaluate_registered_tool_gaps(
+        ["browser.search", "filesystem.read", "BROWSER.SEARCH"],
+        registry,
+    )
+
+    assert report.required == ("browser.search", "filesystem.read")
+    assert report.available == ("browser.search",)
+    assert report.missing == ("filesystem.read",)
+    assert invoked == []
