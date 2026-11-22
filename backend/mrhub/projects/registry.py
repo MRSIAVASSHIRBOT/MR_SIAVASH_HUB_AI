@@ -9,6 +9,13 @@ from mrhub.api.routes.health import health as read_local_health
 from mrhub.api.routes.health import readiness as read_local_readiness
 from mrhub.integrations.github_status import get_repository_status
 
+CORE_DASHBOARD_PROJECT_IDS = frozenset({
+    "mr-siavash-hub-ai",
+    "mr-siavash-ai",
+    "mr-siavash-el-ai",
+})
+
+# The companion Agent remains an explicit context dependency, not a core dashboard card.
 PROJECTS: tuple[dict[str, str | None], ...] = (
     {
         "project_id": "mr-siavash-hub-ai",
@@ -25,6 +32,14 @@ PROJECTS: tuple[dict[str, str | None], ...] = (
         "repository_url": "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI",
         "service_url": "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/",
         "description": "وب‌سایت و هویت دیجیتال شخصی",
+    },
+    {
+        "project_id": "mr-siavash-el-agent",
+        "name": "MR_SIAVASH_EL_AGENT",
+        "repository": "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT",
+        "repository_url": "https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT",
+        "service_url": None,
+        "description": "عامل مستقل اجرای محلی Windows و Android و اتصال کنترل‌شده به Hub",
     },
     {
         "project_id": "mr-siavash-el-ai",
@@ -138,11 +153,22 @@ def build_project_registry(*, include_live_status: bool = False) -> dict[str, ob
 
     Agent context deliberately uses the default static mode to avoid external
     requests during model inference and to keep the evidence payload deterministic.
+    Live dashboard observations are limited to the three core ecosystem repositories;
+    explicitly enrolled integration dependencies remain available to Agent context.
     """
     observed_at = datetime.now(UTC).isoformat()
     hub_runtime = _hub_runtime_observation() if include_live_status else None
     projects = []
-    for project in PROJECTS:
+    dashboard_projects = (
+        (
+            project
+            for project in PROJECTS
+            if project["project_id"] in CORE_DASHBOARD_PROJECT_IDS
+        )
+        if include_live_status
+        else PROJECTS
+    )
+    for project in dashboard_projects:
         if include_live_status:
             github_status = get_repository_status(str(project["repository"]))
             repository_observation = {
