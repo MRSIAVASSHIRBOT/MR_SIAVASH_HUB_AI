@@ -20,13 +20,12 @@ The first implementation phase is read-only. It must aggregate only evidence ava
 
 ### Initial project registry
 
-The first registry contains the four confirmed active projects, with each deployment boundary kept distinct:
+The initial registry contains the three active ecosystem projects, with each deployment boundary kept distinct:
 
 | Project | Repository | Initial status sources |
 | --- | --- | --- |
 | MR_SIAVASH_HUB_AI | `MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI` | Local `/health`, `/ready`, worker heartbeat, GitHub metadata/CI |
 | MR_SIAVASH_AI | `MRSIAVASSHIRBOT/MR_SIAVASH_AI` | GitHub metadata/CI; Cloudflare Worker/Pages status only after an explicit read-only account integration is configured |
-| Gshop | `MRSIAVASSHIRBOT/Gshop` | GitHub metadata/CI; Cloudflare Pages/Worker and D1 status only through configured read-only endpoints |
 | MR_SIAVASH_EL_AI | `MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI` | GitHub metadata/CI; Telegram transport health only after an explicit runtime probe is configured; private Hub pairing remains disabled pending a reviewed contract |
 
 The registry is configuration, not a discovery mechanism that silently enrolls every accessible repository. A project can be marked inactive without deleting its history. The paused Telegram bot and unrelated repositories are not enrolled by default.
@@ -88,7 +87,7 @@ A later phase may propose reviewable repository changes or infrastructure action
 
 - Phase 1 read-only registry and public GitHub repository status are merged in PR #310.
 - The local Hub runtime portion of Phase 2 is merged in PR #329: the Hub project card reuses the existing read-only `/health` and `/ready` functions and reports the worker heartbeat age. A ready database without a live worker is shown as degraded, not healthy.
-- Runtime and Cloudflare observations for MR_SIAVASH_AI and Gshop remain unknown/not_configured until their independent read-only integrations are explicitly configured. No external credentials or production mutation are introduced.
+- Runtime and Cloudflare observations for MR_SIAVASH_AI remain unknown/not_configured until their independent read-only integrations are explicitly configured. No external credentials or production mutation are introduced.
 
 ### Implementation progress — 2026-11-09
 
