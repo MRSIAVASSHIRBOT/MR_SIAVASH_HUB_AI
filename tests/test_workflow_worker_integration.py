@@ -734,7 +734,15 @@ def test_resume_rejects_changed_topological_mapping_for_same_named_tools(monkeyp
     recovery = WorkflowRecoveryRepository(repository.database_path)
     paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert paused is not None and paused["status"] == "paused"
-    assert paused["steps"][1]["input_digest"] == paused["steps"][1]["input_digest"]
+    typed_request = AgentPlanRequest.model_validate(request)
+    second_tool_digest = AgentCore.workflow_step_input_digest(
+        3, typed_request.tools[1]
+    )
+    first_tool_digest = AgentCore.workflow_step_input_digest(
+        2, typed_request.tools[0]
+    )
+    assert paused["steps"][1]["input_digest"] == second_tool_digest
+    assert paused["steps"][1]["input_digest"] != first_tool_digest
 
     # A planner that maps the same tool names to different request payloads must
     # not be allowed to resume against the old durable checkpoint numbering.
