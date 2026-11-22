@@ -75,7 +75,7 @@ def create_goal_work_order_plan(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Convert a goal into a validated work order and plan without executing tools."""
-    model_router = build_model_router(include_stub=False)
+    model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
     try:
         selection = model_router.select(ModelRequest(requires_text=True))
         if selection.provider == "moonshot":
