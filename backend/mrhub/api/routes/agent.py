@@ -162,8 +162,14 @@ def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depen
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
     """Fingerprint the complete in-memory request without persisting its contents."""
+    payload = request.model_dump(mode="json")
+    # Requests created before required_capabilities was introduced were hashed
+    # without that field. Preserve their digest when the new field is empty so
+    # already-paused workflows remain resumable after this schema extension.
+    if not request.required_capabilities:
+        payload.pop("required_capabilities", None)
     encoded = json.dumps(
-        request.model_dump(mode="json"),
+        payload,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
