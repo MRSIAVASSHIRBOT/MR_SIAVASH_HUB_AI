@@ -876,7 +876,7 @@ def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypat
     assert calls == []
 
 
-def test_workflow_step_input_digest_binds_stable_request_identity_and_payload():
+def test_workflow_step_input_digest_binds_identity_payload_and_dependencies():
     first = AgentToolRequest(
         name="text.echo",
         payload={"text": "first"},
@@ -885,13 +885,22 @@ def test_workflow_step_input_digest_binds_stable_request_identity_and_payload():
         name="text.echo",
         payload={"text": "second"},
     )
+    same_payload_different_dependencies = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "first"},
+        depends_on=["step-3"],
+    )
 
     first_digest = AgentCore.workflow_step_input_digest(2, first)
     second_digest = AgentCore.workflow_step_input_digest(3, second)
+    dependency_digest = AgentCore.workflow_step_input_digest(
+        2, same_payload_different_dependencies
+    )
 
     assert len(first_digest) == 64
     assert len(second_digest) == 64
     assert first_digest != second_digest
+    assert first_digest != dependency_digest
     assert first_digest == AgentCore.workflow_step_input_digest(2, first)
 
 
