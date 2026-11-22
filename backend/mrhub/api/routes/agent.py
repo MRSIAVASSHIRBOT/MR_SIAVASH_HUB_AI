@@ -62,7 +62,7 @@ def _build_owner_agent_core(
     permissions = ToolPermissionService(tasks, AuditLogger(tasks))
     return AgentCore(
         build_model_router(),
-        build_tool_registry(),
+        build_tool_registry(owner_user_id=owner_user_id),
         permission_provider=lambda: permissions.active_permissions(owner_user_id),
     )
 
