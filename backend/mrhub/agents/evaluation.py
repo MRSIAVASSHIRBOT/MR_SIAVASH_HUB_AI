@@ -4,6 +4,7 @@ This module evaluates structured outcomes supplied by trusted application code.
 It does not ask a language model to certify its own work and does not execute
 or retry workflow steps.
 """
+
 from __future__ import annotations
 
 import re
@@ -89,14 +90,20 @@ def evaluate_criteria(criteria: Iterable[EvaluationCriterion]) -> EvaluationRepo
     accepted only when every criterion passed; failures reject and unknowns
     require review.
     """
-    items = tuple(criteria)
-    if not items:
-        raise EvaluationInputError("At least one acceptance criterion is required")
-    if len(items) > MAX_CRITERIA:
+    iterator = iter(criteria)
+    bounded_items: list[EvaluationCriterion] = []
+    for _ in range(MAX_CRITERIA + 1):
+        try:
+            bounded_items.append(next(iterator))
+        except StopIteration:
+            break
+    if len(bounded_items) > MAX_CRITERIA:
         raise EvaluationInputError(
             f"At most {MAX_CRITERIA} acceptance criteria are allowed"
         )
-
+    items = tuple(bounded_items)
+    if not items:
+        raise EvaluationInputError("At least one acceptance criterion is required")
     seen: set[str] = set()
     for item in items:
         if not isinstance(item, EvaluationCriterion):

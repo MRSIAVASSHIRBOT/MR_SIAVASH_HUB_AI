@@ -2,10 +2,10 @@ import pytest
 
 from mrhub.agents.evaluation import (
     CriterionStatus,
+    evaluate_criteria,
     EvaluationCriterion,
     EvaluationDecision,
     EvaluationInputError,
-    evaluate_criteria,
 )
 
 
@@ -88,3 +88,20 @@ def test_criteria_limit_is_enforced():
     ]
     with pytest.raises(EvaluationInputError, match="At most"):
         evaluate_criteria(criteria)
+
+
+def test_criteria_limit_stops_consuming_large_iterables():
+    consumed = 0
+
+    def criteria_stream():
+        nonlocal consumed
+        for index in range(1_000):
+            consumed += 1
+            yield EvaluationCriterion(
+                f"criterion-{index}", "Description", CriterionStatus.UNKNOWN
+            )
+
+    with pytest.raises(EvaluationInputError, match="At most"):
+        evaluate_criteria(criteria_stream())
+
+    assert consumed == 101
