@@ -6,8 +6,8 @@ It deliberately does not execute steps, grant tools, or make authorization decis
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 
