@@ -530,3 +530,51 @@ def test_agent_core_executes_tools_in_validated_workflow_order():
         "second",
         "first",
     ]
+
+
+@pytest.mark.parametrize(
+    "ordered_steps",
+    [
+        [
+            {"step_id": "provider-selection"},
+            {"step_id": "tool-2"},
+            {"step_id": "tool-2"},
+        ],
+        [
+            {"step_id": "provider-selection"},
+            {"step_id": "tool-2"},
+        ],
+    ],
+    ids=["duplicate-tool-step", "missing-tool-step"],
+)
+def test_agent_core_rejects_incomplete_or_duplicate_workflow_graph_before_invocation(
+    monkeypatch, ordered_steps
+):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Reject malformed workflow plans before invoking tools",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "workflow_plan": {"ordered_steps": ordered_steps},
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="every expected step exactly once"):
+        core.execute(request)
+
+    assert calls == []
+
