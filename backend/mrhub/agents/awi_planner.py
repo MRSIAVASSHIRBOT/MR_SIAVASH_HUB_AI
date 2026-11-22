@@ -1,6 +1,7 @@
 """Bounded AWI planning: validate a dependency-aware plan without execution."""
 
 import json
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -10,6 +11,23 @@ from mrhub.providers.router import ModelRequest, ModelRouter
 
 MAX_PLAN_OUTPUT_CHARS = 16_000
 MAX_PLAN_OUTPUT_TOKENS = 1_800
+MAX_PLAN_STEP_ID_LENGTH = 40
+MAX_PLAN_ITEM_TEXT_LENGTH = 300
+MAX_PLAN_CAPABILITY_LENGTH = 80
+_STEP_ID_PATTERN = r"^[a-z][a-z0-9_-]*$"
+
+PlanStepIdentifier = Annotated[
+    str, Field(min_length=1, max_length=MAX_PLAN_STEP_ID_LENGTH, pattern=_STEP_ID_PATTERN)
+]
+PlanDependencyIdentifier = Annotated[
+    str, Field(min_length=1, max_length=MAX_PLAN_STEP_ID_LENGTH, pattern=_STEP_ID_PATTERN)
+]
+PlanCapabilityIdentifier = Annotated[
+    str, Field(min_length=1, max_length=MAX_PLAN_CAPABILITY_LENGTH)
+]
+PlanCriterion = Annotated[
+    str, Field(min_length=1, max_length=MAX_PLAN_ITEM_TEXT_LENGTH)
+]
 
 
 class PlanStep(BaseModel):
@@ -17,11 +35,11 @@ class PlanStep(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    step_id: str = Field(min_length=1, max_length=40, pattern=r"^[a-z][a-z0-9_-]*$")
+    step_id: PlanStepIdentifier
     description: str = Field(min_length=1, max_length=500)
-    depends_on: list[str] = Field(default_factory=list, max_length=12)
-    required_capabilities: list[str] = Field(default_factory=list, max_length=20)
-    verifies_criteria: list[str] = Field(min_length=1, max_length=12)
+    depends_on: list[PlanDependencyIdentifier] = Field(default_factory=list, max_length=12)
+    required_capabilities: list[PlanCapabilityIdentifier] = Field(default_factory=list, max_length=20)
+    verifies_criteria: list[PlanCriterion] = Field(min_length=1, max_length=12)
     verification: str = Field(min_length=1, max_length=500)
 
     @field_validator("description", "verification")
