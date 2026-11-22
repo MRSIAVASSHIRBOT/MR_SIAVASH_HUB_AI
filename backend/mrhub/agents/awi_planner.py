@@ -2,7 +2,7 @@
 
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from mrhub.agents.work_order import WorkOrder
 from mrhub.providers.base import ProviderRequest
