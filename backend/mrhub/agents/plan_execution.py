@@ -57,7 +57,7 @@ def execution_request_digest(
     plan_digest: str,
     bindings: list[dict[str, object]],
 ) -> str:
-    """Digest the exact owner-submitted binding request for idempotent replay."""
+    """Digest payloads and server-observed tool contracts for idempotent replay."""
     return canonical_digest(
         {
             "operation": PLAN_EXECUTION_FORMAT,
