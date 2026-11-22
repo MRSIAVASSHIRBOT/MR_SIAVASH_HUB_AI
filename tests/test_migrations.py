@@ -51,7 +51,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
         "resource_reply_configs", "research_sources", "video_scene_jobs", "personal_devices",
-        "personal_device_tasks",
+        "personal_device_tasks", "agent_work_order_plans",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -1154,4 +1154,41 @@ def test_invalid_migration_registry_fails_before_database_ddl(
         "AND name = 'schema_migrations'"
     ).fetchone()
     assert schema_table is None
+    connection.close()
+
+
+def test_v53_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
+    connection = connect(tmp_path / "agent-work-order-plans.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(agent_work_order_plans)")
+    }
+    assert {
+        "plan_id", "owner_user_id", "status", "plan_digest",
+        "envelope_version", "nonce_b64", "ciphertext_b64",
+        "created_at", "expires_at", "consumed_at", "workflow_id",
+    } <= columns
+
+    indexes = {
+        row["name"]
+        for row in connection.execute("PRAGMA index_list(agent_work_order_plans)")
+    }
+    assert {
+        "idx_agent_work_order_plans_owner_status_expiry",
+        "idx_agent_work_order_plans_workflow",
+    } <= indexes
+
+    foreign_keys = {
+        (row["table"], row["from"], row["to"], row["on_delete"])
+        for row in connection.execute("PRAGMA foreign_key_list(agent_work_order_plans)")
+    }
+    assert ("auth_users", "owner_user_id", "user_id", "CASCADE") in foreign_keys
+    assert ("workflow_runs", "workflow_id", "workflow_id", "SET NULL") in foreign_keys
+
+    applied = connection.execute(
+        "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
+    ).fetchone()
+    assert tuple(applied) == (53, "owner_scoped_encrypted_agent_work_order_plans")
     connection.close()
