@@ -105,6 +105,14 @@ class AgentPlanRequest(BaseModel):
             raise ValueError("tool dependency graph is invalid") from exc
         return self
 
+    def canonical_payload(self) -> dict[str, object]:
+        """Serialize requests without implicit None fields to preserve old digests.
+
+        New optional dependency declarations remain part of the digest when
+        explicitly supplied, while legacy requests keep their pre-DAG identity.
+        """
+        return self.model_dump(mode="json", exclude_none=True)
+
 
 class AgentCore:
     """Build a policy-aware plan; this version does not invoke models or tools."""
