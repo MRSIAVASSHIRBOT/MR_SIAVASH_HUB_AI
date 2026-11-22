@@ -1,6 +1,4 @@
 import pytest
-from pydantic import ValidationError
-
 from mrhub.agents.work_order import (
     WorkOrder,
     assess_work_order_capabilities,
