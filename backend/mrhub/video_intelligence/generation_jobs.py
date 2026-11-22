@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -64,7 +65,8 @@ def _validate_output_against_request(
     }
     expected_ratio = expected_ratios.get(request.get("aspect_ratio"))
     if (
-        expected_ratio is None
+        not math.isfinite(duration_seconds)
+        or expected_ratio is None
         or width <= 0
         or height <= 0
         or abs((width / height) - expected_ratio) > expected_ratio * 0.01
@@ -1037,7 +1039,8 @@ class VideoGenerationJobRepository:
             raise ValueError("Generated output failed independent MP4 media validation")
         duration = float(metadata.duration_seconds)
         if (
-            duration <= 0
+            not math.isfinite(duration)
+            or duration <= 0
             or duration > 60
             or metadata.width != result.width
             or metadata.height != result.height
