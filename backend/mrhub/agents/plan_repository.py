@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from collections.abc import Iterator
 from typing import Callable
 from uuid import UUID
 
