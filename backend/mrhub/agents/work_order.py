@@ -6,10 +6,26 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.domain.tasks import RiskClass
+
+MAX_REGISTERED_TOOL_COUNT = 200
+MAX_REGISTERED_TOOL_NAME_LENGTH = 80
+MAX_WORK_ORDER_ITEM_LENGTH = 300
+MAX_WORK_ORDER_DEPENDENCY_LENGTH = 200
+
+WorkOrderText = Annotated[
+    str, Field(min_length=1, max_length=MAX_WORK_ORDER_ITEM_LENGTH)
+]
+WorkOrderDependency = Annotated[
+    str, Field(min_length=1, max_length=MAX_WORK_ORDER_DEPENDENCY_LENGTH)
+]
+WorkOrderCapability = Annotated[
+    str, Field(min_length=1, max_length=MAX_REGISTERED_TOOL_NAME_LENGTH)
+]
 
 
 class WorkOrder(BaseModel):
@@ -20,12 +36,12 @@ class WorkOrder(BaseModel):
     goal: str = Field(min_length=1, max_length=1_000)
     intent: str = Field(min_length=1, max_length=500)
     scope: str = Field(default="", max_length=1_000)
-    assumptions: list[str] = Field(default_factory=list, max_length=12)
-    constraints: list[str] = Field(default_factory=list, max_length=20)
-    dependencies: list[str] = Field(default_factory=list, max_length=20)
-    required_capabilities: list[str] = Field(default_factory=list, max_length=20)
-    acceptance_criteria: list[str] = Field(min_length=1, max_length=12)
-    verification_steps: list[str] = Field(min_length=1, max_length=12)
+    assumptions: list[WorkOrderText] = Field(default_factory=list, max_length=12)
+    constraints: list[WorkOrderText] = Field(default_factory=list, max_length=20)
+    dependencies: list[WorkOrderDependency] = Field(default_factory=list, max_length=20)
+    required_capabilities: list[WorkOrderCapability] = Field(default_factory=list, max_length=20)
+    acceptance_criteria: list[WorkOrderText] = Field(min_length=1, max_length=12)
+    verification_steps: list[WorkOrderText] = Field(min_length=1, max_length=12)
     risk_class: RiskClass
 
     @field_validator("goal", "intent")
@@ -46,10 +62,6 @@ class WorkOrder(BaseModel):
         if any(not item for item in normalized):
             raise ValueError("list entries must not be blank")
         return normalized
-
-
-MAX_REGISTERED_TOOL_COUNT = 200
-MAX_REGISTERED_TOOL_NAME_LENGTH = 80
 
 
 @dataclass(frozen=True)
