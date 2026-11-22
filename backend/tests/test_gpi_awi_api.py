@@ -943,3 +943,6 @@ def test_execute_persisted_plan_queues_only_validated_bindings(monkeypatch):
     ]
     assert decoded["plan_binding"]["plan_id"] == plan_id
     assert decoded["plan_binding"]["request_digest"] == captured["request_digest"]
+    assert decoded["plan_binding"]["step_bindings"][0]["payload"] == {
+        "text": "approved typed input"
+    }
