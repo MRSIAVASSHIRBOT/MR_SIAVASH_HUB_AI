@@ -1452,6 +1452,24 @@ MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_tool_permission_grants_owner_expiry ON tool_permission_grants(owner_user_id, expires_at)",
         ),
     ),
+    Migration.build(
+        53,
+        "persist_video_generation_output_contract",
+        (
+            """ALTER TABLE video_generation_jobs
+               ADD COLUMN requested_aspect_ratio TEXT
+               CHECK (requested_aspect_ratio IS NULL OR requested_aspect_ratio IN
+                      ('9:16','16:9','1:1','4:5'))""",
+            """ALTER TABLE video_generation_jobs
+               ADD COLUMN requested_duration_seconds INTEGER
+               CHECK (requested_duration_seconds IS NULL OR
+                      requested_duration_seconds BETWEEN 3 AND 60)""",
+            """ALTER TABLE video_generation_jobs
+               ADD COLUMN requested_resolution TEXT
+               CHECK (requested_resolution IS NULL OR requested_resolution IN
+                      ('720p','1080p'))""",
+        ),
+    ),
 )
 
 
