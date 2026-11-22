@@ -253,13 +253,14 @@ def test_execution_request_digest_is_stable_and_binds_every_payload_field():
     bindings = [
         {"step_id": "review", "tool_name": "text.echo", "payload": {"text": "one"}}
     ]
+    plan_id = str(uuid4())
     digest = execution_request_digest(
-        plan_id=str(uuid4()),
+        plan_id=plan_id,
         plan_digest="b" * 64,
         bindings=bindings,
     )
     changed = execution_request_digest(
-        plan_id=str(uuid4()),
+        plan_id=plan_id,
         plan_digest="b" * 64,
         bindings=[{"step_id": "review", "tool_name": "text.echo", "payload": {"text": "two"}}],
     )
