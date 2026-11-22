@@ -455,15 +455,23 @@ def execute_agent_workflow(
                 "step_number": 1,
                 "kind": "provider_selection",
                 "name": "provider_selection",
+                "input_digest": None,
             }
         ]
-        for runtime_number, _request_number, tool in core.ordered_tool_steps(
+        for runtime_number, request_number, tool in core.ordered_tool_steps(
             request, plan
         ):
             definition = core.tool_registry.get(tool.name)
             kind = "external_tool" if definition.external_side_effect else "safe_tool"
             step_specs.append(
-                {"step_number": runtime_number, "kind": kind, "name": tool.name}
+                {
+                    "step_number": runtime_number,
+                    "kind": kind,
+                    "name": tool.name,
+                    "input_digest": core.workflow_step_input_digest(
+                        request_number, tool
+                    ),
+                }
             )
 
         try:
