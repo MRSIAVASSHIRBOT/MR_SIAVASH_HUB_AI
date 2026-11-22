@@ -119,6 +119,24 @@ class PersistedPlanStepBinding(BaseModel):
     tool_name: str = Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9_.-]{0,79}$")
     payload: dict[str, object] = Field(default_factory=dict)
 
+    @field_validator("payload")
+    @classmethod
+    def bound_payload_size(cls, value: dict[str, object]) -> dict[str, object]:
+        """Reject non-JSON values and oversized tool arguments before planning."""
+        try:
+            encoded = json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("tool payload must contain finite JSON values") from exc
+        if len(encoded) > 16_384:
+            raise ValueError("tool payload exceeds the 16 KiB limit")
+        return value
+
 
 class ExecutePersistedPlanRequest(BaseModel):
     """Exact plan digest and one explicit tool binding per executable step."""
@@ -477,11 +495,17 @@ def execute_persisted_goal_work_order_plan(
             raise
         raise HTTPException(status_code=422, detail="A bound tool payload is invalid") from exc
 
-    request_digest = execution_request_digest(
-        plan_id=str(plan_id),
-        plan_digest=request.plan_digest,
-        bindings=normalized_bindings,
-    )
+    try:
+        request_digest = execution_request_digest(
+            plan_id=str(plan_id),
+            plan_digest=request.plan_digest,
+            bindings=normalized_bindings,
+        )
+    except PlanExecutionBindingError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Plan execution bindings are not valid finite JSON data",
+        ) from exc
     idempotency_scope = f"awi-plan-exec:{owner_user_id}"
     idempotency = IdempotencyRepository(settings.database_path)
     recovery = WorkflowRecoveryRepository(settings.database_path)
@@ -650,6 +674,29 @@ def execute_persisted_goal_work_order_plan(
             detail="Current owner permissions or server policy do not allow this workflow",
         )
 
+    audit_logger = AuditLogger(tasks)
+    try:
+        audit_logger.record(
+            event_type="agent.plan_execution_preflight",
+            outcome="allow",
+            actor_type="user",
+            actor_id=owner_user_id,
+            subject_type="work_order_plan",
+            subject_id=str(plan_id),
+            metadata={
+                "status": "preflight_passed",
+                "risk_class": RiskClass.LOW.value,
+                "decision": "allow",
+                "tool_calls": len(ordered_bindings),
+                "required_capability_count": len(ordered_bindings),
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable; plan execution was not queued",
+        ) from exc
+
     execution_payload = {
         "format": PLAN_EXECUTION_FORMAT,
         "request": agent_request.model_dump(mode="json"),
@@ -743,20 +790,27 @@ def execute_persisted_goal_work_order_plan(
     except sqlite3.Error as exc:
         raise HTTPException(status_code=503, detail="Workflow storage is unavailable") from exc
 
-    AuditLogger(tasks).record(
-        event_type="agent.plan_execution_queued",
-        outcome="queued",
-        actor_type="user",
-        actor_id=owner_user_id,
-        subject_type="workflow",
-        subject_id=str(workflow_id),
-        metadata={
-            "plan_id": record.plan_id,
-            "plan_digest": record.plan_digest,
-            "step_count": len(ordered_bindings),
-            "tool_names": [binding.tool_name for binding in ordered_bindings],
-        },
-    )
+    audit_recorded = True
+    try:
+        audit_logger.record(
+            event_type="agent.plan_execution_queued",
+            outcome="queued",
+            actor_type="user",
+            actor_id=owner_user_id,
+            subject_type="workflow",
+            subject_id=str(workflow_id),
+            metadata={
+                "status": "queued",
+                "risk_class": RiskClass.LOW.value,
+                "decision": "allow",
+                "tool_calls": len(ordered_bindings),
+                "required_capability_count": len(ordered_bindings),
+            },
+        )
+    except sqlite3.Error:
+        # The preflight audit is durable. Never turn a committed queue operation
+        # into an apparent API failure just because its follow-up event failed.
+        audit_recorded = False
     stored_workflow = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
     return {
         "workflow": stored_workflow,
@@ -767,6 +821,7 @@ def execute_persisted_goal_work_order_plan(
         "execution_started": False,
         "tools_executed": False,
         "permissions_changed": False,
+        "audit_recorded": audit_recorded,
     }
 
 
