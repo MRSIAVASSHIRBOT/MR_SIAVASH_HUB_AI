@@ -424,8 +424,12 @@ class AgentWorkflowRunner:
         workflow = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if workflow is None or workflow["task_id"] is None:
             raise LookupError("Workflow not found")
+        definition_version = int(workflow["definition_version"])
         decision = self.recovery.resume_decision(
-            workflow_id, request_digest, owner_user_id=owner_user_id
+            workflow_id,
+            request_digest,
+            definition_version=definition_version,
+            owner_user_id=owner_user_id,
         )
         if decision.decision not in {"resume", "finish"} or (
             decision.decision == "resume" and decision.next_step is None
@@ -456,7 +460,6 @@ class AgentWorkflowRunner:
             )
             for step in workflow["steps"]
         ]
-        definition_version = int(workflow["definition_version"])
         if len(expected) != len(stored) or any(
             expected_step[:3] != stored_step[:3]
             or (
@@ -505,6 +508,7 @@ class AgentWorkflowRunner:
             workflow_id,
             owner_user_id=owner_user_id,
             request_digest=request_digest,
+            definition_version=int(_workflow["definition_version"]),
         )
         AuditLogger(self.repository).record(
             event_type="workflow.resume_queued",
