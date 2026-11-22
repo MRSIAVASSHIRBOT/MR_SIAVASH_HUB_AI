@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import base64
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable
 from uuid import UUID
 
-from mrhub.jobs.payload_envelope import ENVELOPE_VERSION, EncryptedPayload
+from mrhub.jobs.payload_envelope import (
+    ENVELOPE_VERSION,
+    MAX_PLAINTEXT_BYTES,
+    NONCE_BYTES,
+    EncryptedPayload,
+)
 
 MIN_PLAN_TTL_SECONDS = 60
 MAX_PLAN_TTL_SECONDS = 86_400
@@ -91,20 +96,44 @@ class AgentWorkOrderPlanRepository:
             raise AgentWorkOrderPlanError("Plan identifier must be a UUID") from exc
         if normalized_plan_id != plan_id:
             raise AgentWorkOrderPlanError("Plan identifier must use canonical UUID format")
-        if not isinstance(owner_user_id, str) or not owner_user_id.strip() or len(owner_user_id) > 200:
+        if (
+            not isinstance(owner_user_id, str)
+            or not owner_user_id.strip()
+            or len(owner_user_id) > 200
+        ):
             raise AgentWorkOrderPlanError("Plan owner identifier is invalid")
         if not isinstance(plan_digest, str) or not _DIGEST_PATTERN.fullmatch(plan_digest):
             raise AgentWorkOrderPlanError("Plan digest must be a lowercase SHA-256 hex digest")
+        if not isinstance(envelope, EncryptedPayload):
+            raise AgentWorkOrderPlanError("Encrypted plan envelope is invalid")
         if (
             not isinstance(envelope.version, int)
             or isinstance(envelope.version, bool)
             or envelope.version != ENVELOPE_VERSION
             or not isinstance(envelope.nonce_b64, str)
-            or not 1 <= len(envelope.nonce_b64) <= 64
             or not isinstance(envelope.ciphertext_b64, str)
+            or len(envelope.nonce_b64) != 16
             or not 1 <= len(envelope.ciphertext_b64) <= 1_500_000
         ):
             raise AgentWorkOrderPlanError("Encrypted plan envelope is invalid")
+        try:
+            nonce = base64.b64decode(
+                envelope.nonce_b64.encode("ascii"),
+                altchars=b"-_",
+                validate=True,
+            )
+            ciphertext = base64.b64decode(
+                envelope.ciphertext_b64.encode("ascii"),
+                altchars=b"-_",
+                validate=True,
+            )
+        except (ValueError, UnicodeEncodeError) as exc:
+            raise AgentWorkOrderPlanError("Encrypted plan envelope is invalid") from exc
+        if (
+            len(nonce) != NONCE_BYTES
+            or not 16 <= len(ciphertext) <= MAX_PLAINTEXT_BYTES + 16
+        ):
+            raise AgentWorkOrderPlanError("Encrypted plan envelope is outside supported bounds")
         if (
             isinstance(ttl_seconds, bool)
             or not isinstance(ttl_seconds, int)
