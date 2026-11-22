@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.core import AgentCore, AgentPlanRequest, AgentToolRequest
 from mrhub.domain.tasks import RiskClass
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
@@ -593,3 +593,25 @@ def test_agent_plan_normalizes_required_capability_names():
     )
 
     assert request.required_capabilities == ["text.echo"]
+
+
+@pytest.mark.parametrize("goal", ["", "   "])
+def test_agent_plan_rejects_blank_goal(goal):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(goal=goal)
+
+
+def test_agent_plan_normalizes_goal():
+    request = AgentPlanRequest(goal="  Review workflow state  ")
+    assert request.goal == "Review workflow state"
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_agent_tool_request_rejects_blank_tool_name(name):
+    with pytest.raises(ValidationError):
+        AgentToolRequest(name=name)
+
+
+def test_agent_tool_request_normalizes_tool_name():
+    request = AgentToolRequest(name="  text.echo  ")
+    assert request.name == "text.echo"
