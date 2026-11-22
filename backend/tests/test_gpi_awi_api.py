@@ -733,7 +733,7 @@ class PlanExecutionEchoOutput(BaseModel):
 
 def test_execute_persisted_plan_queues_only_validated_bindings(monkeypatch):
     from datetime import UTC, datetime
-    from uuid import uuid4
+    from uuid import UUID, uuid4
 
     owner = "owner-exec-1"
     plan_id = str(uuid4())
