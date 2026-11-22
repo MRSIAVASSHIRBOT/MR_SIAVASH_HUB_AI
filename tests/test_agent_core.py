@@ -447,3 +447,54 @@ def test_agent_core_fails_closed_when_owner_grant_lookup_fails():
     assert plan["execution_ready"] is False
     assert plan["steps"][1]["decision"] == PolicyDecision.DENY.value
     assert calls == []
+
+
+def test_agent_core_exposes_a_validated_dependency_graph_for_execution_order():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Run two tools in their declared order",
+            tools=[
+                {"name": "text.echo", "payload": {"text": "first"}},
+                {"name": "text.echo", "payload": {"text": "second"}},
+            ],
+        )
+    )
+
+    assert plan["workflow_plan"] == {
+        "ordered_steps": [
+            {
+                "step_id": "provider-selection",
+                "description": "Select an inference provider",
+                "depends_on": [],
+            },
+            {
+                "step_id": "tool-2",
+                "description": "Execute registered tool text.echo",
+                "depends_on": ["provider-selection"],
+            },
+            {
+                "step_id": "tool-3",
+                "description": "Execute registered tool text.echo",
+                "depends_on": ["tool-2"],
+            },
+        ],
+        "dependency_levels": [
+            ["provider-selection"],
+            ["tool-2"],
+            ["tool-3"],
+        ],
+    }
+
+
+def test_agent_core_includes_dependency_graph_for_blocked_plans_too():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Do not execute an unregistered tool",
+            tools=[{"name": "missing.tool", "payload": {}}],
+        )
+    )
+
+    assert plan["execution_ready"] is False
+    assert plan["workflow_plan"]["ordered_steps"][-1]["depends_on"] == [
+        "provider-selection"
+    ]
