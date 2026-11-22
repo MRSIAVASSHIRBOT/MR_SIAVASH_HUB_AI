@@ -249,6 +249,24 @@ class WorkflowRecoveryRepository:
                     definition_version, now, now, owner_user_id,
                 ),
             )
+            if idempotency_binding is not None:
+                scope = idempotency_binding.get("scope")
+                key = idempotency_binding.get("key")
+                if not isinstance(scope, str) or not scope or not isinstance(key, str) or not key:
+                    raise WorkflowRecoveryError("Idempotency binding is invalid")
+                if task_id is None:
+                    raise WorkflowRecoveryError("Idempotency binding requires a task")
+                connection.execute(
+                    """
+                    INSERT INTO idempotency_records (
+                        scope, idempotency_key, request_digest, task_id,
+                        workflow_id, status, created_at, expires_at
+                    ) VALUES (?, ?, ?, ?, ?, 'accepted', ?, NULL)
+                    """,
+                    (scope, key, request_digest, task_id, str(workflow_id), now),
+                )
+
+
             if normalized_plan_consumption is not None:
                 plan_id, plan_owner, plan_digest = normalized_plan_consumption
                 consumed = connection.execute(
@@ -272,23 +290,6 @@ class WorkflowRecoveryRepository:
                     raise WorkflowRecoveryError(
                         "Plan is not active, owned, unexpired, or has changed"
                     )
-
-            if idempotency_binding is not None:
-                scope = idempotency_binding.get("scope")
-                key = idempotency_binding.get("key")
-                if not isinstance(scope, str) or not scope or not isinstance(key, str) or not key:
-                    raise WorkflowRecoveryError("Idempotency binding is invalid")
-                if task_id is None:
-                    raise WorkflowRecoveryError("Idempotency binding requires a task")
-                connection.execute(
-                    """
-                    INSERT INTO idempotency_records (
-                        scope, idempotency_key, request_digest, task_id,
-                        workflow_id, status, created_at, expires_at
-                    ) VALUES (?, ?, ?, ?, ?, 'accepted', ?, NULL)
-                    """,
-                    (scope, key, request_digest, task_id, str(workflow_id), now),
-                )
 
             if payload_envelope is not None:
                 if task_id is None or task is None or not owner_user_id:
