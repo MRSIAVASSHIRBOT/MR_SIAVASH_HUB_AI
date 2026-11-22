@@ -599,7 +599,7 @@ class AgentWorkflowRunner:
                 )
 
             evaluation = self._evaluate_workflow_tools(
-                workflow_id, request, owner_user_id
+                workflow_id, request, plan, owner_user_id
             )
             execution = {
                 **execution,
