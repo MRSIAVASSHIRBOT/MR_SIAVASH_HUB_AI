@@ -49,3 +49,14 @@ def test_invalid_catalog_entries_are_rejected():
 def test_too_many_requirements_are_bounded():
     with pytest.raises(ValueError, match="Too many"):
         evaluate_capability_gaps([f"tool.{i}" for i in range(51)], [])
+
+
+def test_duplicate_requirement_stream_is_bounded():
+    with pytest.raises(ValueError, match="Too many"):
+        evaluate_capability_gaps(["tool.read"] * 51, [])
+
+
+def test_tool_catalog_size_is_bounded():
+    catalog = [{"name": f"tool.{index}"} for index in range(201)]
+    with pytest.raises(ValueError, match="Tool catalog exceeds"):
+        evaluate_capability_gaps(["tool.read"], catalog)
