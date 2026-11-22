@@ -33,7 +33,7 @@ The local loopback-only setup path remains supported for local development. A re
 
 - Keep exactly one service instance while using SQLite.
 - Do not enable horizontal scaling; SQLite is not a distributed database.
-- The API, Hub worker, and EL_AI bridge consumer are supervised by one startup script and share the same service environment. Shutdown signals are forwarded to all three processes, and an unexpected exit of any process terminates the service. The EL_AI package is pinned to the reviewed EL_AI credential-storage commit in the build command. The encrypted-file backend is POSIX-only; Windows deployments must use the OS keyring.
+- The API, Hub worker, and EL_AI bridge consumer are supervised by one startup script and share the same service environment. Shutdown signals are forwarded to all three processes, and an unexpected exit of any process terminates the service. The EL_AI package is pinned to reviewed squash-merge commit `e8cb136c22ba5a343cb5725763b23cadb47f55de` from `MR_SIAVASH_EL_AI`. The encrypted-file backend is POSIX-only; Windows deployments must use the OS keyring.
 - The local Ollama, local code engine, and loopback-only MCP integrations remain disabled/unavailable in this cloud deployment unless separately redesigned and secured.
 - A successful Render deployment is not proof that Telegram webhook ingress, bridge consumption, Hub authentication, or message replies work. Run the full end-to-end acceptance checklist before declaring the bot online.
 - Never store real Telegram bot tokens, Cloudflare bridge secrets, owner passwords, or session tokens in Git.
