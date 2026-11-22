@@ -655,7 +655,7 @@ def test_agent_plan_accepts_a_complete_registered_capability_set():
     assert plan["execution_ready"] is True
 
 
- 
+
 
 def test_agent_core_skips_unused_capability_catalog_for_large_registry():
     registry = ToolRegistry()
