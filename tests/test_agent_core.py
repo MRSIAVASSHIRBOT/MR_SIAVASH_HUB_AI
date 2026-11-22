@@ -37,6 +37,10 @@ def test_agent_core_selects_provider_and_plans_registered_tool_without_execution
     assert plan["model_inference_started"] is False
     assert plan["tools_executed"] is False
     assert plan["steps"][1]["status"] == "ready"
+    assert plan["dependency_plan"]["dependency_levels"] == [
+        ["step-1"],
+        ["step-2"],
+    ]
 
 
 def test_agent_core_blocks_unknown_tools():
