@@ -2,7 +2,7 @@
 
 This Blueprint defines two separate paid services in Frankfurt:
 
-Both services explicitly set `autoDeployTrigger: off`. Git pushes therefore do not deploy either service automatically; use a reviewed manual deploy only after the Blueprint, dependency pin, CI, and service configuration have been checked.
+Both services explicitly set `autoDeployTrigger: `"off"`. Git pushes therefore do not deploy either service automatically; use a reviewed manual deploy only after the Blueprint, dependency pin, CI, and service configuration have been checked.
 
 1. **Hub web service** — runs the Hub API and its SQLite-backed worker. These two processes share the Hub service's persistent disk because the current database is SQLite.
 2. **EL_AI background worker** — checks out the `MR_SIAVASH_EL_AI` repository and runs the Cloudflare Telegram bridge consumer in a separate Render service, with its own environment, process identity, and persistent disk. It does not check out the Hub source repository, has no Hub database mount, and receives neither Hub master secret nor the one-time owner-setup token.
@@ -58,7 +58,7 @@ The local loopback-only setup path remains supported for local development. A re
 - Keep exactly one Hub service instance while using SQLite. Do not horizontally scale it or add a second Hub worker against the same database.
 - Hub API and Hub worker remain supervised together; signals are forwarded to both, and an unexpected exit stops the service.
 - EL_AI runs independently as a background worker. Its state and encrypted paired credentials live only on its own disk.
-- The EL_AI worker checks out the EL_AI repository but installs the reviewed, merged revision `b26bdb60257cdd8149aba28c48ffcb9fbbe9bb23` explicitly. Update this pin only after a later EL_AI change has passed CI and review; the worker's deploy remains manual.
+- The EL_AI worker checks out the EL_AI repository but installs the reviewed, merged revision `49c5833e2128725e3060397a572e29c4cf07400c` explicitly. Update this pin only after a later EL_AI change has passed CI and review; the worker's deploy remains manual.
 - The EL_AI worker uses Cloudflare bridge mode and must never start Telegram `getUpdates`; local polling and an active webhook must not run simultaneously.
 - The local Ollama, local code engine, and loopback-only MCP integrations are unavailable in this cloud deployment unless separately redesigned and secured.
 - Successful deployment does not prove Telegram ingress, queue consumption, Hub pairing, or message replies. Run the complete end-to-end acceptance checklist before declaring the bot online.
