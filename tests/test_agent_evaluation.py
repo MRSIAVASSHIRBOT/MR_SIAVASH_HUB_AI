@@ -168,3 +168,60 @@ def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
     assert first["decision"] == "reject"
     assert len(first_digest) == 64
     assert first_digest != second_digest
+
+
+def test_evaluation_follows_topological_execution_order_not_request_array_order():
+    class StoredRun:
+        def get_run(self, workflow_id, *, owner_user_id):
+            return {
+                "steps": [
+                    {
+                        "step_number": 2,
+                        "status": "succeeded",
+                        "output_digest": DIGEST_A,
+                    },
+                    {
+                        "step_number": 3,
+                        "status": "failed",
+                        "error_code": "tool_execution_failed",
+                        "attempt_count": 1,
+                        "started_at": "2026-11-22T10:00:00+00:00",
+                        "finished_at": "2026-11-22T10:00:01+00:00",
+                    },
+                ]
+            }
+
+    class ReorderedCore:
+        def ordered_tool_steps(self, request, _plan):
+            # The second requested tool is independent and sorts before the
+            # first requested tool in the validated dependency graph.
+            return [
+                (2, 3, request.tools[1]),
+                (3, 2, request.tools[0]),
+            ]
+
+    runner = object.__new__(AgentWorkflowRunner)
+    runner.recovery = StoredRun()
+    runner.core = ReorderedCore()
+    request = AgentPlanRequest(
+        goal="Evaluate tools in dependency order",
+        tools=[
+            {"name": "text.alpha", "payload": {"text": "first in request"}},
+            {"name": "text.beta", "payload": {"text": "second in request"}},
+        ],
+    )
+
+    report = runner._evaluate_workflow_tools(
+        uuid4(), request, plan={"dependency_plan": {}}, owner_user_id="owner"
+    )
+
+    assert report is not None
+    assert report["decision"] == "reject"
+    assert report["passed"] == 1
+    assert report["failed"] == 1
+    assert report["criteria"][0]["criterion_id"] == "tool-step-2"
+    assert report["criteria"][0]["description"] == "Tool execution completed: text.beta"
+    assert report["criteria"][0]["status"] == "passed"
+    assert report["criteria"][1]["criterion_id"] == "tool-step-3"
+    assert report["criteria"][1]["description"] == "Tool execution completed: text.alpha"
+    assert report["criteria"][1]["status"] == "failed"
