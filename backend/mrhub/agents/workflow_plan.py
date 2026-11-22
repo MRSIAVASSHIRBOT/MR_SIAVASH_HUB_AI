@@ -6,8 +6,8 @@ It deliberately does not execute steps, grant tools, or make authorization decis
 
 from __future__ import annotations
 
-from collections import deque
 from collections.abc import Iterable
+from collections import deque
 from dataclasses import dataclass
 
 
@@ -94,9 +94,7 @@ def build_workflow_plan(steps: Iterable[WorkflowStep]) -> WorkflowPlan:
             indegree[step.step_id] += 1
             dependents[dependency].append(step.step_id)
 
-    ready = deque(
-        step_id for step_id in by_id if indegree[step_id] == 0
-    )
+    ready = deque(step_id for step_id in by_id if indegree[step_id] == 0)
     ordered: list[WorkflowStep] = []
     levels: list[tuple[str, ...]] = []
     remaining = dict(indegree)
