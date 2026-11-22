@@ -86,6 +86,8 @@ def create_goal_work_order_plan(
                 status_code=422,
                 detail="The requested goal is outside the supported safety policy",
             )
+        if selection.provider == "moonshot":
+            _enforce_kimi_request_limit(current_user.user_id)
         plan = generate_execution_plan(work_order, model_router)
     except (WorkOrderGenerationError, PlanningError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
