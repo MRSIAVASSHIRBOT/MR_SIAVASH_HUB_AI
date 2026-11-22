@@ -47,6 +47,8 @@ Provider adapters implement a typed contract for model metadata, request/respons
 
 The deterministic `stub-text-v1` remains available for tests. A real local Ollama adapter is available but disabled by default. To opt in, install Ollama and a model separately, then set `MRH_LOCAL_INFERENCE_ENABLED=true`, `MRH_LOCAL_INFERENCE_MODEL=<installed-model-name>`, and optionally `MRH_LOCAL_INFERENCE_BASE_URL=http://127.0.0.1:11434`. The adapter accepts only plain HTTP loopback URLs, disables redirects and environment proxies, applies a finite timeout, bounds output tokens, and returns sanitized errors. The authenticated `POST /models/generate` endpoint is unavailable until local inference is explicitly enabled and a model is configured. A failed local request never falls back to cloud. No model is downloaded and no process is launched automatically. Moonshot Kimi K3.1 Pro remains a separate, disabled-by-default remote adapter with explicit invocation and no implicit fallback. Kimi currently exposes bounded single-turn text and one-image analysis endpoints; full 1M-token context, video input, multi-turn preserved reasoning, and tool execution remain unimplemented. See `docs/operations/kimi-k31-pro.md`.
 
+The authenticated GPI/AWI planning endpoint converts a goal into a validated work order and dependency-aware plan without executing tools or changing permissions. See [GPI/AWI planning API](docs/operations/gpi-awi-planning.md) for its request contract, safety boundaries, provider behavior, and error responses.
+
 Run tests:
 
 ```powershell
