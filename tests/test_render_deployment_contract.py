@@ -33,6 +33,14 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     assert "mountPath: /var/data" in blueprint
 
     hub, bridge = blueprint.split("  - type: worker", 1)
+    worker_build = bridge.split("    startCommand:", 1)[0]
+    assert (
+        'pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@'
+        "49c5833e2128725e3060397a572e29c4cf07400c" + '"'
+    ) in worker_build
+    assert "pip install ." not in worker_build
+    assert "MR_SIAVASSHIRBOT/MR_SIAVASH_HUB_AI.git" not in worker_build
+
     for hub_secret in ("MRH_WORKFLOW_PAYLOAD_KEY", "MRH_OWNER_SETUP_TOKEN"):
         assert f"key: {hub_secret}\n        sync: false" in hub
         assert hub_secret not in bridge
