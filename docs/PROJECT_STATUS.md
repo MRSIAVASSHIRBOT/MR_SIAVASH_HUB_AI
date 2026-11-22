@@ -1135,7 +1135,7 @@ Hub PR [#488](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/488) is 
 
 - GitHub branch metadata reports `protected=false` on all three requested `main` branches; required-status-check enforcement is off and the required context list is empty. No branch-protection, ruleset, permission, or access-control setting was changed.
 - Hub and EL_AI declare Python dependencies in `pyproject.toml`; no committed Python lockfile was found in the inspected project roots. Website's Gateway `package.json` has no runtime dependencies and runs Node's built-in test runner; no package lockfile was found.
-- No secret values, production data, Worker routes, D1 rows, Telegram credentials, or deployment settings were read or changed in this checkpoint.
+- No secret values, production data, Worker routes, D1 rows, Telegram credentials, or live deployment settings were queried or changed. The checked-in Render blueprint was inspected only.
 
 ### Next actions
 
