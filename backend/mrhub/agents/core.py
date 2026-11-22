@@ -118,7 +118,13 @@ class AgentPlanRequest(BaseModel):
         New optional dependency declarations remain part of the digest when
         explicitly supplied, while legacy requests keep their pre-DAG identity.
         """
-        return self.model_dump(mode="json", exclude_none=True)
+        payload = self.model_dump(mode="json", exclude_none=True)
+        # required_capabilities was introduced after durable AgentPlanRequest
+        # digests already existed. An empty default must retain the pre-field
+        # serialization so old queued workflows can still be resumed.
+        if not self.required_capabilities:
+            payload.pop("required_capabilities", None)
+        return payload
 
 
 class AgentCore:
