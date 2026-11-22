@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
@@ -26,10 +26,10 @@ from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.providers.base import ProviderError
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.tool_permissions import ToolPermissionService
-from mrhub.providers.base import ProviderError
 from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_user)])
@@ -53,7 +53,7 @@ def _build_owner_agent_core(
 class GoalPlanningRequest(BaseModel):
     """Bounded natural-language goal submitted for planning only."""
 
-    model_config = {"extra": "forbid"}
+    model_config = ConfigDict(extra="forbid")
 
     goal: str = Field(min_length=1, max_length=1_000)
 
@@ -90,11 +90,8 @@ def create_goal_work_order_plan(
             status_code=503,
             detail="No configured non-stub model provider is available",
         ) from exc
-    except Exception as exc:
-        
-        if isinstance(exc, ProviderError):
-            raise HTTPException(status_code=503, detail=exc.code) from exc
-        raise
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
 
     tool_catalog = build_tool_registry(owner_user_id=current_user.user_id).catalog()
     available_names = {
