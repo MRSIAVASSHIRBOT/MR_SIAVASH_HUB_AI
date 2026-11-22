@@ -88,15 +88,52 @@ def create_goal_work_order_plan(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Convert a goal into a validated plan without executing tools."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    audit_logger = AuditLogger(tasks)
+
     # Reject prohibited intent before provider selection, inference, or quota use.
+    # Persist a minimal denial event without storing the raw goal or prompt.
     if derive_server_risk_class(request.goal, {}) is RiskClass.PROHIBITED:
+        try:
+            audit_logger.record(
+                event_type="agent.work_order_blocked",
+                outcome="denied",
+                actor_type="user",
+                actor_id=current_user.user_id,
+                subject_type="work_order",
+                metadata={
+                    "status": "blocked",
+                    "declared_risk_class": RiskClass.PROHIBITED.value,
+                    "declared_risk_is_authoritative": False,
+                },
+            )
+        except sqlite3.Error as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Audit storage is unavailable",
+            ) from exc
         raise HTTPException(
             status_code=422,
             detail="The requested goal is outside the supported safety policy",
         )
 
-    tasks = TaskRepository(get_settings().database_path)
-    tasks.initialize()
+    # Confirm the audit sink is writable before any provider selection or inference.
+    try:
+        audit_logger.record(
+            event_type="agent.work_order_planning_started",
+            outcome="started",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="work_order",
+            metadata={"status": "planning_started"},
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+
     try:
         model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
         selection = model_router.select(ModelRequest(requires_text=True))
@@ -130,7 +167,7 @@ def create_goal_work_order_plan(
             detail="Registered tool catalog is not valid for capability assessment",
         ) from exc
 
-    AuditLogger(tasks).record(
+    audit_logger.record(
         event_type="agent.work_order_planned",
         outcome="planned",
         actor_type="user",
