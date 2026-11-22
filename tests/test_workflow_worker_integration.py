@@ -443,10 +443,11 @@ def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeyp
 
 
 
-def test_persisted_awI_plan_is_consumed_once_and_executed_by_existing_worker():
+def test_persisted_awi_plan_is_consumed_once_and_executed_by_existing_worker():
     from uuid import uuid4
 
     from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
+    from mrhub.agents.plan_execution import canonical_digest
     from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
     from mrhub.agents.work_order import WorkOrder
     from mrhub.domain.tasks import RiskClass
@@ -503,10 +504,7 @@ def test_persisted_awI_plan_is_consumed_once_and_executed_by_existing_worker():
     saved_plan = plans.create(
         plan_id=plan_id,
         owner_user_id=owner_user_id,
-        plan_digest=__import__(
-            "mrhub.agents.plan_execution",
-            fromlist=["canonical_digest"],
-        ).canonical_digest(plan_payload),
+        plan_digest=canonical_digest(plan_payload),
         envelope=plan_envelope,
         ttl_seconds=900,
     )
