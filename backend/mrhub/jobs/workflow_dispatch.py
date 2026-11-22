@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.plan_execution import (
     PLAN_EXECUTION_FORMAT,
-    canonical_digest,
+    execution_request_digest,
     tool_contract_digest,
     validate_plan_execution_payload,
 )
@@ -82,8 +82,25 @@ class WorkflowWorkerHandler:
             registry = build_tool_registry(owner_user_id=owner_user_id)
             if isinstance(payload, dict) and payload.get("format") == PLAN_EXECUTION_FORMAT:
                 request, binding = validate_plan_execution_payload(payload)
+                digest_bindings = [
+                    {
+                        "step_id": step_binding["step_id"],
+                        "tool_name": requested_tool.name,
+                        "payload": requested_tool.payload,
+                    }
+                    for step_binding, requested_tool in zip(
+                        binding["step_bindings"],
+                        request.tools,
+                        strict=True,
+                    )
+                ]
+                expected_request_digest = execution_request_digest(
+                    plan_id=str(binding["plan_id"]),
+                    plan_digest=str(binding["plan_digest"]),
+                    bindings=digest_bindings,
+                )
                 if not hmac.compare_digest(
-                    canonical_digest(payload),
+                    expected_request_digest,
                     str(row["request_digest"]),
                 ):
                     raise PayloadEnvelopeError("Plan execution request digest does not match")
