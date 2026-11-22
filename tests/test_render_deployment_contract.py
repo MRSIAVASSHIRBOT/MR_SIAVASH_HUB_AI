@@ -27,7 +27,7 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     assert "property: hostport" in blueprint
     assert "HUB_ALLOW_RENDER_PRIVATE_NETWORK" in blueprint
     assert 'value: "true"' in blueprint
-    assert blueprint.count("autoDeployTrigger: off") == 2
+    assert blueprint.count('autoDeployTrigger: "off"') == 2
     assert "autoDeploy: true" not in blueprint
     assert "@b26bdb60257cdd8149aba28c48ffcb9fbbe9bb23" in blueprint
     assert "mountPath: /var/data" in blueprint
