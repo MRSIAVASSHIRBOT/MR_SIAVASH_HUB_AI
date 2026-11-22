@@ -914,8 +914,25 @@ def test_agent_plan_request_canonical_payload_preserves_legacy_digest_shape():
                 "payload": {"text": "legacy"},
             }
         ],
-        "required_capabilities": [],
     }
+
+
+def test_agent_plan_request_canonical_payload_omits_empty_cgi_capabilities():
+    request = AgentPlanRequest(
+        goal="Preserve pre-CGI workflow request identity",
+        required_capabilities=[],
+    )
+
+    assert "required_capabilities" not in request.canonical_payload()
+
+
+def test_agent_plan_request_canonical_payload_includes_nonempty_cgi_capabilities():
+    request = AgentPlanRequest(
+        goal="Include declared CGI requirements in the workflow identity",
+        required_capabilities=["text.echo"],
+    )
+
+    assert request.canonical_payload()["required_capabilities"] == ["text.echo"]
 
 
 def test_agent_plan_request_canonical_payload_includes_explicit_dependencies():
