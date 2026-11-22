@@ -425,7 +425,10 @@ class AgentWorkflowRunner:
         if workflow is None or workflow["task_id"] is None:
             raise LookupError("Workflow not found")
         decision = self.recovery.resume_decision(
-            workflow_id, request_digest, owner_user_id=owner_user_id
+            workflow_id,
+            request_digest,
+            definition_version=int(workflow["definition_version"]),
+            owner_user_id=owner_user_id,
         )
         if decision.decision not in {"resume", "finish"} or (
             decision.decision == "resume" and decision.next_step is None
