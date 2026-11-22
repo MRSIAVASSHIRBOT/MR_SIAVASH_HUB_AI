@@ -12,7 +12,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
-
 MAX_CRITERIA = 100
 MAX_ID_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 500
