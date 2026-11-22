@@ -459,7 +459,7 @@ def test_persisted_plan_endpoint_encrypts_and_stores_the_plan(monkeypatch):
 
 def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkeypatch):
     from datetime import UTC, datetime
-    from uuid import uuid4
+    from uuid import UUID, uuid4
 
     owner = "owner-1"
     plan_id = str(uuid4())
@@ -533,7 +533,7 @@ def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkey
 
     response = Response()
     result = agent_routes.get_persisted_goal_work_order_plan(
-        uuid4(),
+        UUID(plan_id),
         SimpleNamespace(user_id=owner),
         response,
     )
