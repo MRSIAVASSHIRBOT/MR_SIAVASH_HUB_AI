@@ -140,10 +140,7 @@ def create_goal_work_order_plan(
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
         "capability_assessment": {
-            "required": list(assessment.required),
-            "available": list(assessment.available),
-            "missing": list(assessment.missing),
-            "complete": assessment.complete,
+            **assessment.as_dict(),
             "authorization_checked": False,
         },
         "risk_class_is_authoritative": False,
@@ -192,12 +189,7 @@ def assess_agent_work_order(
     return {
         "assessment_id": assessment_id,
         "work_order": request.model_dump(mode="json"),
-        "capabilities": {
-            "required": list(assessment.required),
-            "available": list(assessment.available),
-            "missing": list(assessment.missing),
-            "complete": assessment.complete,
-        },
+        "capabilities": assessment.as_dict(),
         "readiness": (
             "capabilities_present" if assessment.complete else "capability_gaps"
         ),
