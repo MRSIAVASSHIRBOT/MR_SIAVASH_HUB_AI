@@ -728,6 +728,8 @@ def test_workflow_request_digest_preserves_legacy_none_free_serialization():
         ],
     )
     legacy_payload = request.model_dump(mode="json", exclude_none=True)
+    # This field was added after the original durable request schema.
+    legacy_payload.pop("required_capabilities", None)
     expected = hashlib.sha256(
         json.dumps(
             legacy_payload,
