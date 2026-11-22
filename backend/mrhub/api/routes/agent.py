@@ -453,6 +453,7 @@ def execute_agent_workflow(
                 request_digest,
                 step_specs,
                 task=task,
+                definition_version=2,
                 owner_user_id=current_user.user_id,
                 workflow_id=workflow_id,
                 payload_envelope={
