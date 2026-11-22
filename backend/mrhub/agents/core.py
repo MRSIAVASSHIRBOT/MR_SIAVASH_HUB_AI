@@ -5,7 +5,14 @@ import json
 from collections.abc import Callable
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from mrhub.agents.capability_gaps import MAX_NAME_LENGTH, evaluate_capability_gaps
 from mrhub.agents.workflow_plan import WorkflowPlanError, WorkflowStep, build_workflow_plan
