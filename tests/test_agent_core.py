@@ -1,13 +1,13 @@
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.core import AgentCore, AgentPlanRequest, AgentToolRequest
 from mrhub.domain.tasks import RiskClass
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ToolDefinition
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 class EmptyInput(BaseModel):
@@ -37,6 +37,10 @@ def test_agent_core_selects_provider_and_plans_registered_tool_without_execution
     assert plan["model_inference_started"] is False
     assert plan["tools_executed"] is False
     assert plan["steps"][1]["status"] == "ready"
+    assert plan["dependency_plan"]["dependency_levels"] == [
+        ["step-1"],
+        ["step-2"],
+    ]
 
 
 def test_agent_core_blocks_unknown_tools():
@@ -447,3 +451,719 @@ def test_agent_core_fails_closed_when_owner_grant_lookup_fails():
     assert plan["execution_ready"] is False
     assert plan["steps"][1]["decision"] == PolicyDecision.DENY.value
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "ordered_steps",
+    [
+        [
+            {"step_id": "step-1", "description": "Select provider", "depends_on": []},
+            {"step_id": "step-2", "description": "First tool", "depends_on": ["step-1"]},
+            {"step_id": "step-2", "description": "Duplicate tool", "depends_on": ["step-1"]},
+        ],
+        [
+            {"step_id": "step-1", "description": "Select provider", "depends_on": []},
+            {"step_id": "step-2", "description": "First tool", "depends_on": ["step-1"]},
+        ],
+    ],
+    ids=["duplicate-tool-step", "missing-tool-step"],
+)
+def test_agent_execute_rejects_incomplete_or_duplicate_workflow_graph_before_invocation(
+    monkeypatch, ordered_steps
+):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Reject malformed workflow plans before invoking tools",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {"ordered_steps": ordered_steps},
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="does not match request dependency declarations"):
+        core.execute(request)
+
+    assert calls == []
+
+
+def test_agent_execute_resumes_from_the_requested_workflow_step():
+    events = []
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Resume from the second tool step",
+            tools=[
+                {"name": "text.echo", "payload": {"text": "already completed"}},
+                {"name": "text.echo", "payload": {"text": "resume here"}},
+            ],
+        ),
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == ["resume here"]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_plan_reports_required_capability_coverage():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Check whether the requested capability is registered",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+            required_capabilities=["text.echo", "missing.lookup"],
+        )
+    )
+
+    assert plan["capability_gaps"] == {
+        "required": ["text.echo", "missing.lookup"],
+        "available": ["text.echo"],
+        "missing": ["missing.lookup"],
+        "complete": False,
+    }
+    assert plan["execution_ready"] is False
+
+
+def test_agent_execute_fails_closed_when_required_capabilities_are_missing():
+    core = make_core()
+    calls = []
+    original_invoke = core.tool_registry.invoke
+
+    def track_invoke(*args, **kwargs):
+        calls.append(args[0])
+        return original_invoke(*args, **kwargs)
+
+    core.tool_registry.invoke = track_invoke
+    response = core.execute(
+        AgentPlanRequest(
+            goal="Do not execute with an unresolved capability gap",
+            tools=[{"name": "text.echo", "payload": {"text": "must not run"}}],
+            required_capabilities=["filesystem.read"],
+        )
+    )
+
+    assert response["blocked"] is True
+    assert response["execution_started"] is False
+    assert response["tools_executed"] is False
+    assert response["plan"]["capability_gaps"]["missing"] == ["filesystem.read"]
+    assert calls == []
+
+
+
+
+def test_agent_plan_preserves_legacy_sequential_dependencies():
+    request = AgentPlanRequest(
+        goal="Preserve legacy sequential tool execution",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+
+    graph = make_core().plan(request)["dependency_plan"]
+
+    assert graph["ordered_steps"] == [
+        {
+            "step_id": "step-1",
+            "description": "Select the model provider",
+            "depends_on": [],
+        },
+        {
+            "step_id": "step-2",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1"],
+        },
+        {
+            "step_id": "step-3",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-2"],
+        },
+    ]
+
+
+def test_agent_plan_supports_explicit_tool_dependency_order():
+    request = AgentPlanRequest(
+        goal="Run the second request tool before the first",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+
+    plan = make_core().plan(request)
+
+    assert plan["dependency_plan"]["ordered_steps"] == [
+        {
+            "step_id": "step-1",
+            "description": "Select the model provider",
+            "depends_on": [],
+        },
+        {
+            "step_id": "step-3",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1"],
+        },
+        {
+            "step_id": "step-2",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1", "step-3"],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "tools",
+    [
+        [
+            {"name": "text.echo", "depends_on": ["step-6"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-2"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-3"]},
+            {"name": "text.echo", "depends_on": ["step-2"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-1", "step-1"]},
+        ],
+    ],
+    ids=[
+        "unknown-dependency",
+        "self-dependency",
+        "dependency-cycle",
+        "duplicate-dependency",
+    ],
+)
+def test_agent_plan_rejects_invalid_explicit_tool_dependencies(tools):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(
+            goal="Reject malformed tool dependency declarations",
+            tools=tools,
+        )
+
+
+def test_agent_plan_accepts_a_complete_registered_capability_set():
+    plan = make_core().plan(
+        AgentPlanRequest(
+            goal="Check a fully registered capability set",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+            required_capabilities=["TEXT.ECHO"],
+        )
+    )
+
+    assert plan["capability_gaps"]["complete"] is True
+    assert plan["capability_gaps"]["missing"] == []
+    assert plan["execution_ready"] is True
+
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 81])
+def test_agent_plan_rejects_blank_or_oversized_required_capability_names(name):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(
+            goal="Validate capability request input",
+            required_capabilities=[name],
+        )
+
+
+def test_agent_plan_normalizes_required_capability_names():
+    request = AgentPlanRequest(
+        goal="Normalize capability request input",
+        required_capabilities=["  text.echo  "],
+    )
+
+    assert request.required_capabilities == ["text.echo"]
+
+
+@pytest.mark.parametrize("goal", ["", "   "])
+def test_agent_plan_rejects_blank_goal(goal):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(goal=goal)
+
+
+def test_agent_plan_normalizes_goal():
+    request = AgentPlanRequest(goal="  Review workflow state  ")
+    assert request.goal == "Review workflow state"
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_agent_tool_request_rejects_blank_tool_name(name):
+    with pytest.raises(ValidationError):
+        AgentToolRequest(name=name)
+
+
+def test_agent_tool_request_normalizes_tool_name():
+    request = AgentToolRequest(name="  text.echo  ")
+    assert request.name == "text.echo"
+
+
+def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute tools in the declared dependency order",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1", "step-3"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
+            },
+        },
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second",
+        "first",
+    ]
+    # Durable callback positions follow the topological execution order.
+    assert events == [
+        (2, "running", None),
+        (2, "succeeded", None),
+        (3, "running", None),
+        (3, "succeeded", None),
+    ]
+
+
+def test_agent_execute_resumes_by_topological_position_not_request_index(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Resume by durable topological execution position",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1", "step-3"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
+            },
+        },
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "first-request-tool"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_execute_rejects_non_topological_graph_before_invocation(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Reject a graph whose order violates its dependencies",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1", "step-3"],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    with pytest.raises(RuntimeError, match="does not match request dependency declarations"):
+        core.execute(request)
+
+    assert calls == []
+
+
+
+
+def test_agent_execute_rejects_valid_graph_that_drops_a_declared_dependency(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Do not silently remove a declared tool dependency",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "must-run-second"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "must-run-first"},
+                "depends_on": [],
+            },
+        ],
+    )
+    calls = []
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                # This graph is internally valid and topologically ordered, but
+                # it has dropped the request's step-2 -> step-3 dependency.
+                "ordered_steps": [
+                    {
+                        "step_id": "step-1",
+                        "description": "Select the model provider",
+                        "depends_on": [],
+                    },
+                    {
+                        "step_id": "step-2",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                    {
+                        "step_id": "step-3",
+                        "description": "Execute registered tool: text.echo",
+                        "depends_on": ["step-1"],
+                    },
+                ],
+                "dependency_levels": [["step-1"], ["step-2", "step-3"]],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        core.tool_registry,
+        "invoke",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    with pytest.raises(
+        RuntimeError, match="does not match request dependency declarations"
+    ):
+        core.execute(request)
+
+    assert calls == []
+
+
+def test_workflow_step_input_digest_binds_identity_payload_and_dependencies():
+    first = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "first"},
+    )
+    second = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "second"},
+    )
+    same_payload_different_dependencies = AgentToolRequest(
+        name="text.echo",
+        payload={"text": "first"},
+        depends_on=["step-3"],
+    )
+
+    first_digest = AgentCore.workflow_step_input_digest(2, first)
+    second_digest = AgentCore.workflow_step_input_digest(3, second)
+    dependency_digest = AgentCore.workflow_step_input_digest(
+        2, same_payload_different_dependencies
+    )
+
+    assert len(first_digest) == 64
+    assert len(second_digest) == 64
+    assert first_digest != second_digest
+    assert first_digest != dependency_digest
+    assert first_digest == AgentCore.workflow_step_input_digest(2, first)
+
+
+def test_workflow_request_digest_preserves_pre_dag_payload_identity():
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
+
+    legacy_payload = {
+        "goal": "Keep an existing queued workflow resumable",
+        "requires_text": True,
+        "requires_vision": False,
+        "requires_audio": False,
+        "requires_tool_calling": False,
+        "prefer_local": False,
+        "tools": [
+            {
+                "name": "text.echo",
+                "payload": {"text": "legacy"},
+            }
+        ],
+    }
+    request = AgentPlanRequest.model_validate(legacy_payload)
+
+    assert AgentWorkflowRunner.request_digest(request) == AgentWorkflowRunner._digest(
+        legacy_payload
+    )
+
+
+def test_agent_plan_request_canonical_payload_preserves_legacy_digest_shape():
+    legacy_request = AgentPlanRequest(
+        goal="Keep existing workflow request identity stable",
+        tools=[{"name": "text.echo", "payload": {"text": "legacy"}}],
+    )
+
+    assert legacy_request.canonical_payload() == {
+        "goal": "Keep existing workflow request identity stable",
+        "requires_text": True,
+        "requires_vision": False,
+        "requires_audio": False,
+        "requires_tool_calling": False,
+        "prefer_local": False,
+        "tools": [
+            {
+                "name": "text.echo",
+                "payload": {"text": "legacy"},
+            }
+        ],
+    }
+
+
+def test_agent_plan_request_canonical_payload_omits_empty_cgi_capabilities():
+    request = AgentPlanRequest(
+        goal="Preserve pre-CGI workflow request identity",
+        required_capabilities=[],
+    )
+
+    assert "required_capabilities" not in request.canonical_payload()
+
+
+def test_agent_plan_request_canonical_payload_includes_nonempty_cgi_capabilities():
+    request = AgentPlanRequest(
+        goal="Include declared CGI requirements in the workflow identity",
+        required_capabilities=["text.echo"],
+    )
+
+    assert request.canonical_payload()["required_capabilities"] == ["text.echo"]
+
+
+def test_agent_plan_request_canonical_payload_includes_explicit_dependencies():
+    request = AgentPlanRequest(
+        goal="Include explicit dependencies in the request identity",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "depends_on": [],
+            },
+        ],
+    )
+
+    assert request.canonical_payload()["tools"][0]["depends_on"] == ["step-3"]
+    assert request.canonical_payload()["tools"][1]["depends_on"] == []
+
+
+def test_agent_execute_follows_request_declared_dag_dependencies():
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute explicit DAG dependencies in topological order",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+    events = []
+
+    response = core.execute(
+        request,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second-request-tool",
+        "first-request-tool",
+    ]
+    assert events == [
+        (2, "running", None),
+        (2, "succeeded", None),
+        (3, "running", None),
+        (3, "succeeded", None),
+    ]
+
+
+def test_agent_execute_resumes_explicit_dag_by_durable_execution_position():
+    events = []
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Resume the remaining step in an explicit DAG",
+            tools=[
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "first-request-tool"},
+                    "depends_on": ["step-3"],
+                },
+                {
+                    "name": "text.echo",
+                    "payload": {"text": "second-request-tool"},
+                    "depends_on": [],
+                },
+            ],
+        ),
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "first-request-tool"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_core_accepts_large_registry_when_no_capabilities_are_required():
+    registry = ToolRegistry()
+    for index in range(201):
+        registry.register(
+            ToolDefinition(
+                name=f"custom.catalog_probe_{index}",
+                description="Registered tool for a large-catalog regression test.",
+                input_model=EmptyInput,
+                output_model=EmptyOutput,
+                handler=lambda _payload: {"accepted": True},
+                risk_class=RiskClass.LOW,
+            )
+        )
+
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry)
+
+    plan = core.plan(AgentPlanRequest(goal="Plan without capability requirements"))
+
+    assert plan["execution_ready"] is True
+    assert plan["capability_gaps"]["required"] == []
+    assert plan["capability_gaps"]["available"] == []
+    assert plan["capability_gaps"]["missing"] == []
+    assert plan["capability_gaps"]["complete"] is True

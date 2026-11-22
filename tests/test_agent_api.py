@@ -213,6 +213,37 @@ def test_workflow_request_digest_distinguishes_same_length_goals():
 
 
 
+def test_workflow_request_digest_preserves_the_pre_dag_legacy_payload_shape():
+    import hashlib
+    import json
+
+    from mrhub.agents.core import AgentPlanRequest
+    from mrhub.api.routes.agent import _workflow_digest
+
+    request = AgentPlanRequest(
+        goal="Run a legacy workflow",
+        tools=[{"name": "text.echo", "payload": {"text": "compatibility"}}],
+    )
+    legacy_payload = {
+        "goal": "Run a legacy workflow",
+        "requires_text": True,
+        "requires_vision": False,
+        "requires_audio": False,
+        "requires_tool_calling": False,
+        "prefer_local": False,
+        "tools": [{"name": "text.echo", "payload": {"text": "compatibility"}}],
+    }
+    encoded = json.dumps(
+        legacy_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+
+    assert request.canonical_payload() == legacy_payload
+    assert _workflow_digest(request) == hashlib.sha256(encoded).hexdigest()
+
+
 def test_workflow_resume_check_is_owner_scoped_and_never_executes():
     client = authenticated_client()
     created = client.post(
@@ -601,3 +632,16 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert denied_after_revoke.status_code == 200
     assert denied_after_revoke.json()["blocked"] is True
     assert calls == ["read"]
+
+
+def test_agent_plan_rejects_blank_and_oversized_capability_names():
+    client = authenticated_client()
+    for capability in ("   ", "x" * 81):
+        response = client.post(
+            "/agent/plan",
+            json={
+                "goal": "Reject malformed required capability names",
+                "required_capabilities": [capability],
+            },
+        )
+        assert response.status_code == 422

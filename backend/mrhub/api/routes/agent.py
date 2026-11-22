@@ -1,7 +1,5 @@
 """Authenticated agent planning API."""
 
-import hashlib
-import json
 import sqlite3
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
@@ -215,14 +213,8 @@ def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depen
 
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
-    """Fingerprint the complete in-memory request without persisting its contents."""
-    encoded = json.dumps(
-        request.model_dump(mode="json"),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    """Use the same canonical legacy-compatible digest at API and worker boundaries."""
+    return AgentWorkflowRunner.request_digest(request)
 
 
 @router.get("/workflows")
@@ -270,7 +262,7 @@ def execute_agent_workflow(
         workflow_id = uuid4()
         try:
             encrypted = encrypt_payload(
-                request.model_dump(mode="json"),
+                request.canonical_payload(),
                 workflow_id=str(workflow_id),
                 task_id=str(task.task_id),
                 owner_user_id=current_user.user_id,
@@ -310,22 +302,11 @@ def execute_agent_workflow(
                 )
             idempotency_binding = {"scope": scope, "key": idempotency_key}
 
-        step_specs = []
-        raw_steps = plan.get("steps", [])
-        if not isinstance(raw_steps, list) or not raw_steps:
-            raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
-        for step in raw_steps:
-            if not isinstance(step, dict):
-                continue
-            number = int(step["step"])
-            if number == 1:
-                kind, name = "provider_selection", "provider_selection"
-            else:
-                tool = request.tools[number - 2]
-                definition = core.tool_registry.get(tool.name)
-                kind = "external_tool" if definition.external_side_effect else "safe_tool"
-                name = tool.name
-            step_specs.append({"step_number": number, "kind": kind, "name": name})
+        # The API and worker must persist the exact same topological execution
+        # positions. Reuse the runner's shared builder rather than request order.
+        step_specs, _tools_by_execution_step = (
+            AgentWorkflowRunner.build_durable_step_metadata(core, request, plan)
+        )
 
         try:
             recovery.create_run(
