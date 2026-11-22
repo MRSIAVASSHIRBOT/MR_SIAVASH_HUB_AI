@@ -69,33 +69,6 @@ def test_topological_plan_order_is_stable_and_honors_dependencies():
     assert [step.step_id for step in ordered] == ["review", "publish"]
 
 
-def test_execution_digest_is_independent_of_client_binding_order():
-    bindings = [
-        {
-            "step_id": "publish",
-            "tool_name": "text.echo",
-            "payload": {"text": "publish"},
-            "tool_contract_digest": "a" * 64,
-        },
-        {
-            "step_id": "review",
-            "tool_name": "text.echo",
-            "payload": {"text": "review"},
-            "tool_contract_digest": "a" * 64,
-        },
-    ]
-
-    assert execution_request_digest(
-        plan_id=str(uuid4()),
-        plan_digest="b" * 64,
-        bindings=bindings,
-    ) == execution_request_digest(
-        plan_id=str(uuid4()),
-        plan_digest="b" * 64,
-        bindings=list(reversed(bindings)),
-    ) if False else True
-
-
 def test_execution_digest_ordering_uses_identical_plan_identity():
     plan_id = str(uuid4())
     bindings = [
