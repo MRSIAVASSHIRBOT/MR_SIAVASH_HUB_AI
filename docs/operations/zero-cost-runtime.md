@@ -28,7 +28,7 @@ The existing paid Render blueprint is **not** a zero-cost deployment target. Do 
 1. Local SQLite remains authoritative for tasks, workflow state, credentials references, audit history, and durable user data.
 2. Cloudflare edge storage is a transport buffer, not the canonical database. Do not mirror the full Hub database to D1.
 3. Do not bind, query, migrate, or otherwise modify the existing `gshop-db` database or Gshop routes/Workers.
-4. The existing `mr-siavash-el-ir-bot-state` D1 database is currently empty according to the account inventory, but it must not be used until its bindings, ownership, schema, quotas, and recovery path are verified.
+4. The `mr-siavash-el-ir-bot-state` D1 binding was verified against the live Worker. A read-only schema query confirmed four application tables (`bridge_nonces`, `telegram_jobs`, `telegram_processed_updates`, and `telegram_sessions`) plus four named indexes. Row counts and message contents were not queried. Keep this database limited to the edge transport queue; it is not the Hub's canonical store. Do not alter its schema or data until ownership, retention, quota, and recovery procedures are reviewed.
 5. A local PC being offline means local tasks and model inference are unavailable. The public website can remain available; inbound bot updates may only be buffered within an explicitly tested edge queue and its retention limits.
 6. No free-tier service is assumed to provide an always-on Python process, durable local filesystem, guaranteed uptime, or unlimited execution.
 7. Video/image generation and editing remain local/manual or use already available non-billed capabilities. No cloud render worker is included in the zero-cost baseline.
