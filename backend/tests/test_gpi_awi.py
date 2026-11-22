@@ -4,12 +4,18 @@ import json
 
 import pytest
 
-from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
+from mrhub.agents.awi_planner import (
+    ExecutionPlan,
+    PlanStep,
+    PlanningError,
+    generate_execution_plan,
+)
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
     generate_work_order,
 )
+from mrhub.agents.work_order import WorkOrder
 from mrhub.domain.tasks import RiskClass
 from mrhub.providers.base import ProviderHealth, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
@@ -151,7 +157,6 @@ def test_awi_plan_rejects_missing_acceptance_criterion():
         generate_execution_plan(work_order, router)
 
 
-
 def test_gpi_rejects_whitespace_only_generated_intent_and_list_items():
     router, _ = router_for(json.dumps(valid_work_order_payload(intent="   ")))
     with pytest.raises(WorkOrderGenerationError):
@@ -193,3 +198,86 @@ def test_awi_plan_rejects_whitespace_only_text_and_list_items():
             "rationale": "A bounded plan",
             "steps": [invalid_step],
         })
+
+
+@pytest.mark.parametrize(
+    ("field", "limit"),
+    [
+        ("assumptions", 300),
+        ("constraints", 300),
+        ("dependencies", 200),
+        ("required_capabilities", 80),
+        ("acceptance_criteria", 300),
+        ("verification_steps", 300),
+    ],
+)
+def test_work_order_rejects_oversized_list_items(field, limit):
+    payload = {
+        "goal": "Build a validated plan",
+        "risk_class": RiskClass.LOW,
+        **valid_work_order_payload(),
+    }
+    payload[field] = ["x" * (limit + 1)]
+
+    with pytest.raises(ValueError):
+        WorkOrder.model_validate(payload)
+
+
+def test_work_order_accepts_list_item_size_boundaries():
+    limits = {
+        "assumptions": 300,
+        "constraints": 300,
+        "dependencies": 200,
+        "required_capabilities": 80,
+        "acceptance_criteria": 300,
+        "verification_steps": 300,
+    }
+    payload = {
+        "goal": "Build a validated plan",
+        "risk_class": RiskClass.LOW,
+        **valid_work_order_payload(),
+    }
+    for field, limit in limits.items():
+        payload[field] = ["x" * limit]
+
+    work_order = WorkOrder.model_validate(payload)
+    assert all(len(getattr(work_order, field)[0]) == limit for field, limit in limits.items())
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("depends_on", "a" + ("b" * 40)),
+        ("required_capabilities", "c" * 81),
+        ("verifies_criteria", "x" * 301),
+    ],
+)
+def test_plan_step_rejects_oversized_list_items(field, value):
+    step = {
+        "step_id": "validate",
+        "description": "Validate",
+        "depends_on": [],
+        "required_capabilities": ["tool.alpha"],
+        "verifies_criteria": ["The plan is validated"],
+        "verification": "Check the result",
+    }
+    step[field] = [value]
+
+    with pytest.raises(ValueError):
+        PlanStep.model_validate(step)
+
+
+def test_plan_step_accepts_list_item_size_boundaries():
+    step = PlanStep.model_validate({
+        "step_id": "a" * 40,
+        "description": "Validate",
+        "depends_on": ["b" * 40],
+        "required_capabilities": ["c" * 80],
+        "verifies_criteria": ["x" * 300],
+        "verification": "Check the result",
+    })
+
+    assert len(step.step_id) == 40
+    assert len(step.depends_on[0]) == 40
+    assert len(step.required_capabilities[0]) == 80
+    assert len(step.verifies_criteria[0]) == 300
