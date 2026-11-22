@@ -7,6 +7,8 @@ capabilities; descriptions are not treated as executable capability identifiers.
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from mrhub.tools.registry import ToolRegistry
+
 MAX_REQUIRED_CAPABILITIES = 50
 MAX_TOOL_CATALOG_ENTRIES = 200
 MAX_NAME_LENGTH = 80
@@ -49,6 +51,15 @@ def evaluate_capability_gaps(
     Exact, case-insensitive name matching is intentionally conservative. Tool
     descriptions are informational and cannot satisfy a requirement.
     """
+    if isinstance(required_capabilities, (str, bytes, bytearray, Mapping)):
+        raise TypeError(
+            "required_capabilities must be an iterable of names, not a scalar or mapping"
+        )
+    if isinstance(tool_catalog, (str, bytes, bytearray, Mapping)):
+        raise TypeError(
+            "tool_catalog must be an iterable of mappings, not a scalar or mapping"
+        )
+
     required: list[str] = []
     required_keys: set[str] = set()
     for required_count, raw in enumerate(required_capabilities, start=1):
@@ -59,7 +70,6 @@ def evaluate_capability_gaps(
             required.append(raw.strip())
             required_keys.add(key)
 
-    available: list[str] = []
     available_keys: set[str] = set()
     for catalog_count, entry in enumerate(tool_catalog, start=1):
         if catalog_count > MAX_TOOL_CATALOG_ENTRIES:
@@ -67,9 +77,7 @@ def evaluate_capability_gaps(
         if not isinstance(entry, Mapping):
             raise TypeError("Tool catalog entries must be mappings")
         key = _normalize_name(entry.get("name"), "Registered tool name")
-        if key not in available_keys:
-            available.append(str(entry["name"]).strip())
-            available_keys.add(key)
+        available_keys.add(key)
 
     matched = required_keys & available_keys
     # Preserve the user's requirement order in all report sections.
@@ -86,3 +94,15 @@ def evaluate_capability_gaps(
         available=available_required,
         missing=missing,
     )
+
+
+def evaluate_registered_tool_gaps(
+    required_capabilities: Iterable[str],
+    tool_registry: ToolRegistry,
+) -> CapabilityGapReport:
+    """Evaluate requirements against the live, server-owned ToolRegistry catalog.
+
+    Only registered tool names are considered. Descriptions and schemas remain
+    metadata, and this function never invokes a handler or changes permissions.
+    """
+    return evaluate_capability_gaps(required_capabilities, tool_registry.catalog())
