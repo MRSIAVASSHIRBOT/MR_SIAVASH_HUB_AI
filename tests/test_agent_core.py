@@ -457,13 +457,13 @@ def test_agent_core_fails_closed_when_owner_grant_lookup_fails():
     "ordered_steps",
     [
         [
-            {"step_id": "step-1"},
-            {"step_id": "step-2"},
-            {"step_id": "step-2"},
+            {"step_id": "step-1", "description": "Select provider", "depends_on": []},
+            {"step_id": "step-2", "description": "First tool", "depends_on": ["step-1"]},
+            {"step_id": "step-2", "description": "Duplicate tool", "depends_on": ["step-1"]},
         ],
         [
-            {"step_id": "step-1"},
-            {"step_id": "step-2"},
+            {"step_id": "step-1", "description": "Select provider", "depends_on": []},
+            {"step_id": "step-2", "description": "First tool", "depends_on": ["step-1"]},
         ],
     ],
     ids=["duplicate-tool-step", "missing-tool-step"],
