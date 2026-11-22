@@ -4,8 +4,8 @@ This evaluator reports gaps only. It does not discover, install, grant, or execu
 capabilities; descriptions are not treated as executable capability identifiers.
 """
 
-from dataclasses import dataclass
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 
 MAX_REQUIRED_CAPABILITIES = 50
