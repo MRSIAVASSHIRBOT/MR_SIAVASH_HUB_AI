@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.work_order import WorkOrder
@@ -946,3 +946,31 @@ def test_execute_persisted_plan_queues_only_validated_bindings(monkeypatch):
     assert decoded["plan_binding"]["step_bindings"][0]["payload"] == {
         "text": "approved typed input"
     }
+
+
+
+def test_plan_execution_request_rejects_oversized_payload_and_client_approval_flag():
+    with pytest.raises(ValidationError, match="64 KiB"):
+        agent_routes.PersistedPlanExecutionRequest(
+            step_bindings=[
+                {
+                    "step_id": "review",
+                    "tool_name": "text.echo",
+                    "payload": {"text": "x" * 66_000},
+                }
+            ]
+        )
+
+    with pytest.raises(ValidationError):
+        agent_routes.PersistedPlanExecutionRequest.model_validate(
+            {
+                "step_bindings": [
+                    {
+                        "step_id": "review",
+                        "tool_name": "text.echo",
+                        "payload": {"text": "safe"},
+                    }
+                ],
+                "user_approved": True,
+            }
+        )
