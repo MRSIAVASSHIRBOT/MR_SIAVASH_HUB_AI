@@ -94,7 +94,7 @@ Authorization: Bearer <session-token>
 
 The read endpoint verifies the owner binding, envelope authentication, strict WorkOrder/ExecutionPlan schemas, and canonical digest before returning the decrypted content. It recalculates the capability-presence report against the current owner tool catalog. It does not authorize or execute any tool.
 
-Expired records are marked expired and their ciphertext fields are erased when accessed. New plan creation also runs a bounded expiry sweep (up to 100 due records); this is opportunistic cleanup, not a background scheduler. Consumed or revoked states are reserved for later lifecycle integration; no plan-to-execution endpoint is exposed by this change.
+Expired records are marked expired and their ciphertext fields are erased when accessed. New plan creation also runs a bounded expiry sweep (up to 100 due records); this is opportunistic cleanup, not a background scheduler. Consumed records are linked to their one queued workflow and are erased after a terminal outcome; revoked remains a reserved state.
 
 | Status | Meaning |
 | --- | --- |
