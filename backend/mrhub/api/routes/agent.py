@@ -670,6 +670,7 @@ def execute_persisted_goal_work_order_plan(
                 "step_id": step.step_id,
                 "tool_name": required_tool_name,
                 "tool_contract_digest": tool_contract_digest(definition),
+                "payload": binding.payload,
             }
         )
 
