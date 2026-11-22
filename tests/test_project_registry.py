@@ -236,3 +236,13 @@ def test_project_overall_status_is_healthy_only_when_all_observed_components_are
 
     assert overall == "healthy"
     assert reason == "all_observed_components_healthy"
+
+
+
+def test_agent_context_keeps_companion_project_as_untrusted_dependency_metadata():
+    context = registry.get_project_context("mr-siavash-el-agent")
+
+    assert context is not None
+    assert context["project"]["repository"] == "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT"
+    assert context["trust_classification"] == "server_configured_metadata_not_live_health"
+    assert context["content_is_untrusted_data"] is True
