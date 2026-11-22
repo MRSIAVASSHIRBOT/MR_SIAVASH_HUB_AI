@@ -184,70 +184,41 @@ class AgentCore:
         request: AgentPlanRequest,
         plan: dict[str, object],
     ) -> list[tuple[int, int, AgentToolRequest]]:
-        """Return tools in validated topological order with durable runtime positions.
+        """Return tools in the request's exact validated DAG order.
 
-        The first tuple field is the persisted execution-order position (provider
-        selection is step 1). The second field is the original request step number.
-        Keeping both values prevents recovery checkpoints from confusing request
-        order with DAG execution order.
+        Runtime positions are durable checkpoint positions; request positions
+        remain stable step identities. The planner output is checked against the
+        graph derived from the original request so a valid but altered DAG cannot
+        remove or rewrite a declared dependency.
         """
         dependency_plan = plan.get("dependency_plan")
         if not isinstance(dependency_plan, dict):
             raise RuntimeError("Agent plan is missing its validated dependency graph")
-        ordered_steps = dependency_plan.get("ordered_steps")
-        if not isinstance(ordered_steps, list):
-            raise RuntimeError("Agent dependency graph has no ordered steps")
-
-        expected_step_ids = {
-            "step-1",
-            *(f"step-{number}" for number in range(2, len(request.tools) + 2)),
-        }
-        ordered_step_ids: list[str] = []
-        graph_steps: list[WorkflowStep] = []
-        for workflow_step in ordered_steps:
-            if not isinstance(workflow_step, dict):
-                raise RuntimeError("Agent dependency graph contains an invalid step")
-            step_id = workflow_step.get("step_id")
-            description = workflow_step.get("description")
-            dependencies = workflow_step.get("depends_on")
-            if (
-                not isinstance(step_id, str)
-                or not isinstance(description, str)
-                or not isinstance(dependencies, list)
-                or any(not isinstance(item, str) for item in dependencies)
-            ):
-                raise RuntimeError("Agent dependency graph contains invalid step metadata")
-            ordered_step_ids.append(step_id)
-            graph_steps.append(WorkflowStep(step_id, description, tuple(dependencies)))
-
-        if (
-            not ordered_step_ids
-            or ordered_step_ids[0] != "step-1"
-            or len(ordered_step_ids) != len(expected_step_ids)
-            or len(set(ordered_step_ids)) != len(ordered_step_ids)
-            or set(ordered_step_ids) != expected_step_ids
-        ):
-            raise RuntimeError(
-                "Agent dependency graph must contain every expected step exactly once"
-            )
 
         try:
-            validated_ids = [
-                item["step_id"]
-                for item in build_workflow_plan(graph_steps).as_dict()["ordered_steps"]
-            ]
+            expected_plan = build_workflow_plan(request.workflow_steps()).as_dict()
         except (TypeError, ValueError) as exc:
-            raise RuntimeError("Agent dependency graph is invalid") from exc
-        if validated_ids != ordered_step_ids:
+            raise RuntimeError("Agent request dependency graph is invalid") from exc
+
+        if dependency_plan != expected_plan:
             raise RuntimeError(
-                "Agent dependency graph is not in deterministic topological order"
+                "Agent dependency graph does not match request dependency declarations"
             )
 
+        ordered_steps = expected_plan["ordered_steps"]
+        if not isinstance(ordered_steps, list) or not ordered_steps:
+            raise RuntimeError("Agent dependency graph has no ordered steps")
+
         ordered_tools: list[tuple[int, int, AgentToolRequest]] = []
-        for runtime_step_number, step_id in enumerate(ordered_step_ids[1:], start=2):
+        for runtime_step_number, workflow_step in enumerate(ordered_steps[1:], start=2):
+            step_id = workflow_step["step_id"]
             request_step_number = int(step_id.removeprefix("step-"))
             ordered_tools.append(
-                (runtime_step_number, request_step_number, request.tools[request_step_number - 2])
+                (
+                    runtime_step_number,
+                    request_step_number,
+                    request.tools[request_step_number - 2],
+                )
             )
         return ordered_tools
 
