@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
@@ -86,7 +87,18 @@ class AgentCore:
         if start_step < 2:
             raise ValueError("Tool execution start step must be at least 2")
 
-        for step_number, requested_tool in enumerate(request.tools, start=2):
+        dependency_plan = plan["dependency_plan"]
+        ordered_step_ids = [
+            item["step_id"] for item in dependency_plan["ordered_steps"]
+        ]
+        tool_step_numbers = [
+            int(step_id.removeprefix("step-"))
+            for step_id in ordered_step_ids
+            if step_id != "step-1"
+        ]
+
+        for step_number in tool_step_numbers:
+            requested_tool = request.tools[step_number - 2]
             if step_number < start_step:
                 continue
             if should_cancel is not None and should_cancel():
@@ -253,12 +265,25 @@ class AgentCore:
             for step in steps
             if step["kind"] == "tool"
         )
+        workflow_steps = [
+            WorkflowStep("step-1", "Select the model provider")
+        ]
+        for index, requested_tool in enumerate(request.tools, start=2):
+            workflow_steps.append(
+                WorkflowStep(
+                    f"step-{index}",
+                    f"Execute registered tool: {requested_tool.name}",
+                    (f"step-{index - 1}",),
+                )
+            )
+        dependency_plan = build_workflow_plan(workflow_steps).as_dict()
         return {
             "goal_length": len(request.goal),
             "analysis_mode": "declarative_request",
             "selected_provider": selection.model_dump(),
             "steps": steps,
             "step_count": len(steps),
+            "dependency_plan": dependency_plan,
             "execution_ready": executable,
             "decision_mode": "plan_only",
             "model_inference_started": False,
