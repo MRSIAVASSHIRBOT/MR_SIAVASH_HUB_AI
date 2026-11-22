@@ -1,5 +1,10 @@
 import pytest
 
+from uuid import uuid4
+
+from mrhub.agents.core import AgentPlanRequest
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
+
 from mrhub.agents.evaluation import (
     CriterionStatus,
     EvaluationCriterion,
@@ -105,3 +110,38 @@ def test_criteria_limit_stops_consuming_large_iterables():
         evaluate_criteria(criteria_stream())
 
     assert consumed == 101
+
+
+def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
+    class StoredFailure:
+        def get_run(self, workflow_id, *, owner_user_id):
+            return {
+                "steps": [
+                    {
+                        "step_number": 2,
+                        "status": "failed",
+                        "error_code": "tool_execution_failed",
+                        "attempt_count": 2,
+                        "started_at": "2026-11-22T10:00:00+00:00",
+                        "finished_at": "2026-11-22T10:00:01+00:00",
+                    }
+                ]
+            }
+
+    runner = object.__new__(AgentWorkflowRunner)
+    runner.recovery = StoredFailure()
+    request = AgentPlanRequest(
+        goal="Evaluate a persisted failed tool step",
+        tools=[{"name": "text.echo", "payload": {"text": "example"}}],
+    )
+
+    first = runner._evaluate_workflow_tools(uuid4(), request, "owner")
+    second = runner._evaluate_workflow_tools(uuid4(), request, "owner")
+
+    assert first is not None and second is not None
+    first_digest = first["criteria"][0]["evidence_digest"]
+    second_digest = second["criteria"][0]["evidence_digest"]
+    assert first["decision"] == "reject"
+    assert len(first_digest) == 64
+    assert first_digest != second_digest
+
