@@ -3,6 +3,7 @@
 The planner validates a bounded DAG and returns a stable topological order.
 It deliberately does not execute steps, grant tools, or make authorization decisions.
 """
+
 from __future__ import annotations
 
 from collections import deque
