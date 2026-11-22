@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -43,6 +44,53 @@ class VideoGenerationReconciliationCooldown(ValueError):
 
 class VideoGenerationCancellationConflict(ValueError):
     """Raised when a generation is no longer safely pending for cancellation."""
+
+
+def _validate_output_against_request(
+    request: dict[str, object],
+    *,
+    duration_seconds: float,
+    width: int,
+    height: int,
+) -> None:
+    """Ensure a provider result satisfies the owner's original output constraints."""
+    expected_ratios = {
+        "9:16": 9 / 16,
+        "16:9": 16 / 9,
+        "1:1": 1.0,
+        "4:5": 4 / 5,
+    }
+    requested_aspect_ratio = request.get("aspect_ratio")
+    expected_ratio = (
+        expected_ratios.get(requested_aspect_ratio)
+        if isinstance(requested_aspect_ratio, str)
+        else None
+    )
+    if (
+        not math.isfinite(duration_seconds)
+        or expected_ratio is None
+        or width <= 0
+        or height <= 0
+        or abs((width / height) - expected_ratio) > expected_ratio * 0.01
+    ):
+        raise ValueError("Generated output does not match the requested aspect ratio")
+
+    requested_duration = request.get("duration_seconds")
+    if (
+        type(requested_duration) is not int
+        or not 3 <= requested_duration <= 60
+        or abs(duration_seconds - requested_duration) > max(0.25, requested_duration * 0.05)
+    ):
+        raise ValueError("Generated output does not match the requested duration")
+
+    resolution = request.get("resolution")
+    minimum_short_edge = (
+        {"720p": 720, "1080p": 1080}.get(resolution)
+        if isinstance(resolution, str)
+        else None
+    )
+    if minimum_short_edge is None or min(width, height) < minimum_short_edge:
+        raise ValueError("Generated output does not meet the requested resolution")
 
 
 class VideoGenerationJobRepository:
@@ -134,12 +182,14 @@ class VideoGenerationJobRepository:
                     generation_id, owner_user_id, source_analysis_id, provider, model,
                     status, provider_job_id, progress_percent, output_asset_id,
                     output_bytes, output_duration_seconds, output_width, output_height,
-                    error_code, created_at, updated_at
+                    error_code, requested_aspect_ratio, requested_duration_seconds,
+                    requested_resolution, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, 'prepared', NULL, NULL, NULL,
-                          NULL, NULL, NULL, NULL, NULL, ?, ?)""",
+                          NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?)""",
                 (
                     str(generation_id), owner_user_id, str(source_analysis_id),
-                    provider, model, now, now,
+                    provider, model, request_data["aspect_ratio"],
+                    request_data["duration_seconds"], request_data["resolution"], now, now,
                 ),
             )
             connection.execute(
@@ -953,6 +1003,31 @@ class VideoGenerationJobRepository:
         if size <= 0 or size > MAX_OUTPUT_BYTES or size != result.output_bytes:
             raise ValueError("Generated output size does not match bounded provider metadata")
 
+        with self.tasks._connection() as connection:
+            request_row = connection.execute(
+                """SELECT status, requested_aspect_ratio,
+                          requested_duration_seconds, requested_resolution
+                   FROM video_generation_jobs
+                   WHERE generation_id = ? AND owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+        if request_row is None:
+            return None
+        requested_output = None
+        if request_row["status"] != "succeeded":
+            contract_fields = (
+                "requested_aspect_ratio",
+                "requested_duration_seconds",
+                "requested_resolution",
+            )
+            if any(request_row[field] is None for field in contract_fields):
+                raise ValueError("Generation output contract is unavailable for validation")
+            requested_output = {
+                "aspect_ratio": request_row["requested_aspect_ratio"],
+                "duration_seconds": request_row["requested_duration_seconds"],
+                "resolution": request_row["requested_resolution"],
+            }
+
         metadata = probe_video(output_path)
         if (
             metadata.metadata_status != "available"
@@ -965,13 +1040,22 @@ class VideoGenerationJobRepository:
             raise ValueError("Generated output failed independent MP4 media validation")
         duration = float(metadata.duration_seconds)
         if (
-            duration <= 0
+            not math.isfinite(duration)
+            or duration <= 0
             or duration > 60
             or metadata.width != result.width
             or metadata.height != result.height
             or abs(duration - float(result.duration_seconds)) > max(0.25, duration * 0.05)
         ):
             raise ValueError("Generated output metadata does not match provider result")
+
+        if requested_output is not None:
+            _validate_output_against_request(
+                requested_output,
+                duration_seconds=duration,
+                width=metadata.width,
+                height=metadata.height,
+            )
 
         digest = hashlib.sha256()
         with output_path.open("rb") as file:
