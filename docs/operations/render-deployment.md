@@ -5,7 +5,7 @@ This Blueprint defines two separate paid services in Frankfurt:
 Both services explicitly set `autoDeployTrigger: off`. Git pushes therefore do not deploy either service automatically; use a reviewed manual deploy only after the Blueprint, dependency pin, CI, and service configuration have been checked.
 
 1. **Hub web service** — runs the Hub API and its SQLite-backed worker. These two processes share the Hub service's persistent disk because the current database is SQLite.
-2. **EL_AI background worker** — runs the Cloudflare Telegram bridge consumer in a separate Render service, with its own environment, process identity, and persistent disk. It has no Hub database mount and receives neither Hub master secret nor the one-time owner-setup token.
+2. **EL_AI background worker** — checks out the `MR_SIAVASH_EL_AI` repository and runs the Cloudflare Telegram bridge consumer in a separate Render service, with its own environment, process identity, and persistent disk. It does not check out the Hub source repository, has no Hub database mount, and receives neither Hub master secret nor the one-time owner-setup token.
 
 Render background workers can send requests over the private network but do not expose a public URL. Persistent disks are private to the service instance that owns them. See [Render private networking](https://render.com/docs/private-network) and [persistent disks](https://render.com/docs/disks).
 
