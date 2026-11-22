@@ -765,7 +765,6 @@
           links.append(repositoryLink);
         }
         const approvedServiceUrls = new Set([
-          "https://gshop11.ir/",
           "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/",
         ]);
         if (approvedServiceUrls.has(project.service_url)) {
