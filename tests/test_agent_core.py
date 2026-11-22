@@ -578,3 +578,22 @@ def test_agent_core_rejects_incomplete_or_duplicate_workflow_graph_before_invoca
 
     assert calls == []
 
+
+def test_agent_core_resumes_from_the_requested_workflow_step():
+    events = []
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Resume from the second tool step",
+            tools=[
+                {"name": "text.echo", "payload": {"text": "already completed"}},
+                {"name": "text.echo", "payload": {"text": "resume here"}},
+            ],
+        ),
+        start_step=3,
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == ["resume here"]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
