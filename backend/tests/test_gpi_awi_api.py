@@ -120,7 +120,7 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
         SimpleNamespace(user_id="owner-1"),
     )
 
-    assert captured == {"include_stub": False, "max_timeout_seconds": 60}
+    assert captured == {"provider_mode": "local", "include_stub": False, "max_timeout_seconds": 60}
     assert result["capability_assessment"]["available"] == ["tool.alpha"]
     assert result["capability_assessment"]["missing"] == ["tool.missing"]
     assert result["capability_assessment"]["authorization_checked"] is False
@@ -197,14 +197,15 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monk
 
 
 
-def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
+def test_goal_plan_endpoint_uses_local_only_provider_mode_without_remote_quota(monkeypatch):
     router = build_router(
         work_order_output(),
         plan_output(),
-        provider="moonshot",
-        local=False,
+        provider="ollama",
+        local=True,
     )
-    limited_owners = []
+    captured = {}
+    audit_events = []
 
     class FakeToolRegistry:
         def catalog(self):
@@ -222,27 +223,35 @@ def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
             self.repository = repository
 
         def record(self, **kwargs):
-            return None
+            audit_events.append(kwargs)
 
-    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    def fake_router(**kwargs):
+        captured.update(kwargs)
+        return router
+
+    monkeypatch.setattr(agent_routes, "build_model_router", fake_router)
     monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: FakeToolRegistry())
-    monkeypatch.setattr(
-        agent_routes,
-        "_enforce_kimi_request_limit",
-        lambda owner_id: limited_owners.append(owner_id),
-    )
+    monkeypatch.setattr(agent_routes, "_enforce_kimi_request_limit", lambda *_args: pytest.fail(
+        "GPI/AWI planning must not consume paid-provider quota"
+    ))
     monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
 
-    agent_routes.create_goal_work_order_plan(
+    result = agent_routes.create_goal_work_order_plan(
         agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
-        SimpleNamespace(user_id="owner-remote"),
+        SimpleNamespace(user_id="owner-local"),
     )
 
-    # Work-order generation and AWI planning each issue one remote model request.
-    assert limited_owners == ["owner-remote", "owner-remote"]
-
+    assert captured == {
+        "provider_mode": "local",
+        "include_stub": False,
+        "max_timeout_seconds": 60,
+    }
+    assert result["planning_only"] is True
+    assert result["execution_started"] is False
+    assert audit_events[-1]["metadata"]["provider_mode"] == "local"
+    assert audit_events[-1]["metadata"]["selected_provider"] == "ollama"
 
 
 def test_goal_plan_endpoint_fails_closed_when_audit_storage_is_unavailable(monkeypatch):
