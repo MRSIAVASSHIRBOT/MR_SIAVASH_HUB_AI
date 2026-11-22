@@ -222,3 +222,50 @@ def test_provider_output_with_non_mp4_container_is_rejected_and_removed(
 
     assert jobs.get("owner-a", generation_id)["status"] == "submitting"
     assert list(media.storage_root.iterdir()) == []
+
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "duration", "expected_error"),
+    [
+        (1280, 720, 10, "aspect ratio"),
+        (720, 1280, 20, "requested duration"),
+        (360, 640, 10, "requested resolution"),
+    ],
+)
+def test_provider_output_must_match_original_generation_request(
+    tmp_path, monkeypatch, width, height, duration, expected_error
+):
+    jobs, media, generation_id = _setup(tmp_path, monkeypatch)
+    content = b"provider-output-fixture"
+    from mrhub.video_intelligence import service
+
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=duration,
+            width=width,
+            height=height,
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
+            metadata_status="available",
+        ),
+    )
+    result = VideoGenerationResult(
+        provider="local",
+        model="renderer-v1",
+        provider_job_id="provider-job-1",
+        status=GenerationStatus.SUCCEEDED,
+        output_bytes=len(content),
+        duration_seconds=duration,
+        width=width,
+        height=height,
+    )
+
+    with pytest.raises(ValueError, match=expected_error):
+        download_and_register_generation_output(
+            _Provider(content), result, jobs, media, "owner-a", generation_id
+        )
+
+    assert jobs.get("owner-a", generation_id)["status"] == "submitting"
+    assert list(media.storage_root.iterdir()) == []
