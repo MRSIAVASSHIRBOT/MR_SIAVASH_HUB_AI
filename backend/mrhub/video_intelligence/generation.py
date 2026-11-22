@@ -54,7 +54,7 @@ class VideoGenerationSubmission(BaseModel):
 class VideoGenerationResult(BaseModel):
     """Provider result metadata; output bytes must be fetched through a bounded adapter."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
