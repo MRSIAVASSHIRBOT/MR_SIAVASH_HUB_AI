@@ -4,7 +4,8 @@ This model validates a proposed work order; it does not authorize tools or actio
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -15,6 +16,20 @@ from mrhub.agents.capability_gaps import (
     evaluate_capability_gaps,
 )
 from mrhub.domain.tasks import RiskClass
+
+MAX_WORK_ORDER_ITEM_LENGTH = 300
+MAX_WORK_ORDER_DEPENDENCY_LENGTH = 200
+
+WorkOrderText = Annotated[
+    str, Field(min_length=1, max_length=MAX_WORK_ORDER_ITEM_LENGTH)
+]
+WorkOrderDependency = Annotated[
+    str, Field(min_length=1, max_length=MAX_WORK_ORDER_DEPENDENCY_LENGTH)
+]
+WorkOrderCapability = Annotated[
+    str, Field(min_length=1, max_length=MAX_REGISTERED_TOOL_NAME_LENGTH)
+]
+
 
 class WorkOrder(BaseModel):
     """A bounded, reviewable task specification produced from a natural-language goal."""
