@@ -1,6 +1,11 @@
 import pytest
+from pydantic import BaseModel
 
-from mrhub.agents.capability_gaps import evaluate_capability_gaps
+from mrhub.agents.capability_gaps import (
+    evaluate_capability_gaps,
+    evaluate_registered_tool_gaps,
+)
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 def test_capability_gaps_uses_exact_registered_names():
@@ -62,19 +67,55 @@ def test_tool_catalog_size_is_bounded():
         evaluate_capability_gaps(["tool.read"], catalog)
 
 
-@pytest.mark.parametrize(
-    "invalid_required",
-    ["tool.read", b"tool.read", bytearray(b"tool.read"), {"name": "tool.read"}],
-)
-def test_capability_gaps_rejects_scalar_required_input(invalid_required):
-    with pytest.raises(TypeError, match="required_capabilities"):
-        evaluate_capability_gaps(invalid_required, [])
+def test_registered_tool_gaps_reads_live_registry_without_invoking_tools():
+    class EmptyModel(BaseModel):
+        pass
+
+    invoked = []
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="browser.search",
+            description="Search the web",
+            input_model=EmptyModel,
+            output_model=EmptyModel,
+            handler=lambda _payload: invoked.append(True) or {},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="system.clock",
+            description="Read the local clock",
+            input_model=EmptyModel,
+            output_model=EmptyModel,
+            handler=lambda _payload: {},
+        )
+    )
+
+    report = evaluate_registered_tool_gaps(
+        ["browser.search", "filesystem.read", "BROWSER.SEARCH"],
+        registry,
+    )
+
+    assert report.required == ("browser.search", "filesystem.read")
+    assert report.available == ("browser.search",)
+    assert report.missing == ("filesystem.read",)
+    assert invoked == []
 
 
 @pytest.mark.parametrize(
-    "invalid_catalog",
+    "required",
+    ["tool.read", b"tool.read", bytearray(b"tool.read"), {"tool.read": True}],
+)
+def test_required_capabilities_reject_scalar_and_mapping_inputs(required):
+    with pytest.raises(TypeError, match="required_capabilities must be an iterable"):
+        evaluate_capability_gaps(required, [])
+
+
+@pytest.mark.parametrize(
+    "catalog",
     ["tool.read", b"tool.read", bytearray(b"tool.read"), {"name": "tool.read"}],
 )
-def test_capability_gaps_rejects_scalar_catalog_input(invalid_catalog):
-    with pytest.raises(TypeError, match="tool_catalog"):
-        evaluate_capability_gaps(["tool.read"], invalid_catalog)
+def test_tool_catalog_rejects_scalar_and_mapping_inputs(catalog):
+    with pytest.raises(TypeError, match="tool_catalog must be an iterable"):
+        evaluate_capability_gaps(["tool.read"], catalog)
