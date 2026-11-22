@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 from uuid import UUID
 
-from mrhub.jobs.payload_envelope import EncryptedPayload
+from mrhub.jobs.payload_envelope import ENVELOPE_VERSION, EncryptedPayload
 
 MIN_PLAN_TTL_SECONDS = 60
 MAX_PLAN_TTL_SECONDS = 86_400
@@ -98,7 +98,7 @@ class AgentWorkOrderPlanRepository:
         if (
             not isinstance(envelope.version, int)
             or isinstance(envelope.version, bool)
-            or envelope.version < 1
+            or envelope.version != ENVELOPE_VERSION
             or not isinstance(envelope.nonce_b64, str)
             or not 1 <= len(envelope.nonce_b64) <= 64
             or not isinstance(envelope.ciphertext_b64, str)
