@@ -76,6 +76,8 @@ def create_goal_work_order_plan(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Convert a goal into a validated plan without executing tools."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
     model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
     try:
         selection = model_router.select(ModelRequest(requires_text=True))
@@ -100,8 +102,6 @@ def create_goal_work_order_plan(
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=exc.code) from exc
 
-    tasks = TaskRepository(get_settings().database_path)
-    tasks.initialize()
     registry = build_tool_registry(owner_user_id=current_user.user_id)
     try:
         assessment = assess_work_order_capabilities(work_order, registry.catalog())
