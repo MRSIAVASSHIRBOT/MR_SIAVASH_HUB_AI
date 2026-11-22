@@ -1,11 +1,11 @@
 import pytest
 
 from mrhub.agents.evaluation import (
+    evaluate_criteria,
     CriterionStatus,
     EvaluationCriterion,
     EvaluationDecision,
     EvaluationInputError,
-    evaluate_criteria,
 )
 
 
