@@ -29,7 +29,7 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     assert 'value: "true"' in blueprint
     assert blueprint.count("autoDeployTrigger: off") == 2
     assert "autoDeploy: true" not in blueprint
-    assert "@e8cb136c22ba5a343cb5725763b23cadb47f55de" in blueprint
+    assert "@b26bdb60257cdd8149aba28c48ffcb9fbbe9bb23" in blueprint
     assert "mountPath: /var/data" in blueprint
 
     hub, bridge = blueprint.split("  - type: worker", 1)
