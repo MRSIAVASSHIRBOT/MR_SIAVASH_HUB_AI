@@ -4,6 +4,7 @@ from mrhub.agents.work_order import (
     assess_work_order_capabilities,
 )
 from mrhub.domain.tasks import RiskClass
+from mrhub.security.audit import AuditLogger
 
 
 def make_work_order(required_capabilities: list[str]) -> WorkOrder:
@@ -84,3 +85,27 @@ def test_work_order_declared_risk_does_not_change_capability_assessment():
 
     assert report.complete is True
     assert order.risk_class is RiskClass.HIGH
+
+
+
+def test_audit_allowlists_only_bounded_work_order_assessment_metadata():
+    event = AuditLogger(None).build_event(
+        event_type="agent.work_order_assessed",
+        outcome="capability_gaps",
+        metadata={
+            "required_capability_count": 2,
+            "available_capability_count": 1,
+            "missing_capability_count": 1,
+            "declared_risk_class": "moderate",
+            "declared_risk_is_authoritative": False,
+            "goal": "must not be retained",
+        },
+    )
+
+    assert event.metadata == {
+        "required_capability_count": 2,
+        "available_capability_count": 1,
+        "missing_capability_count": 1,
+        "declared_risk_class": "moderate",
+        "declared_risk_is_authoritative": False,
+    }
