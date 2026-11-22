@@ -52,8 +52,8 @@ from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepositor
 from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
-from mrhub.security.policy import PolicyDecision
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.policy import PolicyDecision
 from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
@@ -468,6 +468,8 @@ def execute_persisted_goal_work_order_plan(
         raise HTTPException(status_code=422, detail="Plan execution request is invalid") from exc
 
     scope = f"awi-plan-execution:{current_user.user_id}"
+    if not idempotency_key.strip():
+        raise HTTPException(status_code=422, detail="Idempotency key must not be blank")
     idempotency = IdempotencyRepository(settings.database_path)
     recovery = WorkflowRecoveryRepository(settings.database_path)
 
@@ -553,7 +555,10 @@ def execute_persisted_goal_work_order_plan(
     try:
         ordered_steps = topological_plan_steps(plan)
     except PlanExecutionBindingError as exc:
-        raise HTTPException(status_code=409, detail="Persisted plan dependency graph is invalid") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan dependency graph is invalid",
+        ) from exc
     if not 1 <= len(ordered_steps) <= 5:
         raise HTTPException(
             status_code=422,
@@ -603,7 +608,10 @@ def execute_persisted_goal_work_order_plan(
         try:
             definition = registry.get(required_tool_name)
         except LookupError as exc:
-            raise HTTPException(status_code=409, detail="A required tool is not registered") from exc
+            raise HTTPException(
+                status_code=409,
+                detail="A required tool is not registered",
+            ) from exc
 
         if definition.risk_class is not RiskClass.LOW or definition.external_side_effect:
             raise HTTPException(
@@ -697,10 +705,7 @@ def execute_persisted_goal_work_order_plan(
             "name": "provider_selection",
         }
     ]
-    for step_number, (step, tool) in enumerate(
-        zip(ordered_steps, normalized_tools, strict=True),
-        start=2,
-    ):
+    for step_number, tool in enumerate(normalized_tools, start=2):
         step_specs.append(
             {
                 "step_number": step_number,
