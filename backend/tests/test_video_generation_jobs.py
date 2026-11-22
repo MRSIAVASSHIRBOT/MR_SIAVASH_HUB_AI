@@ -95,7 +95,18 @@ def test_generation_submit_is_encrypted_owner_scoped_and_idempotent(
             "SELECT ciphertext_b64 FROM video_generation_payloads WHERE generation_id = ?",
             (str(generation_id),),
         ).fetchone()
+        output_contract = connection.execute(
+            """SELECT requested_aspect_ratio, requested_duration_seconds,
+                      requested_resolution
+               FROM video_generation_jobs WHERE generation_id = ?""",
+            (str(generation_id),),
+        ).fetchone()
     assert "An original cinematic" not in payload_row["ciphertext_b64"]
+    assert dict(output_contract) == {
+        "requested_aspect_ratio": "9:16",
+        "requested_duration_seconds": 10,
+        "requested_resolution": "720p",
+    }
 
 
 def test_generation_idempotency_rejects_different_request_and_owner_scope(
