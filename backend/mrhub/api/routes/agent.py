@@ -20,7 +20,7 @@ from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
-from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
+from mrhub.api.routes.models import build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass, TaskRecord
