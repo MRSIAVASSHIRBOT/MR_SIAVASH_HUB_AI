@@ -134,8 +134,24 @@ def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
         tools=[{"name": "text.echo", "payload": {"text": "example"}}],
     )
 
-    first = runner._evaluate_workflow_tools(uuid4(), request, "owner")
-    second = runner._evaluate_workflow_tools(uuid4(), request, "owner")
+    plan = {
+        "dependency_plan": {
+            "ordered_steps": [
+                {
+                    "step_id": "step-1",
+                    "description": "Select the model provider",
+                    "depends_on": [],
+                },
+                {
+                    "step_id": "step-2",
+                    "description": "Execute the requested tool",
+                    "depends_on": ["step-1"],
+                },
+            ]
+        }
+    }
+    first = runner._evaluate_workflow_tools(uuid4(), request, plan, "owner")
+    second = runner._evaluate_workflow_tools(uuid4(), request, plan, "owner")
 
     assert first is not None and second is not None
     first_digest = first["criteria"][0]["evidence_digest"]
