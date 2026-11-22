@@ -687,6 +687,7 @@ def test_dag_resume_uses_topological_checkpoint_positions(monkeypatch):
 def test_resume_rejects_mismatched_persisted_step_input_digest(monkeypatch):
     import hashlib
     import json
+
     import pytest
 
     from mrhub.tools.builtins import build_tool_registry
