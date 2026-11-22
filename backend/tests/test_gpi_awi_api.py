@@ -6,14 +6,20 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.work_order import WorkOrder
 from mrhub.api.routes import agent as agent_routes
 from mrhub.domain.tasks import RiskClass
-from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_plan_payload
+from mrhub.jobs.payload_envelope import (
+    PayloadEnvelopeError,
+    decrypt_payload,
+    encrypt_plan_payload,
+)
 from mrhub.providers.base import ProviderHealth, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
+from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
 
 class QueueProvider:
@@ -710,3 +716,230 @@ def test_persisted_plan_read_returns_gone_for_expired_records_before_decryption(
         )
 
     assert error.value.status_code == 410
+
+
+
+class PlanExecutionEchoInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=100)
+
+
+class PlanExecutionEchoOutput(BaseModel):
+    text: str
+    character_count: int
+
+
+def test_execute_persisted_plan_queues_only_validated_bindings(monkeypatch):
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from mrhub.domain.tasks import TaskRecord
+
+    owner = "owner-exec-1"
+    plan_id = str(uuid4())
+    key = b"p" * 32
+    work_order = WorkOrder(
+        goal="Review the supplied text safely",
+        intent="Validate a low-risk text operation",
+        scope="No external action",
+        assumptions=[],
+        constraints=["No external side effects"],
+        dependencies=[],
+        required_capabilities=["text.echo"],
+        acceptance_criteria=["The typed request is validated"],
+        verification_steps=["Check the registered schema"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        rationale="Bind the only step to the exact registered text tool",
+        steps=[
+            PlanStep(
+                step_id="review",
+                description="Validate the supplied text",
+                depends_on=[],
+                required_capabilities=["text.echo"],
+                verifies_criteria=["The typed request is validated"],
+                verification="Validate the text input schema",
+            )
+        ],
+    )
+    stored_plan = {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+    }
+    plan_digest = agent_routes._canonical_plan_digest(stored_plan)
+    envelope = encrypt_plan_payload(
+        stored_plan,
+        plan_id=plan_id,
+        owner_user_id=owner,
+        key=key,
+    )
+    plan_record = SimpleNamespace(
+        plan_id=plan_id,
+        owner_user_id=owner,
+        status="active",
+        plan_digest=plan_digest,
+        envelope=envelope,
+        created_at=datetime(2026, 11, 22, tzinfo=UTC).isoformat(),
+        expires_at=datetime(2026, 11, 22, 20, 15, tzinfo=UTC).isoformat(),
+        consumed_at=None,
+        workflow_id=None,
+    )
+    captured = {"audit": []}
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakePlanRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def get(self, requested_plan_id, *, owner_user_id):
+            assert requested_plan_id == plan_id
+            assert owner_user_id == owner
+            return plan_record
+
+    class FakeIdempotencyRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def get(self, scope, key_value):
+            assert scope == f"awi-plan-execution:{owner}"
+            assert key_value == "execute-plan-once"
+            return None
+
+    class FakeWorkflowRecoveryRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def create_run(self, request_digest, steps, **kwargs):
+            captured["request_digest"] = request_digest
+            captured["steps"] = steps
+            captured["enqueue"] = kwargs
+            return kwargs["workflow_id"]
+
+        def get_run(self, workflow_id, *, owner_user_id):
+            assert owner_user_id == owner
+            return {
+                "workflow_id": str(workflow_id),
+                "task_id": str(captured["enqueue"]["task"].task_id),
+                "status": "queued",
+                "steps": captured["steps"],
+            }
+
+    class FakePermissionService:
+        def __init__(self, repository, audit):
+            pass
+
+        def active_permissions(self, owner_user_id):
+            assert owner_user_id == owner
+            return frozenset()
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            pass
+
+        def record(self, **kwargs):
+            captured["audit"].append(kwargs)
+
+    registry = ToolRegistry()
+    handler_calls = []
+
+    def handler(value):
+        handler_calls.append(value.text)
+        return {"text": value.text, "character_count": len(value.text)}
+
+    registry.register(
+        ToolDefinition(
+            name="text.echo",
+            description="Return text without external effects.",
+            input_model=PlanExecutionEchoInput,
+            output_model=PlanExecutionEchoOutput,
+            handler=handler,
+            risk_class=RiskClass.LOW,
+            external_side_effect=False,
+        )
+    )
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+    monkeypatch.setattr(agent_routes, "IdempotencyRepository", FakeIdempotencyRepository)
+    monkeypatch.setattr(
+        agent_routes,
+        "WorkflowRecoveryRepository",
+        FakeWorkflowRecoveryRepository,
+    )
+    monkeypatch.setattr(agent_routes, "ToolPermissionService", FakePermissionService)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **_kwargs: registry)
+    monkeypatch.setattr(agent_routes, "load_payload_key", lambda: key)
+
+    response = Response()
+    result = agent_routes.execute_persisted_goal_work_order_plan(
+        UUID(plan_id),
+        agent_routes.PersistedPlanExecutionRequest(
+            step_bindings=[
+                agent_routes.PlanStepExecutionBinding(
+                    step_id="review",
+                    tool_name="text.echo",
+                    payload={"text": "approved typed input"},
+                )
+            ]
+        ),
+        SimpleNamespace(user_id=owner),
+        response,
+        "execute-plan-once",
+    )
+
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert result["plan_id"] == plan_id
+    assert result["queued"] is True
+    assert result["planning_only"] is False
+    assert result["execution_started"] is False
+    assert result["tools_executed"] is False
+    assert result["workflow"]["status"] == "queued"
+    assert [step["step_number"] for step in captured["steps"]] == [1, 2]
+    assert captured["steps"][1]["name"] == "text.echo"
+    assert captured["enqueue"]["plan_consumption"] == {
+        "plan_id": plan_id,
+        "plan_digest": plan_digest,
+        "owner_user_id": owner,
+    }
+    assert captured["enqueue"]["idempotency_binding"] == {
+        "scope": f"awi-plan-execution:{owner}",
+        "key": "execute-plan-once",
+    }
+    assert captured["enqueue"]["task"].task_type == "agent.workflow"
+    assert captured["audit"][0]["event_type"] == "agent.work_order_execution_queued"
+    assert handler_calls == []
+
+    encrypted_workflow = captured["enqueue"]["payload_envelope"]
+    workflow_id = captured["enqueue"]["workflow_id"]
+    task = captured["enqueue"]["task"]
+    decoded = decrypt_payload(
+        agent_routes.EncryptedPayload(
+            version=encrypted_workflow["version"],
+            nonce_b64=encrypted_workflow["nonce_b64"],
+            ciphertext_b64=encrypted_workflow["ciphertext_b64"],
+        ),
+        workflow_id=str(workflow_id),
+        task_id=str(task.task_id),
+        owner_user_id=owner,
+        key=key,
+    )
+    assert decoded["format"] == agent_routes.PLAN_EXECUTION_FORMAT
+    assert decoded["request"]["tools"] == [
+        {"name": "text.echo", "payload": {"text": "approved typed input"}}
+    ]
+    assert decoded["plan_binding"]["plan_id"] == plan_id
