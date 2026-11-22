@@ -44,6 +44,12 @@ class WorkOrder(BaseModel):
     verification_steps: list[WorkOrderText] = Field(min_length=1, max_length=12)
     risk_class: RiskClass
 
+    @field_validator("scope")
+    @classmethod
+    def normalize_scope(cls, value: str) -> str:
+        """Normalize optional scope text before risk analysis and serialization."""
+        return value.strip()
+
     @field_validator("goal", "intent")
     @classmethod
     def normalize_required_text(cls, value: str) -> str:
