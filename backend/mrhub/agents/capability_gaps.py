@@ -89,8 +89,6 @@ def evaluate_capability_gaps(
         missing=missing,
     )
 
-
-
 def evaluate_registered_tool_gaps(
     required_capabilities: Iterable[str],
     tool_registry: ToolRegistry,
