@@ -14,6 +14,7 @@ from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
@@ -55,6 +56,59 @@ class WorkflowReconciliationRequest(BaseModel):
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+@router.post("/work-orders/assess")
+def assess_agent_work_order(
+    request: WorkOrder,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Assess declared capability coverage without authorizing or executing tools."""
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    registry = build_tool_registry(owner_user_id=current_user.user_id)
+    try:
+        assessment = assess_work_order_capabilities(request, registry.catalog())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Registered tool catalog is not valid for capability assessment",
+        ) from exc
+
+    assessment_id = str(uuid4())
+    AuditLogger(tasks).record(
+        event_type="agent.work_order_assessed",
+        outcome="complete" if assessment.complete else "capability_gaps",
+        subject_type="work_order_assessment",
+        subject_id=assessment_id,
+        actor_type="user",
+        actor_id=current_user.user_id,
+        metadata={
+            "required_capability_count": len(assessment.required),
+            "available_capability_count": len(assessment.available),
+            "missing_capability_count": len(assessment.missing),
+            "declared_risk_class": request.risk_class.value,
+            "declared_risk_is_authoritative": False,
+        },
+    )
+    return {
+        "assessment_id": assessment_id,
+        "work_order": request.model_dump(mode="json"),
+        "capabilities": {
+            "required": list(assessment.required),
+            "available": list(assessment.available),
+            "missing": list(assessment.missing),
+            "complete": assessment.complete,
+        },
+        "readiness": (
+            "capabilities_present" if assessment.complete else "capability_gaps"
+        ),
+        "execution_started": False,
+        "tools_executed": False,
+        "authorization_checked": False,
+        "declared_risk_is_authoritative": False,
+    }
 
 
 @router.get("/capabilities")
