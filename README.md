@@ -10,6 +10,7 @@ An integrated, modular AI workspace designed for local-first and hybrid executio
 MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabilities for agents, memory, workflows, developer assistance, content production, integrations, and defensive security.
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
+**Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).
 
 **Operational capabilities:** [AWI, GPI, CGI, PAIOS, gap detection, planning, self-evaluation, quality and security requirements](docs/OPERATIONAL_CAPABILITIES.md).
 
