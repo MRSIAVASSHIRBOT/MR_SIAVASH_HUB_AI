@@ -50,6 +50,49 @@ class AgentWorkflowRunner:
         ).encode()
         return hashlib.sha256(encoded).hexdigest()
 
+    def _evaluate_workflow_tools(
+        self,
+        workflow_id: UUID,
+        request: AgentPlanRequest,
+        owner_user_id: str,
+    ) -> dict[str, object] | None:
+        """Evaluate persisted tool-step outcomes, including work completed before resume."""
+        if not request.tools:
+            return None
+        workflow = self.recovery.get_run(
+            workflow_id, owner_user_id=owner_user_id
+        )
+        stored_steps = {
+            int(step["step_number"]): step
+            for step in (workflow or {}).get("steps", [])
+        }
+        criteria = []
+        for number, requested_tool in enumerate(request.tools, start=2):
+            step = stored_steps.get(number, {})
+            status = step.get("status")
+            if status == "succeeded":
+                outcome = CriterionStatus.PASSED
+                evidence_digest = step.get("output_digest")
+            elif status == "failed":
+                outcome = CriterionStatus.FAILED
+                evidence_digest = self._digest(
+                    {"error_code": step.get("error_code") or "tool_execution_failed"}
+                )
+            else:
+                # Includes unknown_outcome, retry_wait, pending and running.
+                # An ambiguous or unfinished action must never be called passed.
+                outcome = CriterionStatus.UNKNOWN
+                evidence_digest = None
+            criteria.append(
+                EvaluationCriterion(
+                    criterion_id=f"tool-step-{number}",
+                    description=f"Tool execution completed: {requested_tool.name}",
+                    status=outcome,
+                    evidence_digest=evidence_digest,
+                )
+            )
+        return evaluate_criteria(criteria).as_dict()
+
     def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lost: Event) -> None:
         interval = max(0.1, self.lease_seconds / 3)
         while not stop.wait(interval):
@@ -246,22 +289,9 @@ class AgentWorkflowRunner:
                 on_step_result=on_step_result,
                 should_cancel=should_cancel,
             )
-            evaluation = None
-            if request.tools:
-                criteria = []
-                for index, requested_tool in enumerate(request.tools, start=2):
-                    status, evidence_digest = criterion_outcomes.get(
-                        index, (CriterionStatus.UNKNOWN, None)
-                    )
-                    criteria.append(
-                        EvaluationCriterion(
-                            criterion_id=f"tool-step-{index}",
-                            description=f"Tool execution completed: {requested_tool.name}",
-                            status=status,
-                            evidence_digest=evidence_digest,
-                        )
-                    )
-                evaluation = evaluate_criteria(criteria).as_dict()
+            evaluation = self._evaluate_workflow_tools(
+                workflow_id, request, owner_user_id
+            )
             execution = {
                 **execution,
                 "evaluation": evaluation,
@@ -564,6 +594,14 @@ class AgentWorkflowRunner:
                     should_cancel=should_cancel,
                 )
 
+            evaluation = self._evaluate_workflow_tools(
+                workflow_id, request, owner_user_id
+            )
+            execution = {
+                **execution,
+                "evaluation": evaluation,
+                "evaluation_scope": "tool_execution_only" if request.tools else None,
+            }
             if not execution.get("cancelled") and should_cancel():
                 execution = {
                     **execution,
@@ -635,5 +673,7 @@ class AgentWorkflowRunner:
                 "tools_executed": execution["tools_executed"],
                 "error_code": execution.get("error_code"),
                 "executed_tool_count": len(execution["results"]),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             },
         }
