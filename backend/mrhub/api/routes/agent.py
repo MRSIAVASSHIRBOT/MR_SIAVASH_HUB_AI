@@ -213,7 +213,7 @@ def get_agent_run(run_id: UUID, current_user: Annotated[AuthenticatedUser, Depen
 
 
 def _workflow_digest(request: AgentPlanRequest) -> str:
-    """Use the same canonical legacy-compatible digest at API and worker boundaries."""
+    """Use the version-stable request digest shared with worker replay."""
     return AgentWorkflowRunner.request_digest(request)
 
 
@@ -302,8 +302,9 @@ def execute_agent_workflow(
                 )
             idempotency_binding = {"scope": scope, "key": idempotency_key}
 
-        # The API and worker must persist the exact same topological execution
-        # positions. Reuse the runner's shared builder rather than request order.
+        raw_steps = plan.get("steps", [])
+        if not isinstance(raw_steps, list) or not raw_steps:
+            raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
         step_specs, _tools_by_execution_step = (
             AgentWorkflowRunner.build_durable_step_metadata(core, request, plan)
         )
@@ -313,6 +314,7 @@ def execute_agent_workflow(
                 request_digest,
                 step_specs,
                 task=task,
+                definition_version=2,
                 owner_user_id=current_user.user_id,
                 workflow_id=workflow_id,
                 payload_envelope={

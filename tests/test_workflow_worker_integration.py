@@ -4,7 +4,8 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from client_helpers import authenticated_client, run_worker_once
-from mrhub.agents.core import AgentCore
+from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
@@ -70,6 +71,11 @@ def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> 
     assert worker_result is not None
     assert worker_result["result"]["execution_completed"] is True
     assert worker_result["result"]["executed_tool_count"] == 1
+    evaluation = worker_result["result"]["evaluation"]
+    assert worker_result["result"]["evaluation_scope"] == "tool_execution_only"
+    assert evaluation["decision"] == "accept"
+    assert evaluation["passed"] == 1
+    assert evaluation["unknown"] == 0
 
 
 def test_workflow_payload_is_not_readable_by_another_owner() -> None:
@@ -296,8 +302,8 @@ def test_repeated_cancellation_of_terminal_workflow_is_idempotent() -> None:
     assert second.status_code == 200
     assert second.json()["status"] == "cancelled"
 
-def test_worker_crash_after_reordered_external_side_effect_requires_reconciliation(monkeypatch) -> None:
-    """A DAG's external action must remain classified as external after reordering."""
+def test_worker_crash_after_reordered_external_side_effect_requires_reconciliation(monkeypatch):
+    """A reordered external DAG step stays quarantined after an ambiguous result."""
     import pytest
 
     from mrhub.agents.core import AgentCore
@@ -310,7 +316,7 @@ def test_worker_crash_after_reordered_external_side_effect_requires_reconciliati
 
     class TestOnlyAllowPolicy(PolicyEngine):
         def evaluate(self, _request):
-            # This test exercises durable classification, not human-approval UI.
+            # This test verifies durable classification, not approval UI behavior.
             return PolicyResult(
                 decision=PolicyDecision.ALLOW,
                 reason="test-only policy",
@@ -343,28 +349,32 @@ def test_worker_crash_after_reordered_external_side_effect_requires_reconciliati
             external_side_effect=False,
         )
     )
-    monkeypatch.setattr("mrhub.api.routes.agent.build_tool_registry", lambda **_kwargs: registry)
-    monkeypatch.setattr("mrhub.jobs.workflow_dispatch.build_tool_registry", lambda **_kwargs: registry)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda **_kwargs: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda **_kwargs: registry,
+    )
 
     client = authenticated_client()
-    response = client.post(
-        "/agent/workflows",
-        json={
-            "goal": "Run the safe prerequisite before the external publication",
-            "tools": [
-                {
-                    "name": "test.publish",
-                    "payload": {},
-                    "depends_on": ["step-3"],
-                },
-                {
-                    "name": "test.prepare",
-                    "payload": {},
-                    "depends_on": [],
-                },
-            ],
-        },
-    )
+    request = {
+        "goal": "Run the safe prerequisite before external publication",
+        "tools": [
+            {
+                "name": "test.publish",
+                "payload": {},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "test.prepare",
+                "payload": {},
+                "depends_on": [],
+            },
+        ],
+    }
+    response = client.post("/agent/workflows", json=request)
     assert response.status_code == 200
     workflow = response.json()["workflow"]
     workflow_id = UUID(workflow["workflow_id"])
@@ -395,10 +405,9 @@ def test_worker_crash_after_reordered_external_side_effect_requires_reconciliati
 
     external_effects: list[str] = []
 
-    def crash_after_remote_acceptance(self, request, **callbacks):
-        # Persist the safe prerequisite's success before starting the external
-        # step at runtime position 3. Then simulate remote acceptance followed
-        # by abrupt process death before the result checkpoint is written.
+    def crash_after_remote_acceptance(self, agent_request, **callbacks):
+        # Persist the safe prerequisite, then start the external side effect at
+        # runtime position 3 before simulating process death.
         callbacks["on_step"](2, "running", None)
         callbacks["on_step_result"](2, "a" * 64)
         callbacks["on_step"](3, "running", None)
@@ -426,7 +435,6 @@ def test_worker_crash_after_reordered_external_side_effect_requires_reconciliati
             ),
         )
 
-    # A new process performs stale-worker recovery before claiming new work.
     recovery_worker = WorkerEngine(repository)
     assert recovery_worker.run_once() is None
 
@@ -436,11 +444,53 @@ def test_worker_crash_after_reordered_external_side_effect_requires_reconciliati
     assert stored is not None and stored["status"] == "recovery_required"
     assert stored["steps"][1]["status"] == "succeeded"
     assert stored["steps"][2]["status"] == "unknown_outcome"
-
-    # The external action is never blindly retried after an ambiguous outcome.
     assert recovery_worker.run_once() is None
     assert external_effects == ["publish accepted by remote system"]
 
+    typed_request = AgentPlanRequest.model_validate(request)
+    assert stored["steps"][1]["input_digest"] == AgentCore.workflow_step_input_digest(
+        3, typed_request.tools[1]
+    )
+    assert stored["steps"][2]["input_digest"] == AgentCore.workflow_step_input_digest(
+        2, typed_request.tools[0]
+    )
+
+    # The evaluator must retain the safe success and ambiguous external outcome.
+    runner = object.__new__(AgentWorkflowRunner)
+    runner.recovery = recovery
+    runner.core = object.__new__(AgentCore)
+    evaluation_plan = {
+        "dependency_plan": {
+            "ordered_steps": [
+                {
+                    "step_id": "step-1",
+                    "description": "Select the model provider",
+                    "depends_on": [],
+                },
+                {
+                    "step_id": "step-3",
+                    "description": "Execute registered tool: test.prepare",
+                    "depends_on": ["step-1"],
+                },
+                {
+                    "step_id": "step-2",
+                    "description": "Execute registered tool: test.publish",
+                    "depends_on": ["step-1", "step-3"],
+                },
+            ],
+            "dependency_levels": [["step-1"], ["step-3"], ["step-2"]],
+        }
+    }
+    evaluation = runner._evaluate_workflow_tools(
+        workflow_id,
+        typed_request,
+        evaluation_plan,
+        "local-owner",
+    )
+    assert evaluation is not None
+    assert evaluation["decision"] == "review_required"
+    assert evaluation["passed"] == 1
+    assert evaluation["unknown"] == 1
 
 def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeypatch):
     client = authenticated_client()
@@ -504,3 +554,294 @@ def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeyp
     )
     assert first_history.json()["status"] == "succeeded"
     assert second_history.json()["status"] == "failed"
+
+
+def test_dag_resume_uses_topological_checkpoint_positions(monkeypatch):
+    import hashlib
+    import json
+
+    from mrhub.tools.builtins import build_tool_registry
+
+    client = authenticated_client()
+    registry = build_tool_registry()
+    invoked = []
+    original_invoke = registry.invoke
+
+    def track_invoke(name, payload, **kwargs):
+        invoked.append(payload.get("text"))
+        return original_invoke(name, payload, **kwargs)
+
+    registry.invoke = track_invoke
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+
+    request = {
+        "goal": "Resume an explicit DAG by its durable execution position",
+        "tools": [
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    }
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200
+    workflow_id = UUID(created.json()["workflow"]["workflow_id"])
+    task_id = UUID(created.json()["workflow"]["task_id"])
+
+    def digest_echo(text_value):
+        output = {
+            "text": text_value,
+            "character_count": len(text_value),
+        }
+        encoded = json.dumps(
+            output, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    original_execute = AgentCore.execute
+
+    def interrupt_after_first_topological_step(
+        self,
+        agent_request,
+        *,
+        on_step=None,
+        on_step_result=None,
+        **kwargs,
+    ):
+        assert on_step is not None and on_step_result is not None
+        on_step(2, "running", None)
+        on_step_result(2, digest_echo("second-request-tool"))
+        on_step(2, "succeeded", None)
+        raise RuntimeError("simulated interruption after first topological checkpoint")
+
+    monkeypatch.setattr(
+        AgentCore, "execute", interrupt_after_first_topological_step
+    )
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Workflow execution stopped"):
+        run_worker_once()
+    assert invoked == []
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert paused is not None and paused["status"] == "paused"
+    assert paused["steps"][1]["status"] == "succeeded"
+    assert paused["steps"][2]["status"] == "pending"
+    assert paused["steps"][1]["output_digest"] == digest_echo("second-request-tool")
+    typed_request = AgentPlanRequest.model_validate(request)
+    assert paused["steps"][1]["input_digest"] == AgentCore.workflow_step_input_digest(
+        3, typed_request.tools[1]
+    )
+    assert paused["steps"][2]["input_digest"] == AgentCore.workflow_step_input_digest(
+        2, typed_request.tools[0]
+    )
+    task = repository.get(task_id)
+    assert task is not None and task.status.value == "waiting_approval"
+
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
+    queued = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+    assert queued.status_code == 200
+    assert queued.json()["queued"] is True
+
+    completed = run_worker_once()
+    assert completed is not None and completed.status.value == "succeeded"
+    assert invoked == ["first-request-tool"]
+
+    finished = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert finished is not None and finished["status"] == "succeeded"
+    assert [step["status"] for step in finished["steps"]] == [
+        "succeeded",
+        "succeeded",
+        "succeeded",
+    ]
+    assert finished["steps"][2]["output_digest"] == digest_echo("first-request-tool")
+
+    from mrhub.jobs.worker import WorkerEngine
+
+    result = WorkerEngine(repository).get_result(task_id)
+    assert result is not None
+    assert result["result"]["execution_completed"] is True
+    assert result["result"]["evaluation"]["decision"] == "accept"
+    assert result["result"]["evaluation"]["passed"] == 2
+    assert result["result"]["evaluation"]["unknown"] == 0
+
+
+def test_resume_rejects_mismatched_persisted_step_input_digest(monkeypatch):
+    import hashlib
+    import json
+
+    import pytest
+
+    from mrhub.tools.builtins import build_tool_registry
+
+    client = authenticated_client()
+    registry = build_tool_registry()
+    invoked = []
+    original_invoke = registry.invoke
+
+    def track_invoke(name, payload, **kwargs):
+        invoked.append(payload.get("text"))
+        return original_invoke(name, payload, **kwargs)
+
+    registry.invoke = track_invoke
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        "mrhub.jobs.workflow_dispatch.build_tool_registry",
+        lambda **kwargs: registry,
+    )
+
+    request = {
+        "goal": "Reject a tampered durable input identity for repeated tool names",
+        "tools": [
+            {"name": "text.echo", "payload": {"text": "first-payload"}},
+            {"name": "text.echo", "payload": {"text": "second-payload"}},
+        ],
+    }
+    created = client.post("/agent/workflows", json=request)
+    assert created.status_code == 200
+    workflow_id = UUID(created.json()["workflow"]["workflow_id"])
+
+    def digest_echo(text_value):
+        output = {"text": text_value, "character_count": len(text_value)}
+        encoded = json.dumps(
+            output, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    original_execute = AgentCore.execute
+
+    def interrupt_after_first_safe_step(
+        self,
+        agent_request,
+        *,
+        on_step=None,
+        on_step_result=None,
+        **kwargs,
+    ):
+        assert on_step is not None and on_step_result is not None
+        on_step(2, "running", None)
+        on_step_result(2, digest_echo("first-payload"))
+        on_step(2, "succeeded", None)
+        raise RuntimeError("simulated interruption after first durable input checkpoint")
+
+    monkeypatch.setattr(AgentCore, "execute", interrupt_after_first_safe_step)
+    with pytest.raises(RuntimeError, match="Workflow execution stopped"):
+        run_worker_once()
+
+    repository = TaskRepository(get_settings().database_path)
+    recovery = WorkflowRecoveryRepository(repository.database_path)
+    paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert paused is not None and paused["status"] == "paused"
+    assert paused["definition_version"] == 2
+
+    typed_request = AgentPlanRequest.model_validate(request)
+    first_digest = AgentCore.workflow_step_input_digest(2, typed_request.tools[0])
+    second_digest = AgentCore.workflow_step_input_digest(3, typed_request.tools[1])
+    assert paused["steps"][1]["input_digest"] == first_digest
+    assert paused["steps"][2]["input_digest"] == second_digest
+    assert first_digest != second_digest
+
+    # Simulate corruption or an altered durable request-to-step mapping. Resume
+    # must compare the original tool identity before enqueuing any work.
+    with repository._connection() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE workflow_steps
+            SET input_digest = ?
+            WHERE workflow_id = ? AND step_number = 2
+            """,
+            ("0" * 64, str(workflow_id)),
+        )
+        assert cursor.rowcount == 1
+
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
+    response = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+
+    assert response.status_code == 409
+    assert invoked == []
+
+    # A version-2 workflow must not treat a deleted digest as a legacy record.
+    with repository._connection() as connection:
+        cursor = connection.execute(
+            """
+            UPDATE workflow_steps
+            SET input_digest = NULL
+            WHERE workflow_id = ? AND step_number = 2
+            """,
+            (str(workflow_id),),
+        )
+        assert cursor.rowcount == 1
+    missing_digest = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": request},
+    )
+    assert missing_digest.status_code == 409
+    assert invoked == []
+
+    after = recovery.get_run(workflow_id, owner_user_id="local-owner")
+    assert after is not None and after["status"] == "paused"
+    assert after["steps"][1]["status"] == "succeeded"
+    assert after["steps"][2]["status"] == "pending"
+
+def test_workflow_request_digest_preserves_legacy_none_free_serialization():
+    import hashlib
+    import json
+
+    from mrhub.api.routes.agent import _workflow_digest
+
+    request = AgentPlanRequest(
+        goal="Keep legacy workflow digest stable",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "legacy"}},
+        ],
+    )
+    legacy_payload = request.model_dump(mode="json", exclude_none=True)
+    # This field was added after the original durable request schema.
+    legacy_payload.pop("required_capabilities", None)
+    expected = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+    assert _workflow_digest(request) == expected
+    assert AgentWorkflowRunner._digest(request.canonical_payload()) == expected
+
+    explicit = AgentPlanRequest(
+        goal="Keep legacy workflow digest stable",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "legacy"},
+                "depends_on": [],
+            },
+        ],
+    )
+    assert _workflow_digest(explicit) != expected

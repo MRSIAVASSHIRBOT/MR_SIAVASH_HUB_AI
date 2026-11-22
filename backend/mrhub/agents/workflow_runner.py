@@ -10,6 +10,11 @@ from threading import Event, Thread
 from uuid import UUID, uuid4
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.evaluation import (
+    CriterionStatus,
+    EvaluationCriterion,
+    evaluate_criteria,
+)
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
@@ -47,7 +52,7 @@ class AgentWorkflowRunner:
 
     @staticmethod
     def request_digest(request: AgentPlanRequest) -> str:
-        """Return the version-stable digest used by API submission and worker replay."""
+        """Return the version-stable digest shared by API and worker replay."""
         return AgentWorkflowRunner._digest(request.canonical_payload())
 
     @staticmethod
@@ -56,13 +61,7 @@ class AgentWorkflowRunner:
         request: AgentPlanRequest,
         plan: dict[str, object],
     ) -> tuple[list[dict[str, object]], dict[int, object]]:
-        """Build persisted steps and tool lookups in exact DAG execution order.
-
-        AgentCore reports runtime step numbers in topological order. Request array
-        positions are stable identities, but they are not durable execution
-        positions once explicit dependencies reorder tools. Keep the original
-        request mapping here and persist every callback position consistently.
-        """
+        """Build durable checkpoints and tool lookups in validated DAG order."""
         ordered_tools = core.ordered_tool_steps(request, plan)
         if len(ordered_tools) != len(request.tools):
             raise ValueError("Validated workflow graph does not cover every requested tool")
@@ -72,10 +71,11 @@ class AgentWorkflowRunner:
                 "step_number": 1,
                 "kind": "provider_selection",
                 "name": "provider_selection",
+                "input_digest": None,
             }
         ]
         tools_by_execution_step: dict[int, object] = {}
-        for runtime_step_number, _request_step_number, requested_tool in ordered_tools:
+        for runtime_step_number, request_step_number, requested_tool in ordered_tools:
             definition = core.tool_registry.get(requested_tool.name)
             step_specs.append(
                 {
@@ -86,10 +86,12 @@ class AgentWorkflowRunner:
                         else "safe_tool"
                     ),
                     "name": requested_tool.name,
+                    "input_digest": core.workflow_step_input_digest(
+                        request_step_number, requested_tool
+                    ),
                 }
             )
             tools_by_execution_step[runtime_step_number] = definition
-
         return step_specs, tools_by_execution_step
 
     def _durable_step_metadata(
@@ -98,6 +100,61 @@ class AgentWorkflowRunner:
         plan: dict[str, object],
     ) -> tuple[list[dict[str, object]], dict[int, object]]:
         return self.build_durable_step_metadata(self.core, request, plan)
+
+    def _evaluate_workflow_tools(
+        self,
+        workflow_id: UUID,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+        owner_user_id: str,
+    ) -> dict[str, object] | None:
+        """Evaluate persisted tool outcomes in the same order used by DAG execution."""
+        ordered_tools = self.core.ordered_tool_steps(request, plan)
+        if not ordered_tools:
+            return None
+        workflow = self.recovery.get_run(
+            workflow_id, owner_user_id=owner_user_id
+        )
+        stored_steps = {
+            int(step["step_number"]): step
+            for step in (workflow or {}).get("steps", [])
+        }
+        criteria = []
+        for runtime_number, _request_number, requested_tool in ordered_tools:
+            step = stored_steps.get(runtime_number, {})
+            status = step.get("status")
+            if status == "succeeded":
+                outcome = CriterionStatus.PASSED
+                evidence_digest = step.get("output_digest")
+            elif status == "failed":
+                outcome = CriterionStatus.FAILED
+                # Bind the digest to this persisted failure checkpoint rather than
+                # hashing only the error code, which would collide across workflows.
+                evidence_digest = self._digest(
+                    {
+                        "workflow_id": str(workflow_id),
+                        "step_number": runtime_number,
+                        "status": status,
+                        "error_code": step.get("error_code") or "tool_execution_failed",
+                        "attempt_count": step.get("attempt_count"),
+                        "started_at": step.get("started_at"),
+                        "finished_at": step.get("finished_at"),
+                    }
+                )
+            else:
+                # Includes unknown_outcome, retry_wait, pending and running.
+                # An ambiguous or unfinished action must never be called passed.
+                outcome = CriterionStatus.UNKNOWN
+                evidence_digest = None
+            criteria.append(
+                EvaluationCriterion(
+                    criterion_id=f"tool-step-{runtime_number}",
+                    description=f"Tool execution completed: {requested_tool.name}",
+                    status=outcome,
+                    evidence_digest=evidence_digest,
+                )
+            )
+        return evaluate_criteria(criteria).as_dict()
 
     def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lost: Event) -> None:
         interval = max(0.1, self.lease_seconds / 3)
@@ -156,6 +213,9 @@ class AgentWorkflowRunner:
         """
         if not plan.get("execution_ready"):
             raise ValueError("Workflow plan is not executable")
+        raw_steps = plan.get("steps", [])
+        if not isinstance(raw_steps, list) or not raw_steps:
+            raise ValueError("Workflow plan contains no executable steps")
         step_specs, tools_by_execution_step = self._durable_step_metadata(
             request, plan
         )
@@ -180,6 +240,7 @@ class AgentWorkflowRunner:
                 request_digest,
                 step_specs,
                 task=task,
+                definition_version=2,
                 owner_user_id=owner_user_id,
             )
             AuditLogger(self.repository).record(
@@ -231,10 +292,11 @@ class AgentWorkflowRunner:
                         definition = tools_by_execution_step.get(number)
                         if definition is None:
                             raise RuntimeError("Failed workflow step has no DAG tool mapping")
+                        failure_code = error_code or "tool_execution_failed"
                         self.recovery.fail_step(
                             workflow_id,
                             attempt,
-                            error_code or "tool_execution_failed",
+                            failure_code,
                             unknown_outcome=definition.external_side_effect,
                             lease=lease,
                         )
@@ -271,6 +333,14 @@ class AgentWorkflowRunner:
                 on_step_result=on_step_result,
                 should_cancel=should_cancel,
             )
+            evaluation = self._evaluate_workflow_tools(
+                workflow_id, request, plan, owner_user_id
+            )
+            execution = {
+                **execution,
+                "evaluation": evaluation,
+                "evaluation_scope": "tool_execution_only" if request.tools else None,
+            }
             # Close the race between the final in-loop cancellation check and
             # workflow finalization, including workflows with zero tool steps.
             if not execution.get("cancelled") and should_cancel():
@@ -334,6 +404,8 @@ class AgentWorkflowRunner:
                 "tools_executed": execution["tools_executed"],
                 "error_code": execution.get("error_code"),
                 "executed_tool_count": len(execution["results"]),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             },
         }
 
@@ -352,15 +424,20 @@ class AgentWorkflowRunner:
         workflow = self.recovery.get_run(workflow_id, owner_user_id=owner_user_id)
         if workflow is None or workflow["task_id"] is None:
             raise LookupError("Workflow not found")
+        definition_version = int(workflow["definition_version"])
         decision = self.recovery.resume_decision(
-            workflow_id, request_digest, owner_user_id=owner_user_id
+            workflow_id,
+            request_digest,
+            definition_version=definition_version,
+            owner_user_id=owner_user_id,
         )
         if decision.decision not in {"resume", "finish"} or (
             decision.decision == "resume" and decision.next_step is None
         ):
             raise ValueError(f"Workflow is not resumable: {decision.decision}")
 
-        if not plan.get("execution_ready") or not isinstance(plan.get("steps"), list):
+        raw_steps = plan.get("steps", [])
+        if not plan.get("execution_ready") or not isinstance(raw_steps, list):
             raise ValueError("Current request is not executable")
         expected_specs, _tools_by_execution_step = self._durable_step_metadata(
             request, plan
@@ -370,14 +447,27 @@ class AgentWorkflowRunner:
                 int(step["step_number"]),
                 str(step["kind"]),
                 str(step["name"]),
+                step.get("input_digest"),
             )
             for step in expected_specs
         ]
         stored = [
-            (int(step["step_number"]), step["step_kind"], step["step_name"])
+            (
+                int(step["step_number"]),
+                step["step_kind"],
+                step["step_name"],
+                step.get("input_digest"),
+            )
             for step in workflow["steps"]
         ]
-        if expected != stored:
+        if len(expected) != len(stored) or any(
+            expected_step[:3] != stored_step[:3]
+            or (
+                expected_step[3] != stored_step[3]
+                and not (definition_version < 2 and stored_step[3] is None)
+            )
+            for expected_step, stored_step in zip(expected, stored, strict=True)
+        ):
             raise ValueError("Current workflow plan differs from the stored definition")
 
         provider_step = next(
@@ -418,6 +508,7 @@ class AgentWorkflowRunner:
             workflow_id,
             owner_user_id=owner_user_id,
             request_digest=request_digest,
+            definition_version=int(_workflow["definition_version"]),
         )
         AuditLogger(self.repository).record(
             event_type="workflow.resume_queued",
@@ -483,9 +574,6 @@ class AgentWorkflowRunner:
 
         assert lease is not None and lease_lost is not None
         attempts: dict[int, StepAttempt] = {}
-        _resume_step_specs, tools_by_execution_step = self._durable_step_metadata(
-            request, plan
-        )
         try:
             self._record_execution_start(lease, increment_attempt=not worker_owned_lease)
             self.recovery.start_run(workflow_id, lease=lease)
@@ -524,6 +612,10 @@ class AgentWorkflowRunner:
                         lease=lease,
                     )
                     start_step = 2
+
+                _step_specs, tools_by_execution_step = self._durable_step_metadata(
+                    request, plan
+                )
 
                 def on_step(
                     number: int, status: str, error_code: str | None
@@ -567,6 +659,14 @@ class AgentWorkflowRunner:
                     should_cancel=should_cancel,
                 )
 
+            evaluation = self._evaluate_workflow_tools(
+                workflow_id, request, plan, owner_user_id
+            )
+            execution = {
+                **execution,
+                "evaluation": evaluation,
+                "evaluation_scope": "tool_execution_only" if request.tools else None,
+            }
             if not execution.get("cancelled") and should_cancel():
                 execution = {
                     **execution,
@@ -638,5 +738,7 @@ class AgentWorkflowRunner:
                 "tools_executed": execution["tools_executed"],
                 "error_code": execution.get("error_code"),
                 "executed_tool_count": len(execution["results"]),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             },
         }
