@@ -573,7 +573,7 @@ def test_agent_plan_preserves_legacy_sequential_dependencies():
         ],
     )
 
-    graph = build_graph = make_core().plan(request)["dependency_plan"]
+    graph = make_core().plan(request)["dependency_plan"]
 
     assert graph["ordered_steps"] == [
         {
