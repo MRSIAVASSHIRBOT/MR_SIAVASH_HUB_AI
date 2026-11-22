@@ -601,3 +601,51 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert denied_after_revoke.status_code == 200
     assert denied_after_revoke.json()["blocked"] is True
     assert calls == ["read"]
+
+ 
+
+def test_agent_plan_rejects_invalid_required_capability_names():
+    client = authenticated_client()
+
+    for capability in ("   ", "x" * 81):
+        response = client.post(
+            "/agent/plan",
+            json={
+                "goal": "Reject malformed capability requirements",
+                "required_capabilities": [capability],
+            },
+        )
+        assert response.status_code == 422
+
+
+def test_workflow_digest_preserves_legacy_format_without_capability_requirements():
+    import hashlib
+    import json
+
+    from mrhub.agents.core import AgentPlanRequest
+    from mrhub.api.routes.agent import _workflow_digest
+
+    request = AgentPlanRequest(
+        goal="Resume an existing workflow",
+        tools=[{"name": "text.echo", "payload": {"text": "legacy"}}],
+    )
+    legacy_payload = request.model_dump(mode="json")
+    legacy_payload.pop("required_capabilities")
+
+    expected = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+    assert _workflow_digest(request) == expected
+    assert _workflow_digest(
+        AgentPlanRequest(
+            goal=request.goal,
+            tools=request.tools,
+            required_capabilities=["text.echo"],
+        )
+    ) != expected
