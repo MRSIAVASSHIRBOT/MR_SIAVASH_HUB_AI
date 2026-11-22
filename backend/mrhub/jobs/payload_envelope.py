@@ -135,3 +135,98 @@ def decrypt_payload(
     if not isinstance(value, dict):
         raise PayloadEnvelopeError("Workflow payload must decode to a JSON object")
     return value
+
+
+def _plan_associated_data(*, plan_id: str, owner_user_id: str) -> bytes:
+    """Bind an encrypted plan to its resource type, opaque ID, and owner."""
+    fields = (plan_id, owner_user_id)
+    if any(
+        not isinstance(value, str) or not value.strip() or len(value) > 200
+        for value in fields
+    ):
+        raise PayloadEnvelopeError("Agent plan payload binding identifiers are invalid")
+    return json.dumps(
+        {
+            "v": ENVELOPE_VERSION,
+            "resource_type": "agent_work_order_plan",
+            "plan_id": plan_id,
+            "owner_user_id": owner_user_id,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def encrypt_plan_payload(
+    payload: dict[str, Any],
+    *,
+    plan_id: str,
+    owner_user_id: str,
+    key: bytes,
+) -> EncryptedPayload:
+    """Encrypt a persisted GPI/AWI plan using plan-specific authenticated data.
+
+    This reuses the existing AES-GCM primitive and key contract, but deliberately
+    uses a distinct AAD resource type so workflow ciphertext cannot be substituted
+    for a plan record (or vice versa).
+    """
+    if len(key) != KEY_BYTES:
+        raise PayloadEnvelopeError("Workflow payload encryption key must be 32 bytes")
+    try:
+        plaintext = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise PayloadEnvelopeError("Agent plan payload must be finite JSON data") from exc
+    if len(plaintext) > MAX_PLAINTEXT_BYTES:
+        raise PayloadEnvelopeError("Agent plan payload exceeds the configured size limit")
+
+    nonce = os.urandom(NONCE_BYTES)
+    ciphertext = AESGCM(key).encrypt(
+        nonce,
+        plaintext,
+        _plan_associated_data(plan_id=plan_id, owner_user_id=owner_user_id),
+    )
+    return EncryptedPayload(
+        version=ENVELOPE_VERSION,
+        nonce_b64=base64.urlsafe_b64encode(nonce).decode("ascii"),
+        ciphertext_b64=base64.urlsafe_b64encode(ciphertext).decode("ascii"),
+    )
+
+
+def decrypt_plan_payload(
+    envelope: EncryptedPayload,
+    *,
+    plan_id: str,
+    owner_user_id: str,
+    key: bytes,
+) -> dict[str, Any]:
+    """Decrypt only a plan envelope whose version, key, resource, and owner match."""
+    if envelope.version != ENVELOPE_VERSION:
+        raise PayloadEnvelopeError("Unsupported agent plan payload envelope version")
+    if len(key) != KEY_BYTES:
+        raise PayloadEnvelopeError("Workflow payload encryption key must be 32 bytes")
+    try:
+        nonce = base64.urlsafe_b64decode(envelope.nonce_b64.encode("ascii"))
+        ciphertext = base64.urlsafe_b64decode(envelope.ciphertext_b64.encode("ascii"))
+        if len(nonce) != NONCE_BYTES:
+            raise PayloadEnvelopeError("Agent plan payload nonce is invalid")
+        plaintext = AESGCM(key).decrypt(
+            nonce,
+            ciphertext,
+            _plan_associated_data(plan_id=plan_id, owner_user_id=owner_user_id),
+        )
+        if len(plaintext) > MAX_PLAINTEXT_BYTES:
+            raise PayloadEnvelopeError("Agent plan payload exceeds the configured size limit")
+        value = json.loads(plaintext.decode("utf-8"))
+    except PayloadEnvelopeError:
+        raise
+    except (ValueError, UnicodeEncodeError, InvalidTag, json.JSONDecodeError) as exc:
+        raise PayloadEnvelopeError("Agent plan payload authentication failed") from exc
+    if not isinstance(value, dict):
+        raise PayloadEnvelopeError("Agent plan payload must decode to a JSON object")
+    return value
