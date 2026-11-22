@@ -14,10 +14,10 @@ services:
     disk:
       name: mrhub-data
       mountPath: /var/data
-      sizeGB: 1
+      sizeGB: 10
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.11
+        value: 3.11.18
       - key: MRH_ENVIRONMENT
         value: production
       - key: MRH_HOST
