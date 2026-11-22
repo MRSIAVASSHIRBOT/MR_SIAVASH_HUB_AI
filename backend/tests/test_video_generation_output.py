@@ -269,3 +269,33 @@ def test_provider_output_must_match_original_generation_request(
 
     assert jobs.get("owner-a", generation_id)["status"] == "submitting"
     assert list(media.storage_root.iterdir()) == []
+
+
+
+@pytest.mark.parametrize("probed_duration", [float("nan"), float("inf")])
+def test_provider_output_rejects_non_finite_probe_duration(
+    tmp_path, monkeypatch, probed_duration
+):
+    jobs, media, generation_id = _setup(tmp_path, monkeypatch)
+    content = b"provider-output-fixture"
+    from mrhub.video_intelligence import service
+
+    monkeypatch.setattr(
+        service,
+        "probe_video",
+        lambda _path: VideoTechnicalMetadata(
+            duration_seconds=probed_duration,
+            width=720,
+            height=1280,
+            format_name="mov,mp4,m4a,3gp,3g2,mj2",
+            metadata_status="available",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="metadata does not match provider result"):
+        download_and_register_generation_output(
+            _Provider(content), _result(content), jobs, media, "owner-a", generation_id
+        )
+
+    assert jobs.get("owner-a", generation_id)["status"] == "submitting"
+    assert list(media.storage_root.iterdir()) == []
