@@ -149,3 +149,47 @@ def test_awi_plan_rejects_missing_acceptance_criterion():
     work_order = generate_work_order("Build a plan", work_order_router)
     with pytest.raises(PlanningError):
         generate_execution_plan(work_order, router)
+
+
+
+def test_gpi_rejects_whitespace_only_generated_intent_and_list_items():
+    router, _ = router_for(json.dumps(valid_work_order_payload(intent="   ")))
+    with pytest.raises(WorkOrderGenerationError):
+        generate_work_order("Make a plan", router)
+
+    invalid_items = valid_work_order_payload(
+        acceptance_criteria=["   "],
+    )
+    router, _ = router_for(json.dumps(invalid_items))
+    with pytest.raises(WorkOrderGenerationError):
+        generate_work_order("Make a plan", router)
+
+
+def test_awi_plan_rejects_whitespace_only_text_and_list_items():
+    base_step = {
+        "step_id": "validate",
+        "description": "Validate",
+        "depends_on": [],
+        "required_capabilities": ["text.echo"],
+        "verifies_criteria": ["The plan is validated"],
+        "verification": "Check the result",
+    }
+    with pytest.raises(ValueError):
+        ExecutionPlan.model_validate({
+            "rationale": "   ",
+            "steps": [base_step],
+        })
+
+    invalid_step = {**base_step, "description": "   "}
+    with pytest.raises(ValueError):
+        ExecutionPlan.model_validate({
+            "rationale": "A bounded plan",
+            "steps": [invalid_step],
+        })
+
+    invalid_step = {**base_step, "required_capabilities": ["   "]}
+    with pytest.raises(ValueError):
+        ExecutionPlan.model_validate({
+            "rationale": "A bounded plan",
+            "steps": [invalid_step],
+        })
