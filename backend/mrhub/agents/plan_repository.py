@@ -212,6 +212,8 @@ class AgentWorkOrderPlanRepository:
                 return None
 
             status = row["status"]
+            nonce_b64 = row["nonce_b64"]
+            ciphertext_b64 = row["ciphertext_b64"]
             if status == "active" and row["expires_at"] <= now_text:
                 connection.execute(
                     """
@@ -223,6 +225,8 @@ class AgentWorkOrderPlanRepository:
                     (normalized_plan_id, owner_user_id),
                 )
                 status = "expired"
+                nonce_b64 = "expired"
+                ciphertext_b64 = "expired"
 
         return AgentWorkOrderPlanRecord(
             plan_id=row["plan_id"],
@@ -231,8 +235,8 @@ class AgentWorkOrderPlanRepository:
             plan_digest=row["plan_digest"],
             envelope=EncryptedPayload(
                 version=row["envelope_version"],
-                nonce_b64=row["nonce_b64"],
-                ciphertext_b64=row["ciphertext_b64"],
+                nonce_b64=nonce_b64,
+                ciphertext_b64=ciphertext_b64,
             ),
             created_at=row["created_at"],
             expires_at=row["expires_at"],
