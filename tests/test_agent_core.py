@@ -615,3 +615,37 @@ def test_agent_tool_request_rejects_blank_tool_name(name):
 def test_agent_tool_request_normalizes_tool_name():
     request = AgentToolRequest(name="  text.echo  ")
     assert request.name == "text.echo"
+
+
+def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Execute independent tools in validated graph order",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+    monkeypatch.setattr(
+        core,
+        "plan",
+        lambda _request: {
+            "execution_ready": True,
+            "dependency_plan": {
+                "ordered_steps": [
+                    {"step_id": "step-1"},
+                    {"step_id": "step-3"},
+                    {"step_id": "step-2"},
+                ],
+                "dependency_levels": [["step-1"], ["step-3", "step-2"]],
+            },
+        },
+    )
+
+    response = core.execute(request)
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "second",
+        "first",
+    ]
