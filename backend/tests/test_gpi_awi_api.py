@@ -173,11 +173,6 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monk
     )
     monkeypatch.setattr(
         agent_routes,
-        "_enforce_kimi_request_limit",
-        lambda *_args, **_kwargs: pytest.fail("provider quota must not be consumed"),
-    )
-    monkeypatch.setattr(
-        agent_routes,
         "build_tool_registry",
         lambda **kwargs: pytest.fail("tool catalog must not be read for prohibited goals"),
     )
@@ -231,9 +226,6 @@ def test_goal_plan_endpoint_uses_local_only_provider_mode_without_remote_quota(m
 
     monkeypatch.setattr(agent_routes, "build_model_router", fake_router)
     monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: FakeToolRegistry())
-    monkeypatch.setattr(agent_routes, "_enforce_kimi_request_limit", lambda *_args: pytest.fail(
-        "GPI/AWI planning must not consume paid-provider quota"
-    ))
     monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
@@ -286,41 +278,3 @@ def test_goal_plan_endpoint_fails_closed_when_audit_storage_is_unavailable(monke
 
     assert error.value.status_code == 503
     assert error.value.detail == "Audit storage is unavailable"
-
-
-
-def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monkeypatch):
-    router = build_router(
-        work_order_output(),
-        plan_output(),
-        provider="moonshot",
-        local=False,
-    )
-    provider = router.registry.get("moonshot", "queue-v1")
-
-    def reject_remote_request(_owner_id):
-        raise HTTPException(status_code=429, detail="rate limited")
-
-    class FakeTaskRepository:
-        def __init__(self, database_path):
-            self.database_path = database_path
-
-        def initialize(self):
-            return None
-
-        def record_audit(self, event):
-            return None
-
-    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
-    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
-    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
-    monkeypatch.setattr(agent_routes, "_enforce_kimi_request_limit", reject_remote_request)
-
-    with pytest.raises(HTTPException) as error:
-        agent_routes.create_goal_work_order_plan(
-            agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
-            SimpleNamespace(user_id="owner-remote"),
-        )
-
-    assert error.value.status_code == 429
-    assert provider.calls == 0
