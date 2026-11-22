@@ -281,3 +281,15 @@ def test_plan_step_accepts_list_item_size_boundaries():
     assert len(step.depends_on[0]) == 40
     assert len(step.required_capabilities[0]) == 80
     assert len(step.verifies_criteria[0]) == 300
+
+
+def test_work_order_normalizes_optional_scope_before_serialization():
+    payload = {
+        "goal": "Build a validated plan",
+        "risk_class": RiskClass.LOW,
+        **valid_work_order_payload(scope="  Backend-only planning  "),
+    }
+
+    work_order = WorkOrder.model_validate(payload)
+
+    assert work_order.scope == "Backend-only planning"
