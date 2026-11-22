@@ -1,6 +1,7 @@
 """Authenticated GPI/AWI planning route tests."""
 
 import json
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -129,10 +130,12 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["execution_started"] is False
     assert result["tools_executed"] is False
     assert result["permissions_changed"] is False
-    assert len(audit_events) == 1
-    assert audit_events[0]["event_type"] == "agent.work_order_planned"
-    assert audit_events[0]["actor_id"] == "owner-1"
-    assert "goal" not in audit_events[0]["metadata"]
+    assert [event["event_type"] for event in audit_events] == [
+        "agent.work_order_planning_started",
+        "agent.work_order_planned",
+    ]
+    assert all(event["actor_id"] == "owner-1" for event in audit_events)
+    assert all("goal" not in event["metadata"] for event in audit_events)
 
 
 @pytest.mark.parametrize(
@@ -144,16 +147,25 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     ],
 )
 def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monkeypatch, goal):
-    monkeypatch.setattr(
-        agent_routes,
-        "get_settings",
-        lambda: pytest.fail("settings must not be loaded for prohibited goals"),
-    )
-    monkeypatch.setattr(
-        agent_routes,
-        "TaskRepository",
-        lambda *_args, **_kwargs: pytest.fail("database must not be opened for prohibited goals"),
-    )
+    audit_events = []
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
+    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
     monkeypatch.setattr(
         agent_routes,
         "build_model_router",
@@ -177,6 +189,11 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monk
         )
 
     assert error.value.status_code == 422
+    assert len(audit_events) == 1
+    assert audit_events[0]["event_type"] == "agent.work_order_blocked"
+    assert audit_events[0]["outcome"] == "denied"
+    assert audit_events[0]["actor_id"] == "owner-1"
+    assert "goal" not in audit_events[0]["metadata"]
 
 
 
@@ -225,6 +242,41 @@ def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
 
     # Work-order generation and AWI planning each issue one remote model request.
     assert limited_owners == ["owner-remote", "owner-remote"]
+
+
+
+def test_goal_plan_endpoint_fails_closed_when_audit_storage_is_unavailable(monkeypatch):
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FailingAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            raise sqlite3.OperationalError("audit storage unavailable")
+
+    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FailingAuditLogger)
+    monkeypatch.setattr(
+        agent_routes,
+        "build_model_router",
+        lambda **kwargs: pytest.fail("provider must not be used before audit preflight succeeds"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.create_goal_work_order_plan(
+            agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
+            SimpleNamespace(user_id="owner-1"),
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Audit storage is unavailable"
 
 
 
