@@ -82,6 +82,15 @@ class WorkOrderCapabilityAssessment:
     def complete(self) -> bool:
         return not self.missing
 
+    def as_dict(self) -> dict[str, object]:
+        """Serialize the presence report in one stable API-neutral shape."""
+        return {
+            "required": list(self.required),
+            "available": list(self.available),
+            "missing": list(self.missing),
+            "complete": self.complete,
+        }
+
 
 def assess_work_order_capabilities(
     work_order: WorkOrder,
