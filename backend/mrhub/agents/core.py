@@ -413,9 +413,17 @@ class AgentCore:
                 }
             )
 
+        # The catalog is bounded by the capability evaluator. Ordinary plans
+        # without declared capability requirements must not fail merely because
+        # the registered tool inventory grows beyond that assessment bound.
+        catalog = (
+            self.tool_registry.catalog()
+            if request.required_capabilities
+            else ()
+        )
         capability_gaps = evaluate_capability_gaps(
             request.required_capabilities,
-            self.tool_registry.catalog(),
+            catalog,
         )
         executable = all(
             step["status"] == "ready"
