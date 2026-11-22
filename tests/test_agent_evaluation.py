@@ -12,7 +12,6 @@ from mrhub.agents.evaluation import (
 )
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 
-
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 

@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.agents.capability_gaps import (
     MAX_NAME_LENGTH as MAX_REGISTERED_TOOL_NAME_LENGTH,
-    MAX_TOOL_CATALOG_ENTRIES as MAX_REGISTERED_TOOL_COUNT,
+)
+from mrhub.agents.capability_gaps import (
     CapabilityGapReport,
     evaluate_capability_gaps,
 )

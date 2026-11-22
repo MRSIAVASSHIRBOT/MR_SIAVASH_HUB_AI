@@ -51,7 +51,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
         "resource_reply_configs", "research_sources", "video_scene_jobs", "personal_devices",
-        "personal_device_tasks",
+        "personal_device_tasks", "agent_work_order_plans",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -625,7 +625,9 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
+    assert SchemaMigrator(connection).migrate() == [
+        item.version for item in all_migrations[39:]
+    ]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -757,7 +759,9 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[43:]
+    ]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -1094,7 +1098,9 @@ def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [52, 53]
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[51:]
+    ]
 
     existing = connection.execute(
         "SELECT permission, granted_at, expires_at FROM tool_permission_grants "
@@ -1169,7 +1175,9 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
     ]
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [53]
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[52:]
+    ]
     columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
@@ -1179,4 +1187,100 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
         "requested_duration_seconds",
         "requested_resolution",
     } <= columns
+    connection.close()
+
+
+def test_v54_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
+    connection = connect(tmp_path / "agent-work-order-plans.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(agent_work_order_plans)")
+    }
+    assert {
+        "plan_id", "owner_user_id", "status", "plan_digest",
+        "envelope_version", "nonce_b64", "ciphertext_b64",
+        "created_at", "expires_at", "consumed_at", "workflow_id",
+    } <= columns
+
+    indexes = {
+        row["name"]
+        for row in connection.execute("PRAGMA index_list(agent_work_order_plans)")
+    }
+    assert {
+        "idx_agent_work_order_plans_owner_status_expiry",
+        "idx_agent_work_order_plans_workflow",
+    } <= indexes
+
+    foreign_keys = {
+        (row["table"], row["from"], row["to"], row["on_delete"])
+        for row in connection.execute("PRAGMA foreign_key_list(agent_work_order_plans)")
+    }
+    assert ("auth_users", "owner_user_id", "user_id", "CASCADE") in foreign_keys
+    assert ("workflow_runs", "workflow_id", "workflow_id", "CASCADE") in foreign_keys
+
+    applied = connection.execute(
+        "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
+    ).fetchone()
+    assert tuple(applied) == (54, "owner_scoped_encrypted_agent_work_order_plans")
+    connection.close()
+
+
+def test_consumed_plan_record_is_deleted_with_linked_workflow(tmp_path):
+    from uuid import uuid4
+
+    connection = connect(tmp_path / "plan-workflow-cascade.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    owner_id = "plan-cascade-owner"
+    connection.execute(
+        """
+        INSERT INTO auth_users (
+            user_id, username, salt, password_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            owner_id,
+            "plan-cascade-owner@example.test",
+            "salt",
+            "hash",
+            "2026-11-22T20:00:00+00:00",
+        ),
+    )
+    workflow_id = str(uuid4())
+    plan_id = str(uuid4())
+    now = "2026-11-22T20:00:00+00:00"
+    connection.execute(
+        """
+        INSERT INTO workflow_runs (
+            workflow_id, task_id, status, request_digest,
+            definition_version, current_step, last_error_code,
+            created_at, updated_at, owner_user_id
+        ) VALUES (?, NULL, 'succeeded', ?, 1, 0, NULL, ?, ?, ?)
+        """,
+        (workflow_id, "a" * 64, now, now, owner_id),
+    )
+    connection.execute(
+        """
+        INSERT INTO agent_work_order_plans (
+            plan_id, owner_user_id, status, plan_digest,
+            envelope_version, nonce_b64, ciphertext_b64,
+            created_at, expires_at, consumed_at, workflow_id
+        ) VALUES (?, ?, 'consumed', ?, 1, 'nonce', 'ciphertext', ?, ?, ?, ?)
+        """,
+        (plan_id, owner_id, "b" * 64, now, "2026-11-22T20:15:00+00:00", now, workflow_id),
+    )
+    connection.commit()
+
+    connection.execute(
+        "DELETE FROM workflow_runs WHERE workflow_id = ?",
+        (workflow_id,),
+    )
+    connection.commit()
+
+    assert connection.execute(
+        "SELECT 1 FROM agent_work_order_plans WHERE plan_id = ?",
+        (plan_id,),
+    ).fetchone() is None
     connection.close()
