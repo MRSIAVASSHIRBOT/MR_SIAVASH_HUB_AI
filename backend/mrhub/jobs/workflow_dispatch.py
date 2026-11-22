@@ -94,7 +94,7 @@ class WorkflowWorkerHandler:
                 task, lease, workflow_id, "workflow_plan_not_executable"
             )
         runner = AgentWorkflowRunner(self.repository, core)
-        request_digest = AgentWorkflowRunner._digest(request.model_dump(mode="json"))
+        request_digest = AgentWorkflowRunner._digest(request.canonical_payload())
         if row["status"] == "paused" and row["last_error_code"] == "resume_queued":
             try:
                 result = runner.resume(
