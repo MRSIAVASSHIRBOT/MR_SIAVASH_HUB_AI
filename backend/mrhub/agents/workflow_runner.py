@@ -330,6 +330,8 @@ class AgentWorkflowRunner:
                 "tools_executed": execution["tools_executed"],
                 "error_code": execution.get("error_code"),
                 "executed_tool_count": len(execution["results"]),
+                "evaluation": execution.get("evaluation"),
+                "evaluation_scope": execution.get("evaluation_scope"),
             },
         }
 
