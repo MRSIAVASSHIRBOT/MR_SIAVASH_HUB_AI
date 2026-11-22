@@ -87,6 +87,7 @@ class WorkflowWorkerHandler:
                         "step_id": step_binding["step_id"],
                         "tool_name": requested_tool.name,
                         "payload": requested_tool.payload,
+                        "tool_contract_digest": step_binding["tool_contract_digest"],
                     }
                     for step_binding, requested_tool in zip(
                         binding["step_bindings"],
