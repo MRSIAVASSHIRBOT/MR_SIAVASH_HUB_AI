@@ -1,4 +1,5 @@
 import pytest
+
 from mrhub.agents.work_order import (
     WorkOrder,
     assess_work_order_capabilities,
@@ -85,7 +86,6 @@ def test_work_order_declared_risk_does_not_change_capability_assessment():
 
     assert report.complete is True
     assert order.risk_class is RiskClass.HIGH
-
 
 
 def test_audit_allowlists_only_bounded_work_order_assessment_metadata():
