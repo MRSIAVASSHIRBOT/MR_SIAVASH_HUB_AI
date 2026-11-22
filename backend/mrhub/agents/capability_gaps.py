@@ -49,6 +49,15 @@ def evaluate_capability_gaps(
     Exact, case-insensitive name matching is intentionally conservative. Tool
     descriptions are informational and cannot satisfy a requirement.
     """
+    if isinstance(required_capabilities, (str, bytes, bytearray, Mapping)):
+        raise TypeError(
+            "required_capabilities must be an iterable of names, not a scalar or mapping"
+        )
+    if isinstance(tool_catalog, (str, bytes, bytearray, Mapping)):
+        raise TypeError(
+            "tool_catalog must be an iterable of mappings, not a scalar or mapping"
+        )
+
     required: list[str] = []
     required_keys: set[str] = set()
     for required_count, raw in enumerate(required_capabilities, start=1):
