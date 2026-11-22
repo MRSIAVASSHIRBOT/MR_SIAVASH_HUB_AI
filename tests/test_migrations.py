@@ -757,7 +757,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52, 53]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -1094,7 +1094,7 @@ def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [52]
+    assert SchemaMigrator(connection).migrate() == [52, 53]
 
     existing = connection.execute(
         "SELECT permission, granted_at, expires_at FROM tool_permission_grants "
@@ -1154,4 +1154,29 @@ def test_invalid_migration_registry_fails_before_database_ddl(
         "AND name = 'schema_migrations'"
     ).fetchone()
     assert schema_table is None
+    connection.close()
+
+
+
+def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "video-generation-output-contract-v53.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:52])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:52]
+    ]
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [53]
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
+    }
+    assert {
+        "requested_aspect_ratio",
+        "requested_duration_seconds",
+        "requested_resolution",
+    } <= columns
     connection.close()
