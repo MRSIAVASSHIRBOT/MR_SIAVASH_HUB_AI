@@ -7,7 +7,6 @@ capabilities; descriptions are not treated as executable capability identifiers.
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-
 MAX_REQUIRED_CAPABILITIES = 50
 MAX_NAME_LENGTH = 80
 
