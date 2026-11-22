@@ -10,7 +10,7 @@ services:
     buildCommand: pip install .
     startCommand: bash scripts/start-render.sh
     healthCheckPath: /ready
-    autoDeploy: true
+    autoDeployTrigger: "off"
     disk:
       name: mrhub-data
       mountPath: /var/data
