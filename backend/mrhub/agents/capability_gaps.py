@@ -1,11 +1,11 @@
-""""Deterministic CGI capability-gap evaluation against registered tools.
+"""Deterministic CGI capability-gap evaluation against registered tools.
 
 This evaluator reports gaps only. It does not discover, install, grant, or execute
 capabilities; descriptions are not treated as executable capability identifiers.
 """
 
-from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
 
 
 MAX_REQUIRED_CAPABILITIES = 50
