@@ -145,6 +145,8 @@ class AgentWorkOrderPlanRepository:
         expiry = now + timedelta(seconds=ttl_seconds)
         created_at = now.isoformat()
         expires_at_text = expiry.isoformat()
+        # Opportunistically erase expired ciphertext without an unbounded sweep.
+        self.expire_due(limit=100)
         with self._connection() as connection:
             connection.execute(
                 """
@@ -177,6 +179,34 @@ class AgentWorkOrderPlanRepository:
             consumed_at=None,
             workflow_id=None,
         )
+
+
+    def expire_due(self, *, limit: int = 100) -> int:
+        """Erase ciphertext for a bounded batch of expired, still-active plans."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise AgentWorkOrderPlanError("Expiry sweep limit must be between 1 and 500")
+
+        now_text = self._now().isoformat()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE agent_work_order_plans
+                SET status = 'expired', nonce_b64 = 'expired',
+                    ciphertext_b64 = 'expired'
+                WHERE status = 'active'
+                  AND plan_id IN (
+                    SELECT plan_id
+                    FROM agent_work_order_plans
+                    WHERE status = 'active' AND expires_at <= ?
+                    ORDER BY expires_at, plan_id
+                    LIMIT ?
+                  )
+                """,
+                (now_text, limit),
+            )
+            return cursor.rowcount
+
 
     def get(
         self,
