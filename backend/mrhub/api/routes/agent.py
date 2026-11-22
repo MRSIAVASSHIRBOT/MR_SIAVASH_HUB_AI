@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import json
 import sqlite3
-from datetime import datetime, timedelta, UTC
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -36,7 +35,6 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import (
-    EncryptedPayload,
     PayloadEnvelopeError,
     decrypt_plan_payload,
     encrypt_payload,
@@ -326,6 +324,13 @@ def get_persisted_goal_work_order_plan(
 
     try:
         key = load_payload_key()
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Persisted plans are unavailable until a valid payload key is configured",
+        ) from exc
+
+    try:
         payload = decrypt_plan_payload(
             record.envelope,
             plan_id=record.plan_id,
