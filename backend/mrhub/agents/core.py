@@ -1,8 +1,8 @@
 """Deterministic planning core connecting model routing, tools, and policy."""
 
+from collections.abc import Callable
 import hashlib
 import json
-from collections.abc import Callable
 from typing import Annotated
 
 from pydantic import (
@@ -193,7 +193,7 @@ class AgentCore:
         """
         dependency_plan = plan.get("dependency_plan")
         if not isinstance(dependency_plan, dict):
-            raise RuntimeError("Agent plan is missing its validated dependency graph")
+            raise TypeError("Agent plan is missing its validated dependency graph")
 
         try:
             expected_plan = build_workflow_plan(request.workflow_steps()).as_dict()
