@@ -16,7 +16,6 @@ def test_capability_gaps_uses_exact_registered_names():
     assert report.required == ("browser.search", "filesystem.read")
     assert report.available == ("browser.search",)
     assert report.missing == ("filesystem.read",)
-    assert invoked == []
     assert report.complete is False
 
 
@@ -90,3 +89,4 @@ def test_registered_tool_gaps_reads_live_registry_without_invoking_tools():
     assert report.required == ("browser.search", "filesystem.read")
     assert report.available == ("browser.search",)
     assert report.missing == ("filesystem.read",)
+    assert invoked == []
