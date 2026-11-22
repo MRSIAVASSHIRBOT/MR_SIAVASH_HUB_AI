@@ -108,6 +108,31 @@ def _hub_runtime_observation() -> dict[str, object]:
     }
 
 
+def _aggregate_project_status(
+    repository_observation: dict[str, object],
+    runtime_observation: dict[str, object],
+    repository_details: dict[str, object] | None,
+) -> tuple[str, str]:
+    """Summarize observed components without masking failures or unknowns."""
+    statuses = [
+        repository_observation.get("status"),
+        runtime_observation.get("status"),
+    ]
+    latest_ci = repository_details.get("latest_ci") if isinstance(repository_details, dict) else None
+    if isinstance(latest_ci, dict):
+        statuses.append(latest_ci.get("status"))
+    else:
+        statuses.append("unknown")
+
+    if "failing" in statuses:
+        return "failing", "project_component_failing"
+    if "degraded" in statuses:
+        return "degraded", "project_component_degraded"
+    if any(status != "healthy" for status in statuses):
+        return "unknown", "project_component_status_unknown"
+    return "healthy", "all_observed_components_healthy"
+
+
 def build_project_registry(*, include_live_status: bool = False) -> dict[str, object]:
     """Build the owner inventory; only the dashboard opts into live public GitHub reads.
 
@@ -173,9 +198,16 @@ def build_project_registry(*, include_live_status: bool = False) -> dict[str, ob
                 "reason_code": "cloudflare_integration_not_configured",
             },
         }
+        overall_status, overall_reason = _aggregate_project_status(
+            repository_observation,
+            runtime_observation,
+            repository_details,
+        )
         projects.append(
             {
                 **project,
+                "overall_status": overall_status,
+                "overall_status_reason_code": overall_reason,
                 "repository_status": repository_observation["status"],
                 "runtime_status": status_observations["runtime"]["status"],
                 "infrastructure_status": status_observations["infrastructure"]["status"],
