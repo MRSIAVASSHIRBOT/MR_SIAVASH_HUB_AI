@@ -208,6 +208,42 @@ class AgentWorkOrderPlanRepository:
             return cursor.rowcount
 
 
+    def erase_consumed(
+        self,
+        plan_id: str,
+        *,
+        owner_user_id: str,
+        workflow_id: str,
+    ) -> bool:
+        """Erase plan ciphertext only after its linked workflow reaches a terminal state."""
+        try:
+            normalized_plan_id = str(UUID(plan_id))
+            normalized_workflow_id = str(UUID(workflow_id))
+        except (TypeError, ValueError, AttributeError):
+            return False
+        if (
+            normalized_plan_id != plan_id
+            or normalized_workflow_id != workflow_id
+            or not isinstance(owner_user_id, str)
+            or not owner_user_id.strip()
+        ):
+            return False
+
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE agent_work_order_plans
+                SET nonce_b64 = 'consumed', ciphertext_b64 = 'consumed'
+                WHERE plan_id = ?
+                  AND owner_user_id = ?
+                  AND workflow_id = ?
+                  AND status = 'consumed'
+                """,
+                (plan_id, owner_user_id, workflow_id),
+            )
+            return cursor.rowcount == 1
+
+
     def get(
         self,
         plan_id: str,
