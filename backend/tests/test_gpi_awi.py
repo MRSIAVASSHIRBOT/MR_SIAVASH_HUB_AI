@@ -6,8 +6,8 @@ import pytest
 
 from mrhub.agents.awi_planner import (
     ExecutionPlan,
-    PlanStep,
     PlanningError,
+    PlanStep,
     generate_execution_plan,
 )
 from mrhub.agents.gpi import (
