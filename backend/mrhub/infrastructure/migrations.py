@@ -167,7 +167,7 @@ MIGRATIONS = (
                 idempotency_key TEXT NOT NULL,
                 request_digest TEXT NOT NULL,
                 task_id TEXT REFERENCES tasks(task_id) ON DELETE SET NULL,
-                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE SET NULL,
                 status TEXT NOT NULL CHECK (status IN (
                     'accepted', 'running', 'completed', 'failed', 'unknown_outcome'
                 )),
@@ -1471,7 +1471,7 @@ MIGRATIONS = (
                 created_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 consumed_at TEXT,
-                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE SET NULL,
+                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
                 CHECK (expires_at > created_at),
                 CHECK (
                     (status = 'consumed' AND consumed_at IS NOT NULL AND workflow_id IS NOT NULL)
