@@ -278,6 +278,7 @@ class AgentWorkflowRunner:
                 request_digest,
                 step_specs,
                 task=task,
+                definition_version=2,
                 owner_user_id=owner_user_id,
             )
             AuditLogger(self.repository).record(
@@ -493,11 +494,12 @@ class AgentWorkflowRunner:
             )
             for step in workflow["steps"]
         ]
+        definition_version = int(workflow["definition_version"])
         if len(expected) != len(stored) or any(
             expected_step[:3] != stored_step[:3]
             or (
-                stored_step[3] is not None
-                and expected_step[3] != stored_step[3]
+                expected_step[3] != stored_step[3]
+                and not (definition_version < 2 and stored_step[3] is None)
             )
             for expected_step, stored_step in zip(expected, stored, strict=True)
         ):
