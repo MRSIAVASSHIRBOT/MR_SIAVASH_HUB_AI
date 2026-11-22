@@ -91,6 +91,24 @@ class AgentCore:
         except Exception:  # noqa: BLE001 - permission lookup failures must fail closed
             return frozenset()
 
+    @staticmethod
+    def workflow_step_input_digest(
+        request_step_number: int,
+        requested_tool: AgentToolRequest,
+    ) -> str:
+        """Bind a durable step to its stable request identity and exact input payload."""
+        if request_step_number < 2:
+            raise ValueError("Tool request step number must be at least 2")
+        definition = {
+            "step_id": f"step-{request_step_number}",
+            "tool_name": requested_tool.name,
+            "payload": requested_tool.payload,
+        }
+        encoded = json.dumps(
+            definition, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
     def ordered_tool_steps(
         self,
         request: AgentPlanRequest,
