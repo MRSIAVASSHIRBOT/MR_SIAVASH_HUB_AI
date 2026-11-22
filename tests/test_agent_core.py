@@ -1,5 +1,5 @@
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.domain.tasks import RiskClass
@@ -575,3 +575,21 @@ def test_agent_plan_accepts_a_complete_registered_capability_set():
     assert plan["capability_gaps"]["missing"] == []
     assert plan["execution_ready"] is True
 
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 81])
+def test_agent_plan_rejects_blank_or_oversized_required_capability_names(name):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(
+            goal="Validate capability request input",
+            required_capabilities=[name],
+        )
+
+
+def test_agent_plan_normalizes_required_capability_names():
+    request = AgentPlanRequest(
+        goal="Normalize capability request input",
+        required_capabilities=["  text.echo  "],
+    )
+
+    assert request.required_capabilities == ["text.echo"]
