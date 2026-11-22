@@ -43,7 +43,14 @@ def derive_server_risk_class(goal: str, proposed: dict[str, object]) -> RiskClas
         value = proposed.get(key, "")
         if isinstance(value, str):
             values.append(value)
-    for key in ("constraints", "required_capabilities"):
+    for key in (
+        "assumptions",
+        "constraints",
+        "dependencies",
+        "required_capabilities",
+        "acceptance_criteria",
+        "verification_steps",
+    ):
         value = proposed.get(key, [])
         if isinstance(value, list):
             values.extend(item for item in value if isinstance(item, str))
