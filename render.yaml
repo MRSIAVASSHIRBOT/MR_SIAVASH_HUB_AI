@@ -39,7 +39,6 @@ services:
     plan: starter
     region: frankfurt
     buildCommand: >-
-      pip install . &&
       pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@e8cb136c22ba5a343cb5725763b23cadb47f55de"
     startCommand: python -m el_ai
     autoDeploy: true
