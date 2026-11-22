@@ -46,9 +46,6 @@ class VideoGenerationCancellationConflict(ValueError):
     """Raised when a generation is no longer safely pending for cancellation."""
 
 
-
-
-
 def _validate_output_against_request(
     request: dict[str, object],
     *,
@@ -63,7 +60,12 @@ def _validate_output_against_request(
         "1:1": 1.0,
         "4:5": 4 / 5,
     }
-    expected_ratio = expected_ratios.get(request.get("aspect_ratio"))
+    requested_aspect_ratio = request.get("aspect_ratio")
+    expected_ratio = (
+        expected_ratios.get(requested_aspect_ratio)
+        if isinstance(requested_aspect_ratio, str)
+        else None
+    )
     if (
         not math.isfinite(duration_seconds)
         or expected_ratio is None
@@ -81,7 +83,12 @@ def _validate_output_against_request(
     ):
         raise ValueError("Generated output does not match the requested duration")
 
-    minimum_short_edge = {"720p": 720, "1080p": 1080}.get(request.get("resolution"))
+    resolution = request.get("resolution")
+    minimum_short_edge = (
+        {"720p": 720, "1080p": 1080}.get(resolution)
+        if isinstance(resolution, str)
+        else None
+    )
     if minimum_short_edge is None or min(width, height) < minimum_short_edge:
         raise ValueError("Generated output does not meet the requested resolution")
 
