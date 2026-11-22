@@ -214,7 +214,6 @@ class AgentWorkflowRunner:
             )
             heartbeat.start()
         attempts: dict[int, StepAttempt] = {}
-        criterion_outcomes: dict[int, tuple[CriterionStatus, str | None]] = {}
 
         try:
             self._record_execution_start(
@@ -247,14 +246,6 @@ class AgentWorkflowRunner:
                             unknown_outcome=definition.external_side_effect,
                             lease=lease,
                         )
-                        criterion_outcomes[number] = (
-                            CriterionStatus.UNKNOWN
-                            if definition.external_side_effect
-                            else CriterionStatus.FAILED,
-                            None
-                            if definition.external_side_effect
-                            else self._digest({"error_code": failure_code}),
-                        )
 
             def on_step_result(number: int, output_digest: str) -> None:
                 if lease_lost.is_set():
@@ -265,7 +256,6 @@ class AgentWorkflowRunner:
                 self.recovery.complete_step(
                     workflow_id, attempt, output_digest, lease=lease
                 )
-                criterion_outcomes[number] = (CriterionStatus.PASSED, output_digest)
                 del attempts[number]
 
             def should_cancel() -> bool:
