@@ -654,3 +654,42 @@ def test_agent_plan_accepts_a_complete_registered_capability_set():
     assert plan["capability_gaps"]["missing"] == []
     assert plan["execution_ready"] is True
 
+
+ 
+
+def test_agent_core_skips_unused_capability_catalog_for_large_registry():
+    registry = ToolRegistry()
+    for index in range(201):
+        registry.register(
+            ToolDefinition(
+                name=f"custom.catalog_tool_{index}",
+                description="A registered tool used to exercise catalog bounds.",
+                input_model=EmptyInput,
+                output_model=EmptyOutput,
+                handler=lambda _payload: {"accepted": True},
+                risk_class=RiskClass.LOW,
+            )
+        )
+
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry)
+
+    plan = core.plan(AgentPlanRequest(goal="Plan without capability requirements"))
+
+    assert plan["execution_ready"] is True
+    assert plan["capability_gaps"] == {
+        "required": [],
+        "available": [],
+        "missing": [],
+        "complete": True,
+    }
+
+
+def test_agent_plan_request_rejects_blank_or_oversized_capability_names():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(goal="Invalid capability", required_capabilities=["   "])
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(goal="Invalid capability", required_capabilities=["x" * 81])
