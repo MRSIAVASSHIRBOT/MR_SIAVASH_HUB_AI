@@ -87,14 +87,40 @@ class AgentCore:
         if start_step < 2:
             raise ValueError("Tool execution start step must be at least 2")
 
-        dependency_plan = plan["dependency_plan"]
-        ordered_step_ids = [
-            item["step_id"] for item in dependency_plan["ordered_steps"]
-        ]
+        dependency_plan = plan.get("dependency_plan")
+        if not isinstance(dependency_plan, dict):
+            raise RuntimeError("Agent plan is missing its validated dependency graph")
+        ordered_steps = dependency_plan.get("ordered_steps")
+        if not isinstance(ordered_steps, list):
+            raise RuntimeError("Agent dependency graph has no ordered steps")
+
+        expected_step_ids = {
+            "step-1",
+            *(f"step-{number}" for number in range(2, len(request.tools) + 2)),
+        }
+        ordered_step_ids: list[str] = []
+        for workflow_step in ordered_steps:
+            if not isinstance(workflow_step, dict):
+                raise RuntimeError("Agent dependency graph contains an invalid step")
+            step_id = workflow_step.get("step_id")
+            if not isinstance(step_id, str):
+                raise RuntimeError("Agent dependency graph contains an invalid step identifier")
+            ordered_step_ids.append(step_id)
+
+        if (
+            not ordered_step_ids
+            or ordered_step_ids[0] != "step-1"
+            or len(ordered_step_ids) != len(expected_step_ids)
+            or len(set(ordered_step_ids)) != len(ordered_step_ids)
+            or set(ordered_step_ids) != expected_step_ids
+        ):
+            raise RuntimeError(
+                "Agent dependency graph must contain every expected step exactly once"
+            )
+
         tool_step_numbers = [
             int(step_id.removeprefix("step-"))
-            for step_id in ordered_step_ids
-            if step_id != "step-1"
+            for step_id in ordered_step_ids[1:]
         ]
 
         for step_number in tool_step_numbers:
