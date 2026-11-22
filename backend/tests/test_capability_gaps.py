@@ -66,8 +66,6 @@ def test_tool_catalog_size_is_bounded():
     with pytest.raises(ValueError, match="Tool catalog exceeds"):
         evaluate_capability_gaps(["tool.read"], catalog)
 
-
-
 def test_registered_tool_gaps_reads_live_registry_without_invoking_tools():
     class EmptyModel(BaseModel):
         pass
