@@ -78,6 +78,9 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     assert result is not None
     assert result["result"]["execution_completed"] is True
     assert result["result"]["executed_tool_count"] == 1
+    assert result["result"]["evaluation_scope"] == "tool_execution_only"
+    assert result["result"]["evaluation"]["decision"] == "accept"
+    assert result["result"]["evaluation"]["passed"] == 1
 
 
 def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch):
@@ -134,6 +137,9 @@ def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch
     assert result is not None
     assert result["result"]["execution_completed"] is True
     assert result["result"]["executed_tool_count"] == 0
+    assert result["result"]["evaluation_scope"] == "tool_execution_only"
+    assert result["result"]["evaluation"]["decision"] == "accept"
+    assert result["result"]["evaluation"]["passed"] == 1
 
     task = repository.get(UUID(workflow["task_id"]))
     assert task is not None and task.status.value == "succeeded"
