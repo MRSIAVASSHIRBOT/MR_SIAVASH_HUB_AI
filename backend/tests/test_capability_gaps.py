@@ -62,3 +62,15 @@ def test_tool_catalog_size_is_bounded():
     catalog = [{"name": f"tool.{index}"} for index in range(201)]
     with pytest.raises(ValueError, match="Tool catalog exceeds"):
         evaluate_capability_gaps(["tool.read"], catalog)
+
+
+@pytest.mark.parametrize("invalid_required", ["tool.read", b"tool.read", bytearray(b"tool.read"), {"name": "tool.read"}])
+def test_capability_gaps_rejects_scalar_required_input(invalid_required):
+    with pytest.raises(TypeError, match="required_capabilities"):
+        evaluate_capability_gaps(invalid_required, [])
+
+
+@pytest.mark.parametrize("invalid_catalog", ["tool.read", b"tool.read", bytearray(b"tool.read"), {"name": "tool.read"}])
+def test_capability_gaps_rejects_scalar_catalog_input(invalid_catalog):
+    with pytest.raises(TypeError, match="tool_catalog"):
+        evaluate_capability_gaps(["tool.read"], invalid_catalog)
