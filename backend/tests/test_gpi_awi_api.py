@@ -292,11 +292,26 @@ def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monk
     def reject_remote_request(_owner_id):
         raise HTTPException(status_code=429, detail="rate limited")
 
+def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monkeypatch):
+    router = build_router(
+        work_order_output(),
+        plan_output(),
+        provider="moonshot",
+        local=False,
+    )
+    provider = router.registry.get("moonshot", "queue-v1")
+
+    def reject_remote_request(_owner_id):
+        raise HTTPException(status_code=429, detail="rate limited")
+
     class FakeTaskRepository:
         def __init__(self, database_path):
             self.database_path = database_path
 
         def initialize(self):
+            return None
+
+        def record_audit(self, event):
             return None
 
     monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
