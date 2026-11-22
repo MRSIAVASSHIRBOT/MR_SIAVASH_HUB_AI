@@ -310,22 +310,11 @@ def execute_agent_workflow(
                 )
             idempotency_binding = {"scope": scope, "key": idempotency_key}
 
-        step_specs = []
-        raw_steps = plan.get("steps", [])
-        if not isinstance(raw_steps, list) or not raw_steps:
-            raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
-        for step in raw_steps:
-            if not isinstance(step, dict):
-                continue
-            number = int(step["step"])
-            if number == 1:
-                kind, name = "provider_selection", "provider_selection"
-            else:
-                tool = request.tools[number - 2]
-                definition = core.tool_registry.get(tool.name)
-                kind = "external_tool" if definition.external_side_effect else "safe_tool"
-                name = tool.name
-            step_specs.append({"step_number": number, "kind": kind, "name": name})
+        # The API and worker must persist the exact same topological execution
+        # positions. Reuse the runner's shared builder rather than request order.
+        step_specs, _tools_by_execution_step = (
+            AgentWorkflowRunner.build_durable_step_metadata(core, request, plan)
+        )
 
         try:
             recovery.create_run(
