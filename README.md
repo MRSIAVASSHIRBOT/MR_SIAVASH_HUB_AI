@@ -43,6 +43,22 @@ On first launch, initialize the local owner account from the same machine using 
 
 `GET /health`, `POST /auth/setup`, and `POST /auth/login` are public (setup is restricted to loopback). Task, job, policy, and model endpoints require a valid session. `POST /tasks/{task_id}/approval` records a one-time owner-authenticated approval or rejection bound to a SHA-256 fingerprint of task identity, type, risk class, and description; the decision and task transition are persisted together. `GET /tasks/{task_id}/approval` retrieves the decision. Rejected tasks enter a terminal state. Initial protected endpoints also include `POST /tasks`, `GET /tasks`, `GET /tasks/{task_id}`, `POST /jobs/{task_id}/cancel`, `POST /policy/evaluate`, `GET /models`, and `POST /models/select`.
 
+## Zero-cost operating mode
+
+The supported zero-monthly-cost deployment is the local-first runtime. Run the API and pull worker on an owned computer using the Windows quick-start scripts above. Keep the SQLite database, workflow-encryption key, media, and backups on local storage. Back up the database and encryption key together; losing the key makes encrypted queued workflow payloads unrecoverable.
+
+The Render blueprint in `render.yaml` is an optional paid deployment profile, not part of the zero-cost mode. It deliberately requests a Starter instance and a persistent disk because the current SQLite-first runtime requires durable storage. Do not deploy that blueprint when the budget is zero. Do not replace its persistent disk with ephemeral storage or move the production SQLite database to `/tmp`: doing so would risk losing workflow state and user data on restart or redeploy.
+
+For a zero-cost setup:
+- Use the local Windows runtime as the authoritative control plane and data store.
+- Keep Ollama optional and use only models that fit the available hardware; the application must remain usable with the deterministic test provider when no local model is configured.
+- Treat GitHub Pages and Cloudflare free services as optional public presentation or edge entry points only, subject to their current free-tier limits. Never make them the sole copy of user data, secrets, workflow state, or backups.
+- Disable paid model providers and automatic cloud fallback. A provider outage must not cause credentials or data to be sent to another provider.
+- Keep external publishing, device-control actions, destructive operations, and other high-impact tasks behind explicit policy and owner approval.
+- Verify actual quotas and account eligibility before enabling any external free-tier integration. A free tier is not a guarantee of permanent availability or zero overage.
+
+The zero-cost mode does not claim 24/7 public availability: the local control plane is reachable only while the host is running and network access is configured. Public remote access requires a separately reviewed, free-tier-compatible edge design and must not expose the local API directly.
+
 ## Model provider interface
 
 Provider adapters implement a typed contract for model metadata, request/response validation, health status, and generation. A registry resolves the selected provider/model pair; the router performs capability matching and refuses silent local-to-cloud fallback. Provider errors expose stable reason codes rather than request contents or credentials.
