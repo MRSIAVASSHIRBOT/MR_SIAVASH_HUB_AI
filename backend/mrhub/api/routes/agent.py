@@ -309,8 +309,7 @@ def get_persisted_goal_work_order_plan(
 ) -> dict[str, object]:
     """Read and authenticate one encrypted plan record belonging to the current owner."""
     settings = get_settings()
-    tasks = TaskRepository(settings.database_path)
-    tasks.initialize()
+    TaskRepository(settings.database_path).initialize()
     record = AgentWorkOrderPlanRepository(settings.database_path).get(
         str(plan_id),
         owner_user_id=current_user.user_id,
