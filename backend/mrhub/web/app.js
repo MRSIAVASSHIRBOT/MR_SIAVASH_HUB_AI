@@ -657,7 +657,7 @@
         const card = element("article", undefined, "project-card");
         const heading = element("div", undefined, "project-card-heading");
         heading.append(element("strong", project.name || project.project_id));
-        heading.append(element("span", project.repository_status || "unknown", "project-state"));
+        heading.append(element("span", project.overall_status || project.repository_status || "unknown", "project-state"));
         card.append(heading);
         card.append(element("p", project.description || ""));
         const statuses = element("dl", undefined, "project-status-list");
@@ -765,7 +765,6 @@
           links.append(repositoryLink);
         }
         const approvedServiceUrls = new Set([
-          "https://gshop11.ir/",
           "https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/",
         ]);
         if (approvedServiceUrls.has(project.service_url)) {

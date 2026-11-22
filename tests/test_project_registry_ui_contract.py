@@ -38,3 +38,11 @@ def test_project_registry_renders_local_worker_heartbeat_provenance():
     assert 'runtime.worker_heartbeat_age_seconds' in source
     assert 'runtime.schema_version' in source
     assert 'تازگی heartbeat:' in source
+
+def test_project_registry_service_links_only_include_active_website():
+    source_path = Path(__file__).resolve().parents[1] / "backend/mrhub/web/app.js"
+    source = source_path.read_text(encoding="utf-8")
+
+    assert '"https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/"' in source
+    assert "gshop11.ir" not in source
+    assert 'project.overall_status || project.repository_status || "unknown"' in source
