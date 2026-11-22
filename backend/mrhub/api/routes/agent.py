@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
+from mrhub.agents.gpi import WorkOrderGenerationError, generate_work_order
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
@@ -47,6 +49,14 @@ def _build_owner_agent_core(
     )
 
 
+class GoalPlanningRequest(BaseModel):
+    """Bounded natural-language goal submitted for planning only."""
+
+    model_config = {"extra": "forbid"}
+
+    goal: str = Field(min_length=1, max_length=1_000)
+
+
 class WorkflowReconciliationRequest(BaseModel):
     step_number: int = Field(ge=1)
     outcome: Literal["succeeded", "failed"]
@@ -55,6 +65,62 @@ class WorkflowReconciliationRequest(BaseModel):
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+@router.post("/work-orders/plan")
+def create_goal_work_order_plan(
+    request: GoalPlanningRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Convert a goal into a validated work order and plan without executing tools."""
+    del current_user
+    model_router = build_model_router(include_stub=False)
+    try:
+        work_order = generate_work_order(request.goal, model_router)
+        if work_order.risk_class.value == "prohibited":
+            raise HTTPException(
+                status_code=422,
+                detail="The requested goal is outside the supported safety policy",
+            )
+        plan = generate_execution_plan(work_order, model_router)
+    except (WorkOrderGenerationError, PlanningError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="No configured non-stub model provider is available",
+        ) from exc
+    except Exception as exc:
+        from mrhub.providers.base import ProviderError
+
+        if isinstance(exc, ProviderError):
+            raise HTTPException(status_code=503, detail=exc.code) from exc
+        raise
+
+    tool_catalog = build_tool_registry().catalog()
+    available_names = {
+        item["name"].strip().casefold()
+        for item in tool_catalog
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    required = list(work_order.required_capabilities)
+    available = [name for name in required if name.casefold() in available_names]
+    missing = [name for name in required if name.casefold() not in available_names]
+    return {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+        "capability_assessment": {
+            "required": required,
+            "available": available,
+            "missing": missing,
+            "complete": not missing,
+            "authorization_checked": False,
+        },
+        "planning_only": True,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
 
 
 @router.get("/capabilities")
