@@ -1,13 +1,14 @@
-# Single-instance deployment: API and pull worker share one persistent SQLite volume.
-# This intentionally uses a paid Starter instance because Render free services do not
-# provide the persistent disk required by the current SQLite-first architecture.
+# Single-instance deployment: Hub API, Hub worker, and EL_AI bridge consumer
+# share one persistent volume. SQLite requires one service instance.
 services:
   - type: web
     name: mr-siavash-hub-ai
     runtime: python
     plan: starter
     region: frankfurt
-    buildCommand: pip install .
+    buildCommand: >-
+      pip install . &&
+      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@079002266b69e8fc98fee91e179954d8a8024823"
     startCommand: bash scripts/start-render.sh
     healthCheckPath: /ready
     autoDeploy: true
@@ -28,10 +29,34 @@ services:
         value: /var/data/mrhub.sqlite3
       - key: MRH_REQUIRE_WORKER_FOR_READINESS
         value: "true"
-      # Supply these two values through Render's secret environment-variable UI.
-      # MRH_WORKFLOW_PAYLOAD_KEY must be URL-safe Base64 for exactly 32 random bytes.
       - key: MRH_WORKFLOW_PAYLOAD_KEY
         sync: false
-      # One-time remote owner bootstrap credential; remove after the owner is initialized.
       - key: MRH_OWNER_SETUP_TOKEN
         sync: false
+      # EL_AI runs beside the Hub and consumes the deployed Cloudflare bridge.
+      - key: EL_AI_ENVIRONMENT
+        value: production
+      - key: EL_AI_STATE_DIR
+        value: /var/data/el-ai
+      - key: EL_AI_CREDENTIAL_STORE
+        value: encrypted_file
+      - key: EL_AI_CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: TELEGRAM_TRANSPORT
+        value: cloudflare_bridge
+      - key: TELEGRAM_BRIDGE_URL
+        value: https://mr-siavash-el-ir-bot.mrsiavashirbot.workers.dev
+      - key: TELEGRAM_BRIDGE_SHARED_SECRET
+        sync: false
+      - key: TELEGRAM_BRIDGE_TIMEOUT_SECONDS
+        value: "8"
+      - key: TELEGRAM_OWNER_IDS
+        sync: false
+      - key: TELEGRAM_PUBLIC_ENABLED
+        value: "false"
+      - key: HUB_INTEGRATION_ENABLED
+        value: "true"
+      - key: HUB_API_BASE_URL
+        value: http://127.0.0.1:10000
+      - key: HUB_ALLOW_REMOTE
+        value: "false"
