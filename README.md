@@ -11,6 +11,8 @@ MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabiliti
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
 
+**Operational capabilities:** [AWI, GPI, CGI, PAIOS, gap detection, planning, self-evaluation, quality and security requirements](docs/OPERATIONAL_CAPABILITIES.md).
+
 ## Engineering principles
 - **Local-first, hybrid-capable:** run feasible workloads locally and route heavier tasks to explicitly configured providers.
 - **Modular monolith first:** maintain clear module contracts without introducing distributed-system overhead prematurely.
