@@ -63,7 +63,10 @@ def execution_request_digest(
             "operation": PLAN_EXECUTION_FORMAT,
             "plan_id": plan_id,
             "plan_digest": plan_digest,
-            "bindings": bindings,
+            "bindings": sorted(
+                bindings,
+                key=lambda item: str(item.get("step_id", "")),
+            ),
         }
     )
 
