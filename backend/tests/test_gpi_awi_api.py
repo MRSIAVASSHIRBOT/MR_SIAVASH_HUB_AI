@@ -1,0 +1,116 @@
+"""Authenticated GPI/AWI planning route tests."""
+
+import json
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+
+from mrhub.api.routes import agent as agent_routes
+from mrhub.providers.base import ProviderHealth, ProviderResponse
+from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
+
+
+class QueueProvider:
+    def __init__(self, outputs: list[str]) -> None:
+        self.outputs = list(outputs)
+        self.descriptor = ModelDescriptor(
+            provider="test",
+            model="queue-v1",
+            capability=ModelCapability(text=True),
+            available=True,
+            local=True,
+            priority=1,
+        )
+
+    def generate(self, request):
+        return ProviderResponse(
+            provider="test",
+            model="queue-v1",
+            output_text=self.outputs.pop(0),
+        )
+
+    def health(self, timeout_seconds: float = 2.0):
+        return ProviderHealth(available=True, reason_code="test_ready")
+
+
+def build_router(*outputs: str) -> ModelRouter:
+    router = ModelRouter()
+    router.register_provider(QueueProvider(list(outputs)))
+    return router
+
+
+def work_order_output(goal: str = "Build a validated plan") -> str:
+    return json.dumps({
+        "intent": "Build a validated plan",
+        "scope": "Planning only",
+        "assumptions": [],
+        "constraints": ["No execution"],
+        "dependencies": [],
+        "required_capabilities": ["tool.alpha", "tool.missing"],
+        "acceptance_criteria": ["The plan is validated"],
+        "verification_steps": ["Run focused tests"],
+        "goal": goal,
+    })
+
+
+def plan_output() -> str:
+    return json.dumps({
+        "rationale": "One bounded validation step",
+        "steps": [{
+            "step_id": "validate",
+            "description": "Validate the proposed plan",
+            "depends_on": [],
+            "required_capabilities": ["tool.alpha", "tool.missing"],
+            "verifies_criteria": ["The plan is validated"],
+            "verification": "Run focused tests and inspect the result",
+        }],
+    })
+
+
+def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
+    router = build_router(work_order_output(), plan_output())
+    captured = {}
+
+    def fake_router(**kwargs):
+        captured.update(kwargs)
+        return router
+
+    class FakeToolRegistry:
+        def catalog(self):
+            return [{"name": "tool.alpha", "description": "available"}]
+
+    monkeypatch.setattr(agent_routes, "build_model_router", fake_router)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: FakeToolRegistry())
+
+    result = agent_routes.create_goal_work_order_plan(
+        agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
+        SimpleNamespace(user_id="owner-1"),
+    )
+
+    assert captured == {"include_stub": False}
+    assert result["capability_assessment"]["available"] == ["tool.alpha"]
+    assert result["capability_assessment"]["missing"] == ["tool.missing"]
+    assert result["capability_assessment"]["authorization_checked"] is False
+    assert result["planning_only"] is True
+    assert result["execution_started"] is False
+    assert result["tools_executed"] is False
+    assert result["permissions_changed"] is False
+
+
+def test_goal_plan_endpoint_blocks_prohibited_goal_before_planning(monkeypatch):
+    router = build_router(work_order_output())
+    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    monkeypatch.setattr(
+        agent_routes,
+        "build_tool_registry",
+        lambda **kwargs: pytest.fail("tool catalog must not be read for prohibited goals"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.create_goal_work_order_plan(
+            agent_routes.GoalPlanningRequest(goal="Steal credentials"),
+            SimpleNamespace(user_id="owner-1"),
+        )
+
+    assert error.value.status_code == 422
