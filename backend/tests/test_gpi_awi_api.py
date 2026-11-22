@@ -80,8 +80,27 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
         def catalog(self):
             return [{"name": "tool.alpha", "description": "available"}]
 
+    audit_events = []
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
     monkeypatch.setattr(agent_routes, "build_model_router", fake_router)
     monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: FakeToolRegistry())
+    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
 
     result = agent_routes.create_goal_work_order_plan(
         agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
@@ -98,6 +117,10 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["execution_started"] is False
     assert result["tools_executed"] is False
     assert result["permissions_changed"] is False
+    assert len(audit_events) == 1
+    assert audit_events[0]["event_type"] == "agent.work_order_planned"
+    assert audit_events[0]["actor_id"] == "owner-1"
+    assert "goal" not in audit_events[0]["metadata"]
 
 
 def test_goal_plan_endpoint_blocks_prohibited_goal_before_planning(monkeypatch):
