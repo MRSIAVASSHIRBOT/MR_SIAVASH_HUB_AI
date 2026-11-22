@@ -87,7 +87,26 @@ class AgentCore:
         if start_step < 2:
             raise ValueError("Tool execution start step must be at least 2")
 
-        for step_number, requested_tool in enumerate(request.tools, start=2):
+        tools_by_step = {
+            f"tool-{step_number}": (step_number, requested_tool)
+            for step_number, requested_tool in enumerate(request.tools, start=2)
+        }
+        workflow_plan = plan.get("workflow_plan")
+        if not isinstance(workflow_plan, dict):
+            raise RuntimeError("Agent plan is missing its validated workflow graph")
+        ordered_steps = workflow_plan.get("ordered_steps")
+        if not isinstance(ordered_steps, list):
+            raise RuntimeError("Agent workflow graph has no ordered steps")
+
+        for workflow_step in ordered_steps:
+            if not isinstance(workflow_step, dict):
+                raise RuntimeError("Agent workflow graph contains an invalid step")
+            step_id = workflow_step.get("step_id")
+            if step_id == "provider-selection":
+                continue
+            if not isinstance(step_id, str) or step_id not in tools_by_step:
+                raise RuntimeError("Agent workflow graph references an unknown tool step")
+            step_number, requested_tool = tools_by_step[step_id]
             if step_number < start_step:
                 continue
             if should_cancel is not None and should_cancel():
