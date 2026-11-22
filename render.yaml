@@ -41,7 +41,7 @@ services:
     plan: starter
     region: frankfurt
     buildCommand: >-
-      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@e8cb136c22ba5a343cb5725763b23cadb47f55de"
+      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@b26bdb60257cdd8149aba28c48ffcb9fbbe9bb23"
     startCommand: python -m el_ai
     autoDeployTrigger: off
     disk:
