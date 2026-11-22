@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
@@ -132,6 +132,23 @@ class PersistedPlanExecutionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     step_bindings: list[PlanStepExecutionBinding] = Field(min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def validate_payload_size(self) -> "PersistedPlanExecutionRequest":
+        """Bound the serialized request before registry validation or encryption."""
+        try:
+            encoded = json.dumps(
+                [binding.model_dump(mode="json") for binding in self.step_bindings],
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("step bindings must contain finite JSON data") from exc
+        if len(encoded) > 65_536:
+            raise ValueError("combined step binding payloads cannot exceed 64 KiB")
+        return self
 
 
 def _canonical_plan_digest(payload: dict[str, object]) -> str:
