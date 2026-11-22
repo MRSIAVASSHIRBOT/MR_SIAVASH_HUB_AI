@@ -6,6 +6,8 @@ from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
+
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
@@ -248,6 +250,28 @@ class AgentCore:
                 }
             )
 
+        # The current AgentPlanRequest contract is an ordered tool sequence.
+        # Materialize that contract as an explicit dependency graph so downstream
+        # workflow persistence, visualization, and recovery share one validated plan.
+        graph_steps = [
+            WorkflowStep(
+                step_id="provider-selection",
+                description="Select an inference provider",
+            )
+        ]
+        previous_step = "provider-selection"
+        for item in steps[1:]:
+            step_id = f"tool-{item['step']}"
+            graph_steps.append(
+                WorkflowStep(
+                    step_id=step_id,
+                    description=f"Execute registered tool {item['name']}",
+                    depends_on=(previous_step,),
+                )
+            )
+            previous_step = step_id
+        workflow_plan = build_workflow_plan(graph_steps).as_dict()
+
         executable = all(
             step["status"] == "ready"
             for step in steps
@@ -258,6 +282,7 @@ class AgentCore:
             "analysis_mode": "declarative_request",
             "selected_provider": selection.model_dump(),
             "steps": steps,
+            "workflow_plan": workflow_plan,
             "step_count": len(steps),
             "execution_ready": executable,
             "decision_mode": "plan_only",
