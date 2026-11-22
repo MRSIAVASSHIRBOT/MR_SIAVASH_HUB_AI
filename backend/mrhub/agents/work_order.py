@@ -4,29 +4,17 @@ This model validates a proposed work order; it does not authorize tools or actio
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
-from typing import Annotated
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from mrhub.agents.capability_gaps import (
+    MAX_NAME_LENGTH as MAX_REGISTERED_TOOL_NAME_LENGTH,
+    MAX_TOOL_CATALOG_ENTRIES as MAX_REGISTERED_TOOL_COUNT,
+    CapabilityGapReport,
+    evaluate_capability_gaps,
+)
 from mrhub.domain.tasks import RiskClass
-
-MAX_REGISTERED_TOOL_COUNT = 200
-MAX_REGISTERED_TOOL_NAME_LENGTH = 80
-MAX_WORK_ORDER_ITEM_LENGTH = 300
-MAX_WORK_ORDER_DEPENDENCY_LENGTH = 200
-
-WorkOrderText = Annotated[
-    str, Field(min_length=1, max_length=MAX_WORK_ORDER_ITEM_LENGTH)
-]
-WorkOrderDependency = Annotated[
-    str, Field(min_length=1, max_length=MAX_WORK_ORDER_DEPENDENCY_LENGTH)
-]
-WorkOrderCapability = Annotated[
-    str, Field(min_length=1, max_length=MAX_REGISTERED_TOOL_NAME_LENGTH)
-]
-
 
 class WorkOrder(BaseModel):
     """A bounded, reviewable task specification produced from a natural-language goal."""
@@ -70,69 +58,17 @@ class WorkOrder(BaseModel):
         return normalized
 
 
-@dataclass(frozen=True)
-class WorkOrderCapabilityAssessment:
-    """Read-only capability presence report; it is not an authorization decision."""
-
-    required: tuple[str, ...]
-    available: tuple[str, ...]
-    missing: tuple[str, ...]
-
-    @property
-    def complete(self) -> bool:
-        return not self.missing
-
-    def as_dict(self) -> dict[str, object]:
-        """Serialize the presence report in one stable API-neutral shape."""
-        return {
-            "required": list(self.required),
-            "available": list(self.available),
-            "missing": list(self.missing),
-            "complete": self.complete,
-        }
+# Backwards-compatible public name retained for existing route and client imports.
+WorkOrderCapabilityAssessment = CapabilityGapReport
 
 
 def assess_work_order_capabilities(
     work_order: WorkOrder,
     registered_tools: Iterable[Mapping[str, object]],
 ) -> WorkOrderCapabilityAssessment:
-    """Compare required capability identifiers with registered tool names.
+    """Delegate WorkOrder presence checks to the shared CGI evaluator.
 
-    Exact case-insensitive name matching prevents descriptive metadata from
-    being mistaken for an executable capability. No tool is invoked.
+    WorkOrder itself caps required_capabilities at 20; the shared evaluator
+    retains its broader 50-item ceiling for other API consumers.
     """
-    available_names: set[str] = set()
-    for index, entry in enumerate(registered_tools, start=1):
-        if index > MAX_REGISTERED_TOOL_COUNT:
-            raise ValueError("Registered tool catalog exceeds the supported limit")
-        if not isinstance(entry, Mapping):
-            raise TypeError("Registered tool entries must be mappings")
-        raw_name = entry.get("name")
-        if not isinstance(raw_name, str):
-            raise TypeError("Registered tool name must be a string")
-        name = raw_name.strip()
-        if not name or len(name) > MAX_REGISTERED_TOOL_NAME_LENGTH:
-            raise ValueError("Registered tool name is outside the supported bounds")
-        available_names.add(name.casefold())
-
-    required: list[str] = []
-    available: list[str] = []
-    missing: list[str] = []
-    seen: set[str] = set()
-    for raw_name in work_order.required_capabilities:
-        name = raw_name.strip()
-        key = name.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        required.append(name)
-        if key in available_names:
-            available.append(name)
-        else:
-            missing.append(name)
-
-    return WorkOrderCapabilityAssessment(
-        required=tuple(required),
-        available=tuple(available),
-        missing=tuple(missing),
-    )
+    return evaluate_capability_gaps(work_order.required_capabilities, registered_tools)
