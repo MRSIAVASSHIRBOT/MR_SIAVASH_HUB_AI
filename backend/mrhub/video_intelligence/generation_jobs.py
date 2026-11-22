@@ -45,6 +45,45 @@ class VideoGenerationCancellationConflict(ValueError):
     """Raised when a generation is no longer safely pending for cancellation."""
 
 
+
+
+
+def _validate_output_against_request(
+    request: dict[str, object],
+    *,
+    duration_seconds: float,
+    width: int,
+    height: int,
+) -> None:
+    """Ensure a provider result satisfies the owner's original output constraints."""
+    expected_ratios = {
+        "9:16": 9 / 16,
+        "16:9": 16 / 9,
+        "1:1": 1.0,
+        "4:5": 4 / 5,
+    }
+    expected_ratio = expected_ratios.get(request.get("aspect_ratio"))
+    if (
+        expected_ratio is None
+        or width <= 0
+        or height <= 0
+        or abs((width / height) - expected_ratio) > expected_ratio * 0.01
+    ):
+        raise ValueError("Generated output does not match the requested aspect ratio")
+
+    requested_duration = request.get("duration_seconds")
+    if (
+        type(requested_duration) is not int
+        or not 3 <= requested_duration <= 60
+        or abs(duration_seconds - requested_duration) > max(0.25, requested_duration * 0.05)
+    ):
+        raise ValueError("Generated output does not match the requested duration")
+
+    minimum_short_edge = {"720p": 720, "1080p": 1080}.get(request.get("resolution"))
+    if minimum_short_edge is None or min(width, height) < minimum_short_edge:
+        raise ValueError("Generated output does not meet the requested resolution")
+
+
 class VideoGenerationJobRepository:
     """Persist encrypted generation inputs and owner-scoped job metadata."""
 
@@ -953,6 +992,39 @@ class VideoGenerationJobRepository:
         if size <= 0 or size > MAX_OUTPUT_BYTES or size != result.output_bytes:
             raise ValueError("Generated output size does not match bounded provider metadata")
 
+        with self.tasks._connection() as connection:
+            request_row = connection.execute(
+                """SELECT j.status, p.envelope_version, p.nonce_b64, p.ciphertext_b64
+                   FROM video_generation_jobs AS j
+                   LEFT JOIN video_generation_payloads AS p
+                     ON p.generation_id = j.generation_id
+                    AND p.owner_user_id = j.owner_user_id
+                   WHERE j.generation_id = ? AND j.owner_user_id = ?""",
+                (str(generation_id), owner_user_id),
+            ).fetchone()
+        if request_row is None:
+            return None
+        requested_output = None
+        if request_row["status"] != "succeeded":
+            if any(
+                request_row[field] is None
+                for field in ("envelope_version", "nonce_b64", "ciphertext_b64")
+            ):
+                raise ValueError("Generation request is unavailable for output validation")
+            requested_output = decrypt_payload(
+                EncryptedPayload(
+                    version=int(request_row["envelope_version"]),
+                    nonce_b64=str(request_row["nonce_b64"]),
+                    ciphertext_b64=str(request_row["ciphertext_b64"]),
+                ),
+                workflow_id=str(generation_id),
+                task_id=str(generation_id),
+                owner_user_id=owner_user_id,
+                key=load_payload_key(),
+            )
+            if not isinstance(requested_output, dict):
+                raise ValueError("Generation request is invalid for output validation")
+
         metadata = probe_video(output_path)
         if (
             metadata.metadata_status != "available"
@@ -972,6 +1044,14 @@ class VideoGenerationJobRepository:
             or abs(duration - float(result.duration_seconds)) > max(0.25, duration * 0.05)
         ):
             raise ValueError("Generated output metadata does not match provider result")
+
+        if requested_output is not None:
+            _validate_output_against_request(
+                requested_output,
+                duration_seconds=duration,
+                width=metadata.width,
+                height=metadata.height,
+            )
 
         digest = hashlib.sha256()
         with output_path.open("rb") as file:
