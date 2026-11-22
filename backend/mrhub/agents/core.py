@@ -91,6 +91,78 @@ class AgentCore:
         except Exception:  # noqa: BLE001 - permission lookup failures must fail closed
             return frozenset()
 
+    def ordered_tool_steps(
+        self,
+        request: AgentPlanRequest,
+        plan: dict[str, object],
+    ) -> list[tuple[int, int, AgentToolRequest]]:
+        """Return tools in validated topological order with durable runtime positions.
+
+        The first tuple field is the persisted execution-order position (provider
+        selection is step 1). The second field is the original request step number.
+        Keeping both values prevents recovery checkpoints from confusing request
+        order with DAG execution order.
+        """
+        dependency_plan = plan.get("dependency_plan")
+        if not isinstance(dependency_plan, dict):
+            raise RuntimeError("Agent plan is missing its validated dependency graph")
+        ordered_steps = dependency_plan.get("ordered_steps")
+        if not isinstance(ordered_steps, list):
+            raise RuntimeError("Agent dependency graph has no ordered steps")
+
+        expected_step_ids = {
+            "step-1",
+            *(f"step-{number}" for number in range(2, len(request.tools) + 2)),
+        }
+        ordered_step_ids: list[str] = []
+        graph_steps: list[WorkflowStep] = []
+        for workflow_step in ordered_steps:
+            if not isinstance(workflow_step, dict):
+                raise RuntimeError("Agent dependency graph contains an invalid step")
+            step_id = workflow_step.get("step_id")
+            description = workflow_step.get("description")
+            dependencies = workflow_step.get("depends_on")
+            if (
+                not isinstance(step_id, str)
+                or not isinstance(description, str)
+                or not isinstance(dependencies, list)
+                or any(not isinstance(item, str) for item in dependencies)
+            ):
+                raise RuntimeError("Agent dependency graph contains invalid step metadata")
+            ordered_step_ids.append(step_id)
+            graph_steps.append(WorkflowStep(step_id, description, tuple(dependencies)))
+
+        if (
+            not ordered_step_ids
+            or ordered_step_ids[0] != "step-1"
+            or len(ordered_step_ids) != len(expected_step_ids)
+            or len(set(ordered_step_ids)) != len(ordered_step_ids)
+            or set(ordered_step_ids) != expected_step_ids
+        ):
+            raise RuntimeError(
+                "Agent dependency graph must contain every expected step exactly once"
+            )
+
+        try:
+            validated_ids = [
+                item["step_id"]
+                for item in build_workflow_plan(graph_steps).as_dict()["ordered_steps"]
+            ]
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Agent dependency graph is invalid") from exc
+        if validated_ids != ordered_step_ids:
+            raise RuntimeError(
+                "Agent dependency graph is not in deterministic topological order"
+            )
+
+        ordered_tools: list[tuple[int, int, AgentToolRequest]] = []
+        for runtime_step_number, step_id in enumerate(ordered_step_ids[1:], start=2):
+            request_step_number = int(step_id.removeprefix("step-"))
+            ordered_tools.append(
+                (runtime_step_number, request_step_number, request.tools[request_step_number - 2])
+            )
+        return ordered_tools
+
     def execute(
         self,
         request: AgentPlanRequest,
@@ -118,45 +190,10 @@ class AgentCore:
         if start_step < 2:
             raise ValueError("Tool execution start step must be at least 2")
 
-        dependency_plan = plan.get("dependency_plan")
-        if not isinstance(dependency_plan, dict):
-            raise RuntimeError("Agent plan is missing its validated dependency graph")
-        ordered_steps = dependency_plan.get("ordered_steps")
-        if not isinstance(ordered_steps, list):
-            raise RuntimeError("Agent dependency graph has no ordered steps")
-
-        expected_step_ids = {
-            "step-1",
-            *(f"step-{number}" for number in range(2, len(request.tools) + 2)),
-        }
-        ordered_step_ids: list[str] = []
-        for workflow_step in ordered_steps:
-            if not isinstance(workflow_step, dict):
-                raise RuntimeError("Agent dependency graph contains an invalid step")
-            step_id = workflow_step.get("step_id")
-            if not isinstance(step_id, str):
-                raise RuntimeError("Agent dependency graph contains an invalid step identifier")
-            ordered_step_ids.append(step_id)
-
-        if (
-            not ordered_step_ids
-            or ordered_step_ids[0] != "step-1"
-            or len(ordered_step_ids) != len(expected_step_ids)
-            or len(set(ordered_step_ids)) != len(ordered_step_ids)
-            or set(ordered_step_ids) != expected_step_ids
+        for runtime_step_number, _request_step_number, requested_tool in (
+            self.ordered_tool_steps(request, plan)
         ):
-            raise RuntimeError(
-                "Agent dependency graph must contain every expected step exactly once"
-            )
-
-        tool_step_numbers = [
-            int(step_id.removeprefix("step-"))
-            for step_id in ordered_step_ids[1:]
-        ]
-
-        for step_number in tool_step_numbers:
-            requested_tool = request.tools[step_number - 2]
-            if step_number < start_step:
+            if runtime_step_number < start_step:
                 continue
             if should_cancel is not None and should_cancel():
                 return {
@@ -172,7 +209,7 @@ class AgentCore:
                     "blocked": False,
                 }
             if on_step is not None:
-                on_step(step_number, "running", None)
+                on_step(runtime_step_number, "running", None)
             try:
                 result = self.tool_registry.invoke(
                     requested_tool.name,
@@ -186,7 +223,7 @@ class AgentCore:
                     else "policy_denied"
                 )
                 if on_step is not None:
-                    on_step(step_number, "failed", error_code)
+                    on_step(runtime_step_number, "failed", error_code)
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
@@ -201,7 +238,7 @@ class AgentCore:
                 }
             except (ToolExecutionError, ValueError, TypeError, KeyError, RuntimeError):
                 if on_step is not None:
-                    on_step(step_number, "failed", "tool_execution_failed")
+                    on_step(runtime_step_number, "failed", "tool_execution_failed")
                 return {
                     "decision_mode": "controlled_tool_execution",
                     "execution_started": True,
@@ -219,9 +256,9 @@ class AgentCore:
                 output_bytes = json.dumps(
                     result, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 ).encode()
-                on_step_result(step_number, hashlib.sha256(output_bytes).hexdigest())
+                on_step_result(runtime_step_number, hashlib.sha256(output_bytes).hexdigest())
             if on_step is not None:
-                on_step(step_number, "succeeded", None)
+                on_step(runtime_step_number, "succeeded", None)
             if should_cancel is not None and should_cancel():
                 return {
                     "decision_mode": "controlled_tool_execution",
@@ -238,7 +275,7 @@ class AgentCore:
 
         return {
             "decision_mode": "controlled_tool_execution",
-            "execution_started": bool(request.tools),
+            "execution_started": bool(results),
             "execution_completed": True,
             "model_inference_started": False,
             "tools_executed": bool(results),
