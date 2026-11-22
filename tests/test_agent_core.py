@@ -562,6 +562,108 @@ def test_agent_execute_fails_closed_when_required_capabilities_are_missing():
     assert calls == []
 
 
+
+
+def test_agent_plan_preserves_legacy_sequential_dependencies():
+    request = AgentPlanRequest(
+        goal="Preserve legacy sequential tool execution",
+        tools=[
+            {"name": "text.echo", "payload": {"text": "first"}},
+            {"name": "text.echo", "payload": {"text": "second"}},
+        ],
+    )
+
+    graph = build_graph = make_core().plan(request)["dependency_plan"]
+
+    assert graph["ordered_steps"] == [
+        {
+            "step_id": "step-1",
+            "description": "Select the model provider",
+            "depends_on": [],
+        },
+        {
+            "step_id": "step-2",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1"],
+        },
+        {
+            "step_id": "step-3",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-2"],
+        },
+    ]
+
+
+def test_agent_plan_supports_explicit_tool_dependency_order():
+    request = AgentPlanRequest(
+        goal="Run the second request tool before the first",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first-request-tool"},
+                "depends_on": ["step-3"],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second-request-tool"},
+                "depends_on": [],
+            },
+        ],
+    )
+
+    plan = make_core().plan(request)
+
+    assert plan["dependency_plan"]["ordered_steps"] == [
+        {
+            "step_id": "step-1",
+            "description": "Select the model provider",
+            "depends_on": [],
+        },
+        {
+            "step_id": "step-3",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1"],
+        },
+        {
+            "step_id": "step-2",
+            "description": "Execute registered tool: text.echo",
+            "depends_on": ["step-1", "step-3"],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    "tools",
+    [
+        [
+            {"name": "text.echo", "depends_on": ["step-6"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-2"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-3"]},
+            {"name": "text.echo", "depends_on": ["step-2"]},
+        ],
+        [
+            {"name": "text.echo", "depends_on": ["step-1", "step-1"]},
+        ],
+    ],
+    ids=[
+        "unknown-dependency",
+        "self-dependency",
+        "dependency-cycle",
+        "duplicate-dependency",
+    ],
+)
+def test_agent_plan_rejects_invalid_explicit_tool_dependencies(tools):
+    with pytest.raises(ValidationError):
+        AgentPlanRequest(
+            goal="Reject malformed tool dependency declarations",
+            tools=tools,
+        )
+
+
 def test_agent_plan_accepts_a_complete_registered_capability_set():
     plan = make_core().plan(
         AgentPlanRequest(
