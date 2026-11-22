@@ -11,7 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
-from mrhub.agents.gpi import WorkOrderGenerationError, generate_work_order
+from mrhub.agents.gpi import (
+    WorkOrderGenerationError,
+    derive_server_risk_class,
+    generate_work_order,
+)
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
@@ -21,7 +25,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
-from mrhub.domain.tasks import TaskRecord
+from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
@@ -84,6 +88,13 @@ def create_goal_work_order_plan(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> dict[str, object]:
     """Convert a goal into a validated plan without executing tools."""
+    # Reject prohibited intent before provider selection, inference, or quota use.
+    if derive_server_risk_class(request.goal, {}) is RiskClass.PROHIBITED:
+        raise HTTPException(
+            status_code=422,
+            detail="The requested goal is outside the supported safety policy",
+        )
+
     tasks = TaskRepository(get_settings().database_path)
     tasks.initialize()
     try:
