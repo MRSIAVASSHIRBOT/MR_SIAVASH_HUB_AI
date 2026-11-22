@@ -1,4 +1,4 @@
-""""Deterministic CGI capability-gap evaluation against registered tools.
+"""Deterministic CGI capability-gap evaluation against registered tools.
 
 This evaluator reports gaps only. It does not discover, install, grant, or execute
 capabilities; descriptions are not treated as executable capability identifiers.
@@ -6,6 +6,8 @@ capabilities; descriptions are not treated as executable capability identifiers.
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+
+from mrhub.tools.registry import ToolRegistry
 
 
 MAX_REQUIRED_CAPABILITIES = 50
@@ -59,15 +61,12 @@ def evaluate_capability_gaps(
         if len(required) > MAX_REQUIRED_CAPABILITIES:
             raise ValueError("Too many required capabilities")
 
-    available: list[str] = []
     available_keys: set[str] = set()
     for entry in tool_catalog:
         if not isinstance(entry, Mapping):
             raise TypeError("Tool catalog entries must be mappings")
         key = _normalize_name(entry.get("name"), "Registered tool name")
-        if key not in available_keys:
-            available.append(str(entry["name"]).strip())
-            available_keys.add(key)
+        available_keys.add(key)
 
     matched = required_keys & available_keys
     # Preserve the user's requirement order in all report sections.
@@ -84,3 +83,15 @@ def evaluate_capability_gaps(
         available=available_required,
         missing=missing,
     )
+
+
+def evaluate_registered_tool_gaps(
+    required_capabilities: Iterable[str],
+    tool_registry: ToolRegistry,
+) -> CapabilityGapReport:
+    """Evaluate requirements against the live, server-owned ToolRegistry catalog.
+
+    Only registered tool names are considered. Descriptions and schemas remain
+    metadata, and this function never invokes a handler or changes permissions.
+    """
+    return evaluate_capability_gaps(required_capabilities, tool_registry.catalog())
