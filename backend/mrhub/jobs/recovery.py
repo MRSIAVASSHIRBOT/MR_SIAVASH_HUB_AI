@@ -157,20 +157,25 @@ class WorkflowRecoveryRepository:
         if not steps:
             raise WorkflowRecoveryError("A workflow must contain at least one step")
 
-        normalized: list[tuple[int, str, str]] = []
+        normalized: list[tuple[int, str, str, str | None]] = []
         seen_numbers: set[int] = set()
         for item in steps:
             number = item.get("step_number")
             kind = item.get("kind")
             name = item.get("name")
+            input_digest = item.get("input_digest")
             if not isinstance(number, int) or number < 1 or number in seen_numbers:
                 raise WorkflowRecoveryError("Workflow step numbers must be unique positive integers")
             if not isinstance(kind, str) or not kind.strip() or len(kind) > 80:
                 raise WorkflowRecoveryError("Workflow step kind is invalid")
             if not isinstance(name, str) or not name.strip() or len(name) > 120:
                 raise WorkflowRecoveryError("Workflow step name is invalid")
+            if input_digest is not None:
+                if not isinstance(input_digest, str):
+                    raise WorkflowRecoveryError("Workflow step input digest is invalid")
+                self._validate_digest(input_digest, "Workflow step input digest")
             seen_numbers.add(number)
-            normalized.append((number, kind, name))
+            normalized.append((number, kind, name, input_digest))
 
         workflow_id = workflow_id or uuid4()
         now = self._now()
@@ -257,16 +262,19 @@ class WorkflowRecoveryRepository:
                         nonce_b64, ciphertext_b64, now,
                     ),
                 )
-            for number, kind, name in normalized:
+            for number, kind, name, input_digest in normalized:
                 connection.execute(
                     """
                     INSERT INTO workflow_steps (
                         step_id, workflow_id, step_number, step_kind, step_name,
                         status, input_digest, output_digest, error_code,
                         attempt_count, started_at, finished_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, NULL, 0, NULL, NULL, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, 0, NULL, NULL, ?, ?)
                     """,
-                    (str(uuid4()), str(workflow_id), number, kind, name, now, now),
+                    (
+                        str(uuid4()), str(workflow_id), number, kind, name,
+                        input_digest, now, now,
+                    ),
                 )
         return workflow_id
 
