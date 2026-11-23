@@ -25,7 +25,7 @@ from mrhub.integrations.cloudflare import (
     build_cloudflare_gateway_client,
 )
 from mrhub.security.policy import PolicyDecision
-from mrhub.tools.registry import ToolDefinition, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolPolicyError, ToolRegistry
 
 
 class EchoToolInput(BaseModel):
@@ -314,6 +314,7 @@ def _register_device_tools(
             handler=list_owner_devices,
             risk_class=RiskClass.LOW,
             required_permissions=frozenset({"device.registry.read"}),
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     registry.register(
@@ -423,6 +424,7 @@ def _register_cloudflare_tools(
             handler=list_workers,
             risk_class=RiskClass.LOW,
             required_permissions=permission,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     registry.register(
@@ -436,6 +438,7 @@ def _register_cloudflare_tools(
             handler=list_routes,
             risk_class=RiskClass.LOW,
             required_permissions=permission,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     registry.register(
@@ -447,6 +450,7 @@ def _register_cloudflare_tools(
             handler=list_databases,
             risk_class=RiskClass.LOW,
             required_permissions=permission,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     registry.register(
@@ -458,6 +462,7 @@ def _register_cloudflare_tools(
             handler=read_worker_settings,
             risk_class=RiskClass.LOW,
             required_permissions=permission,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     registry.register(
@@ -471,6 +476,7 @@ def _register_cloudflare_tools(
             handler=inventory_snapshot,
             risk_class=RiskClass.LOW,
             required_permissions=permission,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     registry.register(
@@ -485,6 +491,7 @@ def _register_cloudflare_tools(
             handler=preview_worker_settings,
             risk_class=RiskClass.LOW,
             required_permissions=permission,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
 
@@ -498,6 +505,7 @@ def build_tool_registry(*, correlation_id: str | None = None, owner_user_id: str
             input_model=EchoToolInput,
             output_model=EchoToolOutput,
             handler=_echo,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
 
