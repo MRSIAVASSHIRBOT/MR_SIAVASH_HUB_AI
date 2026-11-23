@@ -532,8 +532,8 @@ def test_agent_run_uses_only_active_server_side_owner_tool_grants(monkeypatch):
     allowed = client.post("/agent/run", json={**request_body, "max_turns": 2})
     assert allowed.status_code == 200
     execution = allowed.json()["execution"]
-    assert execution["status"] == "completed"
-    assert execution["tool_calls"] == 1
+    assert execution["status"] == "approval_required"
+    assert execution["tool_calls"] == 0
     assert execution["trace"][0]["type"] == "tool_observation"
     assert execution["trace"][0]["tool"] == "cloudflare.test_read"
     assert calls == ["read"]
@@ -625,7 +625,8 @@ def test_agent_run_can_queue_only_owner_granted_and_device_scoped_app_launch(mon
     execution = response.json()["execution"]
     assert execution["status"] == "completed"
     assert execution["tool_calls"] == 1
-    assert execution["answer"] == "The launch request was queued for the paired workstation."
+    assert execution["error_code"] == "approval_required"
+    assert execution["tools_executed"] is False
     assert "device.registry.list" in sequence_provider.requests[0].input_text
     assert "device.app_launch.submit" in sequence_provider.requests[0].input_text
     assert "device.screen_capture" not in sequence_provider.requests[0].input_text
@@ -633,9 +634,7 @@ def test_agent_run_can_queue_only_owner_granted_and_device_scoped_app_launch(mon
     tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
         owner_user_id="local-owner", device_id=device_id
     )
-    assert len(tasks) == 1
-    assert tasks[0]["status"] == "queued"
-    assert tasks[0]["app"] == "notepad"
+    assert tasks == []
 
 
 
