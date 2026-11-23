@@ -9,7 +9,7 @@ from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import WorkerEngine
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
 def _workflow_and_task(client):
@@ -54,7 +54,10 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     recovery = WorkflowRecoveryRepository(repository.database_path)
     stored = recovery.get_run(UUID(workflow_id), owner_user_id="local-owner")
     assert stored is not None
+    # A retry-safe step is paused for a controlled resume, not quarantined
+    # as an unknown external outcome that needs manual reconciliation.
     assert stored["status"] == "paused"
+    assert stored["last_error_code"] == "safe_step_interrupted"
     assert stored["steps"][1]["status"] == "retry_wait"
     task = repository.get(UUID(task_id))
     assert task is not None and task.status.value == "waiting_approval"
@@ -243,6 +246,7 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
             output_model=ReadOutput,
             handler=lambda _payload: calls.append("read") or {"accepted": True},
             required_permissions=frozenset({"cloudflare.read"}),
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     monkeypatch.setattr(
@@ -273,7 +277,7 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
         UUID(workflow_id),
         owner_user_id="local-owner",
     )
-    assert stored is not None and stored["status"] == "paused"
+    assert stored is not None and stored["status"] == "recovery_required"
     assert repository.get(UUID(task_id)).status.value == "waiting_approval"
 
     revoked = client.delete("/tools/grants/cloudflare.read")
@@ -289,7 +293,7 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
         UUID(workflow_id),
         owner_user_id="local-owner",
     )
-    assert after is not None and after["status"] == "paused"
+    assert after is not None and after["status"] == "recovery_required"
 
 
 def test_resume_uses_stable_step_identity_after_request_reordering(monkeypatch):

@@ -442,3 +442,52 @@ def test_queued_workflow_cancellation_terminalizes_all_pending_steps(tmp_path):
     assert stored["status"] == "cancelled"
     assert all(step["status"] == "cancelled" for step in stored["steps"])
     assert stored["steps"][1]["dependency_state"] == "blocked"
+
+
+def test_non_external_stateful_tool_requires_reconciliation_after_interruption(tmp_path):
+    _tasks, recovery = make_recovery(tmp_path)
+    workflow_id = recovery.create_run(
+        "e" * 64,
+        [
+            {
+                "step_number": 1,
+                "step_key": "step-1",
+                "depends_on": [],
+                "kind": "provider_selection",
+                "name": "provider",
+            },
+            {
+                "step_number": 2,
+                "step_key": "local-mutation",
+                "depends_on": ["step-1"],
+                "kind": "non_replayable_tool",
+                "name": "local.state.mutate",
+            },
+            {
+                "step_number": 3,
+                "step_key": "dependent",
+                "depends_on": ["local-mutation"],
+                "kind": "safe_tool",
+                "name": "text.echo",
+            },
+        ],
+        definition_version=3,
+    )
+    recovery.start_run(workflow_id)
+    provider = recovery.start_step(workflow_id, "step-1")
+    recovery.complete_step(workflow_id, provider, "1" * 64)
+    recovery.start_step(workflow_id, "local-mutation")
+
+    assert recovery.mark_interrupted(workflow_id) == 1
+
+    state = recovery.get_run(workflow_id)
+    assert state is not None
+    assert state["status"] == "recovery_required"
+    assert state["steps"][1]["status"] == "unknown_outcome"
+    assert state["steps"][2]["dependency_state"] == "blocked"
+
+    decision = recovery.resume_decision(
+        workflow_id, "e" * 64, definition_version=3
+    )
+    assert decision.decision == "reconcile"
+    assert decision.next_step_id == "local-mutation"
