@@ -391,6 +391,7 @@ def test_provider_health_endpoint_fails_closed_on_invalid_health_contract(
 @pytest.mark.parametrize("timeout", [True, False, "5", 0, 301, float("nan"), float("inf")])
 def test_generate_model_request_rejects_invalid_per_request_timeout(timeout):
     from pydantic import ValidationError
+
     from mrhub.api.routes.models import GenerateModelRequest
 
     with pytest.raises(ValidationError):
