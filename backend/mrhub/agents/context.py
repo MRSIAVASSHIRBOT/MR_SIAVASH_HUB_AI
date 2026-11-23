@@ -99,7 +99,7 @@ class AgentContextAssembler:
         if not isinstance(owner_user_id, str) or not owner_user_id.strip() or len(owner_user_id) > 200:
             raise ValueError("Context owner identifier is invalid")
         if not isinstance(query, str):
-            raise ValueError("Context query must be text")
+            raise TypeError("Context query must be text")
         if type(include_memory) is not bool or type(include_knowledge) is not bool:
             raise ValueError("Context source flags must be booleans")
         if memory_types is not None:
