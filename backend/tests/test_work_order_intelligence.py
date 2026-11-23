@@ -173,6 +173,9 @@ def test_research_decision_is_explainable_and_does_not_start_research(goal, expe
 
     assert result["research"]["decision"] == expected.value
     assert result["research"]["execution_started"] is False
+    if expected is ResearchDecision.REQUIRED:
+        assert result["declared_work_order_readiness"] == "ready_for_review"
+        assert result["planning_readiness"] == "needs_research"
 
 
 def test_plan_steps_are_returned_in_deterministic_topological_order():
