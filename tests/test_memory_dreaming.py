@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from mrhub.memory.dreaming import MemoryDreamingEngine
 from mrhub.memory.repository import MemoryRepository
 
@@ -131,3 +133,21 @@ def test_memory_dream_preview_api_is_authenticated_and_audits_counts_only() -> N
     assert audit is not None
     assert "SQLite FTS5" not in audit["metadata_json"]
     assert len(repository.list_entries("local-owner")) >= 2
+
+
+@pytest.mark.parametrize("limit", [True, 1.5])
+def test_dreaming_preview_rejects_non_integer_limits(tmp_path: Path, limit):
+    engine = MemoryDreamingEngine(tmp_path / "memory.sqlite3")
+
+    with pytest.raises(ValueError, match="integer between 1 and 100"):
+        engine.preview("owner-a", limit=limit)
+
+
+@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), "0.8"])
+def test_dreaming_preview_rejects_non_finite_or_non_numeric_thresholds(
+    tmp_path: Path, threshold
+):
+    engine = MemoryDreamingEngine(tmp_path / "memory.sqlite3")
+
+    with pytest.raises(ValueError, match="finite number"):
+        engine.preview("owner-a", threshold=threshold)
