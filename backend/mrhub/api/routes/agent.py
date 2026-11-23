@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.context import AgentContextAssembler
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
@@ -1029,3 +1030,54 @@ def resume_agent_workflow(
         raise HTTPException(status_code=409, detail="Workflow is not safely resumable") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail="Workflow resume could not be completed") from exc
+
+
+class AgentContextPreviewRequest(BaseModel):
+    """Strict, bounded request for read-only owner-scoped context retrieval."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=200)
+    include_memory: bool = Field(default=True, strict=True)
+    include_knowledge: bool = Field(default=True, strict=True)
+    knowledge_freshness_policy: Literal[
+        "include_all", "owner_reviewed_current_only"
+    ] = "include_all"
+
+    @field_validator("query")
+    @classmethod
+    def normalize_context_query(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or len(normalized) > 200:
+            raise ValueError("Query must contain 1 to 200 non-whitespace characters")
+        return normalized
+
+
+@router.post("/context/preview")
+def preview_agent_context(
+    request: AgentContextPreviewRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+) -> dict[str, object]:
+    """Preview bounded retrieval for the authenticated owner; never executes tools."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    settings = get_settings()
+    try:
+        result = AgentContextAssembler(settings.database_path).assemble(
+            current_user.user_id,
+            query=request.query,
+            include_memory=request.include_memory,
+            include_knowledge=request.include_knowledge,
+            knowledge_freshness_policy=request.knowledge_freshness_policy,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid agent context request") from exc
+    return {
+        **result,
+        "owner_scope": "authenticated_user",
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
