@@ -38,19 +38,66 @@ def test_validation_error_has_correlation_contract_without_echoing_input():
     assert "abcdefghijklmnopqrstuvwx" not in key_response.text
 
 
-def test_http_exception_keeps_legacy_detail_and_adds_stable_error_code():
+def test_http_exception_preserves_only_reviewed_legacy_detail_shapes():
     app = create_app()
 
     def conflict():
         raise HTTPException(status_code=409, detail={"reason": "stale_revision"})
 
-    app.add_api_route("/_test/conflict", conflict, methods=["GET"])
-    response = TestClient(app).get("/_test/conflict")
+    def not_found():
+        raise HTTPException(status_code=404, detail="Task not found")
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == {"reason": "stale_revision"}
-    assert response.json()["error"]["code"] == "state_conflict"
-    assert response.json()["error"]["request_id"] == response.headers["X-Request-ID"]
+    app.add_api_route("/_test/conflict", conflict, methods=["GET"])
+    app.add_api_route("/_test/not-found", not_found, methods=["GET"])
+    client = TestClient(app)
+
+    conflict_response = client.get("/_test/conflict")
+    assert conflict_response.status_code == 409
+    assert conflict_response.json()["detail"] == {"reason": "stale_revision"}
+    assert conflict_response.json()["error"]["code"] == "state_conflict"
+    assert conflict_response.json()["error"]["request_id"] == conflict_response.headers["X-Request-ID"]
+
+    not_found_response = client.get("/_test/not-found")
+    assert not_found_response.status_code == 404
+    assert not_found_response.json()["detail"] == "Task not found"
+    assert not_found_response.json()["error"]["code"] == "resource_not_found"
+
+
+def test_http_exception_never_reflects_dynamic_exception_provider_or_policy_values():
+    app = create_app()
+    private_detail = "api_key=not-a-real-secret-must-not-be-returned"
+    nested_sentinel = "provider body must not be echoed"
+
+    def dynamic_string():
+        raise HTTPException(status_code=503, detail=private_detail)
+
+    def dynamic_object():
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "provider_error",
+                "message": nested_sentinel,
+                "request": {"authorization": "Bearer private"},
+            },
+        )
+
+    app.add_api_route("/_test/dynamic-string", dynamic_string, methods=["GET"])
+    app.add_api_route("/_test/dynamic-object", dynamic_object, methods=["GET"])
+    client = TestClient(app)
+
+    string_response = client.get("/_test/dynamic-string")
+    assert string_response.status_code == 503
+    assert string_response.json()["detail"] == "The service is temporarily unavailable."
+    assert private_detail not in string_response.text
+
+    object_response = client.get("/_test/dynamic-object")
+    assert object_response.status_code == 409
+    assert object_response.json()["detail"] == (
+        "The requested operation conflicts with the current state."
+    )
+    assert nested_sentinel not in object_response.text
+    assert "Bearer private" not in object_response.text
+    assert object_response.json()["error"]["request_id"] == object_response.headers["X-Request-ID"]
 
 
 def test_unhandled_exception_never_exposes_exception_text():
