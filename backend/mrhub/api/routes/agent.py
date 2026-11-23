@@ -444,10 +444,14 @@ def get_persisted_goal_work_order_plan(
     registry = build_tool_registry(owner_user_id=current_user.user_id)
     try:
         assessment = assess_work_order_capabilities(work_order, registry.catalog())
+        decision_analysis = analyze_goal(work_order.goal, work_order=work_order)
+        planning_assessment = assess_work_order_intelligence(
+            work_order, plan, assessment
+        )
     except (TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=503,
-            detail="Registered tool catalog is not valid for capability assessment",
+            detail="Current planner assessment could not be recomputed consistently",
         ) from exc
 
     return {
@@ -459,6 +463,8 @@ def get_persisted_goal_work_order_plan(
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
         **plan_metadata,
+        "decision_analysis": decision_analysis.model_dump(mode="json"),
+        "planning_assessment": planning_assessment.as_dict(),
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
