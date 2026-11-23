@@ -17,6 +17,7 @@ from mrhub.agents.gpi import (
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
+from mrhub.agents.work_order_intelligence import assess_work_order_intelligence
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
@@ -197,6 +198,16 @@ def create_goal_work_order_plan(
             detail="Registered tool catalog is not valid for capability assessment",
         ) from exc
 
+    try:
+        planning_assessment = assess_work_order_intelligence(
+            work_order, plan, assessment
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Validated plan could not be assessed consistently",
+        ) from exc
+
     audit_logger.record(
         event_type="agent.work_order_planned",
         outcome="planned",
@@ -217,6 +228,13 @@ def create_goal_work_order_plan(
     return {
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
+        "planning_assessment": planning_assessment.as_dict(),
+        "model_selection": {
+            "provider": selection.provider,
+            "model": selection.model,
+            "local": selection.local,
+            "rationale": selection.rationale,
+        },
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
