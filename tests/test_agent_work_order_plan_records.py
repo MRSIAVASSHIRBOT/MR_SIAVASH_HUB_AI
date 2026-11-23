@@ -283,3 +283,61 @@ def test_expiry_sweep_rejects_unbounded_or_invalid_limits(tmp_path, limit):
 
     with pytest.raises(AgentWorkOrderPlanError, match="Expiry sweep limit"):
         plans.expire_due(limit=limit)
+
+def test_revoke_erases_ciphertext_and_is_idempotent_for_the_owner(tmp_path):
+    database = TaskRepository(tmp_path / "revoke-plan.sqlite3")
+    owner = create_owner(database)
+    plans = AgentWorkOrderPlanRepository(database.database_path)
+    plan_id = str(uuid4())
+    _payload, envelope = encrypted_plan(plan_id, owner)
+    plans.create(
+        plan_id=plan_id,
+        owner_user_id=owner,
+        plan_digest="e" * 64,
+        envelope=envelope,
+        ttl_seconds=900,
+    )
+
+    revoked = plans.revoke(plan_id, owner_user_id=owner)
+    assert revoked is not None
+    assert revoked.status == "revoked"
+    assert revoked.envelope.nonce_b64 == "revoked"
+    assert revoked.envelope.ciphertext_b64 == "revoked"
+
+    repeated = plans.revoke(plan_id, owner_user_id=owner)
+    assert repeated is not None
+    assert repeated.status == "revoked"
+    assert repeated.envelope.ciphertext_b64 == "revoked"
+
+    assert plans.revoke(plan_id, owner_user_id="another-owner") is None
+    assert plans.get(plan_id, owner_user_id=owner).status == "revoked"
+
+    with database._connection() as connection:
+        stored = connection.execute(
+            "SELECT status, nonce_b64, ciphertext_b64 FROM agent_work_order_plans WHERE plan_id = ?",
+            (plan_id,),
+        ).fetchone()
+    assert tuple(stored) == ("revoked", "revoked", "revoked")
+
+
+def test_revoke_does_not_change_an_expired_plan_to_revoked(tmp_path):
+    database = TaskRepository(tmp_path / "revoke-expired-plan.sqlite3")
+    owner = create_owner(database)
+    clock = MutableClock()
+    plans = AgentWorkOrderPlanRepository(database.database_path, clock=clock)
+    plan_id = str(uuid4())
+    _payload, envelope = encrypted_plan(plan_id, owner)
+    plans.create(
+        plan_id=plan_id,
+        owner_user_id=owner,
+        plan_digest="f" * 64,
+        envelope=envelope,
+        ttl_seconds=60,
+    )
+    clock.current += timedelta(seconds=61)
+
+    record = plans.revoke(plan_id, owner_user_id=owner)
+    assert record is not None
+    assert record.status == "expired"
+    assert record.envelope.ciphertext_b64 == "expired"
+
