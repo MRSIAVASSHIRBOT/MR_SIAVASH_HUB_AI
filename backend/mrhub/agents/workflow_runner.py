@@ -623,8 +623,13 @@ class AgentWorkflowRunner:
         _step_specs, tools_by_execution_step = self._durable_step_metadata(
             request, plan
         )
+        legacy_definition = int(_workflow["definition_version"]) < 3
         runtime_step_ids = {
-            runtime_number: request.tool_step_id(request_number, requested_tool)
+            runtime_number: (
+                f"step-{runtime_number}"
+                if legacy_definition
+                else request.tool_step_id(request_number, requested_tool)
+            )
             for runtime_number, request_number, requested_tool in self.core.ordered_tool_steps(
                 request, plan
             )
@@ -686,7 +691,9 @@ class AgentWorkflowRunner:
                     if status == "running":
                         step_key = runtime_step_ids[number]
                         attempts[number] = self.recovery.start_step(
-                            workflow_id, step_key, lease=lease
+                            workflow_id,
+                            number if legacy_definition else step_key,
+                            lease=lease,
                         )
                     elif status == "failed":
                         attempt = attempts.get(number)
@@ -717,8 +724,13 @@ class AgentWorkflowRunner:
                     request,
                     on_step=on_step,
                     on_step_result=on_step_result,
-                    start_step=2,
-                    skip_step_ids=succeeded_step_ids,
+                    start_step=(
+                        max(2, int(decision.next_step or 2))
+                        if legacy_definition else 2
+                    ),
+                    skip_step_ids=(
+                        None if legacy_definition else succeeded_step_ids
+                    ),
                     should_cancel=should_cancel,
                 )
 
