@@ -305,7 +305,7 @@ class ToolRegistry:
         )
 
         handler_failed = False
-        handler_policy_denied = False
+        handler_policy_decision: PolicyDecision | None = None
         try:
             raw_result = tool.handler(validated_input)
             if inspect.isawaitable(raw_result):
@@ -317,12 +317,12 @@ class ToolRegistry:
                 if callable(close):
                     close()
                 handler_failed = True
-        except ToolPolicyError:
-            handler_policy_denied = True
+        except ToolPolicyError as exc:
+            handler_policy_decision = exc.decision
         except Exception:  # noqa: BLE001 - sanitize arbitrary handler failures
             handler_failed = True
 
-        if handler_policy_denied:
+        if handler_policy_decision is not None:
             emit(
                 (
                     ToolLifecycleStage.UNKNOWN_OUTCOME
@@ -330,10 +330,14 @@ class ToolRegistry:
                     else ToolLifecycleStage.AUTHORIZATION_DENIED
                 ),
                 input_digest=input_digest,
-                reason_code="handler_policy_denied",
+                reason_code=(
+                    "approval_required"
+                    if handler_policy_decision is PolicyDecision.REQUIRE_APPROVAL
+                    else "policy_denied"
+                ),
             )
             raise ToolPolicyError(
-                PolicyDecision.DENY,
+                handler_policy_decision,
                 "Tool handler policy denied execution",
             ) from None
 
