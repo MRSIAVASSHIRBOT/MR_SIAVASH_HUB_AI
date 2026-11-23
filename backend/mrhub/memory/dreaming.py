@@ -50,8 +50,8 @@ class MemoryDreamingEngine:
             raise ValueError("Review limit must be an integer between 1 and 100")
         if (
             type(threshold) not in (int, float)
-            or not math.isfinite(threshold)
             or not 0.75 <= threshold <= 1.0
+            or not math.isfinite(threshold)
         ):
             raise ValueError("Similarity threshold must be a finite number between 0.75 and 1.0")
 
