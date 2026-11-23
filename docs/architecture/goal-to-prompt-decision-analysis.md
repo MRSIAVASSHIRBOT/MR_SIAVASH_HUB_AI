@@ -21,7 +21,7 @@ The score is a transparent routing heuristic, not a learned prediction, guarante
 
 `POST /agent/work-orders/analyze` requires an authenticated session. It performs local deterministic analysis only; it does not select an inference provider or call an LLM.
 
-`POST /agent/work-orders/plan` additionally returns `decision_analysis` generated from the validated WorkOrder. The current planning route continues to use its configured local-only model policy; decision signals are reported, not used to silently switch provider modes.
+`POST /agent/work-orders/plan` remains the model-backed planning endpoint. The preflight endpoint is an independent advisory step; its output does not silently switch provider modes or replace the validated WorkOrder and planning assessments.
 
 ## Trust and execution boundary
 
@@ -37,5 +37,3 @@ The score is a transparent routing heuristic, not a learned prediction, guarante
 
 Unit tests cover information-only requests, current-source research cues, tool-use cues, image/audio inputs, underspecified goals, unresolved WorkOrder assumptions, scope gaps and input bounds. API tests verify authentication and prove that the preflight endpoint does not select or invoke an inference provider.
 
-
-When a validated WorkOrder is supplied, its explicit `research_required`, `research_questions`, `missing_information` and `clarification_questions` fields are authoritative inputs to the analysis. A keyword-only fallback must not contradict a validated WorkOrder decision.
