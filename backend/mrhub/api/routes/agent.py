@@ -9,12 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.goal_analysis import analyze_goal
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
     generate_work_order,
 )
-from mrhub.agents.goal_analysis import analyze_goal
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
