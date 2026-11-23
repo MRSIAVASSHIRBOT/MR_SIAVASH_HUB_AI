@@ -1271,3 +1271,132 @@ def test_agent_core_dependency_plan_uses_caller_stable_step_ids():
     ]
 
     assert ids == ["step-1", "first", "second"]
+
+
+def _external_approval_core(*, validator, consumer, calls):
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="custom.external",
+            description="One external action requiring owner approval.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: calls.append("executed") or {"accepted": True},
+            risk_class=RiskClass.LOW,
+            external_side_effect=True,
+        )
+    )
+    return AgentCore(
+        router,
+        registry,
+        approval_validator=validator,
+        approval_consumer=consumer,
+    )
+
+
+def test_agent_core_requires_exact_owner_receipt_then_consumes_it_once():
+    calls = []
+    validated = []
+    consumed = []
+    approval_id = "12345678-1234-5678-1234-567812345678"
+
+    def validator(receipt_id, tool_name, payload, permissions):
+        validated.append((receipt_id, tool_name, payload, permissions))
+        return receipt_id == approval_id and tool_name == "custom.external" and payload == {}
+
+    def consumer(receipt_id, tool_name, payload, permissions):
+        consumed.append((receipt_id, tool_name, payload, permissions))
+        return receipt_id == approval_id and len(consumed) == 1
+
+    core = _external_approval_core(
+        validator=validator,
+        consumer=consumer,
+        calls=calls,
+    )
+    request = AgentPlanRequest(
+        goal="Run an externally visible action after owner approval",
+        tools=[{
+            "name": "custom.external",
+            "payload": {},
+            "approval_id": approval_id,
+        }],
+    )
+
+    plan = core.plan(request)
+    assert plan["execution_ready"] is True
+    assert plan["steps"][1]["status"] == "approval_verified"
+    assert plan["steps"][1]["approval_required"] is True
+    assert plan["steps"][1]["approval_receipt_verified"] is True
+    assert calls == []
+    assert len(validated) == 1
+
+    result = core.execute(request)
+    assert result["execution_completed"] is True
+    assert result["tools_executed"] is True
+    assert calls == ["executed"]
+    assert len(consumed) == 1
+
+    replay = core.execute(request)
+    assert replay["tools_executed"] is False
+    assert replay["blocked"] is True
+    assert calls == ["executed"]
+    assert len(consumed) == 2
+
+
+def test_agent_core_never_executes_when_approval_validation_fails():
+    calls = []
+    consumed = []
+    core = _external_approval_core(
+        validator=lambda *_args: False,
+        consumer=lambda *args: consumed.append(args) or False,
+        calls=calls,
+    )
+    request = AgentPlanRequest(
+        goal="Reject an invalid owner approval receipt",
+        tools=[{
+            "name": "custom.external",
+            "payload": {},
+            "approval_id": "12345678-1234-5678-1234-567812345678",
+        }],
+    )
+
+    plan = core.plan(request)
+    assert plan["execution_ready"] is False
+    assert plan["steps"][1]["status"] == "approval_required"
+    assert plan["steps"][1]["approval_receipt_verified"] is False
+
+    result = core.execute(request)
+    assert result["execution_started"] is False
+    assert result["tools_executed"] is False
+    assert result["blocked"] is True
+    assert calls == []
+    assert consumed == []
+
+
+def test_approval_receipt_is_part_of_durable_request_identity():
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
+
+    base = {
+        "goal": "Run an owner-approved action",
+        "tools": [{
+            "name": "custom.external",
+            "payload": {},
+            "step_id": "publish",
+            "depends_on": [],
+        }],
+    }
+    without_receipt = AgentPlanRequest.model_validate(base)
+    with_receipt = AgentPlanRequest.model_validate({
+        **base,
+        "tools": [{
+            **base["tools"][0],
+            "approval_id": "12345678-1234-5678-1234-567812345678",
+        }],
+    })
+
+    assert AgentWorkflowRunner.request_digest(with_receipt) != (
+        AgentWorkflowRunner.request_digest(without_receipt)
+    )
+
