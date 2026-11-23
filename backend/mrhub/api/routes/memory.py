@@ -148,15 +148,17 @@ def search_memory(
     return {
         "method": "sqlite_fts5",
         "ranking": {
-            "scheme": "hybrid_fts5_trust_freshness_v1",
+            "scheme": "hybrid_fts5_owner_attestation_freshness_v1",
             "weights": {
                 "lexical": 0.70,
                 "confidence": 0.15,
-                "owner_verified": 0.10,
+                "owner_approved": 0.10,
                 "freshness": 0.05,
             },
             "candidate_limit": 100,
-            "note": "The score estimates retrieval relevance only; it is not a truth, safety, or authorization score.",
+            "owner_approval_is_self_attested": True,
+            "confidence_is_owner_supplied": True,
+            "note": "The score estimates retrieval relevance only. Owner approval and confidence are caller-supplied signals, not independent verification, truth, safety, or authorization.",
         },
         "results": results,
         "count": len(results),
