@@ -273,7 +273,7 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
         UUID(workflow_id),
         owner_user_id="local-owner",
     )
-    assert stored is not None and stored["status"] == "paused"
+    assert stored is not None and stored["status"] == "recovery_required"
     assert repository.get(UUID(task_id)).status.value == "waiting_approval"
 
     revoked = client.delete("/tools/grants/cloudflare.read")
