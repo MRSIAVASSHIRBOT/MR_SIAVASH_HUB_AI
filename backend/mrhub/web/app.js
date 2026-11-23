@@ -509,6 +509,20 @@
     message("#workflow-reconciliation-message", "مرحلهٔ دارای نتیجهٔ نامشخص انتخاب شد. ابتدا نتیجه را در سرویس مقصد مستقلاً بررسی کنید.");
   }
 
+  function formatWorkflowTraceTimestamp(value) {
+    if (typeof value !== "string" || !value) return "ثبت نشده";
+    const timestamp = new Date(value);
+    return Number.isNaN(timestamp.getTime())
+      ? "نامعتبر"
+      : timestamp.toLocaleString("fa-IR");
+  }
+
+  function formatWorkflowTraceDigest(value) {
+    return typeof value === "string" && /^[0-9a-f]{64}$/.test(value)
+      ? value.slice(0, 12) + "…"
+      : "ثبت نشده";
+  }
+
   function renderWorkflowCard(workflow) {
     const title = "Workflow · " + workflow.workflow_id.slice(0, 8);
     const metadata = [
@@ -524,10 +538,34 @@
         const list = element("div", undefined, "workflow-step-list");
         for (const step of detail.steps || []) {
           const item = element("div", undefined, "workflow-step");
+          const dependencies = Array.isArray(step.depends_on) && step.depends_on.length
+            ? step.depends_on.join("، ")
+            : "بدون پیش‌نیاز";
           item.append(
             element("strong", "مرحله " + step.step_number + " · " + step.step_name),
             element("span", step.status),
-            element("small", "تلاش: " + step.attempt_count + " · " + (step.error_code || "بدون خطا"))
+            element(
+              "small",
+              "شناسهٔ پایدار: " + (step.step_key || "ثبت نشده") +
+              " · نوع: " + (step.step_kind || "نامشخص") +
+              " · وضعیت Dependency: " + (step.dependency_state || "نامشخص")
+            ),
+            element("small", "پیش‌نیازها: " + dependencies),
+            element(
+              "small",
+              "تلاش: " + (Number.isInteger(step.attempt_count) ? step.attempt_count : 0) +
+              " · کد خطا: " + (step.error_code || "بدون خطا")
+            ),
+            element(
+              "small",
+              "شروع: " + formatWorkflowTraceTimestamp(step.started_at) +
+              " · پایان: " + formatWorkflowTraceTimestamp(step.finished_at)
+            ),
+            element(
+              "small",
+              "Digest ورودی: " + formatWorkflowTraceDigest(step.input_digest) +
+              " · Digest خروجی: " + formatWorkflowTraceDigest(step.output_digest)
+            )
           );
           list.append(item);
         }
