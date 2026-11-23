@@ -124,6 +124,7 @@ class MemoryValidationEngine:
                 review_queue.append({
                     "memory_id": entry["memory_id"],
                     "category": entry["category"],
+                    "memory_type": entry.get("memory_type", "unspecified"),
                     "excerpt": content[:300],
                     "confidence": confidence,
                     "verification_status": verification_status,
