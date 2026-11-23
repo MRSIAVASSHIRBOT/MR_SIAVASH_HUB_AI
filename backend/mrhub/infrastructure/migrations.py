@@ -1564,6 +1564,42 @@ MIGRATIONS = (
             ),
         ),
     ),
+    Migration.build(
+        57,
+        "owner_scoped_action_bound_tool_approvals",
+        (
+            """CREATE TABLE tool_invocation_approvals (
+                approval_id TEXT PRIMARY KEY CHECK (length(approval_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                tool_name TEXT NOT NULL CHECK (length(tool_name) BETWEEN 1 AND 80),
+                payload_digest TEXT NOT NULL CHECK (
+                    length(payload_digest) = 64 AND payload_digest NOT GLOB '*[^a-f0-9]*'
+                ),
+                tool_fingerprint TEXT NOT NULL CHECK (
+                    length(tool_fingerprint) = 64 AND tool_fingerprint NOT GLOB '*[^a-f0-9]*'
+                ),
+                status TEXT NOT NULL CHECK (
+                    status IN ('pending', 'approved', 'rejected', 'consumed', 'expired')
+                ),
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                decided_at TEXT,
+                consumed_at TEXT,
+                CHECK (expires_at > created_at),
+                CHECK (
+                    (status = 'pending' AND decided_at IS NULL AND consumed_at IS NULL)
+                    OR
+                    (status IN ('approved', 'rejected') AND decided_at IS NOT NULL AND consumed_at IS NULL)
+                    OR
+                    (status = 'consumed' AND decided_at IS NOT NULL AND consumed_at IS NOT NULL)
+                    OR
+                    status = 'expired'
+                )
+            )""",
+            "CREATE INDEX idx_tool_approvals_owner_status_expiry ON tool_invocation_approvals(owner_user_id, status, expires_at)",
+            "CREATE INDEX idx_tool_approvals_owner_action ON tool_invocation_approvals(owner_user_id, tool_name, payload_digest)",
+        ),
+    ),
 )
 
 
