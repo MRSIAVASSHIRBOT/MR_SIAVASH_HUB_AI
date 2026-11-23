@@ -46,7 +46,7 @@ def _validation_issues(exc: RequestValidationError) -> list[dict[str, Any]]:
         raw_location = error.get("loc", ())[:8]
         location: list[str | int] = []
         for index, item in enumerate(raw_location):
-            if index == 0 and item in {"body", "query", "path", "header", "cookie"}:
+            if index == 0 and isinstance(item, str) and item in {"body", "query", "path", "header", "cookie"}:
                 location.append(item)
             elif isinstance(item, int) and not isinstance(item, bool):
                 location.append(item)
