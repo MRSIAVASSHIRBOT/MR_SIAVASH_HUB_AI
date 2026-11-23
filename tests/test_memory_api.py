@@ -258,6 +258,8 @@ def test_memory_search_ranks_owner_approved_matches_with_trust_signals() -> None
     payload = response.json()
     assert payload["method"] == "sqlite_fts5"
     assert payload["ranking"]["scheme"] == "hybrid_fts5_owner_attestation_freshness_v1"
+    assert payload["ranking"]["owner_approval_is_self_attested"] is True
+    assert payload["ranking"]["confidence_is_owner_supplied"] is True
     assert payload["ranking"]["weights"] == {
         "lexical": 0.70,
         "confidence": 0.15,
