@@ -1352,3 +1352,70 @@ def test_consumed_plan_record_is_deleted_with_linked_workflow(tmp_path):
         (plan_id,),
     ).fetchone() is None
     connection.close()
+
+
+def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "typed-memory-v56.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    # Apply every migration before V56, including V55 plan storage when present.
+    previous_migrations = tuple(
+        migration for migration in all_migrations if migration.version < 56
+    )
+    typed_memory_migration = tuple(
+        migration for migration in all_migrations if migration.version == 56
+    )
+    assert len(typed_memory_migration) == 1
+    migration_chain = previous_migrations + typed_memory_migration
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", previous_migrations)
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in previous_migrations
+    ]
+
+    now = "2026-11-23T00:00:00+00:00"
+    connection.execute(
+        """
+        INSERT INTO auth_users (user_id, username, salt, password_hash, created_at)
+        VALUES ('memory-owner', 'memory-owner', 'salt', 'hash', ?)
+        """,
+        (now,),
+    )
+    connection.execute(
+        """
+        INSERT INTO memory_entries (
+            memory_id, owner_user_id, scope, category, content, provenance,
+            confidence, verification_status, created_at, updated_at, expires_at
+        ) VALUES ('legacy-memory', 'memory-owner', 'private', 'notes',
+                  'Legacy memory record', 'user-authored', 0.7,
+                  'user_authored', ?, ?, NULL)
+        """,
+        (now, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", migration_chain)
+    assert SchemaMigrator(connection).migrate() == [56]
+
+    entry = connection.execute(
+        "SELECT memory_type, content FROM memory_entries WHERE memory_id = 'legacy-memory'"
+    ).fetchone()
+    assert dict(entry) == {
+        "memory_type": "unspecified",
+        "content": "Legacy memory record",
+    }
+    assert connection.execute(
+        "SELECT 1 FROM memory_entries_fts WHERE memory_id = 'legacy-memory'"
+    ).fetchone() is not None
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE memory_entries SET memory_type = 'unknown' WHERE memory_id = 'legacy-memory'"
+        )
+    connection.rollback()
+    indexes = {
+        row["name"] for row in connection.execute("PRAGMA index_list(memory_entries)")
+    }
+    assert "idx_memory_owner_type_updated" in indexes
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
+
