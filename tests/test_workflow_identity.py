@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.api.routes.agent import WorkflowReconciliationRequest
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
@@ -355,3 +356,31 @@ def test_cancelling_running_step_blocks_its_pending_descendants(tmp_path):
     assert stored["status"] == "cancelled"
     assert states["active"]["status"] == "cancelled"
     assert states["descendant"]["dependency_state"] == "blocked"
+
+
+def test_reconciliation_api_accepts_stable_identity_and_legacy_position():
+    stable = WorkflowReconciliationRequest(
+        step_id="external",
+        outcome="succeeded",
+        output_digest="a" * 64,
+    )
+    legacy = WorkflowReconciliationRequest(
+        step_number=2,
+        outcome="failed",
+    )
+
+    assert stable.resolved_step_identity() == "external"
+    assert legacy.resolved_step_identity() == 2
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"outcome": "failed"},
+        {"step_id": "external", "step_number": 2, "outcome": "failed"},
+    ],
+    ids=["missing-identity", "ambiguous-identity"],
+)
+def test_reconciliation_api_rejects_missing_or_ambiguous_identity(payload):
+    with pytest.raises(ValidationError):
+        WorkflowReconciliationRequest(**payload)
