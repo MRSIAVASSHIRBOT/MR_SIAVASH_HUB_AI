@@ -626,7 +626,8 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert allowed.status_code == 200
     assert allowed.json()["execution_completed"] is True
     assert calls == ["read"]
-    assert registry_owners == ["local-owner", "local-owner", "local-owner"]
+    # Each executable request builds one owner-scoped registry; the registry is reused by planning and execution.
+    assert registry_owners == ["local-owner", "local-owner"]
 
     revoked = client.delete("/tools/grants/cloudflare.read")
     assert revoked.status_code == 204
