@@ -131,7 +131,10 @@ class AgentWorkflowRunner:
         )
         legacy_definition = int((workflow or {}).get("definition_version", 1)) < 3
         stored_steps = {
-            str(step["step_key"]): step
+            str(
+                step.get("step_key")
+                or f"step-{step['step_number']}"
+            ): step
             for step in (workflow or {}).get("steps", [])
         }
         criteria = []
