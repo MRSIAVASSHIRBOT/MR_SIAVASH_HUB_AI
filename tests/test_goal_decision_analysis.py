@@ -105,6 +105,54 @@ def test_work_order_scope_and_capabilities_refine_decision_analysis() -> None:
     assert result.complexity_score > 5
 
 
+def test_explicit_work_order_research_requirement_overrides_keyword_detection() -> None:
+    order = WorkOrder(
+        goal="Review a compatibility issue",
+        intent="Verify a compatibility assumption",
+        scope="Documentation review",
+        assumptions=[],
+        constraints=[],
+        dependencies=[],
+        required_capabilities=[],
+        estimated_complexity="low",
+        research_required=True,
+        research_questions=["Check compatibility with release 7"],
+        acceptance_criteria=["Compatibility is confirmed"],
+        verification_steps=["Review the compatibility evidence"],
+        risk_class=RiskClass.LOW,
+    )
+
+    result = analyze_goal(order.goal, work_order=order)
+
+    assert result.research_required is True
+    assert "work_order_explicit_research_requirement" in result.reason_codes
+
+
+def test_explicit_work_order_information_gaps_are_preserved() -> None:
+    order = WorkOrder(
+        goal="Build a small application",
+        intent="Implement a small application",
+        scope="Local prototype",
+        assumptions=[],
+        constraints=[],
+        dependencies=[],
+        required_capabilities=[],
+        estimated_complexity="low",
+        missing_information=["The target runtime is not specified"],
+        clarification_questions=["Which runtime should be supported?"],
+        acceptance_criteria=["The application starts"],
+        verification_steps=["Run its startup test"],
+        risk_class=RiskClass.LOW,
+    )
+
+    result = analyze_goal(order.goal, work_order=order)
+
+    assert result.clarification_recommended is True
+    assert "user_information_missing" in result.information_gaps
+    assert "clarification_required" in result.information_gaps
+    assert "work_order_missing_information" in result.reason_codes
+
+
 def test_analysis_rejects_mismatched_work_order_goal() -> None:
     order = WorkOrder(
         goal="Build an application",
