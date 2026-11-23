@@ -89,11 +89,17 @@ class MemoryValidationEngine:
     ) -> dict[str, Any]:
         if type(limit) is not int or not 1 <= limit <= _MAX_ENTRIES:
             raise ValueError("Validation limit must be an integer between 1 and 100")
-        if (
-            type(threshold) not in (int, float)
-            or not 0.65 <= threshold <= 1.0
-            or not math.isfinite(threshold)
-        ):
+        if type(threshold) not in (int, float):
+            raise ValueError(
+                "Contradiction threshold must be a finite number between 0.65 and 1.0"
+            )
+        try:
+            normalized_threshold = float(threshold)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "Contradiction threshold must be a finite number between 0.65 and 1.0"
+            ) from exc
+        if not math.isfinite(normalized_threshold) or not 0.65 <= normalized_threshold <= 1.0:
             raise ValueError(
                 "Contradiction threshold must be a finite number between 0.65 and 1.0"
             )
@@ -158,7 +164,7 @@ class MemoryValidationEngine:
                 if left_negated == right_negated:
                     continue
                 similarity = self._similarity(left_tokens, right_tokens)
-                if similarity < threshold:
+                if similarity < normalized_threshold:
                     continue
                 contradictions.append({
                     "proposal_type": "possible_contradiction",
