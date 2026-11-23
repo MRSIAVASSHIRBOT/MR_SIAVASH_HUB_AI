@@ -1470,6 +1470,54 @@ MIGRATIONS = (
                       ('720p','1080p'))""",
         ),
     ),
+    Migration.build(
+        54,
+        "identity_addressable_workflow_steps",
+        (
+            "ALTER TABLE workflow_steps ADD COLUMN step_key TEXT NOT NULL DEFAULT ''",
+            "UPDATE workflow_steps SET step_key = 'step-' || step_number",
+            "ALTER TABLE workflow_steps ADD COLUMN depends_on_json TEXT NOT NULL DEFAULT '[]'",
+            """UPDATE workflow_steps
+               SET depends_on_json = CASE
+                   WHEN step_number = (
+                       SELECT MIN(first.step_number) FROM workflow_steps AS first
+                       WHERE first.workflow_id = workflow_steps.workflow_id
+                   ) THEN '[]'
+                   ELSE '["step-' || (
+                       SELECT MAX(previous.step_number) FROM workflow_steps AS previous
+                       WHERE previous.workflow_id = workflow_steps.workflow_id
+                         AND previous.step_number < workflow_steps.step_number
+                   ) || '"]'
+               END""",
+            """ALTER TABLE workflow_steps
+               ADD COLUMN dependency_state TEXT NOT NULL DEFAULT 'pending'
+               CHECK (dependency_state IN ('pending', 'ready', 'blocked'))""",
+            """UPDATE workflow_steps
+               SET dependency_state = CASE
+                   WHEN EXISTS (
+                       SELECT 1 FROM workflow_steps AS previous
+                       WHERE previous.workflow_id = workflow_steps.workflow_id
+                         AND previous.step_number < workflow_steps.step_number
+                         AND previous.status IN ('failed', 'unknown_outcome', 'cancelled')
+                   ) THEN 'blocked'
+                   WHEN NOT EXISTS (
+                       SELECT 1 FROM workflow_steps AS previous
+                       WHERE previous.workflow_id = workflow_steps.workflow_id
+                         AND previous.step_number < workflow_steps.step_number
+                         AND previous.status != 'succeeded'
+                   ) THEN 'ready'
+                   ELSE 'pending'
+               END""",
+            "CREATE UNIQUE INDEX idx_workflow_steps_workflow_key ON workflow_steps(workflow_id, step_key)",
+            "ALTER TABLE workflow_checkpoints ADD COLUMN step_key TEXT",
+            """UPDATE workflow_checkpoints
+               SET step_key = (
+                   SELECT workflow_steps.step_key FROM workflow_steps
+                   WHERE workflow_steps.workflow_id = workflow_checkpoints.workflow_id
+                     AND workflow_steps.step_number = workflow_checkpoints.step_number
+               )""",
+        ),
+    ),
 )
 
 

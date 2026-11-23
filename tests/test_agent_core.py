@@ -1167,3 +1167,107 @@ def test_agent_core_accepts_large_registry_when_no_capabilities_are_required():
     assert plan["capability_gaps"]["available"] == []
     assert plan["capability_gaps"]["missing"] == []
     assert plan["capability_gaps"]["complete"] is True
+
+
+def test_stable_step_ids_make_explicit_dag_request_digest_order_independent():
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
+
+    first = AgentPlanRequest(
+        goal="Execute stable workflow steps",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "alpha"},
+                "step_id": "alpha",
+                "depends_on": [],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "beta"},
+                "step_id": "beta",
+                "depends_on": [],
+            },
+        ],
+    )
+    reordered = AgentPlanRequest(
+        goal="Execute stable workflow steps",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "beta"},
+                "step_id": "beta",
+                "depends_on": [],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "alpha"},
+                "step_id": "alpha",
+                "depends_on": [],
+            },
+        ],
+    )
+
+    assert AgentWorkflowRunner.request_digest(first) == (
+        AgentWorkflowRunner.request_digest(reordered)
+    )
+
+
+def test_agent_core_skips_completed_steps_by_stable_identity():
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Do not replay an already completed step",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "already-completed"},
+                "step_id": "alpha",
+                "depends_on": [],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "still-pending"},
+                "step_id": "beta",
+                "depends_on": [],
+            },
+        ],
+    )
+    events = []
+    response = core.execute(
+        request,
+        skip_step_ids={"alpha"},
+        on_step=lambda number, status, error: events.append((number, status, error)),
+    )
+
+    assert response["execution_completed"] is True
+    assert [item["result"]["text"] for item in response["results"]] == [
+        "still-pending"
+    ]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
+
+
+def test_agent_core_dependency_plan_uses_caller_stable_step_ids():
+    core = make_core()
+    request = AgentPlanRequest(
+        goal="Preserve stable IDs in dependency planning",
+        tools=[
+            {
+                "name": "text.echo",
+                "payload": {"text": "first"},
+                "step_id": "first",
+                "depends_on": [],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "second"},
+                "step_id": "second",
+                "depends_on": ["first"],
+            },
+        ],
+    )
+    plan = core.plan(request)
+    ids = [
+        step["step_id"]
+        for step in plan["dependency_plan"]["ordered_steps"]
+    ]
+
+    assert ids == ["step-1", "first", "second"]

@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel
 
 from client_helpers import authenticated_client, run_worker_once
-from mrhub.agents.core import AgentCore
+from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
@@ -58,6 +58,14 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     assert stored["steps"][1]["status"] == "retry_wait"
     task = repository.get(UUID(task_id))
     assert task is not None and task.status.value == "waiting_approval"
+
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={"request": request},
+    )
+    assert checked.status_code == 200
+    assert checked.json()["decision"] == "resume"
+    assert checked.json()["next_step_id"] == "step-2"
 
     resumed = client.post(
         f"/agent/workflows/{workflow_id}/resume",
@@ -282,3 +290,123 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
         owner_user_id="local-owner",
     )
     assert after is not None and after["status"] == "paused"
+
+
+def test_resume_uses_stable_step_identity_after_request_reordering(monkeypatch):
+    from mrhub.agents.workflow_runner import AgentWorkflowRunner
+
+    client = authenticated_client()
+    original_request = {
+        "goal": "Resume by stable identity after harmless request reordering",
+        "tools": [
+            {
+                "name": "text.echo",
+                "payload": {"text": "alpha"},
+                "step_id": "alpha",
+                "depends_on": [],
+            },
+            {
+                "name": "text.echo",
+                "payload": {"text": "beta"},
+                "step_id": "beta",
+                "depends_on": [],
+            },
+        ],
+    }
+    created = client.post("/agent/workflows", json=original_request)
+    assert created.status_code == 200
+    workflow_id = created.json()["workflow"]["workflow_id"]
+
+    original_execute = AgentCore.execute
+
+    def checkpoint_first_step_then_interrupt(self, agent_request, **callbacks):
+        callbacks["on_step"](2, "running", None)
+        callbacks["on_step_result"](2, "f" * 64)
+        raise RuntimeError("simulated interruption after alpha checkpoint")
+
+    monkeypatch.setattr(AgentCore, "execute", checkpoint_first_step_then_interrupt)
+    with pytest.raises(RuntimeError, match="Workflow execution stopped"):
+        run_worker_once()
+    monkeypatch.setattr(AgentCore, "execute", original_execute)
+
+    stored = client.get(f"/agent/workflows/{workflow_id}").json()
+    assert stored["status"] == "paused"
+    task_repository = TaskRepository(get_settings().database_path)
+    linked_task = task_repository.get(UUID(stored["task_id"]))
+    assert linked_task is not None and linked_task.status.value == "waiting_approval", (
+        linked_task.status.value if linked_task is not None else "missing_task"
+    )
+    stored_steps = {step["step_key"]: step for step in stored["steps"]}
+    recovery_repository = WorkflowRecoveryRepository(task_repository.database_path)
+    persisted = recovery_repository.get_run(UUID(workflow_id))
+    assert persisted is not None
+    assert all(
+        step["status"] not in {"failed", "unknown_outcome", "cancelled", "running"}
+        and step["dependency_state"] != "blocked"
+        for step in persisted["steps"]
+    )
+    assert stored_steps["alpha"]["status"] == "succeeded"
+    assert stored_steps["beta"]["status"] == "pending"
+
+    reordered_request = {
+        **original_request,
+        "tools": list(reversed(original_request["tools"])),
+    }
+    assert AgentWorkflowRunner.request_digest(
+        AgentPlanRequest.model_validate(original_request)
+    ) == AgentWorkflowRunner.request_digest(
+        AgentPlanRequest.model_validate(reordered_request)
+    )
+
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={"request": reordered_request},
+    )
+    assert checked.status_code == 200, checked.json()
+    assert checked.json()["decision"] == "resume"
+    assert checked.json()["next_step_id"] == "beta"
+
+    # Exercise the same validation path as the POST endpoint while retaining
+    # its internal reason in test output instead of the API's sanitized 409.
+    from mrhub.api.routes.agent import _build_owner_agent_core
+
+    resume_core = _build_owner_agent_core("local-owner", task_repository)
+    resume_plan_request = AgentPlanRequest.model_validate(reordered_request)
+    resume_plan = resume_core.plan(resume_plan_request)
+    AgentWorkflowRunner(task_repository, resume_core)._validate_resume(
+        UUID(workflow_id),
+        resume_plan_request,
+        resume_plan,
+        AgentWorkflowRunner.request_digest(resume_plan_request),
+        "local-owner",
+    )
+
+    resumed = client.post(
+        f"/agent/workflows/{workflow_id}/resume",
+        json={"request": reordered_request},
+    )
+    assert resumed.status_code == 200, resumed.json()
+    assert resumed.json()["queued"] is True
+
+    observed = {}
+
+    def execute_and_capture_skips(self, agent_request, **callbacks):
+        observed["skip_step_ids"] = set(callbacks.get("skip_step_ids", set()))
+        return original_execute(self, agent_request, **callbacks)
+
+    monkeypatch.setattr(AgentCore, "execute", execute_and_capture_skips)
+    completed = run_worker_once()
+
+    assert completed is not None and completed.status.value == "succeeded"
+    assert observed["skip_step_ids"] >= {"step-1", "alpha"}
+    final = client.get(f"/agent/workflows/{workflow_id}").json()
+    assert final["status"] == "succeeded"
+    final_steps = {step["step_key"]: step for step in final["steps"]}
+    assert final_steps["alpha"]["attempt_count"] == 1
+    assert final_steps["beta"]["status"] == "succeeded"
+
+    repository = TaskRepository(get_settings().database_path)
+    result = WorkerEngine(repository).get_result(UUID(final["task_id"]))
+    assert result is not None
+    assert result["result"]["execution_completed"] is True
+    assert result["result"]["executed_tool_count"] == 1

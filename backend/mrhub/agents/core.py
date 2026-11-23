@@ -21,7 +21,7 @@ from mrhub.security.policy import PolicyDecision, PolicyEngine
 from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
 
 WorkflowDependencyId = Annotated[
-    str, Field(min_length=6, max_length=6, pattern=r"^step-[2-6]$")
+    str, Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9-]{0,63}$")
 ]
 
 
@@ -30,6 +30,9 @@ class AgentToolRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=80)
     payload: dict[str, object] = Field(default_factory=dict)
+    # Explicit IDs survive harmless request reordering. Omitted IDs retain the
+    # legacy position-derived identity for backward compatibility.
+    step_id: WorkflowDependencyId | None = None
     # None preserves legacy sequential request order. An explicit list declares
     # dependencies on other request steps; provider selection is always implicit.
     depends_on: list[WorkflowDependencyId] | None = Field(default=None, max_length=5)
@@ -41,6 +44,13 @@ class AgentToolRequest(BaseModel):
         if not normalized:
             raise ValueError("tool name must not be blank")
         return normalized
+
+    @field_validator("step_id")
+    @classmethod
+    def validate_step_id(cls, value: str | None) -> str | None:
+        if value is not None and value != value.strip():
+            raise ValueError("step_id cannot contain surrounding whitespace")
+        return value
 
     @field_validator("depends_on")
     @classmethod
@@ -85,17 +95,30 @@ class AgentPlanRequest(BaseModel):
             )
         return normalized
 
+    def tool_step_id(self, request_step_number: int, tool: AgentToolRequest) -> str:
+        """Return the caller-stable identity or the legacy positional fallback."""
+        return tool.step_id or f"step-{request_step_number}"
+
     def workflow_steps(self) -> list[WorkflowStep]:
-        """Materialize the request's explicit or legacy-sequential dependencies."""
+        """Materialize stable IDs and explicit or legacy-sequential dependencies."""
+        identities = [
+            self.tool_step_id(number, tool)
+            for number, tool in enumerate(self.tools, start=2)
+        ]
         steps = [WorkflowStep("step-1", "Select the model provider")]
-        for number, requested_tool in enumerate(self.tools, start=2):
+        for index, (requested_tool, step_id) in enumerate(
+            zip(self.tools, identities, strict=True)
+        ):
             if requested_tool.depends_on is None:
-                dependencies = (f"step-{number - 1}",)
+                dependency = "step-1" if index == 0 else identities[index - 1]
+                dependencies = (dependency,)
             else:
-                dependencies = tuple(dict.fromkeys(("step-1", *requested_tool.depends_on)))
+                dependencies = tuple(
+                    dict.fromkeys(("step-1", *requested_tool.depends_on))
+                )
             steps.append(
                 WorkflowStep(
-                    f"step-{number}",
+                    step_id,
                     f"Execute registered tool: {requested_tool.name}",
                     dependencies,
                 )
@@ -123,6 +146,16 @@ class AgentPlanRequest(BaseModel):
         # serialization so old queued workflows can still be resumed.
         if not self.required_capabilities:
             payload.pop("required_capabilities", None)
+        # Order-independent request digests are safe only when every tool has
+        # an explicit stable ID and an explicit dependency declaration.
+        if self.tools and all(
+            tool.step_id is not None and tool.depends_on is not None
+            for tool in self.tools
+        ):
+            payload["tools"] = sorted(
+                payload.get("tools", []),
+                key=lambda item: item["step_id"],
+            )
         return payload
 
 
@@ -159,12 +192,14 @@ class AgentCore:
     def workflow_step_input_digest(
         request_step_number: int,
         requested_tool: AgentToolRequest,
+        *,
+        step_id: str | None = None,
     ) -> str:
         """Bind a durable step to its stable request identity and exact input payload."""
         if request_step_number < 2:
             raise ValueError("Tool request step number must be at least 2")
         definition = {
-            "step_id": f"step-{request_step_number}",
+            "step_id": step_id or requested_tool.step_id or f"step-{request_step_number}",
             "tool_name": requested_tool.name,
             "payload": requested_tool.payload,
             "depends_on": (
@@ -208,16 +243,19 @@ class AgentCore:
         if not isinstance(ordered_steps, list) or not ordered_steps:
             raise RuntimeError("Agent dependency graph has no ordered steps")
 
+        request_by_id = {
+            request.tool_step_id(number, tool): (number, tool)
+            for number, tool in enumerate(request.tools, start=2)
+        }
         ordered_tools: list[tuple[int, int, AgentToolRequest]] = []
         for runtime_step_number, workflow_step in enumerate(ordered_steps[1:], start=2):
-            step_id = workflow_step["step_id"]
-            request_step_number = int(step_id.removeprefix("step-"))
+            stable_step_id = workflow_step["step_id"]
+            request_item = request_by_id.get(stable_step_id)
+            if request_item is None:
+                raise RuntimeError("Validated dependency graph contains an unknown step identity")
+            request_step_number, requested_tool = request_item
             ordered_tools.append(
-                (
-                    runtime_step_number,
-                    request_step_number,
-                    request.tools[request_step_number - 2],
-                )
+                (runtime_step_number, request_step_number, requested_tool)
             )
         return ordered_tools
 
@@ -228,6 +266,7 @@ class AgentCore:
         on_step: Callable[[int, str, str | None], None] | None = None,
         on_step_result: Callable[[int, str], None] | None = None,
         start_step: int = 2,
+        skip_step_ids: set[str] | frozenset[str] | None = None,
         should_cancel: Callable[[], bool] | None = None,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
@@ -248,10 +287,13 @@ class AgentCore:
         if start_step < 2:
             raise ValueError("Tool execution start step must be at least 2")
 
-        for runtime_step_number, _request_step_number, requested_tool in (
+        for runtime_step_number, request_step_number, requested_tool in (
             self.ordered_tool_steps(request, plan)
         ):
-            if runtime_step_number < start_step:
+            stable_step_id = request.tool_step_id(request_step_number, requested_tool)
+            if runtime_step_number < start_step or (
+                skip_step_ids is not None and stable_step_id in skip_step_ids
+            ):
                 continue
             if should_cancel is not None and should_cancel():
                 return {

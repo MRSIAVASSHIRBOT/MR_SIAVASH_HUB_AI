@@ -66,9 +66,15 @@ class AgentWorkflowRunner:
         if len(ordered_tools) != len(request.tools):
             raise ValueError("Validated workflow graph does not cover every requested tool")
 
+        definitions = {
+            step.step_id: step
+            for step in request.workflow_steps()
+        }
         step_specs: list[dict[str, object]] = [
             {
                 "step_number": 1,
+                "step_key": "step-1",
+                "depends_on": [],
                 "kind": "provider_selection",
                 "name": "provider_selection",
                 "input_digest": None,
@@ -80,6 +86,12 @@ class AgentWorkflowRunner:
             step_specs.append(
                 {
                     "step_number": runtime_step_number,
+                    "step_key": request.tool_step_id(request_step_number, requested_tool),
+                    "depends_on": list(
+                        definitions[
+                            request.tool_step_id(request_step_number, requested_tool)
+                        ].depends_on
+                    ),
                     "kind": (
                         "external_tool"
                         if definition.external_side_effect
@@ -87,7 +99,9 @@ class AgentWorkflowRunner:
                     ),
                     "name": requested_tool.name,
                     "input_digest": core.workflow_step_input_digest(
-                        request_step_number, requested_tool
+                        request_step_number,
+                        requested_tool,
+                        step_id=request.tool_step_id(request_step_number, requested_tool),
                     ),
                 }
             )
@@ -115,13 +129,22 @@ class AgentWorkflowRunner:
         workflow = self.recovery.get_run(
             workflow_id, owner_user_id=owner_user_id
         )
+        legacy_definition = int((workflow or {}).get("definition_version", 1)) < 3
         stored_steps = {
-            int(step["step_number"]): step
+            str(
+                step.get("step_key")
+                or f"step-{step['step_number']}"
+            ): step
             for step in (workflow or {}).get("steps", [])
         }
         criteria = []
-        for runtime_number, _request_number, requested_tool in ordered_tools:
-            step = stored_steps.get(runtime_number, {})
+        for runtime_number, request_number, requested_tool in ordered_tools:
+            step_key = (
+                f"step-{runtime_number}"
+                if legacy_definition
+                else request.tool_step_id(request_number, requested_tool)
+            )
+            step = stored_steps.get(step_key, {})
             status = step.get("status")
             if status == "succeeded":
                 outcome = CriterionStatus.PASSED
@@ -133,7 +156,7 @@ class AgentWorkflowRunner:
                 evidence_digest = self._digest(
                     {
                         "workflow_id": str(workflow_id),
-                        "step_number": runtime_number,
+                        "step_id": step_key,
                         "status": status,
                         "error_code": step.get("error_code") or "tool_execution_failed",
                         "attempt_count": step.get("attempt_count"),
@@ -148,7 +171,11 @@ class AgentWorkflowRunner:
                 evidence_digest = None
             criteria.append(
                 EvaluationCriterion(
-                    criterion_id=f"tool-step-{runtime_number}",
+                    criterion_id=(
+                        f"tool-step-{runtime_number}"
+                        if legacy_definition or requested_tool.step_id is None
+                        else f"tool-step-{step_key}"
+                    ),
                     description=f"Tool execution completed: {requested_tool.name}",
                     status=outcome,
                     evidence_digest=evidence_digest,
@@ -240,7 +267,7 @@ class AgentWorkflowRunner:
                 request_digest,
                 step_specs,
                 task=task,
-                definition_version=2,
+                definition_version=3,
                 owner_user_id=owner_user_id,
             )
             AuditLogger(self.repository).record(
@@ -267,13 +294,19 @@ class AgentWorkflowRunner:
             )
             heartbeat.start()
         attempts: dict[int, StepAttempt] = {}
+        runtime_step_ids = {
+            runtime_number: request.tool_step_id(request_number, requested_tool)
+            for runtime_number, request_number, requested_tool in self.core.ordered_tool_steps(
+                request, plan
+            )
+        }
 
         try:
             self._record_execution_start(
                 lease, increment_attempt=not worker_owned_lease
             )
             self.recovery.start_run(workflow_id, lease=lease)
-            provider_attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
+            provider_attempt = self.recovery.start_step(workflow_id, "step-1", lease=lease)
             provider_digest = self._digest(plan.get("selected_provider", {}))
             self.recovery.complete_step(
                 workflow_id, provider_attempt, provider_digest, lease=lease
@@ -283,8 +316,9 @@ class AgentWorkflowRunner:
                 if lease_lost.is_set():
                     raise RuntimeError("Workflow worker lease was lost")
                 if status == "running":
+                    step_key = runtime_step_ids[number]
                     attempts[number] = self.recovery.start_step(
-                        workflow_id, number, lease=lease
+                        workflow_id, step_key, lease=lease
                     )
                 elif status == "failed":
                     attempt = attempts.get(number)
@@ -431,6 +465,16 @@ class AgentWorkflowRunner:
             definition_version=definition_version,
             owner_user_id=owner_user_id,
         )
+        if decision.decision == "resume" and definition_version >= 3:
+            identity_matches = any(
+                int(step["step_number"]) == decision.next_step
+                and str(step["step_key"]) == decision.next_step_id
+                for step in workflow["steps"]
+            )
+            if not decision.next_step_id or not identity_matches:
+                raise ValueError(
+                    "Workflow resume decision has no consistent stable step identity"
+                )
         if decision.decision not in {"resume", "finish"} or (
             decision.decision == "resume" and decision.next_step is None
         ):
@@ -442,33 +486,57 @@ class AgentWorkflowRunner:
         expected_specs, _tools_by_execution_step = self._durable_step_metadata(
             request, plan
         )
-        expected = [
-            (
-                int(step["step_number"]),
-                str(step["kind"]),
-                str(step["name"]),
-                step.get("input_digest"),
-            )
-            for step in expected_specs
-        ]
-        stored = [
-            (
-                int(step["step_number"]),
-                step["step_kind"],
-                step["step_name"],
-                step.get("input_digest"),
-            )
-            for step in workflow["steps"]
-        ]
-        if len(expected) != len(stored) or any(
-            expected_step[:3] != stored_step[:3]
-            or (
-                expected_step[3] != stored_step[3]
-                and not (definition_version < 2 and stored_step[3] is None)
-            )
-            for expected_step, stored_step in zip(expected, stored, strict=True)
-        ):
-            raise ValueError("Current workflow plan differs from the stored definition")
+        if definition_version < 3:
+            # Historical workflows did not persist caller-defined IDs or DAG edges.
+            # Keep their exact numeric contract; never infer a reordered legacy plan.
+            expected = [
+                (
+                    int(step["step_number"]),
+                    str(step["kind"]),
+                    str(step["name"]),
+                    step.get("input_digest"),
+                )
+                for step in expected_specs
+            ]
+            stored = [
+                (
+                    int(step["step_number"]),
+                    step["step_kind"],
+                    step["step_name"],
+                    step.get("input_digest"),
+                )
+                for step in workflow["steps"]
+            ]
+            if len(expected) != len(stored) or any(
+                expected_step[:3] != stored_step[:3]
+                or (
+                    expected_step[3] != stored_step[3]
+                    and not (definition_version < 2 and stored_step[3] is None)
+                )
+                for expected_step, stored_step in zip(expected, stored, strict=True)
+            ):
+                raise ValueError("Current workflow plan differs from the stored legacy definition")
+        else:
+            expected_by_id = {
+                str(step["step_key"]): step for step in expected_specs
+            }
+            stored_by_id = {
+                str(step["step_key"]): step for step in workflow["steps"]
+            }
+            if set(expected_by_id) != set(stored_by_id):
+                raise ValueError("Current workflow step identities differ from the stored definition")
+            for step_key, expected_step in expected_by_id.items():
+                stored_step = stored_by_id[step_key]
+                if (
+                    expected_step["kind"] != stored_step["step_kind"]
+                    or expected_step["name"] != stored_step["step_name"]
+                    or expected_step.get("input_digest") != stored_step.get("input_digest")
+                    or sorted(expected_step.get("depends_on", []))
+                    != sorted(stored_step.get("depends_on", []))
+                ):
+                    raise ValueError(
+                        f"Current workflow definition changed for step identity: {step_key}"
+                    )
 
         provider_step = next(
             (step for step in workflow["steps"] if step["step_number"] == 1), None
@@ -574,6 +642,25 @@ class AgentWorkflowRunner:
 
         assert lease is not None and lease_lost is not None
         attempts: dict[int, StepAttempt] = {}
+        _step_specs, tools_by_execution_step = self._durable_step_metadata(
+            request, plan
+        )
+        legacy_definition = int(_workflow["definition_version"]) < 3
+        runtime_step_ids = {
+            runtime_number: (
+                f"step-{runtime_number}"
+                if legacy_definition
+                else request.tool_step_id(request_number, requested_tool)
+            )
+            for runtime_number, request_number, requested_tool in self.core.ordered_tool_steps(
+                request, plan
+            )
+        }
+        succeeded_step_ids = {
+            str(step["step_key"])
+            for step in _workflow["steps"]
+            if step["status"] == "succeeded"
+        }
         try:
             self._record_execution_start(lease, increment_attempt=not worker_owned_lease)
             self.recovery.start_run(workflow_id, lease=lease)
@@ -600,10 +687,15 @@ class AgentWorkflowRunner:
                     "results": [],
                 }
             else:
-                start_step = decision.next_step
-                if start_step == 1:
+                provider_step = next(
+                    (step for step in _workflow["steps"] if step["step_key"] == "step-1"),
+                    None,
+                )
+                if provider_step is None:
+                    raise RuntimeError("Workflow provider-selection identity is missing")
+                if provider_step["status"] != "succeeded":
                     provider_attempt = self.recovery.start_step(
-                        workflow_id, 1, lease=lease
+                        workflow_id, "step-1", lease=lease
                     )
                     self.recovery.complete_step(
                         workflow_id,
@@ -611,11 +703,7 @@ class AgentWorkflowRunner:
                         self._digest(plan.get("selected_provider", {})),
                         lease=lease,
                     )
-                    start_step = 2
-
-                _step_specs, tools_by_execution_step = self._durable_step_metadata(
-                    request, plan
-                )
+                    succeeded_step_ids.add("step-1")
 
                 def on_step(
                     number: int, status: str, error_code: str | None
@@ -623,8 +711,11 @@ class AgentWorkflowRunner:
                     if lease_lost.is_set():
                         raise RuntimeError("Workflow worker lease was lost")
                     if status == "running":
+                        step_key = runtime_step_ids[number]
                         attempts[number] = self.recovery.start_step(
-                            workflow_id, number, lease=lease
+                            workflow_id,
+                            number if legacy_definition else step_key,
+                            lease=lease,
                         )
                     elif status == "failed":
                         attempt = attempts.get(number)
@@ -655,7 +746,13 @@ class AgentWorkflowRunner:
                     request,
                     on_step=on_step,
                     on_step_result=on_step_result,
-                    start_step=start_step,
+                    start_step=(
+                        max(2, int(decision.next_step or 2))
+                        if legacy_definition else 2
+                    ),
+                    skip_step_ids=(
+                        None if legacy_definition else succeeded_step_ids
+                    ),
                     should_cancel=should_cancel,
                 )
 
