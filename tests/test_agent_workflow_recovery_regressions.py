@@ -54,7 +54,7 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     recovery = WorkflowRecoveryRepository(repository.database_path)
     stored = recovery.get_run(UUID(workflow_id), owner_user_id="local-owner")
     assert stored is not None
-    assert stored["status"] == "paused"
+    assert stored["status"] == "recovery_required"
     assert stored["steps"][1]["status"] == "retry_wait"
     task = repository.get(UUID(task_id))
     assert task is not None and task.status.value == "waiting_approval"
@@ -289,7 +289,7 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
         UUID(workflow_id),
         owner_user_id="local-owner",
     )
-    assert after is not None and after["status"] == "paused"
+    assert after is not None and after["status"] == "recovery_required"
 
 
 def test_resume_uses_stable_step_identity_after_request_reordering(monkeypatch):
