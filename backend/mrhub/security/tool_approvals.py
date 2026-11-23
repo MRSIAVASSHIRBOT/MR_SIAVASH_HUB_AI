@@ -79,6 +79,41 @@ class ToolInvocationApprovalStore:
         self.repository = repository
         self._clock = clock or (lambda: datetime.now(UTC))
 
+    @staticmethod
+    def _record_audit(
+        repository: TaskRepository,
+        connection,
+        audit_event: dict[str, object] | None,
+        *,
+        event_type: str | None = None,
+        outcome: str | None = None,
+        status: str | None = None,
+        decision: str | None = None,
+        reason_code: str | None = None,
+    ) -> None:
+        """Insert a pre-built allow-listed audit event in the receipt transaction."""
+        if audit_event is None:
+            return
+        if not isinstance(audit_event, dict):
+            raise ToolApprovalError("Approval audit event is invalid")
+        event = dict(audit_event)
+        metadata = event.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ToolApprovalError("Approval audit metadata is invalid")
+        metadata = dict(metadata)
+        if status is not None:
+            metadata["status"] = status
+        if decision is not None:
+            metadata["decision"] = decision
+        if reason_code is not None:
+            metadata["reason_code"] = reason_code
+        event["metadata"] = metadata
+        if event_type is not None:
+            event["event_type"] = event_type
+        if outcome is not None:
+            event["outcome"] = outcome
+        repository._insert_audit_event(connection, event)
+
     def _now(self) -> datetime:
         value = self._clock()
         if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
@@ -113,6 +148,7 @@ class ToolInvocationApprovalStore:
         payload_digest: str,
         tool_fingerprint: str,
         ttl_seconds: int = 300,
+        audit_event: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Create a pending receipt for one owner, tool definition and exact payload."""
         normalized_id = self._validate_identifiers(approval_id, owner_user_id, tool_name)
@@ -147,6 +183,11 @@ class ToolInvocationApprovalStore:
                     created_at,
                     expires_at,
                 ),
+            )
+            self._record_audit(
+                self.repository, connection, audit_event,
+                status="pending",
+                reason_code="owner_requested_approval",
             )
         return {
             "approval_id": normalized_id,
@@ -189,6 +230,7 @@ class ToolInvocationApprovalStore:
         tool_name: str,
         tool_fingerprint: str,
         decision: str,
+        audit_event: dict[str, object] | None = None,
     ) -> dict[str, object] | None:
         """Approve or reject a still-pending receipt only while its definition is current."""
         normalized_id = self._validate_identifiers(approval_id, owner_user_id, tool_name)
@@ -231,6 +273,14 @@ class ToolInvocationApprovalStore:
                     """,
                     (normalized_id, owner_user_id),
                 ).fetchone()
+                self._record_audit(
+                    self.repository, connection, audit_event,
+                    event_type="tool.approval_expired",
+                    outcome="expired",
+                    status="expired",
+                    decision="expired",
+                    reason_code="approval_expired_or_definition_changed",
+                )
                 return dict(expired) if expired is not None else None
             cursor = connection.execute(
                 """
@@ -243,6 +293,14 @@ class ToolInvocationApprovalStore:
             )
             if cursor.rowcount != 1:
                 raise ToolApprovalError("Tool approval state changed concurrently")
+            self._record_audit(
+                self.repository, connection, audit_event,
+                event_type="tool.approval_decided",
+                outcome=decision,
+                status=decision,
+                decision=decision,
+                reason_code="owner_decision",
+            )
             updated = connection.execute(
                 """
                 SELECT approval_id, owner_user_id, tool_name, payload_digest,
@@ -282,11 +340,8 @@ class ToolInvocationApprovalStore:
             if row is None:
                 return False
             if row["status"] == "approved" and row["expires_at"] <= now_text:
-                connection.execute(
-                    "UPDATE tool_invocation_approvals SET status = 'expired' "
-                    "WHERE approval_id = ? AND status = 'approved'",
-                    (normalized_id,),
-                )
+                # Validation is read-only. Expiry is recorded by the decision or
+                # consumption transition that owns the corresponding audit event.
                 return False
             return (
                 row["status"] == "approved"
@@ -304,8 +359,10 @@ class ToolInvocationApprovalStore:
         tool_name: str,
         payload_digest: str,
         tool_fingerprint: str,
+        audit_event: dict[str, object] | None = None,
     ) -> bool:
-        """Atomically consume one approved receipt immediately before handler invocation."""
+        """Atomically consume one approved receipt and its audit event before handler invocation."""
+
         normalized_id = self._validate_identifiers(approval_id, owner_user_id, tool_name)
         self._validate_digest(payload_digest)
         self._validate_digest(tool_fingerprint)
@@ -327,6 +384,14 @@ class ToolInvocationApprovalStore:
                     "UPDATE tool_invocation_approvals SET status = 'expired' "
                     "WHERE approval_id = ? AND status = 'approved'",
                     (normalized_id,),
+                )
+                self._record_audit(
+                    self.repository, connection, audit_event,
+                    event_type="tool.approval_expired",
+                    outcome="expired",
+                    status="expired",
+                    decision="expired",
+                    reason_code="approval_expired",
                 )
                 return False
             if (
@@ -355,4 +420,14 @@ class ToolInvocationApprovalStore:
                     tool_fingerprint,
                 ),
             )
-            return cursor.rowcount == 1
+            if cursor.rowcount == 1:
+                self._record_audit(
+                    self.repository, connection, audit_event,
+                    event_type="tool.approval_consumed",
+                    outcome="consumed",
+                    status="consumed",
+                    decision="consumed",
+                    reason_code="single_use_receipt_consumed",
+                )
+                return True
+            return False
