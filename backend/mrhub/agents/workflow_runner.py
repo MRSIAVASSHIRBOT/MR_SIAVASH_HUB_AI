@@ -464,33 +464,57 @@ class AgentWorkflowRunner:
         expected_specs, _tools_by_execution_step = self._durable_step_metadata(
             request, plan
         )
-        expected = [
-            (
-                int(step["step_number"]),
-                str(step["kind"]),
-                str(step["name"]),
-                step.get("input_digest"),
-            )
-            for step in expected_specs
-        ]
-        stored = [
-            (
-                int(step["step_number"]),
-                step["step_kind"],
-                step["step_name"],
-                step.get("input_digest"),
-            )
-            for step in workflow["steps"]
-        ]
-        if len(expected) != len(stored) or any(
-            expected_step[:3] != stored_step[:3]
-            or (
-                expected_step[3] != stored_step[3]
-                and not (definition_version < 2 and stored_step[3] is None)
-            )
-            for expected_step, stored_step in zip(expected, stored, strict=True)
-        ):
-            raise ValueError("Current workflow plan differs from the stored definition")
+        if definition_version < 3:
+            # Historical workflows did not persist caller-defined IDs or DAG edges.
+            # Keep their exact numeric contract; never infer a reordered legacy plan.
+            expected = [
+                (
+                    int(step["step_number"]),
+                    str(step["kind"]),
+                    str(step["name"]),
+                    step.get("input_digest"),
+                )
+                for step in expected_specs
+            ]
+            stored = [
+                (
+                    int(step["step_number"]),
+                    step["step_kind"],
+                    step["step_name"],
+                    step.get("input_digest"),
+                )
+                for step in workflow["steps"]
+            ]
+            if len(expected) != len(stored) or any(
+                expected_step[:3] != stored_step[:3]
+                or (
+                    expected_step[3] != stored_step[3]
+                    and not (definition_version < 2 and stored_step[3] is None)
+                )
+                for expected_step, stored_step in zip(expected, stored, strict=True)
+            ):
+                raise ValueError("Current workflow plan differs from the stored legacy definition")
+        else:
+            expected_by_id = {
+                str(step["step_key"]): step for step in expected_specs
+            }
+            stored_by_id = {
+                str(step["step_key"]): step for step in workflow["steps"]
+            }
+            if set(expected_by_id) != set(stored_by_id):
+                raise ValueError("Current workflow step identities differ from the stored definition")
+            for step_key, expected_step in expected_by_id.items():
+                stored_step = stored_by_id[step_key]
+                if (
+                    expected_step["kind"] != stored_step["step_kind"]
+                    or expected_step["name"] != stored_step["step_name"]
+                    or expected_step.get("input_digest") != stored_step.get("input_digest")
+                    or sorted(expected_step.get("depends_on", []))
+                    != sorted(stored_step.get("depends_on", []))
+                ):
+                    raise ValueError(
+                        f"Current workflow definition changed for step identity: {step_key}"
+                    )
 
         provider_step = next(
             (step for step in workflow["steps"] if step["step_number"] == 1), None
