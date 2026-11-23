@@ -4,7 +4,8 @@ from time import perf_counter
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+import math
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
@@ -119,6 +120,22 @@ class GenerateModelRequest(BaseModel):
 
     input_text: str = Field(min_length=1, max_length=32_000)
     max_output_tokens: int = Field(default=512, ge=1, le=2048, strict=True)
+    timeout_seconds: float | None = Field(default=None, ge=1.0, le=300.0)
+
+    @field_validator("timeout_seconds", mode="before")
+    @classmethod
+    def validate_timeout(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("Request timeout must be a finite number")
+        try:
+            finite = math.isfinite(float(value))
+        except (OverflowError, ValueError):
+            finite = False
+        if not finite:
+            raise ValueError("Request timeout must be a finite number")
+        return value
 
 
 class GenerateKimiVisionRequest(BaseModel):
@@ -128,6 +145,22 @@ class GenerateKimiVisionRequest(BaseModel):
     # Base64 expands 4 MiB to at most about 5.6 million characters.
     image_data_url: str = Field(min_length=32, max_length=5_600_000)
     max_output_tokens: int = Field(default=512, ge=1, le=2048, strict=True)
+    timeout_seconds: float | None = Field(default=None, ge=1.0, le=300.0)
+
+    @field_validator("timeout_seconds", mode="before")
+    @classmethod
+    def validate_timeout(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("Request timeout must be a finite number")
+        try:
+            finite = math.isfinite(float(value))
+        except (OverflowError, ValueError):
+            finite = False
+        if not finite:
+            raise ValueError("Request timeout must be a finite number")
+        return value
 
 
 class AssessModelRequest(BaseModel):
@@ -343,6 +376,7 @@ def generate_kimi_model(
             ProviderRequest(
                 input_text=payload.input_text,
                 max_output_tokens=payload.max_output_tokens,
+                timeout_seconds=payload.timeout_seconds,
             ),
         )
     except ProviderError as exc:
@@ -373,6 +407,7 @@ def generate_kimi_vision(
             prompt=payload.prompt,
             image_data_url=payload.image_data_url,
             max_output_tokens=payload.max_output_tokens,
+            timeout_seconds=payload.timeout_seconds,
         )
     except ProviderConfigurationError as exc:
         raise HTTPException(status_code=422, detail=exc.code) from exc
@@ -397,6 +432,7 @@ def generate_local_model(payload: GenerateModelRequest):
             ProviderRequest(
                 input_text=payload.input_text,
                 max_output_tokens=payload.max_output_tokens,
+                timeout_seconds=payload.timeout_seconds,
             ),
         )
     except ProviderError as exc:
