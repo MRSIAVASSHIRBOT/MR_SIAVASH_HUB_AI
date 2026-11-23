@@ -163,3 +163,76 @@ def test_registry_does_not_retain_invalid_output_values_in_exception_context():
     assert error.value.__cause__ is None
     assert error.value.__context__ is None
     assert "credential-bearing-output" not in repr(error.value)
+
+
+
+def _tool_definition(**overrides):
+    values = {
+        "name": "custom.contract",
+        "description": "A tool definition contract test",
+        "input_model": InputValue,
+        "output_model": OutputValue,
+        "handler": lambda payload: {"value": payload.value},
+        "risk_class": RiskClass.LOW,
+        "required_permissions": frozenset(),
+        "external_side_effect": False,
+    }
+    values.update(overrides)
+    return ToolDefinition(**values)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"name": None}, "Invalid tool name"),
+        ({"description": None}, "Tool description"),
+        ({"description": "   "}, "Tool description"),
+        ({"input_model": dict}, "input_model"),
+        ({"output_model": dict}, "output_model"),
+        ({"handler": None}, "handler must be callable"),
+        ({"risk_class": "low"}, "server-defined RiskClass"),
+        ({"external_side_effect": 1}, "must be a boolean"),
+        ({"required_permissions": {"custom.read"}}, "immutable frozenset"),
+        ({"required_permissions": frozenset({"Invalid Permission"})}, "invalid permission name"),
+        ({"required_permissions": frozenset(f"permission.{i}" for i in range(33))}, "cannot exceed 32"),
+    ],
+)
+def test_registry_rejects_malformed_tool_definitions_without_registering(overrides, message):
+    registry = ToolRegistry()
+    definition = _tool_definition(**overrides)
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        registry.register(definition)
+
+    with pytest.raises(LookupError):
+        registry.get("custom.contract")
+
+
+def test_registry_rejects_async_handlers_before_registration():
+    async def async_handler(_payload):
+        return {"value": "not supported by the synchronous registry"}
+
+    registry = ToolRegistry()
+    with pytest.raises(ValueError, match="must be synchronous"):
+        registry.register(_tool_definition(handler=async_handler))
+
+    with pytest.raises(LookupError):
+        registry.get("custom.contract")
+
+
+def test_registry_rejects_non_definition_objects():
+    with pytest.raises(TypeError, match="ToolDefinition"):
+        ToolRegistry().register({"name": "custom.invalid"})
+
+
+def test_registry_accepts_only_validated_immutable_tool_contracts():
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(
+            required_permissions=frozenset({"cloudflare.read"}),
+            external_side_effect=False,
+        )
+    )
+
+    assert registry.get("custom.contract").required_permissions == frozenset({"cloudflare.read"})
+    assert registry.catalog()[0]["required_permissions"] == ["cloudflare.read"]
