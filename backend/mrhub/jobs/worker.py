@@ -9,10 +9,12 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
+from types import MappingProxyType
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 from mrhub.content.dispatcher import ContentScheduleDispatcher
@@ -93,13 +95,13 @@ class WorkerEngine:
     RETRY_BASE_SECONDS = 5
     RETRY_MAX_SECONDS = 60
     RETRY_SAFE_TASK_TYPES = frozenset({"demo.echo"})
-    DEFAULT_RETRY_POLICIES = {
+    DEFAULT_RETRY_POLICIES: ClassVar[Mapping[str, RetryPolicy]] = MappingProxyType({
         "demo.echo": RetryPolicy(
             max_attempts=MAX_ATTEMPTS,
             base_delay_seconds=RETRY_BASE_SECONDS,
             max_delay_seconds=RETRY_MAX_SECONDS,
         )
-    }
+    })
 
     def __init__(
         self,
@@ -107,7 +109,7 @@ class WorkerEngine:
         clock: Callable[[], datetime] | None = None,
         lease_seconds: int = 60,
         content_schedule_dispatcher: ContentScheduleDispatcher | None = None,
-        retry_policies: dict[str, RetryPolicy] | None = None,
+        retry_policies: Mapping[str, RetryPolicy] | None = None,
     ) -> None:
         self.repository = repository
         self.database_path = repository.database_path
