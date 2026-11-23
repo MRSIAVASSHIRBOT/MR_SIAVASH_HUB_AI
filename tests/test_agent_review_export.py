@@ -63,4 +63,4 @@ def test_rejects_unrecognized_input_fields():
 
 def test_rejects_invalid_unicode_encoding():
     with pytest.raises(ExportError, match="UTF-8 JSON"):
-        export_review_summary(summary(findings=["\\ud800"]))
+        export_review_summary(summary(findings=[chr(0xD800)]))
