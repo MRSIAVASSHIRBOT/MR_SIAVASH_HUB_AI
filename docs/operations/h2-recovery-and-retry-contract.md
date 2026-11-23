@@ -65,3 +65,28 @@ does not claim tasks, invoke handlers, or dispatch new work.
 Regression tests verify that startup recovery reconciles stale work while
 dispatch is stopped, that the handler is never invoked, and that polling remains
 blocked afterwards.
+
+
+## Per-request provider timeout cap
+
+Provider text-generation requests may carry an optional `timeout_seconds`
+between 1 and 300 seconds. Ollama and Kimi HTTP adapters clamp this value to
+their own configured maximum and apply the result to the HTTP client's connect,
+read, write, and pool timeout settings. The public local/Kimi generation APIs
+and Kimi vision endpoint can accept the same bounded override.
+
+This is an adapter-level network timeout cap, not a strict wall-clock deadline
+for the complete request. HTTP client read timeouts generally bound inactivity
+between network reads; a provider that continuously streams response bytes can
+still take longer than the configured value overall. It does not terminate
+arbitrary Python handler code, guarantee model inference cancellation, or prove
+that a remote side effect did not happen. Any timeout after a remote operation
+may have been accepted must continue to use the existing unknown-outcome and
+reconciliation contract; it must not trigger blind replay.
+
+
+The local Ollama vision path uses the same per-request cap through
+`VisionRequest.timeout_seconds`. Video analysis passes its configured
+provider timeout into both the provider instance and the transient request;
+the adapter uses the lower value. This remains a network timeout ceiling, not
+an absolute wall-clock deadline for all video-analysis work.
