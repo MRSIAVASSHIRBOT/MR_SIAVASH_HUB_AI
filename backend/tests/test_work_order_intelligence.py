@@ -19,6 +19,11 @@ def make_work_order(
     assumptions=None,
     dependencies=None,
     capabilities=None,
+    estimated_complexity="moderate",
+    missing_information=None,
+    clarification_questions=None,
+    research_required=False,
+    research_questions=None,
 ):
     return WorkOrder(
         goal=goal,
@@ -27,6 +32,11 @@ def make_work_order(
         assumptions=assumptions or [],
         dependencies=dependencies or [],
         required_capabilities=capabilities or [],
+        estimated_complexity=estimated_complexity,
+        missing_information=missing_information or [],
+        clarification_questions=clarification_questions or [],
+        research_required=research_required,
+        research_questions=research_questions or [],
         acceptance_criteria=["The plan is verifiable"],
         verification_steps=["Run the focused test suite"],
         risk_class=RiskClass.LOW,
@@ -189,6 +199,38 @@ def test_plan_steps_are_returned_in_deterministic_topological_order():
     result = assess_work_order_intelligence(order, plan, report())
 
     assert result.ordered_step_ids == ("prepare", "publish")
+
+
+def test_explicit_gpi_signals_drive_readiness_and_remain_advisory():
+    order = make_work_order(
+        estimated_complexity="high",
+        missing_information=["The target runtime is not confirmed"],
+        clarification_questions=["Which runtime should the plan target?"],
+        research_required=True,
+        research_questions=["Check the compatibility matrix from the vendor"],
+    )
+
+    payload = assess_work_order_intelligence(order, make_plan(), report()).as_dict()
+
+    assert payload["complexity"]["model_estimate"] == "high"
+    assert payload["planning_readiness"] == "needs_clarification"
+    assert payload["information"]["status"] == "needs_clarification"
+    assert payload["information"]["missing_information"] == [
+        "The target runtime is not confirmed"
+    ]
+    assert payload["information"]["clarification_questions"] == [
+        "Which runtime should the plan target?"
+    ]
+    assert "user_information_missing" in payload["information"]["gap_codes"]
+    assert payload["research"]["decision"] == ResearchDecision.REQUIRED.value
+    assert payload["research"]["questions"] == [
+        "Check the compatibility matrix from the vendor"
+    ]
+    assert payload["research"]["execution_started"] is False
+    assert payload["tools"]["authorization_checked"] is False
+    assert payload["tools"]["tools_selected"] is False
+    assert payload["planning_only"] is True
+    assert payload["tools_executed"] is False
 
 
 def test_rejects_cyclic_plan_instead_of_guessing_execution_order():
