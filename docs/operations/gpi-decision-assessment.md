@@ -12,3 +12,15 @@ The authenticated `POST /agent/work-orders/plan` response now includes a determi
 - **Model:** the response records the actual model selected by the existing capability-aware router for local text-only planning. This does not claim that the provider is suitable for every future modality or execution task.
 
 The response explicitly sets `planning_only`, `authorization_checked=false`, `research_started=false`, `execution_started=false`, and `tools_executed=false`. All generated and derived fields remain untrusted advisory data. Permissions and policy must be re-evaluated at execution time.
+
+
+## Readiness and canonical ordering
+
+The assessment exposes `planning_readiness` with three review states:
+- `needs_clarification` when detected missing information has concrete questions;
+- `needs_research` when the validated WorkOrder requires external evidence;
+- `ready_for_review` when neither condition is present.
+
+`tool_use_required` is derived from the validated capability requirements and remains separate from registration and authorization. A missing capability is reported explicitly; registered capability presence still does not authorize invocation.
+
+Step order is delegated to the shared bounded workflow DAG planner. The decision-assessment module does not implement a second topological sorting algorithm, so review output and runtime planning use the same dependency-order contract.
