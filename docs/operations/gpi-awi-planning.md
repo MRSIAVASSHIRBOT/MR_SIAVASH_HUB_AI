@@ -93,7 +93,16 @@ Authorization: Bearer <session-token>
 
 The read endpoint verifies the owner binding, envelope authentication, strict WorkOrder/ExecutionPlan schemas, and canonical digest before returning the decrypted content. It recalculates the capability-presence report against the current owner tool catalog. It does not authorize or execute any tool.
 
-Expired records are marked expired and their ciphertext fields are erased when accessed. New plan creation also runs a bounded expiry sweep (up to 100 due records); this is opportunistic cleanup, not a background scheduler. Consumed or revoked states are reserved for later lifecycle integration; no plan-to-execution endpoint is exposed by this change.
+Expired records are marked expired and their ciphertext fields are erased when accessed. New plan creation also runs a bounded expiry sweep (up to 100 due records); this is opportunistic cleanup, not a background scheduler.
+
+An owner may revoke an active plan:
+
+```http
+DELETE /agent/work-orders/plans/{plan_id}
+Authorization: Bearer <session-token>
+```
+
+Revocation uses an owner-scoped atomic transition. The ciphertext and nonce fields are overwritten with non-secret terminal markers; repeated DELETE requests are idempotent. A foreign owner's plan is reported as not found. Expired plans remain expired, and consumed plans cannot be revoked. The `consumed` state remains reserved for a future reviewed plan-to-workflow integration; no plan-to-execution endpoint is exposed by this change.
 
 | Status | Meaning |
 | --- | --- |
