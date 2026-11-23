@@ -550,8 +550,18 @@ def test_memory_repository_rejects_invalid_confidence_on_create_and_update(confi
     )
     assert created.status_code == 201
     repository = MemoryRepository(get_settings().database_path)
+    expected_error = (
+        TypeError
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float))
+        else ValueError
+    )
+    expected_message = (
+        "Confidence must be a numeric value"
+        if expected_error is TypeError
+        else "Confidence must be a finite number"
+    )
 
-    with pytest.raises(ValueError, match="Confidence must be a finite number"):
+    with pytest.raises(expected_error, match=expected_message):
         repository.create(
             "local-owner",
             {
@@ -561,7 +571,7 @@ def test_memory_repository_rejects_invalid_confidence_on_create_and_update(confi
             },
         )
 
-    with pytest.raises(ValueError, match="Confidence must be a finite number"):
+    with pytest.raises(expected_error, match=expected_message):
         repository.update(
             "local-owner",
             UUID(created.json()["memory_id"]),
