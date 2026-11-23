@@ -93,3 +93,13 @@ The planning response includes a read-only assessment alongside the generated Wo
 - The response exposes the registered provider/model selected for the text-planning request. Planning readiness distinguishes clarification, required research, and ready-for-review states; none grants execution permission.
 
 All fields are advisory. The endpoint remains planning-only: it does not prompt the owner automatically, perform research, select or invoke tools, grant permissions, or execute the plan. A capability being registered does not imply that its invocation is authorized.
+
+
+## Planning artifact consistency
+
+The intelligence assessment independently verifies its three inputs before
+producing a readiness report: every WorkOrder acceptance criterion must be
+covered by the Plan, every required capability must be represented in the Plan,
+and the capability report must match and partition the same WorkOrder
+requirements into available and missing entries. Inconsistent artifacts are
+rejected rather than summarized as a successful or complete plan.
