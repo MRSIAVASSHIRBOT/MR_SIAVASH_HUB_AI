@@ -453,6 +453,16 @@ class AgentWorkflowRunner:
             definition_version=definition_version,
             owner_user_id=owner_user_id,
         )
+        if decision.decision == "resume" and definition_version >= 3:
+            identity_matches = any(
+                int(step["step_number"]) == decision.next_step
+                and str(step["step_key"]) == decision.next_step_id
+                for step in workflow["steps"]
+            )
+            if not decision.next_step_id or not identity_matches:
+                raise ValueError(
+                    "Workflow resume decision has no consistent stable step identity"
+                )
         if decision.decision not in {"resume", "finish"} or (
             decision.decision == "resume" and decision.next_step is None
         ):
