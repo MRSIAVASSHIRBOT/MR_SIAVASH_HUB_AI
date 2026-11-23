@@ -115,7 +115,7 @@ class ToolRegistry:
 
         if not callable(tool.handler):
             raise ValueError("Tool handler must be callable")
-        handler_call = getattr(tool.handler, "__call__", None)
+        handler_call = type(tool.handler).__call__
         if (
             inspect.iscoroutinefunction(tool.handler)
             or inspect.iscoroutinefunction(handler_call)
