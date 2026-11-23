@@ -59,6 +59,9 @@ class WorkflowRecoveryRepository:
 
     _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
     _ERROR_PATTERN = re.compile(r"^[a-z0-9_.-]{1,80}$")
+    # Includes the initial execution: interrupted safe steps get at most two
+    # additional recovery attempts. External-side-effect steps are never replayed. 
+    MAX_SAFE_STEP_ATTEMPTS = 3
 
     def __init__(
         self,
@@ -418,7 +421,7 @@ class WorkflowRecoveryRepository:
             if isinstance(step_number, str):
                 step = connection.execute(
                     """
-                    SELECT step_id, step_number, step_key, depends_on_json,
+                    SELECT step_id, step_number, step_key, step_kind, depends_on_json,
                            dependency_state, status, attempt_count
                     FROM workflow_steps WHERE workflow_id = ? AND step_key = ?
                     """,
@@ -427,7 +430,7 @@ class WorkflowRecoveryRepository:
             else:
                 step = connection.execute(
                     """
-                    SELECT step_id, step_number, step_key, depends_on_json,
+                    SELECT step_id, step_number, step_key, step_kind, depends_on_json,
                            dependency_state, status, attempt_count
                     FROM workflow_steps WHERE workflow_id = ? AND step_number = ?
                     """,
@@ -439,6 +442,11 @@ class WorkflowRecoveryRepository:
                 raise RecoveryRequired("Step outcome must be reconciled before resuming")
             if step["status"] not in {"pending", "retry_wait"}:
                 raise WorkflowRecoveryError("Step is not eligible to start")
+            if (
+                step["step_kind"] in {"provider_selection", "safe_tool"}
+                and int(step["attempt_count"]) >= self.MAX_SAFE_STEP_ATTEMPTS
+            ):
+                raise WorkflowRecoveryError("Workflow step retry limit exceeded")
             if step["dependency_state"] == "blocked":
                 raise WorkflowRecoveryError("Workflow step is blocked by a failed dependency")
             dependencies = json.loads(step["depends_on_json"])
@@ -907,6 +915,8 @@ class WorkflowRecoveryRepository:
         """Atomically enqueue a validated resume; the worker remains the executor."""
         self._validate_digest(request_digest, "Supplied request digest")
         now = self._now()
+        attempt_limit_exceeded = False
+        task_id: str | None = None
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             run = connection.execute(
@@ -925,58 +935,131 @@ class WorkflowRecoveryRepository:
                 raise WorkflowRecoveryError("Workflow request does not match the stored request")
             if run["definition_version"] != definition_version:
                 raise WorkflowRecoveryError("Workflow definition changed; replan before resuming")
+            task_id = str(run["task_id"])
 
-            blocked = connection.execute(
+            exhausted = connection.execute(
                 """
-                SELECT 1 FROM workflow_steps
-                WHERE workflow_id = ?
-                  AND (
-                    status IN ('failed', 'unknown_outcome', 'cancelled', 'running')
-                    OR dependency_state = 'blocked'
-                  )
+                SELECT step_id, step_key
+                FROM workflow_steps
+                WHERE workflow_id = ? AND status = 'retry_wait'
+                  AND step_kind IN ('provider_selection', 'safe_tool')
+                  AND attempt_count >= ?
+                ORDER BY step_number
                 LIMIT 1
                 """,
-                (str(workflow_id),),
+                (str(workflow_id), self.MAX_SAFE_STEP_ATTEMPTS),
             ).fetchone()
-            if blocked is not None:
-                raise WorkflowRecoveryError("Workflow has a step that is not safe to resume")
+            if exhausted is not None:
+                # Close the workflow instead of leaving a permanently paused task
+                # that an owner can submit for resume forever.
+                step_cursor = connection.execute(
+                    """
+                    UPDATE workflow_steps
+                    SET status = 'failed', error_code = 'retry_limit_exceeded',
+                        finished_at = ?, updated_at = ?
+                    WHERE step_id = ? AND status = 'retry_wait'
+                    """,
+                    (now, now, exhausted["step_id"]),
+                )
+                run_cursor = connection.execute(
+                    """
+                    UPDATE workflow_runs
+                    SET status = 'failed', last_error_code = 'step_retry_limit_exceeded',
+                        updated_at = ?
+                    WHERE workflow_id = ? AND status = 'paused'
+                    """,
+                    (now, str(workflow_id)),
+                )
+                task_cursor = connection.execute(
+                    """
+                    UPDATE tasks SET status = 'failed', updated_at = ?
+                    WHERE task_id = ? AND status = 'waiting_approval'
+                    """,
+                    (now, task_id),
+                )
+                execution_cursor = connection.execute(
+                    """
+                    UPDATE worker_executions
+                    SET error_code = 'step_retry_limit_exceeded', finished_at = ?,
+                        next_attempt_at = NULL
+                    WHERE task_id = ?
+                    """,
+                    (now, task_id),
+                )
+                if (
+                    step_cursor.rowcount != 1
+                    or run_cursor.rowcount != 1
+                    or task_cursor.rowcount != 1
+                    or execution_cursor.rowcount != 1
+                ):
+                    raise WorkflowRecoveryError(
+                        "Workflow state changed while finalizing its retry limit"
+                    )
+                connection.execute(
+                    """
+                    UPDATE idempotency_records SET status = 'failed'
+                    WHERE task_id = ? AND status IN ('accepted', 'running')
+                    """,
+                    (task_id,),
+                )
+                self._refresh_dependency_states(connection, workflow_id)
+                attempt_limit_exceeded = True
+            else:
+                blocked = connection.execute(
+                    """
+                    SELECT 1 FROM workflow_steps
+                    WHERE workflow_id = ?
+                      AND (
+                        status IN ('failed', 'unknown_outcome', 'cancelled', 'running')
+                        OR dependency_state = 'blocked'
+                      )
+                    LIMIT 1
+                    """,
+                    (str(workflow_id),),
+                ).fetchone()
+                if blocked is not None:
+                    raise WorkflowRecoveryError("Workflow has a step that is not safe to resume")
 
-            task_cursor = connection.execute(
-                """
-                UPDATE tasks SET status = 'queued', updated_at = ?
-                WHERE task_id = ? AND status = 'waiting_approval'
-                """,
-                (now, run["task_id"]),
-            )
-            if task_cursor.rowcount != 1:
-                raise WorkflowRecoveryError("Workflow job is not awaiting a resume")
+                task_cursor = connection.execute(
+                    """
+                    UPDATE tasks SET status = 'queued', updated_at = ?
+                    WHERE task_id = ? AND status = 'waiting_approval'
+                    """,
+                    (now, task_id),
+                )
+                if task_cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Workflow job is not awaiting a resume")
 
-            execution_cursor = connection.execute(
-                """
-                UPDATE worker_executions
-                SET error_code = NULL, result_json = NULL, finished_at = NULL,
-                    next_attempt_at = NULL
-                WHERE task_id = ?
-                """,
-                (run["task_id"],),
-            )
-            if execution_cursor.rowcount != 1:
-                raise WorkflowRecoveryError("Workflow worker execution record is missing")
+                execution_cursor = connection.execute(
+                    """
+                    UPDATE worker_executions
+                    SET error_code = NULL, result_json = NULL, finished_at = NULL,
+                        next_attempt_at = NULL
+                    WHERE task_id = ?
+                    """,
+                    (task_id,),
+                )
+                if execution_cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Workflow worker execution record is missing")
 
-            run_cursor = connection.execute(
-                """
-                UPDATE workflow_runs
-                SET last_error_code = 'resume_queued', updated_at = ?
-                WHERE workflow_id = ? AND status = 'paused'
-                """,
-                (now, str(workflow_id)),
-            )
-            if run_cursor.rowcount != 1:
-                raise WorkflowRecoveryError("Workflow state changed while queuing resume")
+                run_cursor = connection.execute(
+                    """
+                    UPDATE workflow_runs
+                    SET last_error_code = 'resume_queued', updated_at = ?
+                    WHERE workflow_id = ? AND status = 'paused'
+                    """,
+                    (now, str(workflow_id)),
+                )
+                if run_cursor.rowcount != 1:
+                    raise WorkflowRecoveryError("Workflow state changed while queuing resume")
 
+        if attempt_limit_exceeded:
+            raise WorkflowRecoveryError("Workflow step retry limit exceeded")
+
+        assert task_id is not None
         return {
             "workflow_id": str(workflow_id),
-            "task_id": str(run["task_id"]),
+            "task_id": task_id,
             "status": "queued",
         }
 
