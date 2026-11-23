@@ -27,7 +27,7 @@ def test_ecosystem_baseline_requires_integration_and_evidence_for_completion() -
 
     assert "Definition of Done" in content
     assert "at least one dependent phase" in content.lower()
-    assert "exact-head CI is green" in content
+    assert "exact-head ci is green" in content.lower()
     assert "Runtime, Telegram, device, remote database and deployment acceptance" in content
     assert "This is a dated GitHub source/CI snapshot, not a deployment claim." in content
     assert "EL_AGENT" in content
