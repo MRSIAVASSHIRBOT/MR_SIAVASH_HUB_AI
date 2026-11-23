@@ -87,7 +87,7 @@ class WorkOrder(BaseModel):
         return normalized
 
     @model_validator(mode="after")
-    def validate_clarification_and_research(self) -> "WorkOrder":
+    def validate_clarification_and_research(self) -> WorkOrder:
         """Require actionable questions whenever information or research is missing."""
         if self.missing_information and not self.clarification_questions:
             raise ValueError(
