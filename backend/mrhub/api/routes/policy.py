@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Literal
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
