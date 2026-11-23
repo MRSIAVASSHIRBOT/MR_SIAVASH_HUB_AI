@@ -647,3 +647,25 @@ def test_agent_plan_rejects_blank_and_oversized_capability_names():
             },
         )
         assert response.status_code == 422
+
+
+def test_agent_capability_discovery_uses_authenticated_owner_tool_registry(monkeypatch):
+    from mrhub.api.routes import agent as agent_routes
+    from mrhub.tools.builtins import build_tool_registry as build_registry
+
+    client = authenticated_client()
+    observed_owners = []
+
+    def build_owner_registry(**kwargs):
+        observed_owners.append(kwargs.get("owner_user_id"))
+        return build_registry(**kwargs)
+
+    monkeypatch.setattr(agent_routes, "build_tool_registry", build_owner_registry)
+
+    response = client.get("/agent/capabilities")
+
+    assert response.status_code == 200
+    assert observed_owners == ["local-owner"]
+    tool_names = {item["name"] for item in response.json()["tools"]}
+    assert "device.registry.list" in tool_names
+    assert "device.app_launch.submit" in tool_names
