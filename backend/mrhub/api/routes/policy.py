@@ -109,7 +109,7 @@ def evaluate_policy(
                 "risk_class": risk_class,
                 "required_permission_count": required_permission_count,
                 "granted_permission_count": (
-                    len(granted_permissions) if "granted_permissions" in locals() else 0
+                    len(granted_permissions)
                 ),
             },
         )
