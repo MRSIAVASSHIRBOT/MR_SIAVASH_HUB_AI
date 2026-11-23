@@ -118,3 +118,41 @@ def test_agent_context_current_only_policy_excludes_stale_and_unknown_sources():
     )
     assert body["excluded_stale_knowledge_count"] == 1
     assert body["excluded_unreviewed_knowledge_count"] == 1
+
+def test_agent_context_rejects_coerced_booleans_extra_fields_and_blank_queries():
+    client = authenticated_client()
+
+    coerced = client.post(
+        "/agent/context/assemble",
+        json={"query": "private memory", "include_memory": "false"},
+    )
+    assert coerced.status_code == 422
+
+    extra = client.post(
+        "/agent/context/assemble",
+        json={"query": "private memory", "execute_tools": True},
+    )
+    assert extra.status_code == 422
+
+    blank = client.post(
+        "/agent/context/assemble",
+        json={"query": "   "},
+    )
+    assert blank.status_code == 422
+
+
+def test_agent_context_response_is_not_cacheable():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/context/assemble",
+        json={
+            "query": "no cache context response",
+            "include_memory": False,
+            "include_knowledge": False,
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
