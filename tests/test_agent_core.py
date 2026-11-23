@@ -485,6 +485,10 @@ def test_agent_execute_rejects_incomplete_or_duplicate_workflow_graph_before_inv
         "plan",
         lambda _request: {
             "execution_ready": True,
+            "steps": [
+                {"step": 2, "kind": "tool", "approval_required": False},
+                {"step": 3, "kind": "tool", "approval_required": False},
+            ],
             "dependency_plan": {"ordered_steps": ordered_steps},
         },
     )
@@ -741,6 +745,10 @@ def test_agent_execute_follows_validated_dependency_graph_order(monkeypatch):
         "plan",
         lambda _request: {
             "execution_ready": True,
+            "steps": [
+                {"step": 2, "kind": "tool", "approval_required": False},
+                {"step": 3, "kind": "tool", "approval_required": False},
+            ],
             "dependency_plan": {
                 "ordered_steps": [
                     {
