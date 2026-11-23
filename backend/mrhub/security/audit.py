@@ -54,6 +54,8 @@ class AuditLogger:
         "proposal_count",
         "state_changed",
         "required_capability_count",
+        "required_permission_count",
+        "granted_permission_count",
         "available_capability_count",
         "missing_capability_count",
         "declared_risk_class",
