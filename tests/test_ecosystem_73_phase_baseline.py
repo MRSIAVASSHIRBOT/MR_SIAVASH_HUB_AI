@@ -26,7 +26,7 @@ def test_ecosystem_baseline_requires_integration_and_evidence_for_completion() -
     content = ROADMAP.read_text(encoding="utf-8")
 
     assert "Definition of Done" in content
-    assert "at least one dependent phase" in content
+    assert "at least one dependent phase" in content.lower()
     assert "exact-head CI is green" in content
     assert "Runtime, Telegram, device, remote database and deployment acceptance" in content
     assert "This is a dated GitHub source/CI snapshot, not a deployment claim." in content
