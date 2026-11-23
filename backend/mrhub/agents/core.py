@@ -18,7 +18,13 @@ from mrhub.agents.capability_gaps import MAX_NAME_LENGTH, evaluate_capability_ga
 from mrhub.agents.workflow_plan import WorkflowPlanError, WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelRequest, ModelRouter
 from mrhub.security.policy import PolicyDecision, PolicyEngine
-from mrhub.tools.registry import ToolExecutionError, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import (
+    ToolExecutionError,
+    ToolLifecycleEvent,
+    ToolLifecycleObserver,
+    ToolPolicyError,
+    ToolRegistry,
+)
 
 WorkflowDependencyId = Annotated[
     str, Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9-]{0,63}$")
@@ -268,6 +274,7 @@ class AgentCore:
         start_step: int = 2,
         skip_step_ids: set[str] | frozenset[str] | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        on_tool_lifecycle: ToolLifecycleObserver | None = None,
     ) -> dict[str, object]:
         """Execute only prevalidated, policy-allowed tools without model inference."""
         plan = self.plan(request)
@@ -315,6 +322,7 @@ class AgentCore:
                     requested_tool.name,
                     requested_tool.payload,
                     granted_permissions=self._current_permissions(),
+                    lifecycle_observer=on_tool_lifecycle,
                 )
             except ToolPolicyError as exc:
                 error_code = (
