@@ -416,3 +416,16 @@ def test_generate_model_request_accepts_bounded_numeric_timeout():
     assert GenerateModelRequest(
         input_text="hello", timeout_seconds=3
     ).timeout_seconds == 3.0
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [True, False, "5", 0, 301, float("nan"), float("inf"), 10**1000],
+)
+def test_build_model_router_rejects_invalid_global_timeout_caps(timeout):
+    import pytest
+
+    from mrhub.api.routes.models import build_model_router
+
+    with pytest.raises(ValueError, match="Provider timeout cap"):
+        build_model_router(max_timeout_seconds=timeout)
