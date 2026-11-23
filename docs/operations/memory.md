@@ -93,3 +93,13 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+
+## Numeric input validation
+
+Memory confidence must be a finite numeric value in the inclusive range 0–1;
+booleans and numeric strings are not accepted as confidence values. Search and
+preview limits must be actual integers, not booleans or fractional values.
+Dreaming and validation similarity thresholds must be finite JSON numbers in
+their documented ranges. The repository repeats confidence and search-limit
+checks so internal callers cannot bypass the API validation boundary.
