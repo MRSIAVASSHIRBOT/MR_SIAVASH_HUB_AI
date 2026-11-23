@@ -438,6 +438,7 @@ def get_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
+        **plan_metadata,
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
