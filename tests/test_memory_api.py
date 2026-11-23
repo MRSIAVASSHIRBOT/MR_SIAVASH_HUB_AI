@@ -306,3 +306,105 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
             UUID(created.json()["memory_id"]),
             {field: ["not", "text"]},
         )
+
+
+def test_memory_search_ranks_owner_approved_matches_with_trust_signals() -> None:
+    client = authenticated_client()
+    content = "SQLite FTS5 local memory retrieval quality marker"
+    unverified = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": content,
+            "confidence": 0.99,
+            "verification_status": "user_authored",
+        },
+    )
+    verified = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": content,
+            "confidence": 0.80,
+            "verification_status": "user_approved",
+        },
+    )
+    assert unverified.status_code == verified.status_code == 201
+
+    response = client.post(
+        "/memory/search",
+        json={"query": "SQLite FTS5 local memory retrieval quality marker", "limit": 10},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["method"] == "sqlite_fts5"
+    assert payload["ranking"]["scheme"] == "hybrid_fts5_owner_attestation_freshness_v1"
+    assert payload["ranking"]["owner_approval_is_self_attested"] is True
+    assert payload["ranking"]["confidence_is_owner_supplied"] is True
+    assert payload["ranking"]["weights"] == {
+        "lexical": 0.70,
+        "confidence": 0.15,
+        "owner_approved": 0.10,
+        "freshness": 0.05,
+    }
+
+    results = payload["results"]
+    assert [item["memory_id"] for item in results] == [
+        verified.json()["memory_id"],
+        unverified.json()["memory_id"],
+    ]
+    signals = results[0]["retrieval"]["signals"]
+    assert signals["lexical"] == 1.0
+    assert signals["owner_approved"] == 1.0
+    assert results[0]["retrieval"]["scheme"] == "hybrid_fts5_owner_attestation_freshness_v1"
+    assert results[0]["retrieval"]["score"] > results[1]["retrieval"]["score"]
+
+
+def test_memory_search_uses_freshness_as_a_deterministic_tie_break_signal() -> None:
+    client = authenticated_client()
+    content = "SQLite freshness ranking tie fixture token"
+    stale = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": content,
+            "confidence": 0.8,
+            "verification_status": "user_approved",
+        },
+    )
+    fresh = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": content,
+            "confidence": 0.8,
+            "verification_status": "user_approved",
+        },
+    )
+    assert stale.status_code == fresh.status_code == 201
+
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE memory_entries SET updated_at = ? WHERE memory_id = ?",
+            ("2020-01-01T00:00:00+00:00", stale.json()["memory_id"]),
+        )
+        connection.execute(
+            "UPDATE memory_entries SET updated_at = ? WHERE memory_id = ?",
+            (datetime.now(UTC).isoformat(), fresh.json()["memory_id"]),
+        )
+
+    response = client.post(
+        "/memory/search",
+        json={"query": "SQLite freshness ranking tie fixture token", "limit": 10},
+    )
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert [item["memory_id"] for item in results] == [
+        fresh.json()["memory_id"],
+        stale.json()["memory_id"],
+    ]
+    assert results[0]["retrieval"]["signals"]["freshness"] > (
+        results[1]["retrieval"]["signals"]["freshness"]
+    )
+
