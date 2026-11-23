@@ -36,6 +36,9 @@ class AgentContextRequest(BaseModel):
     knowledge_freshness_policy: Literal[
         "include_all", "owner_reviewed_current_only"
     ] = "include_all"
+    memory_types: list[Literal["unspecified", "episodic", "semantic", "procedural"]] | None = Field(
+        default=None, max_length=4
+    )
 
 
 @router.post("/assemble")
@@ -57,6 +60,7 @@ def assemble_agent_context(
             include_memory=payload.include_memory,
             include_knowledge=payload.include_knowledge,
             knowledge_freshness_policy=payload.knowledge_freshness_policy,
+            memory_types=payload.memory_types,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid context query") from exc
@@ -73,6 +77,7 @@ def assemble_agent_context(
         metadata={
             "memory_included": payload.include_memory,
             "knowledge_included": payload.include_knowledge,
+            "memory_type_filter_count": len(payload.memory_types or []),
             "passage_count": result["passage_count"],
             "retrieval_method": result["retrieval_method"],
         },
