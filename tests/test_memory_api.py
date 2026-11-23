@@ -426,3 +426,102 @@ def test_memory_repository_rejects_non_string_memory_type_updates() -> None:
             UUID(created.json()["memory_id"]),
             {"memory_type": []},
         )
+
+
+@pytest.mark.parametrize("confidence", [True, False, "0.7", float("nan"), float("inf"), -0.1, 1.1])
+def test_memory_create_rejects_non_numeric_or_out_of_range_confidence(confidence):
+    client = authenticated_client()
+    response = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Confidence input validation fixture",
+            "confidence": confidence,
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("confidence", [True, "0.5", float("nan"), float("inf"), -0.1, 1.1])
+def test_memory_update_rejects_non_numeric_or_out_of_range_confidence(confidence):
+    client = authenticated_client()
+    created = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Confidence update validation fixture",
+        },
+    )
+    assert created.status_code == 201
+    response = client.patch(
+        f"/memory/{created.json()['memory_id']}",
+        json={"confidence": confidence},
+    )
+    assert response.status_code == 422
+
+
+def test_memory_numeric_controls_reject_boolean_limits_and_thresholds():
+    client = authenticated_client()
+    search = client.post(
+        "/memory/search",
+        json={"query": "numeric boundary", "limit": True},
+    )
+    dream_limit = client.post(
+        "/memory/dream/preview",
+        json={"limit": True},
+    )
+    validation_limit = client.post(
+        "/memory/validate/preview",
+        json={"limit": True},
+    )
+    dream_threshold = client.post(
+        "/memory/dream/preview",
+        json={"similarity_threshold": True},
+    )
+    validation_threshold = client.post(
+        "/memory/validate/preview",
+        json={"similarity_threshold": "0.72"},
+    )
+
+    assert search.status_code == 422
+    assert dream_limit.status_code == 422
+    assert validation_limit.status_code == 422
+    assert dream_threshold.status_code == 422
+    assert validation_threshold.status_code == 422
+
+
+@pytest.mark.parametrize("confidence", [True, "0.7", float("nan"), float("inf"), -0.1, 1.1])
+def test_memory_repository_rejects_invalid_confidence_on_create_and_update(confidence):
+    client = authenticated_client()
+    created = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Repository confidence boundary fixture",
+        },
+    )
+    assert created.status_code == 201
+    repository = MemoryRepository(get_settings().database_path)
+
+    with pytest.raises(ValueError, match="Confidence must be a finite number"):
+        repository.create(
+            "local-owner",
+            {
+                "category": "confidence-validation",
+                "content": "Invalid confidence must not persist",
+                "confidence": confidence,
+            },
+        )
+
+    with pytest.raises(ValueError, match="Confidence must be a finite number"):
+        repository.update(
+            "local-owner",
+            UUID(created.json()["memory_id"]),
+            {"confidence": confidence},
+        )
+
+
+def test_memory_repository_rejects_boolean_search_limits():
+    repository = MemoryRepository(get_settings().database_path)
+    with pytest.raises(ValueError, match="positive integer"):
+        repository.search("local-owner", "numeric boundary", limit=True)
