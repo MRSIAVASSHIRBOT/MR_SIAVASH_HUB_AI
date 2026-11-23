@@ -366,6 +366,21 @@ def test_resume_uses_stable_step_identity_after_request_reordering(monkeypatch):
     assert checked.json()["decision"] == "resume"
     assert checked.json()["next_step_id"] == "beta"
 
+    # Exercise the same validation path as the POST endpoint while retaining
+    # its internal reason in test output instead of the API's sanitized 409.
+    from mrhub.api.routes.agent import _build_owner_agent_core
+
+    resume_core = _build_owner_agent_core("local-owner", task_repository)
+    resume_plan_request = AgentPlanRequest.model_validate(reordered_request)
+    resume_plan = resume_core.plan(resume_plan_request)
+    AgentWorkflowRunner(task_repository, resume_core)._validate_resume(
+        UUID(workflow_id),
+        resume_plan_request,
+        resume_plan,
+        AgentWorkflowRunner.request_digest(resume_plan_request),
+        "local-owner",
+    )
+
     resumed = client.post(
         f"/agent/workflows/{workflow_id}/resume",
         json={"request": reordered_request},
