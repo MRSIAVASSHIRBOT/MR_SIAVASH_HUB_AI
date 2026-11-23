@@ -883,9 +883,14 @@ def test_durable_workflow_consumes_owner_approval_for_exact_external_tool(monkey
             external_side_effect=True,
         )
     )
+    worker_registry_owners = []
     monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **_kwargs: registry)
     monkeypatch.setattr(tools_routes, "build_tool_registry", lambda **_kwargs: registry)
-    monkeypatch.setattr(workflow_dispatch, "build_tool_registry", lambda **_kwargs: registry)
+    monkeypatch.setattr(
+        workflow_dispatch,
+        "build_tool_registry",
+        lambda **kwargs: worker_registry_owners.append(kwargs.get("owner_user_id")) or registry,
+    )
 
     client = authenticated_client()
     action_payload = {"text": "publish only after explicit owner approval"}
@@ -924,6 +929,7 @@ def test_durable_workflow_consumes_owner_approval_for_exact_external_tool(monkey
     assert worker_result is not None
     assert worker_result.status.value == "succeeded"
     assert calls == [action_payload["text"]]
+    assert worker_registry_owners == ["local-owner"]
 
     repository = TaskRepository(get_settings().database_path)
     workflow_id = queued.json()["workflow"]["workflow_id"]
