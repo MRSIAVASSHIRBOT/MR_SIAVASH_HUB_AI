@@ -147,6 +147,10 @@ def test_safe_step_cannot_bypass_attempt_limit_with_direct_start(tmp_path) -> No
     recovery = WorkflowRecoveryRepository(tasks.database_path)
     jobs = JobEngine(tasks)
     lease_manager = LeaseManager(tasks.database_path, lease_seconds=60)
+    owner_user_id = "direct-retry-test-owner"
+    tasks.create_auth_user(
+        owner_user_id, owner_user_id, "test-salt", "test-password-hash"
+    )
 
     task = TaskRecord(
         task_type="agent.workflow",
@@ -166,7 +170,7 @@ def test_safe_step_cannot_bypass_attempt_limit_with_direct_start(tmp_path) -> No
         ],
         task=task,
         definition_version=1,
-        owner_user_id="direct-retry-test-owner",
+        owner_user_id=owner_user_id,
     )
 
     jobs.transition(task.task_id, TaskStatus.RUNNING)
