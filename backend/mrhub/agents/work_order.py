@@ -5,9 +5,16 @@ This model validates a proposed work order; it does not authorize tools or actio
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from mrhub.agents.capability_gaps import (
     MAX_NAME_LENGTH as MAX_REGISTERED_TOOL_NAME_LENGTH,
@@ -30,6 +37,7 @@ WorkOrderDependency = Annotated[
 WorkOrderCapability = Annotated[
     str, Field(min_length=1, max_length=MAX_REGISTERED_TOOL_NAME_LENGTH)
 ]
+WorkOrderComplexity = Literal["low", "moderate", "high"]
 
 
 class WorkOrder(BaseModel):
@@ -44,6 +52,11 @@ class WorkOrder(BaseModel):
     constraints: list[WorkOrderText] = Field(default_factory=list, max_length=20)
     dependencies: list[WorkOrderDependency] = Field(default_factory=list, max_length=20)
     required_capabilities: list[WorkOrderCapability] = Field(default_factory=list, max_length=20)
+    estimated_complexity: WorkOrderComplexity = "moderate"
+    missing_information: list[WorkOrderText] = Field(default_factory=list, max_length=12)
+    clarification_questions: list[WorkOrderText] = Field(default_factory=list, max_length=12)
+    research_required: bool = Field(default=False, strict=True)
+    research_questions: list[WorkOrderText] = Field(default_factory=list, max_length=8)
     acceptance_criteria: list[WorkOrderText] = Field(min_length=1, max_length=12)
     verification_steps: list[WorkOrderText] = Field(min_length=1, max_length=12)
     risk_class: RiskClass
@@ -64,6 +77,7 @@ class WorkOrder(BaseModel):
 
     @field_validator(
         "assumptions", "constraints", "dependencies", "required_capabilities",
+        "missing_information", "clarification_questions", "research_questions",
         "acceptance_criteria", "verification_steps",
     )
     @classmethod
@@ -72,6 +86,45 @@ class WorkOrder(BaseModel):
         if any(not item for item in normalized):
             raise ValueError("list entries must not be blank")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_clarification_and_research(self) -> "WorkOrder":
+        """Require actionable questions whenever information or research is missing."""
+        if self.missing_information and not self.clarification_questions:
+            raise ValueError(
+                "Missing information must include at least one clarification question"
+            )
+        if self.research_required and not self.research_questions:
+            raise ValueError(
+                "Research-required work orders must include research questions"
+            )
+        if not self.research_required and self.research_questions:
+            raise ValueError("Research questions require research_required=true")
+        return self
+
+    @computed_field
+    @property
+    def needs_clarification(self) -> bool:
+        """Whether the goal needs additional user input before reliable planning."""
+        return bool(self.missing_information or self.clarification_questions)
+
+    @computed_field
+    @property
+    def tool_use_required(self) -> bool:
+        """Derive tool need from validated capability requirements, not model prose."""
+        return bool(self.required_capabilities)
+
+    @computed_field
+    @property
+    def planning_readiness(
+        self,
+    ) -> Literal["needs_clarification", "needs_research", "ready_for_review"]:
+        """Readiness for review; never means execution is authorized."""
+        if self.needs_clarification:
+            return "needs_clarification"
+        if self.research_required:
+            return "needs_research"
+        return "ready_for_review"
 
 
 # Backwards-compatible public name retained for existing route and client imports.
