@@ -1527,8 +1527,10 @@ MIGRATIONS = (
                CHECK (memory_type IN (
                    'unspecified', 'episodic', 'semantic', 'procedural'
                ))""",
-            "CREATE INDEX idx_memory_owner_type_updated "
-            "ON memory_entries(owner_user_id, memory_type, updated_at)",
+            (
+                "CREATE INDEX idx_memory_owner_type_updated "
+                "ON memory_entries(owner_user_id, memory_type, updated_at)"
+            ),
         ),
     ),
 )
