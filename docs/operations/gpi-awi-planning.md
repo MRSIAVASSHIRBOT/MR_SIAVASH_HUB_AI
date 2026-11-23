@@ -2,6 +2,10 @@
 
 ## Purpose
 
+A deterministic preflight endpoint, `POST /agent/work-orders/analyze`, is available before model-based planning. It reports bounded complexity, research/tool needs, information gaps, text/vision/audio modality signals, and reason codes without selecting a provider or invoking a tool.
+
+The planning endpoint also returns a `decision_analysis` field from the same deterministic analyzer, refined with the validated WorkOrder. The separate `planning_assessment` then evaluates the final AWI DAG, explicit GPI clarification/research fields, model complexity estimate, capability gaps, and effective readiness. Both analyses are advisory and keep permission checks separate.
+
 The authenticated `POST /agent/work-orders/plan` endpoint converts one natural-language goal into:
 
 1. A bounded, schema-validated `WorkOrder` (Goal-to-Prompt Intelligence / GPI).
@@ -45,7 +49,7 @@ GPI and AWI each make one local model-generation request. The dedicated Kimi end
 
 A successful response includes:
 
-- `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, model-estimated complexity, explicit missing information, clarification questions, research requirement/questions, acceptance criteria, verification steps, computed readiness indicators, and advisory risk class.
+- `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, model-estimated complexity, explicit missing information, clarification questions, research requirement/questions, acceptance criteria, verification steps, and advisory risk class. Derived readiness/tool-use properties are not serialized into this persisted contract; their values are exposed by the separate analyses.
 - `plan`: the validated dependency graph and rationale.
 - `capability_assessment`: required, available, and missing capability names.
 - `planning_assessment`: deterministic complexity factors, potential information gaps, research signals, capability-based tool-readiness, and a validated topological plan order.
