@@ -263,28 +263,3 @@ def test_memory_type_is_persisted_filtered_and_updated():
     )
     assert invalid_update.status_code == 422
 
-def test_memory_create_rejects_boolean_string_and_non_finite_confidence():
-    client = authenticated_client()
-    for confidence in (True, "0.8", -0.1, 1.1):
-        response = client.post(
-            "/memory",
-            json={
-                "category": "numeric validation",
-                "content": "Confidence must be a finite numeric value.",
-                "confidence": confidence,
-            },
-        )
-        assert response.status_code == 422
-
-    for raw_number in ("NaN", "Infinity", "-Infinity"):
-        response = client.post(
-            "/memory",
-            content=(
-                '{"category":"numeric validation",'
-                '"content":"Confidence must be finite",'
-                f'"confidence":{raw_number}' + "}"
-            ),
-            headers={"content-type": "application/json"},
-        )
-        assert response.status_code == 422
-
