@@ -783,7 +783,7 @@ class WorkflowRecoveryRepository:
                 previous_digest = latest["state_digest"] if latest else run["request_digest"]
                 version = int(latest["checkpoint_version"]) + 1 if latest else 1
                 state_digest = hashlib.sha256(
-                    f"{previous_digest}:{step["step_key"]}:{output_digest}".encode()
+                    f"{previous_digest}:{step['step_key']}:{output_digest}".encode()
                 ).hexdigest()
                 checkpoint_id = str(uuid4())
                 connection.execute(
