@@ -246,7 +246,9 @@ def assess_work_order_intelligence(
     research = _matched_signals(text, _RESEARCH_SIGNALS)
     if work_order.research_required:
         research_decision = ResearchDecision.REQUIRED
-        research_signals = tuple(dict.fromkeys((*work_order.research_questions, *freshness, *research)))
+        research_signals = tuple(
+            dict.fromkeys((*work_order.research_questions, *freshness, *research))
+        )
     elif freshness:
         research_decision = ResearchDecision.REQUIRED
         research_signals = freshness + tuple(
