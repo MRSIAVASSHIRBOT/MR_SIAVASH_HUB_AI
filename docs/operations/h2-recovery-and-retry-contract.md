@@ -54,10 +54,11 @@ Therefore:
 The worker process runs the stale-execution recovery pass once during startup,
 before entering its polling loop. This pass is deliberately independent from
 the emergency-stop dispatch gate: expired-lease work is classified even while
-the stop switch remains latched. Recovery performs only fenced database-state
-transitions and reconciliation classification; it does not claim tasks or
-invoke handlers. The durable stop switch continues to block new dispatch until
-an authenticated operator clears it.
+the stop switch remains latched. Recovery applies fenced durable-state transitions and may also remove
+narrowly scoped orphaned render files after the stale threshold and lease-expiry
+checks. It does not claim tasks, invoke handlers, or dispatch new work. The
+durable stop switch continues to block new dispatch until an authenticated
+operator clears it.
 
 A regression test verifies that a stale running task is reconciled while the
 dispatch gate is stopped, that the handler is never invoked, and that polling
