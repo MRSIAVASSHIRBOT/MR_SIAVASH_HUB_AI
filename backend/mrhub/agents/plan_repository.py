@@ -273,3 +273,78 @@ class AgentWorkOrderPlanRepository:
             consumed_at=row["consumed_at"],
             workflow_id=row["workflow_id"],
         )
+
+    def revoke(
+        self,
+        plan_id: str,
+        *,
+        owner_user_id: str,
+    ) -> AgentWorkOrderPlanRecord | None:
+        """Revoke an owner's active plan and erase its ciphertext atomically.
+
+        Repeated revocation is idempotent. Expired or consumed records retain
+        their terminal state; a foreign owner cannot discover the record.
+        """
+        try:
+            normalized_plan_id = str(UUID(plan_id))
+        except (TypeError, ValueError, AttributeError):
+            return None
+        if normalized_plan_id != plan_id:
+            return None
+        if not isinstance(owner_user_id, str) or not owner_user_id.strip():
+            return None
+
+        now_text = self._now().isoformat()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT plan_id, owner_user_id, status, plan_digest,
+                       envelope_version, nonce_b64, ciphertext_b64,
+                       created_at, expires_at, consumed_at, workflow_id
+                FROM agent_work_order_plans
+                WHERE plan_id = ? AND owner_user_id = ?
+                """,
+                (normalized_plan_id, owner_user_id),
+            ).fetchone()
+            if row is None:
+                return None
+
+            status = row["status"]
+            nonce_b64 = row["nonce_b64"]
+            ciphertext_b64 = row["ciphertext_b64"]
+            if status == "active":
+                status = "expired" if row["expires_at"] <= now_text else "revoked"
+                marker = "expired" if status == "expired" else "revoked"
+                connection.execute(
+                    """
+                    UPDATE agent_work_order_plans
+                    SET status = ?, nonce_b64 = ?, ciphertext_b64 = ?
+                    WHERE plan_id = ? AND owner_user_id = ? AND status = 'active'
+                    """,
+                    (
+                        status,
+                        marker,
+                        marker,
+                        normalized_plan_id,
+                        owner_user_id,
+                    ),
+                )
+                nonce_b64 = marker
+                ciphertext_b64 = marker
+
+        return AgentWorkOrderPlanRecord(
+            plan_id=row["plan_id"],
+            owner_user_id=row["owner_user_id"],
+            status=status,
+            plan_digest=row["plan_digest"],
+            envelope=EncryptedPayload(
+                version=row["envelope_version"],
+                nonce_b64=nonce_b64,
+                ciphertext_b64=ciphertext_b64,
+            ),
+            created_at=row["created_at"],
+            expires_at=row["expires_at"],
+            consumed_at=row["consumed_at"],
+            workflow_id=row["workflow_id"],
+        )
