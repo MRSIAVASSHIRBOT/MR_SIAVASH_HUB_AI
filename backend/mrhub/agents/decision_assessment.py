@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import heapq
 from dataclasses import dataclass
 from enum import StrEnum
 
 from mrhub.agents.awi_planner import ExecutionPlan
 from mrhub.agents.capability_gaps import CapabilityGapReport
 from mrhub.agents.work_order import WorkOrder
+from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 from mrhub.providers.router import ModelSelection
 
 
@@ -36,7 +36,22 @@ class WorkOrderDecisionAssessment:
     model_selection: dict[str, object]
 
     def as_dict(self) -> dict[str, object]:
+        clarification_required = bool(
+            self.missing_information or self.clarifying_questions
+        )
+        tool_use_required = bool(
+            self.matched_registered_tools or self.missing_capabilities
+        )
+        planning_readiness = (
+            "needs_clarification"
+            if clarification_required
+            else "needs_research"
+            if self.research_required
+            else "ready_for_review"
+        )
         return {
+            "planning_readiness": planning_readiness,
+            "tool_use_required": tool_use_required,
             "complexity": {
                 "score": self.complexity_score,
                 "band": self.complexity_band.value,
@@ -44,12 +59,10 @@ class WorkOrderDecisionAssessment:
                 "factors": dict(self.complexity_factors),
             },
             "clarification": {
-                "required": bool(self.missing_information or self.clarifying_questions),
+                "required": clarification_required,
                 "missing_information": list(self.missing_information),
                 "questions": list(self.clarifying_questions),
-                "resolve_before_execution": bool(
-                    self.missing_information or self.clarifying_questions
-                ),
+                "resolve_before_execution": clarification_required,
             },
             "research": {
                 "required": self.research_required,
@@ -83,37 +96,13 @@ class WorkOrderDecisionAssessment:
 
 
 def _topological_order(plan: ExecutionPlan) -> tuple[str, ...]:
-    """Return a stable topological ordering, preserving input order for ties."""
-    steps = list(plan.steps)
-    positions = {step.step_id: index for index, step in enumerate(steps)}
-    indegree = {step.step_id: len(step.depends_on) for step in steps}
-    successors: dict[str, list[str]] = {step.step_id: [] for step in steps}
-
-    for step in steps:
-        for dependency in step.depends_on:
-            successors[dependency].append(step.step_id)
-
-    ready = [
-        (positions[step.step_id], step.step_id)
-        for step in steps
-        if indegree[step.step_id] == 0
-    ]
-    heapq.heapify(ready)
-    ordered: list[str] = []
-
-    while ready:
-        _, step_id = heapq.heappop(ready)
-        ordered.append(step_id)
-        for successor in successors[step_id]:
-            indegree[successor] -= 1
-            if indegree[successor] == 0:
-                heapq.heappush(ready, (positions[successor], successor))
-
-    if len(ordered) != len(steps):
-        # ExecutionPlan already rejects cycles; retain a fail-closed guard at
-        # this boundary in case a nonstandard object is supplied by a caller.
-        raise ValueError("Cannot order an invalid workflow dependency graph")
-    return tuple(ordered)
+    """Use the canonical bounded workflow planner to order validated AWI steps."""
+    workflow_steps = tuple(
+        WorkflowStep(step.step_id, step.description, tuple(step.depends_on))
+        for step in plan.steps
+    )
+    dependency_plan = build_workflow_plan(workflow_steps)
+    return tuple(step.step_id for step in dependency_plan.ordered_steps)
 
 
 def assess_work_order_decisions(
