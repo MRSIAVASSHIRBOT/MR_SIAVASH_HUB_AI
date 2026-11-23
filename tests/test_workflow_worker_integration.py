@@ -943,4 +943,3 @@ def test_durable_workflow_consumes_owner_approval_for_exact_external_tool(monkey
     assert len(stored_approval["tool_fingerprint"]) == 64
     assert action_payload["text"] not in str(dict(stored_approval))
 
-
