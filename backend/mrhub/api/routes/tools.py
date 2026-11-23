@@ -268,12 +268,41 @@ def invoke_tool(
     registry = build_tool_registry(correlation_id=correlation_id, owner_user_id=user.user_id)
     audit = AuditLogger(repository)
     permissions = _permission_service(repository).active_permissions(user.user_id)
+    approval_id = str(request.approval_id) if request.approval_id is not None else None
 
     try:
+        tool = registry.get(tool_name)
+        _normalized_payload, payload_digest = canonical_tool_payload(tool, request.payload)
+        fingerprint = tool_definition_fingerprint(tool)
+        policy = registry.evaluate_policy(
+            tool_name,
+            granted_permissions=permissions,
+            user_approved=False,
+        )
+        user_approved = False
+        if policy.decision is PolicyDecision.REQUIRE_APPROVAL:
+            if approval_id is None:
+                raise ToolPolicyError(policy.decision, policy.reason)
+            consumed = _approval_store(repository).consume(
+                approval_id,
+                owner_user_id=user.user_id,
+                tool_name=tool_name,
+                payload_digest=payload_digest,
+                tool_fingerprint=fingerprint,
+            )
+            if not consumed:
+                raise ToolApprovalError(
+                    "Approval is missing, expired, already consumed, or bound to another action"
+                )
+            user_approved = True
+        elif approval_id is not None:
+            raise ToolApprovalError("This tool action does not accept an approval receipt")
+
         result = registry.invoke(
             tool_name,
             request.payload,
             granted_permissions=permissions,
+            user_approved=user_approved,
         )
     except LookupError as exc:
         audit.record(
@@ -307,6 +336,31 @@ def invoke_tool(
             },
         )
         raise HTTPException(status_code=422, detail="Tool input validation failed", headers={"Cache-Control": "no-store"}) from exc
+    except ToolApprovalError as exc:
+        audit.record(
+            event_type="tool.invocation",
+            outcome="approval_required",
+            subject_id=tool_name[:80],
+            subject_type="tool",
+            actor_type="user",
+            actor_id=user.user_id,
+            metadata={
+                "tool_name": tool_name,
+                "status": "approval_invalid",
+                "approval_id": approval_id,
+                "reason_code": "approval_receipt_invalid",
+                "correlation_id": correlation_id,
+            },
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "decision": "require_approval",
+                "reason": "A valid owner approval is required for this exact action",
+                "correlation_id": correlation_id,
+            },
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     except ToolPolicyError as exc:
         reason_code = (
             "approval_required"
@@ -348,6 +402,7 @@ def invoke_tool(
             metadata={
                 "tool_name": tool_name,
                 "status": "handler_failed",
+                "approval_id": approval_id,
                 "reason_code": "tool_handler_failed",
                 "correlation_id": correlation_id,
             },
@@ -368,6 +423,7 @@ def invoke_tool(
         metadata={
             "tool_name": tool_name,
             "status": "success",
+            "approval_id": approval_id,
             "reason_code": "tool_completed",
             "correlation_id": correlation_id,
         },
@@ -376,5 +432,6 @@ def invoke_tool(
         "tool": tool_name,
         "result": result,
         "executed": True,
+        "approval_consumed": approval_id is not None,
         "correlation_id": correlation_id,
     }
