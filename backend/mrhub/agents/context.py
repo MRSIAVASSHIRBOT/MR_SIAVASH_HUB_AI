@@ -94,7 +94,10 @@ class AgentContextAssembler:
         include_memory: bool = True,
         include_knowledge: bool = True,
         knowledge_freshness_policy: str = "include_all",
+        memory_types: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> dict[str, Any]:
+        if type(include_memory) is not bool or type(include_knowledge) is not bool:
+            raise ValueError("Context source flags must be booleans")
         if knowledge_freshness_policy not in {
             "include_all",
             "owner_reviewed_current_only",
@@ -105,7 +108,12 @@ class AgentContextAssembler:
             raise ValueError("Query must contain 1 to 200 characters")
 
         memory_results = (
-            self.memory.search(owner_user_id, query, MAX_MEMORY_RESULTS)
+            self.memory.search(
+                owner_user_id,
+                query,
+                MAX_MEMORY_RESULTS,
+                memory_types=memory_types,
+            )
             if include_memory
             else []
         )
@@ -212,6 +220,9 @@ class AgentContextAssembler:
             "retrieval_method": "sqlite_fts5",
             "context_enabled": True,
             "knowledge_freshness_policy": knowledge_freshness_policy,
+            "memory_type_filter": (
+                sorted(set(memory_types)) if memory_types is not None else None
+            ),
             "knowledge_candidates_scanned": knowledge_candidates_scanned,
             "knowledge_candidate_limit": knowledge_candidate_limit,
             "knowledge_candidates_may_be_truncated": knowledge_candidates_may_be_truncated,
