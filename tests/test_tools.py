@@ -4,7 +4,13 @@ from pydantic import BaseModel, Field
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import PolicyDecision
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ToolDefinition, ToolExecutionError, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import (
+    ReplaySafety,
+    ToolDefinition,
+    ToolExecutionError,
+    ToolPolicyError,
+    ToolRegistry,
+)
 
 
 class InputValue(BaseModel):
@@ -18,6 +24,14 @@ class OutputValue(BaseModel):
 def test_builtin_echo_tool_validates_and_returns_typed_output():
     result = build_tool_registry().invoke("text.echo", {"text": "hello"})
     assert result == {"text": "hello", "character_count": 5}
+
+
+def test_builtin_echo_tool_is_explicitly_retry_safe():
+    registry = build_tool_registry()
+    tool = registry.get("text.echo")
+
+    assert tool.replay_safety.value == "retry_safe"
+    assert registry.catalog()[0]["replay_safety"] == "retry_safe"
 
 
 def test_registry_rejects_unregistered_tools():
@@ -163,3 +177,151 @@ def test_registry_does_not_retain_invalid_output_values_in_exception_context():
     assert error.value.__cause__ is None
     assert error.value.__context__ is None
     assert "credential-bearing-output" not in repr(error.value)
+
+
+
+def _tool_definition(**overrides):
+    values = {
+        "name": "custom.contract",
+        "description": "A tool definition contract test",
+        "input_model": InputValue,
+        "output_model": OutputValue,
+        "handler": lambda payload: {"value": payload.value},
+        "risk_class": RiskClass.LOW,
+        "required_permissions": frozenset(),
+        "external_side_effect": False,
+    }
+    values.update(overrides)
+    return ToolDefinition(**values)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"name": None}, "Invalid tool name"),
+        ({"description": None}, "Tool description"),
+        ({"description": "   "}, "Tool description"),
+        ({"input_model": dict}, "input_model"),
+        ({"output_model": dict}, "output_model"),
+        ({"handler": None}, "handler must be callable"),
+        ({"risk_class": "low"}, "server-defined RiskClass"),
+        ({"external_side_effect": 1}, "must be a boolean"),
+        ({"replay_safety": "retry_safe"}, "server-defined ReplaySafety"),
+        ({"required_permissions": {"custom.read"}}, "immutable frozenset"),
+        ({"required_permissions": frozenset({"Invalid Permission"})}, "invalid permission name"),
+        (
+            {"required_permissions": frozenset(f"permission.{i}" for i in range(33))},
+            "cannot exceed 32",
+        ),
+    ],
+)
+def test_registry_rejects_malformed_tool_definitions_without_registering(overrides, message):
+    registry = ToolRegistry()
+    definition = _tool_definition(**overrides)
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        registry.register(definition)
+
+    with pytest.raises(LookupError):
+        registry.get("custom.contract")
+
+
+def test_registry_rejects_async_handlers_before_registration():
+    async def async_handler(_payload):
+        return {"value": "not supported by the synchronous registry"}
+
+    registry = ToolRegistry()
+    with pytest.raises(ValueError, match="must be synchronous"):
+        registry.register(_tool_definition(handler=async_handler))
+
+    with pytest.raises(LookupError):
+        registry.get("custom.contract")
+
+
+def test_registry_rejects_async_generator_handlers_before_registration():
+    async def async_generator_handler(_payload):
+        yield {"value": "not supported by the synchronous registry"}
+
+    registry = ToolRegistry()
+    with pytest.raises(ValueError, match="must be synchronous"):
+        registry.register(_tool_definition(handler=async_generator_handler))
+
+    with pytest.raises(LookupError):
+        registry.get("custom.contract")
+
+
+def test_registry_rejects_non_definition_objects():
+    with pytest.raises(TypeError, match="ToolDefinition"):
+        ToolRegistry().register({"name": "custom.invalid"})
+
+
+def test_registry_accepts_only_validated_immutable_tool_contracts():
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(
+            required_permissions=frozenset({"cloudflare.read"}),
+            external_side_effect=False,
+        )
+    )
+
+    assert registry.get("custom.contract").required_permissions == frozenset({"cloudflare.read"})
+    assert registry.catalog()[0]["required_permissions"] == ["cloudflare.read"]
+    assert registry.get("custom.contract").replay_safety is ReplaySafety.RECONCILE_REQUIRED
+    assert registry.catalog()[0]["replay_safety"] == "reconcile_required"
+
+
+
+def test_registry_rejects_awaitable_results_from_synchronous_handlers():
+    async def async_result():
+        return {"value": "not supported"}
+
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(handler=lambda _payload: async_result())
+    )
+
+    with pytest.raises(ToolExecutionError, match="Tool handler failed"):
+        registry.invoke("custom.contract", {"value": "safe"})
+
+def test_registry_rejects_async_generator_results_from_synchronous_handlers():
+    async def async_result():
+        yield {"value": "not supported"}
+
+    registry = ToolRegistry()
+    registry.register(_tool_definition(handler=lambda _payload: async_result()))
+
+    with pytest.raises(ToolExecutionError, match="Tool handler failed"):
+        registry.invoke("custom.contract", {"value": "safe"})
+
+
+def test_registry_cancels_awaitable_results_from_synchronous_handlers():
+    class PendingAwaitable:
+        def __init__(self):
+            self.cancelled = False
+
+        def __await__(self):
+            yield
+
+        def cancel(self):
+            self.cancelled = True
+
+    pending = PendingAwaitable()
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(handler=lambda _payload: pending)
+    )
+
+    with pytest.raises(ToolExecutionError, match="Tool handler failed"):
+        registry.invoke("custom.contract", {"value": "safe"})
+
+    assert pending.cancelled is True
+
+
+
+def test_registry_exposes_explicit_retry_safe_classification():
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(replay_safety=ReplaySafety.RETRY_SAFE)
+    )
+
+    assert registry.catalog()[0]["replay_safety"] == "retry_safe"
