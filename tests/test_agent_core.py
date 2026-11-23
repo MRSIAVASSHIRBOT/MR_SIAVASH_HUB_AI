@@ -1242,7 +1242,7 @@ def test_agent_core_skips_completed_steps_by_stable_identity():
     assert [item["result"]["text"] for item in response["results"]] == [
         "still-pending"
     ]
-    assert events == [(2, "running", None), (2, "succeeded", None)]
+    assert events == [(3, "running", None), (3, "succeeded", None)]
 
 
 def test_agent_core_dependency_plan_uses_caller_stable_step_ids():
