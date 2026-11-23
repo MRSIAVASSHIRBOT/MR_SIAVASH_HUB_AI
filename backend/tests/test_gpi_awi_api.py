@@ -278,3 +278,95 @@ def test_goal_plan_endpoint_fails_closed_when_audit_storage_is_unavailable(monke
 
     assert error.value.status_code == 503
     assert error.value.detail == "Audit storage is unavailable"
+
+
+def generated_prohibited_work_order_output() -> str:
+    payload = json.loads(work_order_output())
+    payload["scope"] = "credential harvesting"
+    return json.dumps(payload)
+
+
+def test_generated_prohibited_work_order_records_terminal_block_audit(monkeypatch):
+    router = build_router(generated_prohibited_work_order_output())
+    audit_events = []
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
+    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: pytest.fail(
+        "a generated prohibited work order must not reach capability discovery"
+    ))
+    monkeypatch.setattr(
+        agent_routes, "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.create_goal_work_order_plan(
+            agent_routes.GoalPlanningRequest(goal="Review login security controls"),
+            SimpleNamespace(user_id="owner-generated"),
+        )
+
+    assert error.value.status_code == 422
+    assert [event["event_type"] for event in audit_events] == [
+        "agent.work_order_planning_started",
+        "agent.work_order_blocked",
+    ]
+    blocked = audit_events[-1]
+    assert blocked["outcome"] == "denied"
+    assert blocked["actor_id"] == "owner-generated"
+    assert blocked["metadata"] == {"status": "generated_output_prohibited"}
+    assert "goal" not in blocked["metadata"]
+
+
+def test_generated_prohibited_work_order_fails_closed_when_block_audit_fails(monkeypatch):
+    router = build_router(generated_prohibited_work_order_output())
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FailingBlockedAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            if kwargs["event_type"] == "agent.work_order_blocked":
+                raise sqlite3.OperationalError("audit storage unavailable")
+
+    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: pytest.fail(
+        "a generated prohibited work order must not reach capability discovery"
+    ))
+    monkeypatch.setattr(
+        agent_routes, "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FailingBlockedAuditLogger)
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.create_goal_work_order_plan(
+            agent_routes.GoalPlanningRequest(goal="Review login security controls"),
+            SimpleNamespace(user_id="owner-generated"),
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Audit storage is unavailable"
