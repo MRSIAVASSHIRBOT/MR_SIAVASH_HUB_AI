@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
@@ -123,8 +122,6 @@ _SAFE_DETAIL_REASON_CODES = frozenset({
     "review_input_rejected",
 })
 
-_SAFE_PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
-
 
 def _request_id(request: Request) -> str:
     value = getattr(request.state, "request_id", None)
@@ -199,17 +196,8 @@ def _safe_http_detail(status_code: int, detail: object) -> object:
         return safe_detail
 
     if detail.get("message") == "Unknown model profile ID(s)":
-        raw_ids = detail.get("profile_ids")
-        if isinstance(raw_ids, list) and 1 <= len(raw_ids) <= 20:
-            safe_ids = [
-                item for item in raw_ids
-                if isinstance(item, str) and _SAFE_PROFILE_ID.fullmatch(item)
-            ]
-            if safe_ids:
-                return {
-                    "message": "Unknown model profile ID(s)",
-                    "profile_ids": safe_ids,
-                }
+        # Profile IDs arrive in the request body. Do not echo them, even when
+        # they look like harmless slugs; clients can use the stable message.
         return {"message": "Unknown model profile ID(s)"}
 
     # This removes provider codes, exception messages, policy reasons,

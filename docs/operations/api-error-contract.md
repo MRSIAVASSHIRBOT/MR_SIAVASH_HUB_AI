@@ -22,8 +22,11 @@ in `mrhub.api.public_error_details`. Unknown details fall back to the generic
 message associated with the HTTP status.
 
 This means exception-derived text (`str(exc)`), provider codes or bodies,
-policy decision reasons, request-controlled identifiers, nested objects and
-arbitrary mappings are never reflected by the HTTP exception handler. New
+policy decision reasons, request-controlled identifiers (including unknown
+model-profile IDs), nested objects and arbitrary mappings are never reflected
+by the HTTP exception handler. Unknown model profiles return only a stable
+message; clients should not depend on the caller-supplied identifier being
+echoed back. New
 legacy detail strings must be reviewed and added to the allowlist deliberately;
 do not add dynamic values or interpolate user/provider data.
 

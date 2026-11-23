@@ -311,10 +311,9 @@ def recommend_models(payload: RecommendModelsRequest):
             system_reserve_gib=payload.system_reserve_gib,
         )
     except KeyError as exc:
-        unknown_ids = list(exc.args[0])
         raise HTTPException(
             status_code=404,
-            detail={"message": "Unknown model profile ID(s)", "profile_ids": unknown_ids},
+            detail={"message": "Unknown model profile ID(s)"},
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -329,7 +328,7 @@ def compare_models(payload: CompareModelsRequest):
     if unknown_ids:
         raise HTTPException(
             status_code=404,
-            detail={"message": "Unknown model profile ID(s)", "profile_ids": unknown_ids},
+            detail={"message": "Unknown model profile ID(s)"},
         )
 
     results = []

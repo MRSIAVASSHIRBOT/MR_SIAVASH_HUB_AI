@@ -145,7 +145,8 @@ def test_compare_registered_models_rejects_unknown_profile_ids(tmp_path, monkeyp
         },
     )
     assert response.status_code == 404
-    assert response.json()["detail"]["profile_ids"] == ["unknown-profile"]
+    assert response.json()["detail"] == {"message": "Unknown model profile ID(s)"}
+    assert "unknown-profile" not in response.text
     get_settings.cache_clear()
 
 
