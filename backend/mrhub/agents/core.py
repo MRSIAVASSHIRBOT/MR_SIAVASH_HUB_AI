@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -36,6 +37,8 @@ class AgentToolRequest(BaseModel):
     # None preserves legacy sequential request order. An explicit list declares
     # dependencies on other request steps; provider selection is always implicit.
     depends_on: list[WorkflowDependencyId] | None = Field(default=None, max_length=5)
+    # Optional owner-issued receipt, bound to this exact tool payload and definition.
+    approval_id: UUID | None = None
 
     @field_validator("name")
     @classmethod
@@ -169,6 +172,8 @@ class AgentCore:
         policy: PolicyEngine | None = None,
         *,
         permission_provider: Callable[[], frozenset[str]] | None = None,
+        approval_validator: Callable[[str, str, dict[str, object], frozenset[str]], bool] | None = None,
+        approval_consumer: Callable[[str, str, dict[str, object], frozenset[str]], bool] | None = None,
     ) -> None:
         self.model_router = model_router
         self.tool_registry = tool_registry
@@ -178,6 +183,8 @@ class AgentCore:
             )
         self.policy = tool_registry.policy
         self.permission_provider = permission_provider
+        self.approval_validator = approval_validator
+        self.approval_consumer = approval_consumer
 
     def _current_permissions(self) -> frozenset[str]:
         """Resolve owner grants at the policy boundary; lookup failures deny access."""
@@ -208,6 +215,8 @@ class AgentCore:
                 else None
             ),
         }
+        if requested_tool.approval_id is not None:
+            definition["approval_id"] = str(requested_tool.approval_id)
         encoded = json.dumps(
             definition, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode()
