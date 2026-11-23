@@ -50,7 +50,7 @@ def test_unhandled_exception_never_exposes_exception_text():
         raise RuntimeError(private_detail)
 
     app.add_api_route("/_test/fail", fail, methods=["GET"])
-    response = TestClient(app).get("/_test/fail")
+    response = TestClient(app, raise_server_exceptions=False).get("/_test/fail")
 
     assert response.status_code == 500
     body = response.json()
