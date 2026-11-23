@@ -23,6 +23,7 @@ from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.recovery import ResumeDecision, StepAttempt, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
+from mrhub.tools.registry import ReplaySafety
 
 
 class AgentWorkflowRunner:
@@ -144,9 +145,11 @@ class AgentWorkflowRunner:
                         ].depends_on
                     ),
                     "kind": (
-                        "external_tool"
+                        "safe_tool"
+                        if definition.replay_safety is ReplaySafety.RETRY_SAFE
+                        else "external_tool"
                         if definition.external_side_effect
-                        else "safe_tool"
+                        else "non_replayable_tool"
                     ),
                     "name": requested_tool.name,
                     "input_digest": core.workflow_step_input_digest(
@@ -432,7 +435,7 @@ class AgentWorkflowRunner:
                             workflow_id,
                             attempt,
                             failure_code,
-                            unknown_outcome=definition.external_side_effect,
+                            unknown_outcome=definition.replay_safety is not ReplaySafety.RETRY_SAFE,
                             lease=lease,
                         )
                         self._record_trace_event(
@@ -441,7 +444,7 @@ class AgentWorkflowRunner:
                             trace_id=trace_id,
                             event_type=(
                                 "agent.workflow.step.unknown_outcome"
-                                if definition.external_side_effect
+                                if definition.replay_safety is not ReplaySafety.RETRY_SAFE
                                 else "agent.workflow.step.failed"
                             ),
                             outcome=(
@@ -900,7 +903,9 @@ class AgentWorkflowRunner:
                                 workflow_id,
                                 attempt,
                                 error_code or "tool_execution_failed",
-                                unknown_outcome=definition.external_side_effect,
+                                unknown_outcome=(
+                                    definition.replay_safety is not ReplaySafety.RETRY_SAFE
+                                ),
                                 lease=lease,
                             )
 
