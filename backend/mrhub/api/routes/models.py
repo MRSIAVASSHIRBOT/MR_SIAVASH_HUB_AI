@@ -311,7 +311,6 @@ def recommend_models(payload: RecommendModelsRequest):
             system_reserve_gib=payload.system_reserve_gib,
         )
     except KeyError as exc:
-        unknown_ids = list(exc.args[0])
         raise HTTPException(
             status_code=404,
             detail={"message": "Unknown model profile ID(s)"},
