@@ -65,3 +65,10 @@ arbitrary Python handler code, guarantee model inference cancellation, or prove
 that a remote side effect did not happen. Any timeout after a remote operation
 may have been accepted must continue to use the existing unknown-outcome and
 reconciliation contract; it must not trigger blind replay.
+
+
+The local Ollama vision path uses the same per-request cap through
+`VisionRequest.timeout_seconds`. Video analysis passes its configured
+provider timeout into both the provider instance and the transient request;
+the adapter uses the lower value. This remains a network timeout ceiling, not
+an absolute wall-clock deadline for all video-analysis work.
