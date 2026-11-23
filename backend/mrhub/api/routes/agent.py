@@ -50,7 +50,12 @@ from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
-from mrhub.security.tool_approvals import ToolApprovalError, ToolInvocationApprovalStore, canonical_tool_payload, tool_definition_fingerprint
+from mrhub.security.tool_approvals import (
+    ToolApprovalError,
+    ToolInvocationApprovalStore,
+    canonical_tool_payload,
+    tool_definition_fingerprint,
+)
 from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
