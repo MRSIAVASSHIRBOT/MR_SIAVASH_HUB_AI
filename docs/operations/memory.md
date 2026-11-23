@@ -86,8 +86,9 @@ succeeded with a persisted SHA-256 output digest.
   reference containing the source workflow, stable step ID, and output digest.
 - The candidate text is bounded and checked against the memory repository's
   common credential-pattern filters.
-- The preview returns a suggested `user_authored` Memory record with neutral
-  confidence and an explicit owner-review requirement.
+- The preview returns a suggested `procedural`, `user_authored` Memory record
+  with neutral confidence and an explicit owner-review requirement. This type
+  is a proposal label; it does not bypass the owner's normal Memory API review.
 - The endpoint does not insert, update, merge, or approve any Memory record.
   It does not store raw workflow outputs, prompts, tool payloads, or lesson
   text in the audit event.
