@@ -156,22 +156,21 @@ def request_tool_approval(
         raise HTTPException(status_code=409, detail="This tool action does not require approval")
 
     fingerprint = tool_definition_fingerprint(tool)
+    approval_id = str(uuid4())
     audit_event = audit.build_event(
         event_type="tool.approval_requested",
         outcome="pending",
-        subject_id=str(uuid4()),
+        subject_id=approval_id,
         subject_type="tool_approval",
         actor_type="user",
         actor_id=user.user_id,
         metadata={
             "tool_name": tool_name,
-            "approval_id": "pending",
+            "approval_id": approval_id,
             "status": "pending",
             "reason_code": "owner_requested_approval",
         },
     ).model_dump(mode="json")
-    approval_id = audit_event["subject_id"]
-    audit_event["metadata"]["approval_id"] = approval_id
     try:
         record = _approval_store(repository).create(
             approval_id=approval_id,
