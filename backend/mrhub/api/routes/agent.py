@@ -14,6 +14,7 @@ from mrhub.agents.gpi import (
     derive_server_risk_class,
     generate_work_order,
 )
+from mrhub.agents.lessons import LessonEvidence, LessonProposalError, build_lesson_proposal
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
@@ -76,6 +77,24 @@ class WorkflowReconciliationRequest(BaseModel):
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+class WorkflowLessonPreviewRequest(BaseModel):
+    """A user-authored lesson candidate linked to one persisted successful step."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str = Field(min_length=1, max_length=64, pattern="^[a-z][a-z0-9-]{0,63}$", strict=True)
+    category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$", strict=True)
+    lesson_text: str = Field(min_length=20, max_length=500, strict=True)
+
+    @field_validator("category", "lesson_text")
+    @classmethod
+    def normalize_lesson_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Lesson fields must not be blank")
+        return normalized
 
 
 class GoalPlanningRequest(BaseModel):
@@ -553,6 +572,89 @@ def get_agent_workflow(
     if workflow is None:
         raise HTTPException(status_code=404, detail="Agent workflow not found")
     return workflow
+
+
+@router.post("/workflows/{workflow_id}/lessons/preview")
+def preview_workflow_lesson(
+    workflow_id: UUID,
+    payload: WorkflowLessonPreviewRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Preview a user-authored lesson linked to one persisted successful step.
+
+    This endpoint never writes Memory. The owner must separately review and
+    submit an explicit Memory create request if the proposal should be retained.
+    """
+    settings = get_settings()
+    repository = WorkflowRecoveryRepository(settings.database_path)
+    workflow = repository.get_run(
+        workflow_id,
+        owner_user_id=current_user.user_id,
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent workflow not found")
+    if workflow.get("status") != "succeeded":
+        raise HTTPException(
+            status_code=409,
+            detail="Lessons require a successfully completed workflow",
+        )
+
+    steps = workflow.get("steps")
+    if not isinstance(steps, list):
+        raise HTTPException(status_code=409, detail="Workflow step evidence is unavailable")
+    step = next(
+        (
+            item for item in steps
+            if isinstance(item, dict) and item.get("step_key") == payload.step_id
+        ),
+        None,
+    )
+    if step is None:
+        raise HTTPException(status_code=404, detail="Workflow step not found")
+
+    try:
+        proposal = build_lesson_proposal(
+            LessonEvidence(
+                workflow_id=workflow_id,
+                workflow_status=str(workflow.get("status")),
+                step_id=payload.step_id,
+                step_status=str(step.get("status")),
+                output_digest=step.get("output_digest")
+                if isinstance(step.get("output_digest"), str)
+                else None,
+                error_code=step.get("error_code")
+                if isinstance(step.get("error_code"), str)
+                else None,
+            ),
+            category=payload.category,
+            lesson_text=payload.lesson_text,
+        )
+    except LessonProposalError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Lesson proposal requires a completed evidence-backed workflow step and safe content",
+        ) from exc
+
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    AuditLogger(tasks).record(
+        event_type="agent.lesson_previewed",
+        outcome="owner_review_required",
+        subject_type="lesson_proposal",
+        subject_id=proposal.proposal_id,
+        actor_type="user",
+        actor_id=current_user.user_id,
+        metadata={
+            "status": "preview_only",
+            "reason_code": "evidence_linked_lesson_preview",
+            "proposal_count": 1,
+            "state_changed": False,
+        },
+    )
+    return {
+        "workflow_id": str(workflow_id),
+        "proposal": proposal.as_dict(),
+    }
 
 
 @router.post("/workflows/{workflow_id}/cancel")
