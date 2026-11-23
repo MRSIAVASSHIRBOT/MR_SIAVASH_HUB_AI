@@ -118,3 +118,32 @@ def test_agent_context_current_only_policy_excludes_stale_and_unknown_sources():
     )
     assert body["excluded_stale_knowledge_count"] == 1
     assert body["excluded_unreviewed_knowledge_count"] == 1
+
+def test_agent_context_filters_memory_by_typed_taxonomy():
+    client = authenticated_client()
+    created = {}
+    for memory_type in ("episodic", "semantic", "procedural"):
+        response = client.post(
+            "/memory",
+            json={
+                "memory_type": memory_type,
+                "category": "context taxonomy",
+                "content": "typedcontextfilter marker for owner memory retrieval",
+            },
+        )
+        assert response.status_code == 201
+        created[memory_type] = response.json()["memory_id"]
+
+    response = client.post(
+        "/agent/context/assemble",
+        json={
+            "query": "typedcontextfilter marker",
+            "memory_types": ["episodic"],
+            "include_knowledge": False,
+        },
+    )
+    assert response.status_code == 200
+    passages = response.json()["passages"]
+    assert [item["memory_type"] for item in passages] == ["episodic"]
+    assert passages[0]["reference"] == f"memory://entries/{created['episodic']}"
+
