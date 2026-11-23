@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.decision_assessment import assess_work_order_decisions
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
@@ -197,6 +198,10 @@ def create_goal_work_order_plan(
             detail="Registered tool catalog is not valid for capability assessment",
         ) from exc
 
+    decision_assessment = assess_work_order_decisions(
+        work_order, plan, assessment, selection
+    )
+
     audit_logger.record(
         event_type="agent.work_order_planned",
         outcome="planned",
@@ -221,6 +226,7 @@ def create_goal_work_order_plan(
             **assessment.as_dict(),
             "authorization_checked": False,
         },
+        "decision_assessment": decision_assessment.as_dict(),
         "risk_class_is_authoritative": False,
         "planning_only": True,
         "execution_ready": False,
