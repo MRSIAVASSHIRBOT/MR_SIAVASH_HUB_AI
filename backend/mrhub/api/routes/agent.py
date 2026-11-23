@@ -64,6 +64,13 @@ class WorkflowReconciliationRequest(BaseModel):
             raise ValueError("Provide exactly one of step_id or step_number")
         return self
 
+    def resolved_step_identity(self) -> int | str:
+        if self.step_id is not None:
+            return self.step_id
+        if self.step_number is not None:
+            return self.step_number
+        raise ValueError("Workflow reconciliation step identity is missing")
+
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
@@ -435,7 +442,7 @@ def reconcile_agent_workflow(
     try:
         checkpoint = recovery.resolve_unknown_step(
             workflow_id,
-            request.step_id if request.step_id is not None else request.step_number,
+            request.resolved_step_identity(),
             request.outcome,
             output_digest=request.output_digest,
             owner_user_id=current_user.user_id,
