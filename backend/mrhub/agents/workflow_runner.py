@@ -173,7 +173,7 @@ class AgentWorkflowRunner:
                 EvaluationCriterion(
                     criterion_id=(
                         f"tool-step-{runtime_number}"
-                        if legacy_definition
+                        if legacy_definition or requested_tool.step_id is None
                         else f"tool-step-{step_key}"
                     ),
                     description=f"Tool execution completed: {requested_tool.name}",
