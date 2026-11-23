@@ -8,6 +8,7 @@ from mrhub.agents.evaluation import (
     EvaluationCriterion,
     EvaluationDecision,
     EvaluationInputError,
+    build_correction_plan,
     evaluate_criteria,
 )
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
@@ -224,3 +225,77 @@ def test_evaluation_follows_topological_execution_order_not_request_array_order(
     assert report["criteria"][1]["criterion_id"] == "tool-step-3"
     assert report["criteria"][1]["description"] == "Tool execution completed: text.alpha"
     assert report["criteria"][1]["status"] == "failed"
+
+
+def test_accepted_evaluation_produces_no_correction_actions():
+    report = evaluate_criteria(
+        [
+            EvaluationCriterion(
+                "tests", "Required tests passed", CriterionStatus.PASSED, DIGEST_A
+            )
+        ]
+    )
+
+    correction = build_correction_plan(report)
+
+    assert correction["decision"] == "no_correction_required"
+    assert correction["total_actions"] == 0
+    assert correction["actions"] == []
+    assert correction["execution_started"] is False
+    assert correction["workflow_mutated"] is False
+
+
+def test_failed_and_unknown_criteria_produce_distinct_safe_follow_up_actions():
+    report = evaluate_criteria(
+        [
+            EvaluationCriterion(
+                "implementation", "Implementation matches requirements",
+                CriterionStatus.FAILED, DIGEST_A
+            ),
+            EvaluationCriterion(
+                "external-state", "External effect was confirmed",
+                CriterionStatus.UNKNOWN
+            ),
+        ]
+    )
+
+    correction = build_correction_plan(report)
+
+    assert correction["decision"] == "repair_and_replan"
+    assert correction["source_evaluation_decision"] == "reject"
+    assert correction["total_actions"] == 2
+    failed, unknown = correction["actions"]
+    assert failed["action"] == "repair_failed_criterion"
+    assert failed["priority"] == "high"
+    assert failed["requires_replan"] is True
+    assert failed["evidence_digest"] == DIGEST_A
+    assert unknown["action"] == "collect_or_reconcile_evidence"
+    assert unknown["priority"] == "normal"
+    assert unknown["evidence_digest"] is None
+    assert "Do not replay" in unknown["recommended_next_step"]
+    assert all(item["automatic_execution"] is False for item in correction["actions"])
+    assert correction["execution_started"] is False
+    assert correction["workflow_mutated"] is False
+
+
+def test_unknown_only_evaluation_requests_evidence_without_retry():
+    report = evaluate_criteria(
+        [
+            EvaluationCriterion(
+                "ambiguous", "Outcome needs reconciliation", CriterionStatus.UNKNOWN
+            )
+        ]
+    )
+
+    correction = build_correction_plan(report)
+
+    assert correction["decision"] == "evidence_review_required"
+    assert correction["total_actions"] == 1
+    assert correction["actions"][0]["action"] == "collect_or_reconcile_evidence"
+    assert correction["actions"][0]["requires_replan"] is False
+    assert correction["actions"][0]["automatic_execution"] is False
+
+
+def test_correction_plan_rejects_untrusted_report_shapes():
+    with pytest.raises(TypeError, match="EvaluationReport"):
+        build_correction_plan({"decision": "accept"})
