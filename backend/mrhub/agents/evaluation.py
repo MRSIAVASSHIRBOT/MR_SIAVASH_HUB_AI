@@ -81,6 +81,75 @@ class EvaluationInputError(ValueError):
     """Raised when evaluation criteria are malformed or lack required evidence."""
 
 
+def build_correction_plan(report: EvaluationReport) -> dict[str, object]:
+    """Derive bounded, non-executing follow-up work from verified criterion states.
+
+    Failed criteria produce repair recommendations; unknown criteria produce
+    evidence/reconciliation recommendations. The function never dispatches
+    tools, mutates workflow state, or reclassifies missing evidence as success.
+    """
+    if not isinstance(report, EvaluationReport):
+        raise TypeError("report must be an EvaluationReport")
+
+    actions: list[dict[str, object]] = []
+    for criterion in report.criteria:
+        if criterion.status is CriterionStatus.FAILED:
+            actions.append(
+                {
+                    "criterion_id": criterion.criterion_id,
+                    "priority": "high",
+                    "action": "repair_failed_criterion",
+                    "description": criterion.description,
+                    "recommended_next_step": (
+                        "Inspect the failed checkpoint and its evidence, correct the "
+                        "underlying cause, then create a revised plan with explicit "
+                        "verification before any retry."
+                    ),
+                    "evidence_digest": criterion.evidence_digest,
+                    "requires_replan": True,
+                    "automatic_execution": False,
+                }
+            )
+        elif criterion.status is CriterionStatus.UNKNOWN:
+            actions.append(
+                {
+                    "criterion_id": criterion.criterion_id,
+                    "priority": "normal",
+                    "action": "collect_or_reconcile_evidence",
+                    "description": criterion.description,
+                    "recommended_next_step": (
+                        "Collect independent evidence or explicitly reconcile the "
+                        "checkpoint. Do not replay an ambiguous side effect merely "
+                        "because its outcome is unknown."
+                    ),
+                    "evidence_digest": None,
+                    "requires_replan": False,
+                    "automatic_execution": False,
+                }
+            )
+
+    decision = (
+        "no_correction_required"
+        if report.decision is EvaluationDecision.ACCEPT
+        else "repair_and_replan"
+        if report.decision is EvaluationDecision.REJECT
+        else "evidence_review_required"
+    )
+    return {
+        "decision": decision,
+        "source_evaluation_decision": report.decision.value,
+        "total_actions": len(actions),
+        "actions": actions,
+        "execution_started": False,
+        "workflow_mutated": False,
+        "limitations": [
+            "Recommendations are deterministic templates, not a diagnosis of root cause.",
+            "Unknown outcomes require explicit evidence or reconciliation.",
+            "No retry, tool invocation, approval, or permission change occurs here.",
+        ],
+    }
+
+
 def evaluate_criteria(criteria: Iterable[EvaluationCriterion]) -> EvaluationReport:
     """Evaluate structured criterion outcomes without inferring missing evidence.
 
