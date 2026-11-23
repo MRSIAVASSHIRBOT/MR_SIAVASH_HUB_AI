@@ -1,5 +1,6 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -387,7 +388,10 @@ def test_concurrent_tool_approval_consumption_is_single_use_and_audited_once():
         ),
     )
 
+    start_together = Barrier(2)
+
     def consume_receipt():
+        start_together.wait(timeout=5)
         return store.consume(
             approval_id,
             owner_user_id="local-owner",
