@@ -470,3 +470,119 @@ def test_running_cancellation_persists_intent_until_worker_finalizes(tmp_path):
             (str(task.task_id),),
         ).fetchone()
     assert row is not None and row["error_code"] == "cancellation_requested"
+
+
+def test_identity_addressed_workflow_allows_independent_steps_out_of_position_order(tmp_path):
+    repository = make_repository(tmp_path)
+    workflow_id = repository.create_run(
+        "a" * 64,
+        [
+            {
+                "step_number": 1, "step_key": "step-1",
+                "depends_on": [], "kind": "provider_selection", "name": "provider",
+            },
+            {
+                "step_number": 2, "step_key": "step-alpha",
+                "depends_on": ["step-1"], "kind": "safe_tool", "name": "text.alpha",
+            },
+            {
+                "step_number": 3, "step_key": "step-beta",
+                "depends_on": ["step-1"], "kind": "safe_tool", "name": "text.beta",
+            },
+            {
+                "step_number": 4, "step_key": "step-final",
+                "depends_on": ["step-alpha"], "kind": "safe_tool", "name": "text.final",
+            },
+        ],
+        definition_version=3,
+    )
+    repository.start_run(workflow_id)
+    provider = repository.start_step(workflow_id, "step-1")
+    repository.complete_step(workflow_id, provider, "b" * 64)
+
+    # step-alpha is still pending, but step-beta only depends on the provider.
+    beta = repository.start_step(workflow_id, "step-beta")
+    assert beta.step_key == "step-beta"
+    repository.complete_step(workflow_id, beta, "c" * 64)
+
+    with pytest.raises(WorkflowRecoveryError, match="dependencies must succeed"):
+        repository.start_step(workflow_id, "step-final")
+
+    decision = repository.resume_decision(workflow_id, "a" * 64, definition_version=3)
+    assert decision.decision == "resume"
+    assert decision.next_step_id == "step-alpha"
+    assert decision.next_step == 2
+
+
+def test_failed_dependency_propagates_blocked_state_to_descendants(tmp_path):
+    repository = make_repository(tmp_path)
+    workflow_id = repository.create_run(
+        "a" * 64,
+        [
+            {
+                "step_number": 1, "step_key": "step-1",
+                "depends_on": [], "kind": "provider_selection", "name": "provider",
+            },
+            {
+                "step_number": 2, "step_key": "step-source",
+                "depends_on": ["step-1"], "kind": "safe_tool", "name": "text.source",
+            },
+            {
+                "step_number": 3, "step_key": "step-child",
+                "depends_on": ["step-source"], "kind": "safe_tool", "name": "text.child",
+            },
+            {
+                "step_number": 4, "step_key": "step-grandchild",
+                "depends_on": ["step-child"], "kind": "safe_tool", "name": "text.grandchild",
+            },
+        ],
+        definition_version=3,
+    )
+    repository.start_run(workflow_id)
+    provider = repository.start_step(workflow_id, "step-1")
+    repository.complete_step(workflow_id, provider, "b" * 64)
+    source = repository.start_step(workflow_id, "step-source")
+    repository.fail_step(workflow_id, source, "source_failed")
+
+    stored = repository.get_run(workflow_id)
+    assert stored is not None
+    states = {step["step_key"]: step["dependency_state"] for step in stored["steps"]}
+    assert states["step-child"] == "blocked"
+    assert states["step-grandchild"] == "blocked"
+    assert repository.resume_decision(
+        workflow_id, "a" * 64, definition_version=3
+    ).decision == "terminal"
+
+
+def test_resume_decision_returns_stable_id_for_next_eligible_step(tmp_path):
+    repository = make_repository(tmp_path)
+    workflow_id = repository.create_run(
+        "a" * 64,
+        [
+            {
+                "step_number": 1, "step_key": "step-1",
+                "depends_on": [], "kind": "provider_selection", "name": "provider",
+            },
+            {
+                "step_number": 2, "step_key": "step-original-first",
+                "depends_on": ["step-1"], "kind": "safe_tool", "name": "text.first",
+            },
+            {
+                "step_number": 3, "step_key": "step-original-second",
+                "depends_on": ["step-1"], "kind": "safe_tool", "name": "text.second",
+            },
+        ],
+        definition_version=3,
+    )
+    repository.start_run(workflow_id)
+    provider = repository.start_step(workflow_id, "step-1")
+    repository.complete_step(workflow_id, provider, "b" * 64)
+    first = repository.start_step(workflow_id, "step-original-first")
+    repository.complete_step(workflow_id, first, "c" * 64)
+
+    decision = repository.resume_decision(
+        workflow_id, "a" * 64, definition_version=3
+    )
+    assert decision.decision == "resume"
+    assert decision.next_step_id == "step-original-second"
+    assert decision.next_step == 3
