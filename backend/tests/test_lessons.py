@@ -40,8 +40,12 @@ def test_lesson_proposal_is_stable_and_links_to_persisted_step_evidence():
     assert payload["owner_review_required"] is True
     assert payload["automatic_memory_write"] is False
     assert payload["execution_authorized"] is False
+    assert payload["proposed_memory_classification"] == "procedural_candidate"
     assert payload["memory_entry_preview"]["verification_status"] == "user_authored"
-    assert payload["memory_entry_preview"]["memory_type"] == "procedural"
+    assert set(payload["memory_entry_preview"]) == {
+        "category", "content", "provenance", "confidence", "verification_status"
+    }
+    # The current Memory API has no typed memory_type field; do not invent one.
 
 
 @pytest.mark.parametrize(
