@@ -51,14 +51,17 @@ Therefore:
 
 ## Worker startup recovery
 
-The worker process runs the stale-execution recovery pass at startup and
-before every poll, including polls made while the emergency-stop switch is
-latched. This allows work that crosses the stale threshold after startup to be
-reconciled even when dispatch remains stopped. Recovery applies fenced durable
-state transitions and may also remove narrowly scoped orphaned render files
-after the stale threshold and lease-expiry checks. It does not claim tasks,
-invoke handlers, or dispatch new work. The durable stop switch continues to
-block new dispatch until an authenticated operator clears it.
+The worker process runs the stale-execution recovery pass once during startup,
+before entering its polling loop. This pass is deliberately independent from
+the emergency-stop dispatch gate: work that is already stale and has an expired
+lease is classified even while the stop switch remains latched. While the stop
+switch remains latched, ordinary polls return before claiming work or running
+the normal poll-time recovery path. After an authenticated operator clears the
+stop switch, the next normal poll performs recovery before claiming new work.
+Recovery applies fenced durable-state transitions and may also remove narrowly
+scoped orphaned render files after stale-threshold and lease-expiry checks. It
+does not claim tasks, invoke handlers, or dispatch new work.
 
-Regression tests verify that stale work is reconciled while dispatch is stopped,
-including repeated polling, and that no handler is invoked.
+Regression tests verify that startup recovery reconciles stale work while
+dispatch is stopped, that the handler is never invoked, and that polling remains
+blocked afterwards.
