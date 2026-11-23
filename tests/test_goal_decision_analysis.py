@@ -21,7 +21,10 @@ def test_general_information_question_does_not_request_clarification_or_tools() 
 
 
 def test_current_comparison_requires_research_signal() -> None:
-    result = analyze_goal("Compare the latest Python release with the current stable release using official documentation.")
+    result = analyze_goal(
+        "Compare the latest Python release with the current stable release "
+        "using official documentation."
+    )
 
     assert result.research_required is True
     assert "freshness_or_external_evidence_signal" in result.reason_codes
