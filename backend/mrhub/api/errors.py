@@ -7,11 +7,12 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
+
+from mrhub.api.public_error_details import SAFE_PUBLIC_ERROR_DETAILS
 
 
 class APIErrorIssue(BaseModel):
@@ -75,6 +76,11 @@ _ERROR_CODES = {
     503: ("service_unavailable", "The service is temporarily unavailable."),
 }
 
+_SAFE_LEGACY_DETAIL_OBJECTS = (
+    {"reason": "stale_revision"},
+    {"code": "provider_unavailable", "execution": "not_started"},
+)
+
 
 def _request_id(request: Request) -> str:
     value = getattr(request.state, "request_id", None)
@@ -86,6 +92,17 @@ def _status_error(status_code: int) -> tuple[str, str]:
         status_code,
         ("http_error", "The request could not be completed."),
     )
+
+
+def _safe_http_detail(status_code: int, detail: object) -> object:
+    """Preserve only exact reviewed public literals; never reflect dynamic values."""
+    if isinstance(detail, str) and detail in SAFE_PUBLIC_ERROR_DETAILS:
+        return detail
+    if isinstance(detail, dict) and any(detail == allowed for allowed in _SAFE_LEGACY_DETAIL_OBJECTS):
+        return detail
+    # This also removes provider codes, exception messages, policy reasons,
+    # arbitrary identifiers, and nested request-controlled values.
+    return _status_error(status_code)[1]
 
 
 def _validation_issues(exc: RequestValidationError) -> list[dict[str, Any]]:
@@ -119,10 +136,10 @@ async def http_exception_handler(
     request: Request,
     exc: StarletteHTTPException,
 ) -> JSONResponse:
-    """Add a typed stable envelope while preserving the legacy detail field."""
+    """Return only reviewed legacy details plus the stable typed error envelope."""
     code, message = _status_error(exc.status_code)
     payload = APIErrorResponse(
-        detail=jsonable_encoder(exc.detail),
+        detail=_safe_http_detail(exc.status_code, exc.detail),
         error=APIErrorEnvelope(
             code=code,
             message=message,
