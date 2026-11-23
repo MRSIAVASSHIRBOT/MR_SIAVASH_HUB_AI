@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Mapping
+from collections.abc import Mapping
 
 MAX_BYTES = 100_000
 MAX_FINDINGS = 500
