@@ -226,3 +226,65 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
             UUID(created.json()["memory_id"]),
             {field: ["not", "text"]},
         )
+
+def test_memory_type_is_persisted_filtered_and_updated():
+    client = authenticated_client()
+    created = {}
+    for memory_type in ("episodic", "semantic", "procedural"):
+        response = client.post(
+            "/memory",
+            json={
+                "memory_type": memory_type,
+                "category": "apollo",
+                "content": "memorytaxonomyfilteronlytoken Apollo mission classification marker",
+            },
+        )
+        assert response.status_code == 201
+        created[memory_type] = response.json()["memory_id"]
+        assert response.json()["memory_type"] == memory_type
+
+    episodic = client.post(
+        "/memory/search",
+        json={"query": "memorytaxonomyfilteronlytoken", "memory_types": ["episodic"]},
+    )
+    assert episodic.status_code == 200
+    assert [item["memory_id"] for item in episodic.json()["results"]] == [created["episodic"]]
+
+    updated = client.patch(
+        f"/memory/{created['episodic']}",
+        json={"memory_type": "procedural"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["memory_type"] == "procedural"
+
+    invalid_update = client.patch(
+        f"/memory/{created['semantic']}",
+        json={"memory_type": None},
+    )
+    assert invalid_update.status_code == 422
+
+def test_memory_create_rejects_boolean_string_and_non_finite_confidence():
+    client = authenticated_client()
+    for confidence in (True, "0.8", -0.1, 1.1):
+        response = client.post(
+            "/memory",
+            json={
+                "category": "numeric validation",
+                "content": "Confidence must be a finite numeric value.",
+                "confidence": confidence,
+            },
+        )
+        assert response.status_code == 422
+
+    for raw_number in ("NaN", "Infinity", "-Infinity"):
+        response = client.post(
+            "/memory",
+            content=(
+                '{"category":"numeric validation",'
+                '"content":"Confidence must be finite",'
+                f'"confidence":{raw_number}' + "}"
+            ),
+            headers={"content-type": "application/json"},
+        )
+        assert response.status_code == 422
+
