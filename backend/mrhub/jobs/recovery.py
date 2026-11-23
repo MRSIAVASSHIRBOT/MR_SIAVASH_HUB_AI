@@ -510,12 +510,16 @@ class WorkflowRecoveryRepository:
 
             step = connection.execute(
                 """
-                SELECT step_id, status FROM workflow_steps
-                WHERE workflow_id = ? AND step_number = ?
+                SELECT step_id, step_key, step_number, status FROM workflow_steps
+                WHERE workflow_id = ? AND step_id = ?
                 """,
-                (str(workflow_id), attempt.step_number),
+                (str(workflow_id), attempt.step_id),
             ).fetchone()
-            if step is None or step["step_id"] != attempt.step_id or step["status"] != "running":
+            if (
+                step is None
+                or step["step_key"] != attempt.step_key
+                or step["status"] != "running"
+            ):
                 raise WorkflowRecoveryError("Step ownership changed before completion")
             cursor = connection.execute(
                 """
@@ -547,28 +551,29 @@ class WorkflowRecoveryRepository:
             previous_digest = latest["state_digest"] if latest else run["request_digest"]
             version = int(latest["checkpoint_version"]) + 1 if latest else 1
             state_digest = hashlib.sha256(
-                f"{previous_digest}:{attempt.step_number}:{output_digest}".encode()
+                f"{previous_digest}:{attempt.step_key}:{output_digest}".encode()
             ).hexdigest()
             checkpoint_id = str(uuid4())
             connection.execute(
                 """
                 INSERT INTO workflow_checkpoints (
                     checkpoint_id, workflow_id, checkpoint_version,
-                    step_number, state_digest, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    step_number, state_digest, created_at, step_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     checkpoint_id, str(workflow_id), version,
-                    attempt.step_number, state_digest, now,
+                    attempt.step_number, state_digest, now, attempt.step_key,
                 ),
             )
             connection.execute(
                 "UPDATE workflow_runs SET updated_at = ? WHERE workflow_id = ?",
                 (now, str(workflow_id)),
             )
+            self._refresh_dependency_states(connection, workflow_id)
             return WorkflowCheckpoint(
                 checkpoint_id, str(workflow_id), version,
-                attempt.step_number, state_digest, now,
+                attempt.step_number, state_digest, now, attempt.step_key,
             )
 
     def fail_step(
@@ -598,12 +603,16 @@ class WorkflowRecoveryRepository:
             self._assert_lease(connection, workflow_id, lease, now)
             step = connection.execute(
                 """
-                SELECT step_id, status FROM workflow_steps
-                WHERE workflow_id = ? AND step_number = ?
+                SELECT step_id, step_key, status FROM workflow_steps
+                WHERE workflow_id = ? AND step_id = ?
                 """,
-                (str(workflow_id), attempt.step_number),
+                (str(workflow_id), attempt.step_id),
             ).fetchone()
-            if step is None or step["step_id"] != attempt.step_id or step["status"] != "running":
+            if (
+                step is None
+                or step["step_key"] != attempt.step_key
+                or step["status"] != "running"
+            ):
                 raise WorkflowRecoveryError("Step attempt is no longer active")
             cursor = connection.execute(
                 """
@@ -630,6 +639,7 @@ class WorkflowRecoveryRepository:
                 """,
                 (run_status, error_code, now, str(workflow_id)),
             )
+            self._refresh_dependency_states(connection, workflow_id)
 
     def mark_interrupted(
         self, workflow_id: UUID, *, lease: WorkerLease | None = None
@@ -641,7 +651,7 @@ class WorkflowRecoveryRepository:
             self._assert_lease(connection, workflow_id, lease, now)
             rows = connection.execute(
                 """
-                SELECT step_id, step_number, step_kind FROM workflow_steps
+                SELECT step_id, step_number, step_key, step_kind FROM workflow_steps
                 WHERE workflow_id = ? AND status = 'running'
                 """,
                 (str(workflow_id),),
@@ -692,6 +702,7 @@ class WorkflowRecoveryRepository:
                 """,
                 (run_status, error_code, now, str(workflow_id)),
             )
+            self._refresh_dependency_states(connection, workflow_id)
             return len(rows)
 
     def resolve_unknown_step(
@@ -864,6 +875,7 @@ class WorkflowRecoveryRepository:
             row["step_number"],
             row["state_digest"],
             row["created_at"],
+            row["step_key"],
         )
 
     def queue_resume(
