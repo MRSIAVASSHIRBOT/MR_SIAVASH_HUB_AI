@@ -57,3 +57,47 @@ def test_work_order_rejects_unknown_fields():
             verification_steps=["verify"],
             tool_permissions=["shell"],
         )
+
+
+def test_work_order_capability_assessment_uses_shared_cgi_semantics():
+    from mrhub.agents.work_order import assess_work_order_capabilities
+
+    order = WorkOrder(
+        goal="Review tool availability",
+        intent="Report exact registered capability coverage",
+        required_capabilities=["browser.search", "filesystem.read", "Browser.Search"],
+        acceptance_criteria=["All capability gaps are reported"],
+        verification_steps=["Compare exact registered names"],
+        risk_class=RiskClass.LOW,
+    )
+    report = assess_work_order_capabilities(
+        order,
+        [
+            {"name": "browser.search", "description": "web search"},
+            {"name": "web_reader", "description": "filesystem read capability"},
+        ],
+    )
+
+    assert report.required == ("browser.search", "filesystem.read")
+    assert report.available == ("browser.search",)
+    assert report.missing == ("filesystem.read",)
+    assert report.complete is False
+    assert report.as_dict() == {
+        "required": ["browser.search", "filesystem.read"],
+        "available": ["browser.search"],
+        "missing": ["filesystem.read"],
+        "complete": False,
+    }
+
+
+def test_work_order_keeps_its_narrower_capability_limit():
+    payload = {
+        "goal": "Task",
+        "intent": "Intent",
+        "required_capabilities": [f"tool.{index}" for index in range(21)],
+        "acceptance_criteria": ["criterion"],
+        "verification_steps": ["verify"],
+        "risk_class": RiskClass.LOW,
+    }
+    with pytest.raises(ValidationError):
+        WorkOrder.model_validate(payload)
