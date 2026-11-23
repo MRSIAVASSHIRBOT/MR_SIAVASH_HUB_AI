@@ -1168,8 +1168,8 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
         migration.version for migration in all_migrations[:52]
     ]
 
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [53, 54]
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:53])
+    assert SchemaMigrator(connection).migrate() == [53]
     columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
@@ -1229,7 +1229,7 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
     )
     connection.commit()
 
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:54])
     assert SchemaMigrator(connection).migrate() == [54]
 
     steps = connection.execute(
@@ -1254,5 +1254,62 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
         "WHERE checkpoint_id = 'checkpoint-v53'"
     ).fetchone()
     assert dict(checkpoint) == {"step_number": 2, "step_key": "step-2"}
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    connection.close()
+
+
+def test_v55_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "typed-memory-v55.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:54])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:54]
+    ]
+
+    now = "2026-11-23T00:00:00+00:00"
+    connection.execute(
+        """
+        INSERT INTO auth_users (user_id, username, salt, password_hash, created_at)
+        VALUES ('memory-owner', 'memory-owner', 'salt', 'hash', ?)
+        """,
+        (now,),
+    )
+    connection.execute(
+        """
+        INSERT INTO memory_entries (
+            memory_id, owner_user_id, scope, category, content, provenance,
+            confidence, verification_status, created_at, updated_at, expires_at
+        ) VALUES ('legacy-memory', 'memory-owner', 'private', 'notes',
+                  'Legacy memory record', 'user-authored', 0.7,
+                  'user_authored', ?, ?, NULL)
+        """,
+        (now, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [55]
+
+    entry = connection.execute(
+        "SELECT memory_type, content FROM memory_entries WHERE memory_id = 'legacy-memory'"
+    ).fetchone()
+    assert dict(entry) == {
+        "memory_type": "unspecified",
+        "content": "Legacy memory record",
+    }
+    assert connection.execute(
+        "SELECT 1 FROM memory_entries_fts WHERE memory_id = 'legacy-memory'"
+    ).fetchone() is not None
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "UPDATE memory_entries SET memory_type = 'unknown' WHERE memory_id = 'legacy-memory'"
+        )
+    connection.rollback()
+    indexes = {
+        row["name"] for row in connection.execute("PRAGMA index_list(memory_entries)")
+    }
+    assert "idx_memory_owner_type_updated" in indexes
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
