@@ -103,7 +103,7 @@ def generate_work_order(goal: str, model_router: ModelRouter) -> WorkOrder:
         "{intent:string, scope:string, assumptions:string[], constraints:string[], "
         "dependencies:string[], required_capabilities:string[], "
         "acceptance_criteria:string[], verification_steps:string[], "
-        "estimated_complexity:low|moderate|high, missing_information:string[], "
+        "estimated_complexity:'low'|'moderate'|'high', missing_information:string[], "
         "clarification_questions:string[], research_required:boolean, research_questions:string[]}. "
         "Do not include markdown, commentary, extra keys, or risk_class. "
         "Do not invent user permissions or claim actions have been authorized. "
