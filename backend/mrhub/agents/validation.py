@@ -1,4 +1,5 @@
 """Read-only consistency checks for AWI revision integration previews."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
