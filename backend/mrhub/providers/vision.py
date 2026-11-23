@@ -131,12 +131,16 @@ class OllamaVisionProvider:
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid local vision model name")
-        if (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, (int, float))
-            or not math.isfinite(float(timeout_seconds))
-            or not 1 <= timeout_seconds <= 180
-        ):
+        try:
+            valid_timeout = (
+                not isinstance(timeout_seconds, bool)
+                and isinstance(timeout_seconds, (int, float))
+                and math.isfinite(float(timeout_seconds))
+                and 1 <= timeout_seconds <= 180
+            )
+        except (OverflowError, ValueError):
+            valid_timeout = False
+        if not valid_timeout:
             raise ProviderConfigurationError("Vision timeout must be between 1 and 180 seconds")
         self.base_url = OllamaProvider._validate_loopback_url(base_url)
         self.timeout_seconds = timeout_seconds
@@ -160,12 +164,16 @@ class OllamaVisionProvider:
         )
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
-        if (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, (int, float))
-            or not math.isfinite(float(timeout_seconds))
-            or not 0.1 <= timeout_seconds <= 10
-        ):
+        try:
+            valid_timeout = (
+                not isinstance(timeout_seconds, bool)
+                and isinstance(timeout_seconds, (int, float))
+                and math.isfinite(float(timeout_seconds))
+                and 0.1 <= timeout_seconds <= 10
+            )
+        except (OverflowError, ValueError):
+            valid_timeout = False
+        if not valid_timeout:
             raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
