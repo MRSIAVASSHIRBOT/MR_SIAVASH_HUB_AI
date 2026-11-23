@@ -66,6 +66,16 @@ def test_external_tool_requires_exact_owner_approval_once(monkeypatch):
     assert calls == []
 
     _grant_read_permission()
+    spoofed_approval = client.post(
+        "/tools/content.publish/invoke",
+        json={
+            "payload": {"text": "approved copy"},
+            "user_approved": True,
+        },
+    )
+    assert spoofed_approval.status_code == 422
+    assert calls == []
+
     pending = client.post(
         "/tools/content.publish/approvals",
         json={"payload": {"text": "approved copy"}, "expires_in_seconds": 300},
@@ -133,6 +143,18 @@ def test_external_tool_requires_exact_owner_approval_once(monkeypatch):
     ]
     assert all(item["actor_id"] == "local-owner" for item in approval_events)
     assert "approved copy" not in str(approval_events)
+    with repository._connection() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(tool_invocation_approvals)")
+        }
+        stored = connection.execute(
+            "SELECT * FROM tool_invocation_approvals WHERE approval_id = ?",
+            (approval_id,),
+        ).fetchone()
+    assert "payload" not in columns
+    assert "payload_json" not in columns
+    assert "approved copy" not in str(dict(stored))
 
 
 def test_rejected_approval_never_invokes_handler(monkeypatch):
@@ -198,7 +220,7 @@ def test_changed_handler_definition_expires_pending_approval(monkeypatch):
 
 
 def test_tool_approval_store_is_owner_scoped_and_single_use():
-    client = authenticated_client()
+    authenticated_client()
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     store = ToolInvocationApprovalStore(repository)
