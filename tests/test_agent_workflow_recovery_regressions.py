@@ -345,11 +345,19 @@ def test_resume_uses_stable_step_identity_after_request_reordering(monkeypatch):
         AgentPlanRequest.model_validate(reordered_request)
     )
 
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={"request": reordered_request},
+    )
+    assert checked.status_code == 200, checked.json()
+    assert checked.json()["decision"] == "resume"
+    assert checked.json()["next_step_id"] == "beta"
+
     resumed = client.post(
         f"/agent/workflows/{workflow_id}/resume",
         json={"request": reordered_request},
     )
-    assert resumed.status_code == 200
+    assert resumed.status_code == 200, resumed.json()
     assert resumed.json()["queued"] is True
 
     observed = {}
