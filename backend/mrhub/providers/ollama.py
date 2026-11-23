@@ -1,5 +1,6 @@
 """Loopback-only Ollama adapter with bounded synchronous HTTP requests."""
 
+import math
 from urllib.parse import urlsplit
 
 import httpx
@@ -27,7 +28,12 @@ class OllamaProvider:
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid local model name")
-        if not 1 <= timeout_seconds <= 300:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(float(timeout_seconds))
+            or not 1 <= timeout_seconds <= 300
+        ):
             raise ProviderConfigurationError("Timeout must be between 1 and 300 seconds")
         self.base_url = self._validate_loopback_url(base_url)
         self.timeout_seconds = timeout_seconds
@@ -83,7 +89,12 @@ class OllamaProvider:
         return None
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
-        if not 0.1 <= timeout_seconds <= 10:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(float(timeout_seconds))
+            or not 0.1 <= timeout_seconds <= 10
+        ):
             raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
