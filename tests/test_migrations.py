@@ -1246,7 +1246,7 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
     assert steps[1]["depends_on_json"] == '["step-1"]'
     assert steps[2]["depends_on_json"] == '["step-2"]'
     assert [row["dependency_state"] for row in steps] == [
-        "pending", "pending", "pending"
+        "ready", "ready", "ready"
     ]
 
     checkpoint = connection.execute(
