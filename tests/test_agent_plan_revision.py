@@ -55,3 +55,15 @@ def test_duplicate_revision_step_is_not_added_twice():
     plan = {"steps": [{"step_id": "review-1-c", "description": "Existing", "dependencies": []}]}
     revision = revise_plan(plan, [{"criterion_id": "c", "kind": "failed"}], revision=1)
     assert revision.added_step_ids == ()
+
+
+def test_rejects_non_mapping_plan_and_oversized_generated_step_fields():
+    with pytest.raises(PlanRevisionInputError):
+        revise_plan(None, [{"criterion_id": "c", "kind": "failed"}], revision=1)  # type: ignore[arg-type]
+
+    with pytest.raises(PlanRevisionInputError):
+        revise_plan(
+            {"steps": []},
+            [{"criterion_id": "c" * 500, "kind": "failed"}],
+            revision=1,
+        )
