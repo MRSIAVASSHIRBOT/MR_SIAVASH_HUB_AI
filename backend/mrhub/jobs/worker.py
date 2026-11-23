@@ -9,16 +9,19 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread
+from types import MappingProxyType
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 from mrhub.content.dispatcher import ContentScheduleDispatcher
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
+from mrhub.jobs.retry_policy import RetryPolicy, validate_retry_error_code
 from mrhub.jobs.worker_control import WorkerControlRepository
 from mrhub.security.audit import AuditLogger
 
@@ -28,7 +31,28 @@ class WorkerError(RuntimeError):
 
 
 class RetryableWorkerError(WorkerError):
-    """A handler may raise this only for a known transient, safe-to-retry condition."""
+    """A known transient failure eligible only under an explicit task retry policy.
+
+    The exception message is diagnostic-only and is never persisted. Error code
+    and Retry-After metadata are bounded, non-sensitive policy inputs.
+    """
+
+    def __init__(
+        self,
+        message: str = "Transient worker condition",
+        *,
+        error_code: str = "transient_worker_error",
+        retry_after_seconds: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = validate_retry_error_code(error_code)
+        if retry_after_seconds is not None and (
+            type(retry_after_seconds) is not int
+            or retry_after_seconds < 0
+            or retry_after_seconds > 86_400
+        ):
+            raise ValueError("Retry-After must be an integer between 0 and 86400")
+        self.retry_after_seconds = retry_after_seconds
 
 
 class TerminalWorkerError(WorkerError):
@@ -71,6 +95,13 @@ class WorkerEngine:
     RETRY_BASE_SECONDS = 5
     RETRY_MAX_SECONDS = 60
     RETRY_SAFE_TASK_TYPES = frozenset({"demo.echo"})
+    DEFAULT_RETRY_POLICIES: ClassVar[Mapping[str, RetryPolicy]] = MappingProxyType({
+        "demo.echo": RetryPolicy(
+            max_attempts=MAX_ATTEMPTS,
+            base_delay_seconds=RETRY_BASE_SECONDS,
+            max_delay_seconds=RETRY_MAX_SECONDS,
+        )
+    })
 
     def __init__(
         self,
@@ -78,6 +109,7 @@ class WorkerEngine:
         clock: Callable[[], datetime] | None = None,
         lease_seconds: int = 60,
         content_schedule_dispatcher: ContentScheduleDispatcher | None = None,
+        retry_policies: Mapping[str, RetryPolicy] | None = None,
     ) -> None:
         self.repository = repository
         self.database_path = repository.database_path
@@ -86,6 +118,19 @@ class WorkerEngine:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._worker_id = str(uuid4())
         self._lease_seconds = lease_seconds
+        selected_retry_policies = (
+            self.DEFAULT_RETRY_POLICIES if retry_policies is None else retry_policies
+        )
+        if any(
+            not isinstance(task_type, str)
+            or task_type not in self.RETRY_SAFE_TASK_TYPES
+            or not isinstance(policy, RetryPolicy)
+            for task_type, policy in selected_retry_policies.items()
+        ):
+            raise WorkerError(
+                "Retry policies may only be configured for allow-listed idempotent task types"
+            )
+        self._retry_policies = dict(selected_retry_policies)
         if content_schedule_dispatcher is None:
             from mrhub.content.providers import configured_publish_adapters
 
@@ -833,8 +878,8 @@ class WorkerEngine:
                 result = handler(task, lease, lease_lost)
             else:
                 result = handler(task)
-        except RetryableWorkerError:
-            return self._schedule_retry_or_fail(task, lease=lease)
+        except RetryableWorkerError as exc:
+            return self._schedule_retry_or_fail(task, lease=lease, error=exc)
         except TerminalWorkerError as exc:
             return self._finish_failure(task, exc.error_code, lease=lease)
         except (ValueError, TypeError, KeyError):
@@ -941,22 +986,29 @@ class WorkerEngine:
         return saved
 
     def _schedule_retry_or_fail(
-        self, task: TaskRecord, *, lease: WorkerLease
+        self,
+        task: TaskRecord,
+        *,
+        lease: WorkerLease,
+        error: RetryableWorkerError,
     ) -> TaskRecord:
-        if task.task_type not in self.RETRY_SAFE_TASK_TYPES:
+        policy = self._retry_policies.get(task.task_type)
+        # Retrying is opt-in per task type and error code. A handler exception
+        # alone never establishes idempotency or permission to replay side effects.
+        if policy is None or error.error_code not in policy.retryable_error_codes:
             return self._finish_failure(task, "retry_not_permitted", lease=lease)
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT attempt_count FROM worker_executions WHERE task_id = ?",
                 (str(task.task_id),),
             ).fetchone()
-        attempts = row["attempt_count"] if row else self.MAX_ATTEMPTS
-        if attempts >= self.MAX_ATTEMPTS:
+        attempts = row["attempt_count"] if row else policy.max_attempts
+        if attempts >= policy.max_attempts:
             return self._finish_failure(task, "retry_limit_exceeded", lease=lease)
 
-        delay = min(
-            self.RETRY_BASE_SECONDS * (2 ** max(attempts - 1, 0)),
-            self.RETRY_MAX_SECONDS,
+        delay = policy.delay_seconds(
+            attempt_number=attempts,
+            retry_after_seconds=error.retry_after_seconds,
         )
         now = self._now()
         retry_at = (now + timedelta(seconds=delay)).isoformat()
