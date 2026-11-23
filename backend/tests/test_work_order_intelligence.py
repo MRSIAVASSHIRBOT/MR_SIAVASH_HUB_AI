@@ -90,7 +90,7 @@ def test_complexity_uses_bounded_step_dependency_and_capability_structure():
     )
     result = assess_work_order_intelligence(
         order,
-        make_plan(9, chain=True),
+        make_plan(9, chain=True, capabilities=order.required_capabilities),
         report(
             required=order.required_capabilities,
             available=order.required_capabilities,
@@ -108,7 +108,7 @@ def test_mid_sized_work_order_is_moderate_complexity():
     order = make_work_order(capabilities=["tool.one", "tool.two"])
     result = assess_work_order_intelligence(
         order,
-        make_plan(5, chain=True),
+        make_plan(5, chain=True, capabilities=order.required_capabilities),
         report(required=order.required_capabilities, available=order.required_capabilities),
     )
     assert result.complexity is ComplexityLevel.MODERATE
@@ -257,3 +257,105 @@ def test_rejects_cyclic_plan_instead_of_guessing_execution_order():
             ],
             rationale="Cyclic input",
         )
+
+
+def test_intelligence_assessment_rejects_plan_missing_work_order_criteria():
+    order = make_work_order()
+    invalid_plan = ExecutionPlan(
+        steps=[
+            PlanStep(
+                step_id="only-step",
+                description="Incomplete criterion coverage",
+                verifies_criteria=["A different criterion"],
+                verification="Inspect the proposed result",
+            )
+        ],
+        rationale="Intentionally incomplete test fixture",
+    )
+
+    with pytest.raises(ValueError, match="criterion coverage"):
+        assess_work_order_intelligence(order, invalid_plan, report())
+
+
+def test_intelligence_assessment_rejects_plan_missing_required_capability():
+    order = make_work_order(capabilities=["tool.required"])
+    invalid_plan = make_plan(capabilities=[])
+
+    with pytest.raises(ValueError, match="capability coverage"):
+        assess_work_order_intelligence(
+            order,
+            invalid_plan,
+            report(required=("tool.required",), missing=("tool.required",)),
+        )
+
+
+def test_intelligence_assessment_rejects_capability_report_for_another_work_order():
+    order = make_work_order(capabilities=["tool.required"])
+    valid_plan = make_plan(capabilities=["tool.required"])
+
+    with pytest.raises(ValueError, match="do not match the WorkOrder"):
+        assess_work_order_intelligence(
+            order,
+            valid_plan,
+            report(required=("tool.other",), available=("tool.other",)),
+        )
+
+
+def test_intelligence_assessment_rejects_incomplete_capability_partition():
+    order = make_work_order(capabilities=["tool.required"])
+    valid_plan = make_plan(capabilities=["tool.required"])
+
+    with pytest.raises(ValueError, match="does not partition"):
+        assess_work_order_intelligence(
+            order,
+            valid_plan,
+            report(required=("tool.required",)),
+        )
+
+
+def test_intelligence_assessment_rejects_duplicate_work_order_criteria():
+    order = WorkOrder(
+        goal="Prepare a software plan",
+        intent="Create an ordered, verifiable plan",
+        scope="Planning only",
+        acceptance_criteria=["The plan is verifiable", "The plan is verifiable"],
+        verification_steps=["Inspect the result"],
+        risk_class=RiskClass.LOW,
+    )
+
+    with pytest.raises(ValueError, match="acceptance criteria must be unique"):
+        assess_work_order_intelligence(order, make_plan(), report())
+
+
+def test_intelligence_assessment_rejects_case_insensitive_duplicate_capabilities():
+    order = make_work_order(capabilities=["tool.required", "TOOL.REQUIRED"])
+    plan = make_plan(capabilities=order.required_capabilities)
+    capability_report = report(
+        required=order.required_capabilities,
+        available=order.required_capabilities,
+    )
+
+    with pytest.raises(ValueError, match="required capabilities must be unique"):
+        assess_work_order_intelligence(order, plan, capability_report)
+
+
+@pytest.mark.parametrize(
+    ("available", "missing"),
+    [
+        (("tool.required", "tool.required"), ()),
+        (("tool.required",), ("tool.required",)),
+    ],
+)
+def test_intelligence_assessment_rejects_duplicate_or_overlapping_capability_report_entries(
+    available, missing
+):
+    order = make_work_order(capabilities=["tool.required"])
+    plan = make_plan(capabilities=order.required_capabilities)
+    capability_report = report(
+        required=order.required_capabilities,
+        available=available,
+        missing=missing,
+    )
+
+    with pytest.raises(ValueError, match="does not partition"):
+        assess_work_order_intelligence(order, plan, capability_report)
