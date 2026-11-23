@@ -41,6 +41,7 @@ def test_lesson_proposal_is_stable_and_links_to_persisted_step_evidence():
     assert payload["automatic_memory_write"] is False
     assert payload["execution_authorized"] is False
     assert payload["memory_entry_preview"]["verification_status"] == "user_authored"
+    assert payload["memory_entry_preview"]["memory_type"] == "procedural"
 
 
 @pytest.mark.parametrize(
