@@ -34,7 +34,7 @@
 - Verify end-to-end integration of WorkOrder → capability assessment → DAG plan → authorized execution, with one canonical contract and persisted revision identity.
 - Confirm tool/model selection criteria and capability evidence are consistent across API and worker; tests should cover mismatched/partial plans.
 - Replan on failures only when evidence supports a change, preserve revision/digest chain, and enforce bounded/no-progress stopping.
-- Review integration PR #526 and PR #511 after CI and source-level conflict checks; do not merge draft PRs based on status alone.
+- Review integration PR #526 and the reconciled persistence replacement PR #528 after exact-head CI; the legacy PR #511 was closed as superseded and not merged.
 
 ### H3 disposition
 **Partial—not complete.** Core GPI, capability-gap, DAG, and bounded review/replanning primitives exist. Full integrated intelligence-to-execution contract and failure-driven plan-revision validation remain.
@@ -42,5 +42,5 @@
 ## Next safe implementation sequence
 1. Finish H2 hard-deadline design with process-isolation requirements; do not add unsafe thread-based timeout.
 2. Reconcile PR #526 after dependency #518 merged; verify all exact-head checks and review findings.
-3. Audit PR #511 persistence and plan revision contract; ensure digest/version/owner boundaries and migration compatibility.
+3. Validate PR #528 encrypted persistence and plan-revision contract; ensure digest/version/owner boundaries and migration compatibility.
 4. Close remaining H3 integration gaps with tests before advancing to H4 security and H5 memory.
