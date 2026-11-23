@@ -325,3 +325,37 @@ def test_intelligence_assessment_rejects_duplicate_work_order_criteria():
 
     with pytest.raises(ValueError, match="acceptance criteria must be unique"):
         assess_work_order_intelligence(order, make_plan(), report())
+
+
+def test_intelligence_assessment_rejects_case_insensitive_duplicate_capabilities():
+    order = make_work_order(capabilities=["tool.required", "TOOL.REQUIRED"])
+    plan = make_plan(capabilities=order.required_capabilities)
+    capability_report = report(
+        required=order.required_capabilities,
+        available=order.required_capabilities,
+    )
+
+    with pytest.raises(ValueError, match="required capabilities must be unique"):
+        assess_work_order_intelligence(order, plan, capability_report)
+
+
+@pytest.mark.parametrize(
+    ("available", "missing"),
+    [
+        (("tool.required", "tool.required"), ()),
+        (("tool.required",), ("tool.required",)),
+    ],
+)
+def test_intelligence_assessment_rejects_duplicate_or_overlapping_capability_report_entries(
+    available, missing
+):
+    order = make_work_order(capabilities=["tool.required"])
+    plan = make_plan(capabilities=order.required_capabilities)
+    capability_report = report(
+        required=order.required_capabilities,
+        available=available,
+        missing=missing,
+    )
+
+    with pytest.raises(ValueError, match="does not partition"):
+        assess_work_order_intelligence(order, plan, capability_report)
