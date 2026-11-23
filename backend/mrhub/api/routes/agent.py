@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
@@ -27,7 +27,7 @@ from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
-from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
+from mrhub.api.routes.models import build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass, TaskRecord
@@ -68,9 +68,23 @@ def _build_owner_agent_core(
 
 
 class WorkflowReconciliationRequest(BaseModel):
-    step_number: int = Field(ge=1)
+    step_number: int | None = Field(default=None, ge=1)
+    step_id: str | None = Field(default=None, min_length=1, max_length=64, pattern="^[a-z][a-z0-9-]{0,63}$")
     outcome: Literal["succeeded", "failed"]
     output_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def require_exactly_one_step_identity(self) -> "WorkflowReconciliationRequest":
+        if (self.step_number is None) == (self.step_id is None):
+            raise ValueError("Provide exactly one of step_id or step_number")
+        return self
+
+    def resolved_step_identity(self) -> int | str:
+        if self.step_id is not None:
+            return self.step_id
+        if self.step_number is not None:
+            return self.step_number
+        raise ValueError("Workflow reconciliation step identity is missing")
 
 
 class WorkflowResumeCheckRequest(BaseModel):
@@ -164,25 +178,43 @@ def create_goal_work_order_plan(
         ) from exc
 
     try:
-        model_router = build_model_router(include_stub=False, max_timeout_seconds=60)
-        selection = model_router.select(ModelRequest(requires_text=True))
-        if selection.provider == "moonshot":
-            _enforce_kimi_request_limit(current_user.user_id)
+        # GPI/AWI planning is local-only in the zero-cost runtime profile.
+        # Paid providers remain available only through their dedicated, explicit endpoints.
+        model_router = build_model_router(
+            provider_mode="local",
+            include_stub=False,
+            max_timeout_seconds=60,
+        )
+        selection = model_router.select(
+            ModelRequest(requires_text=True, prefer_local=True)
+        )
         work_order = generate_work_order(request.goal, model_router)
         if work_order.risk_class.value == "prohibited":
+            try:
+                audit_logger.record(
+                    event_type="agent.work_order_blocked",
+                    outcome="denied",
+                    actor_type="user",
+                    actor_id=current_user.user_id,
+                    subject_type="work_order",
+                    metadata={"status": "generated_output_prohibited"},
+                )
+            except sqlite3.Error as audit_exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Audit storage is unavailable",
+                ) from audit_exc
             raise HTTPException(
                 status_code=422,
                 detail="The requested goal is outside the supported safety policy",
             )
-        if selection.provider == "moonshot":
-            _enforce_kimi_request_limit(current_user.user_id)
         plan = generate_execution_plan(work_order, model_router)
     except (WorkOrderGenerationError, PlanningError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
-            detail="No configured non-stub model provider is available",
+            detail="No configured non-stub local model provider is available",
         ) from exc
     except ProviderError as exc:
         raise HTTPException(status_code=503, detail=exc.code) from exc
@@ -644,7 +676,7 @@ def execute_agent_workflow(
                 request_digest,
                 step_specs,
                 task=task,
-                definition_version=2,
+                definition_version=3,
                 owner_user_id=current_user.user_id,
                 workflow_id=workflow_id,
                 payload_envelope={
@@ -752,7 +784,7 @@ def reconcile_agent_workflow(
     try:
         checkpoint = recovery.resolve_unknown_step(
             workflow_id,
-            request.step_number,
+            request.resolved_step_identity(),
             request.outcome,
             output_digest=request.output_digest,
             owner_user_id=current_user.user_id,
@@ -799,6 +831,7 @@ def check_agent_workflow_resume(
         "workflow_id": str(workflow_id),
         "decision": decision.decision,
         "next_step": decision.next_step,
+        "next_step_id": decision.next_step_id,
         "checkpoint_version": decision.checkpoint_version,
         "reason_code": decision.reason_code,
         "execution_started": False,
