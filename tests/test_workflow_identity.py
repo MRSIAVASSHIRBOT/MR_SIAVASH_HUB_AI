@@ -7,7 +7,7 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.recovery import RecoveryRequired, WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
 from mrhub.tools.builtins import build_tool_registry
