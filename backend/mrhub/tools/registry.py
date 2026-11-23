@@ -97,7 +97,7 @@ class ToolRegistry:
     @staticmethod
     def _validate_schema_model(model: object, field_name: str) -> None:
         if not isinstance(model, type) or not issubclass(model, BaseModel):
-            raise ValueError(f"{field_name} must be a Pydantic BaseModel subclass")
+            raise TypeError(f"{field_name} must be a Pydantic BaseModel subclass")
 
     @classmethod
     def _validate_definition(cls, tool: ToolDefinition) -> None:
@@ -114,7 +114,7 @@ class ToolRegistry:
         cls._validate_schema_model(tool.output_model, "output_model")
 
         if not callable(tool.handler):
-            raise ValueError("Tool handler must be callable")
+            raise TypeError("Tool handler must be callable")
         handler_call = type(tool.handler).__call__
         if (
             inspect.iscoroutinefunction(tool.handler)
@@ -125,15 +125,15 @@ class ToolRegistry:
             raise ValueError("Tool handlers must be synchronous")
 
         if not isinstance(tool.risk_class, RiskClass):
-            raise ValueError("Tool risk_class must be a server-defined RiskClass")
+            raise TypeError("Tool risk_class must be a server-defined RiskClass")
         if type(tool.external_side_effect) is not bool:
-            raise ValueError("Tool external_side_effect must be a boolean")
+            raise TypeError("Tool external_side_effect must be a boolean")
 
         if not isinstance(tool.replay_safety, ReplaySafety):
-            raise ValueError("Tool replay_safety must be a server-defined ReplaySafety value")
+            raise TypeError("Tool replay_safety must be a server-defined ReplaySafety value")
 
         if not isinstance(tool.required_permissions, frozenset):
-            raise ValueError("Tool required_permissions must be an immutable frozenset")
+            raise TypeError("Tool required_permissions must be an immutable frozenset")
         if len(tool.required_permissions) > cls.MAX_REQUIRED_PERMISSIONS:
             raise ValueError(
                 f"Tool required_permissions cannot exceed {cls.MAX_REQUIRED_PERMISSIONS} entries"
