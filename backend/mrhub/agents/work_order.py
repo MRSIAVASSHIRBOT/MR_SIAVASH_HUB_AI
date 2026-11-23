@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mrhub.agents.capability_gaps import (
     MAX_NAME_LENGTH as MAX_REGISTERED_TOOL_NAME_LENGTH,
@@ -41,6 +41,10 @@ class WorkOrder(BaseModel):
     intent: str = Field(min_length=1, max_length=500)
     scope: str = Field(default="", max_length=1_000)
     assumptions: list[WorkOrderText] = Field(default_factory=list, max_length=12)
+    missing_information: list[WorkOrderText] = Field(default_factory=list, max_length=12)
+    clarifying_questions: list[WorkOrderText] = Field(default_factory=list, max_length=12)
+    research_required: bool = Field(default=False, strict=True)
+    research_questions: list[WorkOrderText] = Field(default_factory=list, max_length=8)
     constraints: list[WorkOrderText] = Field(default_factory=list, max_length=20)
     dependencies: list[WorkOrderDependency] = Field(default_factory=list, max_length=20)
     required_capabilities: list[WorkOrderCapability] = Field(default_factory=list, max_length=20)
@@ -63,8 +67,9 @@ class WorkOrder(BaseModel):
         return normalized
 
     @field_validator(
-        "assumptions", "constraints", "dependencies", "required_capabilities",
-        "acceptance_criteria", "verification_steps",
+        "assumptions", "missing_information", "clarifying_questions", "research_questions",
+        "constraints", "dependencies", "required_capabilities", "acceptance_criteria",
+        "verification_steps",
     )
     @classmethod
     def normalize_nonblank_items(cls, items: list[str]) -> list[str]:
@@ -72,6 +77,17 @@ class WorkOrder(BaseModel):
         if any(not item for item in normalized):
             raise ValueError("list entries must not be blank")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_research_contract(self) -> "WorkOrder":
+        """Require explicit bounded questions whenever research is requested."""
+        if self.research_required and not self.research_questions:
+            raise ValueError("research_questions are required when research_required is true")
+        if self.research_questions and not self.research_required:
+            raise ValueError("research_questions require research_required to be true")
+        if self.clarifying_questions and not self.missing_information:
+            raise ValueError("clarifying_questions require missing_information")
+        return self
 
 
 # Backwards-compatible public name retained for existing route and client imports.
