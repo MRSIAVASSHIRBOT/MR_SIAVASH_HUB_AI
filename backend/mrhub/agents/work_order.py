@@ -80,13 +80,17 @@ class WorkOrder(BaseModel):
 
     @model_validator(mode="after")
     def validate_research_contract(self) -> "WorkOrder":
-        """Require explicit bounded questions whenever research is requested."""
+        """Keep missing-information and research signals paired with concrete questions."""
+        if self.missing_information and not self.clarifying_questions:
+            raise ValueError(
+                "missing_information requires at least one clarifying question"
+            )
+        if self.clarifying_questions and not self.missing_information:
+            raise ValueError("clarifying_questions require missing_information")
         if self.research_required and not self.research_questions:
             raise ValueError("research_questions are required when research_required is true")
         if self.research_questions and not self.research_required:
             raise ValueError("research_questions require research_required to be true")
-        if self.clarifying_questions and not self.missing_information:
-            raise ValueError("clarifying_questions require missing_information")
         return self
 
 
