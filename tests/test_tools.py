@@ -8,6 +8,8 @@ from mrhub.tools.registry import (
     ReplaySafety,
     ToolDefinition,
     ToolExecutionError,
+    ToolLifecycleEvent,
+    ToolLifecycleStage,
     ToolPolicyError,
     ToolRegistry,
 )
