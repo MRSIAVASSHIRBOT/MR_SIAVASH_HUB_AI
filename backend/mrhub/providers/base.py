@@ -55,7 +55,7 @@ class ProviderRequest(BaseModel):
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError("Provider request timeout must be a finite number")
+            raise TypeError("Provider request timeout must be a finite number")
         try:
             finite = math.isfinite(float(value))
         except (OverflowError, ValueError):
