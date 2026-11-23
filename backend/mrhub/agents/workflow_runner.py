@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 from datetime import UTC, datetime
+from logging import getLogger
 from threading import Event, Thread
 from uuid import UUID, uuid4
 
@@ -26,6 +27,55 @@ from mrhub.security.audit import AuditLogger
 
 class AgentWorkflowRunner:
     """Run supplied inputs in memory while fencing every durable workflow transition."""
+
+    _logger = getLogger(__name__)
+
+    def _record_trace_event(
+        self,
+        *,
+        task_id: str,
+        workflow_id: UUID,
+        trace_id: str,
+        event_type: str,
+        outcome: str,
+        step_id: str | None = None,
+        attempt_id: str | None = None,
+        attempt_number: int | None = None,
+        tool_name: str | None = None,
+        reason_code: str | None = None,
+    ) -> None:
+        """Persist safe execution metadata without allowing telemetry to affect work."""
+        metadata: dict[str, object] = {
+            "trace_id": trace_id,
+            "workflow_id": str(workflow_id),
+            "status": outcome,
+        }
+        if step_id is not None:
+            metadata["step_id"] = step_id
+        if attempt_id is not None:
+            metadata["attempt_id"] = attempt_id
+        if attempt_number is not None:
+            metadata["attempt_number"] = attempt_number
+        if tool_name is not None:
+            metadata["tool_name"] = tool_name
+        if reason_code is not None:
+            metadata["reason_code"] = reason_code[:160]
+        try:
+            AuditLogger(self.repository).record(
+                event_type=event_type,
+                outcome=outcome,
+                subject_type="task",
+                subject_id=task_id,
+                actor_type="system",
+                metadata=metadata,
+            )
+        except Exception:  # noqa: BLE001
+            # Observability failure must never trigger a duplicate side effect.
+            self._logger.warning(
+                "workflow_trace_event_persist_failed trace_id=%s event_type=%s",
+                trace_id,
+                event_type,
+            )
 
     def __init__(
         self,
@@ -279,10 +329,14 @@ class AgentWorkflowRunner:
                 event_type="task.submitted",
                 outcome="queued",
                 subject_id=str(task.task_id),
+                actor_type="user",
+                actor_id=owner_user_id,
                 metadata={
                     "task_type": task.task_type,
                     "risk_class": task.risk_class.value,
                     "decision": "allow",
+                    "trace_id": str(task.task_id),
+                    "workflow_id": str(workflow_id),
                 },
             )
             self.jobs.transition(task.task_id, TaskStatus.RUNNING)
@@ -298,6 +352,7 @@ class AgentWorkflowRunner:
                 daemon=True,
             )
             heartbeat.start()
+        trace_id = str(task.task_id)
         attempts: dict[int, StepAttempt] = {}
         runtime_step_ids = {
             runtime_number: request.tool_step_id(request_number, requested_tool)
@@ -311,10 +366,39 @@ class AgentWorkflowRunner:
                 lease, increment_attempt=not worker_owned_lease
             )
             self.recovery.start_run(workflow_id, lease=lease)
+            self._record_trace_event(
+                task_id=str(task.task_id),
+                workflow_id=workflow_id,
+                trace_id=trace_id,
+                event_type="agent.workflow.started",
+                outcome="running",
+            )
             provider_attempt = self.recovery.start_step(workflow_id, "step-1", lease=lease)
+            self._record_trace_event(
+                task_id=str(task.task_id),
+                workflow_id=workflow_id,
+                trace_id=trace_id,
+                event_type="agent.workflow.step.started",
+                outcome="running",
+                step_id="step-1",
+                attempt_id=provider_attempt.attempt_id,
+                attempt_number=provider_attempt.attempt_number,
+                tool_name="provider_selection",
+            )
             provider_digest = self._digest(plan.get("selected_provider", {}))
             self.recovery.complete_step(
                 workflow_id, provider_attempt, provider_digest, lease=lease
+            )
+            self._record_trace_event(
+                task_id=str(task.task_id),
+                workflow_id=workflow_id,
+                trace_id=trace_id,
+                event_type="agent.workflow.step.succeeded",
+                outcome="succeeded",
+                step_id="step-1",
+                attempt_id=provider_attempt.attempt_id,
+                attempt_number=provider_attempt.attempt_number,
+                tool_name="provider_selection",
             )
 
             def on_step(number: int, status: str, error_code: str | None) -> None:
@@ -324,6 +408,18 @@ class AgentWorkflowRunner:
                     step_key = runtime_step_ids[number]
                     attempts[number] = self.recovery.start_step(
                         workflow_id, step_key, lease=lease
+                    )
+                    definition = tools_by_execution_step.get(number)
+                    self._record_trace_event(
+                        task_id=str(task.task_id),
+                        workflow_id=workflow_id,
+                        trace_id=trace_id,
+                        event_type="agent.workflow.step.started",
+                        outcome="running",
+                        step_id=step_key,
+                        attempt_id=attempts[number].attempt_id,
+                        attempt_number=attempts[number].attempt_number,
+                        tool_name=getattr(definition, "name", "unknown"),
                     )
                 elif status == "failed":
                     attempt = attempts.get(number)
@@ -339,6 +435,26 @@ class AgentWorkflowRunner:
                             unknown_outcome=definition.external_side_effect,
                             lease=lease,
                         )
+                        self._record_trace_event(
+                            task_id=str(task.task_id),
+                            workflow_id=workflow_id,
+                            trace_id=trace_id,
+                            event_type=(
+                                "agent.workflow.step.unknown_outcome"
+                                if definition.external_side_effect
+                                else "agent.workflow.step.failed"
+                            ),
+                            outcome=(
+                                "unknown_outcome"
+                                if definition.external_side_effect
+                                else "failed"
+                            ),
+                            step_id=attempt.step_id,
+                            attempt_id=attempt.attempt_id,
+                            attempt_number=attempt.attempt_number,
+                            tool_name=definition.name,
+                            reason_code=failure_code,
+                        )
 
             def on_step_result(number: int, output_digest: str) -> None:
                 if lease_lost.is_set():
@@ -348,6 +464,17 @@ class AgentWorkflowRunner:
                     raise RuntimeError("Workflow step result has no active attempt")
                 self.recovery.complete_step(
                     workflow_id, attempt, output_digest, lease=lease
+                )
+                self._record_trace_event(
+                    task_id=str(task.task_id),
+                    workflow_id=workflow_id,
+                    trace_id=trace_id,
+                    event_type="agent.workflow.step.succeeded",
+                    outcome="succeeded",
+                    step_id=attempt.step_id,
+                    attempt_id=attempt.attempt_id,
+                    attempt_number=attempt.attempt_number,
+                    tool_name=getattr(tools_by_execution_step.get(number), "name", "unknown"),
                 )
                 del attempts[number]
 
@@ -396,6 +523,14 @@ class AgentWorkflowRunner:
                 current_task = self.jobs.get(task.task_id)
                 if current_task is not None and current_task.status is TaskStatus.RUNNING:
                     self.jobs.transition(task.task_id, TaskStatus.CANCELLED, lease=lease)
+                self._record_trace_event(
+                    task_id=str(task.task_id),
+                    workflow_id=workflow_id,
+                    trace_id=trace_id,
+                    event_type="agent.workflow.cancelled",
+                    outcome="cancelled",
+                    reason_code="owner_cancellation",
+                )
                 return {
                     "workflow_id": str(workflow_id),
                     "execution": execution,
@@ -403,6 +538,13 @@ class AgentWorkflowRunner:
             if execution["execution_completed"]:
                 self.recovery.finish_run(workflow_id, "succeeded", lease=lease)
                 self.jobs.transition(task.task_id, TaskStatus.SUCCEEDED, lease=lease)
+                self._record_trace_event(
+                    task_id=str(task.task_id),
+                    workflow_id=workflow_id,
+                    trace_id=trace_id,
+                    event_type="agent.workflow.succeeded",
+                    outcome="succeeded",
+                )
             else:
                 if current is not None and current["status"] == "running":
                     self.recovery.finish_run(workflow_id, "failed", lease=lease)
@@ -413,6 +555,24 @@ class AgentWorkflowRunner:
                     else TaskStatus.FAILED
                 )
                 self.jobs.transition(task.task_id, target, lease=lease)
+                self._record_trace_event(
+                    task_id=str(task.task_id),
+                    workflow_id=workflow_id,
+                    trace_id=trace_id,
+                    event_type=(
+                        "agent.workflow.recovery_required"
+                        if target is TaskStatus.WAITING_APPROVAL
+                        else "agent.workflow.failed"
+                    ),
+                    outcome=(
+                        "recovery_required"
+                        if target is TaskStatus.WAITING_APPROVAL
+                        else "failed"
+                    ),
+                    reason_code=execution.get("error_code")
+                    if isinstance(execution.get("error_code"), str)
+                    else None,
+                )
         except Exception as exc:
             if self.lease_manager.is_current(lease):
                 self.recovery.mark_interrupted(workflow_id, lease=lease)
@@ -428,6 +588,14 @@ class AgentWorkflowRunner:
                         else TaskStatus.FAILED
                     )
                     self.jobs.transition(task.task_id, target, lease=lease)
+                self._record_trace_event(
+                    task_id=str(task.task_id),
+                    workflow_id=workflow_id,
+                    trace_id=trace_id,
+                    event_type="agent.workflow.interrupted",
+                    outcome="interrupted",
+                    reason_code="execution_exception",
+                )
             raise RuntimeError("Workflow execution stopped; inspect its recovery state") from exc
         finally:
             if not worker_owned_lease:

@@ -58,6 +58,13 @@ class AuditLogger:
         "missing_capability_count",
         "declared_risk_class",
         "declared_risk_is_authoritative",
+        "trace_id",
+        "workflow_id",
+        "step_id",
+        "attempt_id",
+        "step_number",
+        "attempt_number",
+        "duration_ms",
     })
 
     def __init__(self, repository: TaskRepository) -> None:

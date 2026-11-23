@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -676,10 +677,76 @@ def list_agent_workflows(
     return {"workflows": workflows, "count": len(workflows)}
 
 
+@router.get("/traces/{trace_id}")
+def get_agent_trace(
+    trace_id: UUID,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=20, ge=1, le=50),
+    before_created_at: str | None = Query(default=None, max_length=40),
+    before_event_id: UUID | None = None,
+) -> dict[str, object]:
+    """Return one bounded, owner-scoped task/workflow execution timeline.
+
+    The trace ID is the server-generated task UUID, not a credential or a
+    client-controlled correlation token. HTTP request IDs remain separate.
+    """
+    if (before_created_at is None) != (before_event_id is None):
+        raise HTTPException(
+            status_code=422,
+            detail="Both cursor fields must be provided together",
+        )
+    before = None
+    if before_created_at is not None and before_event_id is not None:
+        try:
+            parsed_cursor_time = datetime.fromisoformat(before_created_at)
+            if parsed_cursor_time.tzinfo is None or parsed_cursor_time.utcoffset() is None:
+                raise ValueError("timezone offset is required")
+            # Database timestamps are stored in UTC ISO-8601 form. Canonicalize
+            # equivalent offsets before applying the lexicographic keyset cursor.
+            canonical_cursor_time = parsed_cursor_time.astimezone(UTC).isoformat()
+        except (OverflowError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid timezone-aware trace cursor timestamp",
+            ) from exc
+        before = (canonical_cursor_time, str(before_event_id))
+
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    owned_trace = tasks.get_owned_task_trace(trace_id, current_user.user_id)
+    if owned_trace is None:
+        raise HTTPException(status_code=404, detail="Execution trace not found")
+
+    page = tasks.list_task_audit_event_page(trace_id, limit=limit, before=before)
+    events = page["events"]
+    next_cursor = None
+    if page["has_more"] and events:
+        last_event = events[-1]
+        next_cursor = {
+            "before_created_at": last_event["created_at"],
+            "before_event_id": last_event["event_id"],
+        }
+    return {
+        "trace_id": str(trace_id),
+        "task_id": owned_trace["task_id"],
+        "workflow_id": owned_trace["workflow_id"],
+        "events": events,
+        "has_more": page["has_more"],
+        "next_cursor": next_cursor,
+        "limitations": [
+            "The current trace scope is one task and its task-linked workflow.",
+            "Trace events contain allow-listed metadata, not raw prompts or tool payloads.",
+            "Request IDs identify HTTP requests and are distinct from execution trace IDs.",
+        ],
+    }
+
+
 @router.post("/workflows")
 def execute_agent_workflow(
     request: AgentPlanRequest,
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
 ) -> dict[str, object]:
     """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
@@ -734,10 +801,14 @@ def execute_agent_workflow(
                         UUID(existing_record.workflow_id), owner_user_id=current_user.user_id
                     )
                     if existing is not None:
+                        replay_task_id = existing.get("task_id")
+                        if isinstance(replay_task_id, str):
+                            response.headers["X-Trace-ID"] = replay_task_id
                         return {
                             "workflow": existing,
                             "execution": None,
                             "idempotent_replay": True,
+                            "trace_id": replay_task_id,
                         }
                 raise HTTPException(
                     status_code=409,
@@ -775,29 +846,40 @@ def execute_agent_workflow(
                         UUID(record.workflow_id), owner_user_id=current_user.user_id
                     )
                     if existing is not None:
+                        replay_task_id = existing.get("task_id")
+                        if isinstance(replay_task_id, str):
+                            response.headers["X-Trace-ID"] = replay_task_id
                         return {
                             "workflow": existing,
                             "execution": None,
                             "idempotent_replay": True,
+                            "trace_id": replay_task_id,
                         }
             raise HTTPException(
                 status_code=409,
                 detail="Workflow submission conflicts with an existing resource",
             ) from exc
+        trace_id = str(task.task_id)
+        response.headers["X-Trace-ID"] = trace_id
         AuditLogger(tasks).record(
             event_type="task.submitted",
             outcome="queued",
             subject_id=str(task.task_id),
+            actor_type="user",
+            actor_id=current_user.user_id,
             metadata={
                 "task_type": task.task_type,
                 "risk_class": task.risk_class.value,
                 "decision": "allow",
+                "trace_id": trace_id,
+                "workflow_id": str(workflow_id),
             },
         )
         return {
             "workflow": recovery.get_run(workflow_id, owner_user_id=current_user.user_id),
             "execution": None,
             "queued": True,
+            "trace_id": trace_id,
         }
     except LookupError as exc:
         raise HTTPException(

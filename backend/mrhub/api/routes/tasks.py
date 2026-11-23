@@ -103,6 +103,7 @@ def create_task(
             if existing is None:
                 raise HTTPException(status_code=409, detail="Idempotent task is unavailable")
             response.status_code = 200
+            response.headers["X-Trace-ID"] = str(existing.task_id)
             return existing
         saved = repository.get(task.task_id)
         if saved is None:
@@ -110,14 +111,18 @@ def create_task(
     else:
         saved = JobEngine(repository).submit(task)
 
+    response.headers["X-Trace-ID"] = str(saved.task_id)
     AuditLogger(repository).record(
         event_type="task.submitted",
         outcome="waiting_approval" if saved.status is TaskStatus.WAITING_APPROVAL else "queued",
         subject_id=str(saved.task_id),
+        actor_type="user",
+        actor_id=user.user_id,
         metadata={
             "task_type": saved.task_type,
             "risk_class": saved.risk_class.value,
             "decision": decision.decision.value,
+            "trace_id": str(saved.task_id),
         },
     )
     return saved
