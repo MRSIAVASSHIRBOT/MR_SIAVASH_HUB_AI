@@ -20,6 +20,14 @@ def test_builtin_echo_tool_validates_and_returns_typed_output():
     assert result == {"text": "hello", "character_count": 5}
 
 
+def test_builtin_echo_tool_is_explicitly_retry_safe():
+    registry = build_tool_registry()
+    tool = registry.get("text.echo")
+
+    assert tool.replay_safety.value == "retry_safe"
+    assert registry.catalog()[0]["replay_safety"] == "retry_safe"
+
+
 def test_registry_rejects_unregistered_tools():
     with pytest.raises(LookupError):
         build_tool_registry().invoke("shell.execute", {"command": "not allowed"})
