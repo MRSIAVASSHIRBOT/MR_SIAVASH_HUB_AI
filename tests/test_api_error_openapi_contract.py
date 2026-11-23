@@ -1,4 +1,6 @@
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from mrhub.main import create_app
 
@@ -15,7 +17,8 @@ def test_openapi_documents_common_error_contract_on_mounted_routes():
     assert "APIErrorIssue" in components
 
     operation = schema["paths"]["/agent/workflows"]["post"]
-    for status in ("401", "403", "404", "409", "422", "429", "500", "503", "default"):
+    statuses = ("401", "403", "404", "409", "422", "429", "500", "503", "default")
+    for status in statuses:
         error_schema = operation["responses"][status]["content"]["application/json"]["schema"]
         assert error_schema["$ref"] == "#/components/schemas/APIErrorResponse"
 
@@ -46,3 +49,15 @@ def test_error_response_models_preserve_legacy_detail_and_type_validation_issues
         "code": "missing",
         "message": "Invalid request value",
     }
+
+
+
+def test_error_envelope_rejects_noncanonical_request_ids():
+    from mrhub.api.errors import APIErrorEnvelope
+
+    with pytest.raises(ValidationError):
+        APIErrorEnvelope(
+            code="internal_error",
+            message="An internal error occurred.",
+            request_id="not-a-canonical-uuid-value-000000",
+        )
