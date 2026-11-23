@@ -130,6 +130,13 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["execution_started"] is False
     assert result["tools_executed"] is False
     assert result["permissions_changed"] is False
+    assert result["planning_assessment"]["complexity"]["method"] == "bounded_structural_heuristic_v1"
+    assert result["planning_assessment"]["research"]["execution_started"] is False
+    assert result["planning_assessment"]["tools"]["authorization_checked"] is False
+    assert result["planning_assessment"]["execution_order"]["step_ids"] == ["validate"]
+    assert result["model_selection"]["provider"] == "test"
+    assert result["model_selection"]["model"] == "queue-v1"
+    assert result["model_selection"]["local"] is True
     assert [event["event_type"] for event in audit_events] == [
         "agent.work_order_planning_started",
         "agent.work_order_planned",
