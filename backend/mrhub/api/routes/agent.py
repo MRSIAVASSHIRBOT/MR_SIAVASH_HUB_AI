@@ -71,7 +71,7 @@ def _build_owner_agent_core(
     tasks.initialize()
     audit = AuditLogger(tasks)
     permissions = ToolPermissionService(tasks, audit)
-    registry = build_tool_registry()
+    registry = build_tool_registry(owner_user_id=owner_user_id)
     approval_store = ToolInvocationApprovalStore(tasks)
 
     def resolve_approval(
