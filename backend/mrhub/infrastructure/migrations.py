@@ -1519,7 +1519,7 @@ MIGRATIONS = (
         ),
     ),
     Migration.build(
-        55,
+        56,
         "typed_memory_classification",
         (
             """ALTER TABLE memory_entries
