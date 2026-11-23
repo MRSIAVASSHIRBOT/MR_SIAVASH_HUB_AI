@@ -119,3 +119,52 @@ def test_unhandled_exception_never_exposes_exception_text():
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_policy_decision_detail_preserves_only_reviewed_fields():
+    app = create_app()
+    private_reason = "Missing required permission grants: cloudflare.read"
+    correlation_id = "6b4c2fa1-42c9-4ae1-bbdf-f3bf9f5d2b47"
+
+    def denied():
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "decision": "deny",
+                "reason": private_reason,
+                "correlation_id": correlation_id,
+                "private": "must-not-be-reflected",
+            },
+        )
+
+    def approval_required():
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "decision": "require_approval",
+                "reason": "owner approval for action payload",
+                "correlation_id": "not-a-canonical-uuid",
+            },
+        )
+
+    app.add_api_route("/_test/policy-denied", denied, methods=["GET"])
+    app.add_api_route("/_test/policy-approval", approval_required, methods=["GET"])
+    client = TestClient(app)
+
+    denied_response = client.get("/_test/policy-denied")
+    assert denied_response.status_code == 403
+    assert denied_response.json()["detail"] == {
+        "decision": "deny",
+        "reason": "The requested action is not permitted.",
+        "correlation_id": correlation_id,
+    }
+    assert private_reason not in denied_response.text
+    assert "must-not-be-reflected" not in denied_response.text
+
+    approval_response = client.get("/_test/policy-approval")
+    assert approval_response.status_code == 409
+    assert approval_response.json()["detail"] == {
+        "decision": "require_approval",
+        "reason": "Explicit owner approval is required.",
+    }
+    assert "owner approval for action payload" not in approval_response.text
