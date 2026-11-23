@@ -408,3 +408,21 @@ def test_memory_search_uses_freshness_as_a_deterministic_tie_break_signal() -> N
         results[1]["retrieval"]["signals"]["freshness"]
     )
 
+def test_memory_repository_rejects_non_string_memory_type_updates() -> None:
+    client = authenticated_client()
+    created = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": "Typed memory repository update validation",
+        },
+    )
+    assert created.status_code == 201
+
+    repository = MemoryRepository(get_settings().database_path)
+    with pytest.raises(ValueError, match="Unsupported memory type"):
+        repository.update(
+            "local-owner",
+            UUID(created.json()["memory_id"]),
+            {"memory_type": []},
+        )
