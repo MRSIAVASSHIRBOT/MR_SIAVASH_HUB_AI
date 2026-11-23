@@ -110,7 +110,7 @@ class WorkOrderIntelligenceAssessment:
                 "method": "bounded_structural_heuristic_v1",
             },
             "information": {
-                "status": "review_required" if self.information_gaps else "sufficient_for_planning",
+                "status": "review_required" if self.information_gaps else "no_detected_gaps",
                 "gap_codes": list(self.information_gaps),
                 "automatic_clarification_requested": False,
             },
