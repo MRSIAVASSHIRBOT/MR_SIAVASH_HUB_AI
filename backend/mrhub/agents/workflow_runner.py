@@ -620,6 +620,20 @@ class AgentWorkflowRunner:
 
         assert lease is not None and lease_lost is not None
         attempts: dict[int, StepAttempt] = {}
+        _step_specs, tools_by_execution_step = self._durable_step_metadata(
+            request, plan
+        )
+        runtime_step_ids = {
+            runtime_number: request.tool_step_id(request_number, requested_tool)
+            for runtime_number, request_number, requested_tool in self.core.ordered_tool_steps(
+                request, plan
+            )
+        }
+        succeeded_step_ids = {
+            str(step["step_key"])
+            for step in _workflow["steps"]
+            if step["status"] == "succeeded"
+        }
         try:
             self._record_execution_start(lease, increment_attempt=not worker_owned_lease)
             self.recovery.start_run(workflow_id, lease=lease)
@@ -646,10 +660,15 @@ class AgentWorkflowRunner:
                     "results": [],
                 }
             else:
-                start_step = decision.next_step
-                if start_step == 1:
+                provider_step = next(
+                    (step for step in _workflow["steps"] if step["step_key"] == "step-1"),
+                    None,
+                )
+                if provider_step is None:
+                    raise RuntimeError("Workflow provider-selection identity is missing")
+                if provider_step["status"] != "succeeded":
                     provider_attempt = self.recovery.start_step(
-                        workflow_id, 1, lease=lease
+                        workflow_id, "step-1", lease=lease
                     )
                     self.recovery.complete_step(
                         workflow_id,
@@ -657,11 +676,7 @@ class AgentWorkflowRunner:
                         self._digest(plan.get("selected_provider", {})),
                         lease=lease,
                     )
-                    start_step = 2
-
-                _step_specs, tools_by_execution_step = self._durable_step_metadata(
-                    request, plan
-                )
+                    succeeded_step_ids.add("step-1")
 
                 def on_step(
                     number: int, status: str, error_code: str | None
@@ -669,8 +684,9 @@ class AgentWorkflowRunner:
                     if lease_lost.is_set():
                         raise RuntimeError("Workflow worker lease was lost")
                     if status == "running":
+                        step_key = runtime_step_ids[number]
                         attempts[number] = self.recovery.start_step(
-                            workflow_id, number, lease=lease
+                            workflow_id, step_key, lease=lease
                         )
                     elif status == "failed":
                         attempt = attempts.get(number)
@@ -701,7 +717,8 @@ class AgentWorkflowRunner:
                     request,
                     on_step=on_step,
                     on_step_result=on_step_result,
-                    start_step=start_step,
+                    start_step=2,
+                    skip_step_ids=succeeded_step_ids,
                     should_cancel=should_cancel,
                 )
 
