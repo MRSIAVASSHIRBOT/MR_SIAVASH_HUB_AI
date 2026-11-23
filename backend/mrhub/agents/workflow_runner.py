@@ -129,13 +129,18 @@ class AgentWorkflowRunner:
         workflow = self.recovery.get_run(
             workflow_id, owner_user_id=owner_user_id
         )
+        legacy_definition = int((workflow or {}).get("definition_version", 1)) < 3
         stored_steps = {
             str(step["step_key"]): step
             for step in (workflow or {}).get("steps", [])
         }
         criteria = []
         for runtime_number, request_number, requested_tool in ordered_tools:
-            step_key = request.tool_step_id(request_number, requested_tool)
+            step_key = (
+                f"step-{runtime_number}"
+                if legacy_definition
+                else request.tool_step_id(request_number, requested_tool)
+            )
             step = stored_steps.get(step_key, {})
             status = step.get("status")
             if status == "succeeded":
