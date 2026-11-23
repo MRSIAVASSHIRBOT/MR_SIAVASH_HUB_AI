@@ -206,8 +206,7 @@ class MemoryRepository:
         """Search lexically, then rerank a bounded candidate set using trust signals.
 
         The FTS5 candidate set is owner- and expiry-filtered in SQL. Ranking is
-        deterministic and combines lexical rank (70%), confidence (15%), owner
-        verification (10%), and freshness (5%). These weights measure retrieval
+        deterministic and combines lexical rank (70%), owner-supplied confidence (15%), owner-declared approval (10%), and freshness (5%). These weights measure retrieval
         relevance only; they do not establish truth or grant authority.
         """
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
@@ -258,24 +257,24 @@ class MemoryRepository:
                 and not isinstance(confidence_value, bool)
                 else 0.0
             )
-            verification_score = (
+            owner_approval_score = (
                 1.0 if row["verification_status"] == "user_approved" else 0.0
             )
             freshness_score = self._freshness_score(row["updated_at"], now)
             total_score = (
                 0.70 * lexical_score
                 + 0.15 * confidence_score
-                + 0.10 * verification_score
+                + 0.10 * owner_approval_score
                 + 0.05 * freshness_score
             )
             record = self._record(row)
             record["retrieval"] = {
-                "scheme": "hybrid_fts5_trust_freshness_v1",
+                "scheme": "hybrid_fts5_owner_attestation_freshness_v1",
                 "score": round(total_score, 6),
                 "signals": {
                     "lexical": round(lexical_score, 6),
                     "confidence": round(confidence_score, 6),
-                    "owner_verified": round(verification_score, 6),
+                    "owner_approved": round(owner_approval_score, 6),
                     "freshness": round(freshness_score, 6),
                 },
             }
@@ -293,7 +292,7 @@ class MemoryRepository:
                     total_score,
                     lexical_score,
                     confidence_score,
-                    verification_score,
+                    owner_approval_score,
                     updated_timestamp,
                     str(row["memory_id"]),
                     record,
