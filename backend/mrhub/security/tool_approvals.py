@@ -5,9 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import marshal
+import math
+import os
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from enum import Enum
+from pathlib import PurePath
 from uuid import UUID
 
 from mrhub.infrastructure.database import TaskRepository
@@ -43,8 +47,92 @@ def canonical_tool_payload(tool: ToolDefinition, payload: dict[str, object]) -> 
     return normalized, digest
 
 
+def _fingerprint_value(value: object, *, depth: int = 0) -> object:
+    """Project callable configuration to bounded, deterministic non-secret metadata."""
+    if depth > 8:
+        return {"kind": "depth_limit"}
+    if value is None or type(value) in {bool, int, str}:
+        if isinstance(value, str) and len(value) > 4_096:
+            return {"kind": "oversized_string"}
+        return value
+    if type(value) is float:
+        return value if math.isfinite(value) else {"kind": "non_finite_float"}
+    if isinstance(value, Enum):
+        return {
+            "kind": "enum",
+            "type": f"{type(value).__module__}.{type(value).__qualname__}",
+            "value": _fingerprint_value(value.value, depth=depth + 1),
+        }
+    if isinstance(value, PurePath) or isinstance(value, os.PathLike):
+        try:
+            return {"kind": "path", "value": os.fspath(value)}
+        except (TypeError, ValueError, OSError):
+            return {"kind": "path", "type": type(value).__qualname__}
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return {
+            "kind": "bytes",
+            "sha256": hashlib.sha256(bytes(value)).hexdigest(),
+            "length": len(value),
+        }
+    if isinstance(value, (list, tuple)):
+        if len(value) > 256:
+            return {"kind": type(value).__name__, "length": len(value), "truncated": True}
+        return {
+            "kind": type(value).__name__,
+            "items": [_fingerprint_value(item, depth=depth + 1) for item in value],
+        }
+    if isinstance(value, (set, frozenset)):
+        if len(value) > 256:
+            return {"kind": type(value).__name__, "length": len(value), "truncated": True}
+        items = [_fingerprint_value(item, depth=depth + 1) for item in value]
+        return {
+            "kind": type(value).__name__,
+            "items": sorted(items, key=_canonical_json),
+        }
+    if isinstance(value, dict):
+        if len(value) > 256 or any(not isinstance(key, str) for key in value):
+            return {"kind": "dict", "length": len(value), "truncated": True}
+        return {
+            "kind": "dict",
+            "items": {
+                key: _fingerprint_value(value[key], depth=depth + 1)
+                for key in sorted(value)
+            },
+        }
+    # Do not introspect arbitrary objects: they may contain credentials, clients,
+    # sockets, or mutable state. Their concrete type is still part of the contract.
+    return {"kind": "opaque", "type": f"{type(value).__module__}.{type(value).__qualname__}"}
+
+
+def _handler_environment(handler: object) -> dict[str, object]:
+    """Capture defaults and closure bindings without serializing arbitrary objects."""
+    environment: dict[str, object] = {}
+    defaults = getattr(handler, "__defaults__", None)
+    if defaults is not None:
+        environment["defaults"] = _fingerprint_value(defaults)
+    keyword_defaults = getattr(handler, "__kwdefaults__", None)
+    if keyword_defaults is not None:
+        environment["keyword_defaults"] = _fingerprint_value(keyword_defaults)
+    code = getattr(handler, "__code__", None)
+    closure = getattr(handler, "__closure__", None)
+    if code is not None and closure:
+        bindings: dict[str, object] = {}
+        for name, cell in zip(code.co_freevars, closure, strict=False):
+            try:
+                bindings[name] = _fingerprint_value(cell.cell_contents)
+            except ValueError:
+                bindings[name] = {"kind": "empty_cell"}
+        environment["closure"] = bindings
+    bound_self = getattr(handler, "__self__", None)
+    if bound_self is not None:
+        environment["bound_self_type"] = (
+            f"{type(bound_self).__module__}.{type(bound_self).__qualname__}"
+        )
+    return environment
+
+
 def tool_definition_fingerprint(tool: ToolDefinition) -> str:
-    """Bind approvals to schemas, policy metadata and the registered handler code."""
+    """Bind approvals to schemas, policy, handler code and stable captured configuration."""
     handler = tool.handler
     code = getattr(handler, "__code__", None)
     if code is not None:
@@ -64,6 +152,7 @@ def tool_definition_fingerprint(tool: ToolDefinition) -> str:
         "handler_module": getattr(handler, "__module__", type(handler).__module__),
         "handler_qualname": getattr(handler, "__qualname__", type(handler).__qualname__),
         "handler_code_digest": handler_code_digest,
+        "handler_environment": _handler_environment(handler),
     }
     return hashlib.sha256(_canonical_json(contract)).hexdigest()
 
