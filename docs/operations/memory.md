@@ -20,11 +20,11 @@ All endpoints require the local owner's bearer session.
 Search first selects up to 100 lexical FTS5 candidates after applying owner and expiry filters in SQL. It then reranks that bounded set using a deterministic score:
 
 - lexical relevance: 70% (normalized FTS5 BM25 rank within the candidate set);
-- stored confidence: 15%;
-- owner verification: 10% (the user_approved state receives the verification signal);
+- owner-supplied confidence: 15%;
+- owner-declared approval: 10% (the user_approved state is self-attested by the authenticated owner, not independently verified);
 - freshness: 5% (90-day exponential decay based on updated_at).
 
-Each result includes the score and its component signals under the retrieval field. The response identifies the ranking scheme and its weights. This is a retrieval-order heuristic only: it is not a truth score, safety assessment, authorization grant, or substitute for reading provenance and reviewing source quality. A new ranking version may change ordering without changing saved memory data.
+Each result includes the score and its component signals under the retrieval field. The response identifies the ranking scheme and its weights. This is a retrieval-order heuristic only: confidence and approval are owner-supplied signals, not independent verification. The score is not a truth score, safety assessment, authorization grant, or substitute for reading provenance and reviewing source quality. A new ranking version may change ordering without changing saved memory data.
 
 ## Security and data handling
 
