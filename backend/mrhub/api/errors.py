@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from logging import getLogger
 from typing import Any
-from uuid import uuid4
+from uuid import RFC_4122, UUID, uuid4
 
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
@@ -76,8 +76,21 @@ _ERROR_CODES = {
 
 
 def _request_id(request: Request) -> str:
+    """Return a canonical request ID even when a handler is called outside middleware."""
     value = getattr(request.state, "request_id", None)
-    return value if isinstance(value, str) and value else str(uuid4())
+    if isinstance(value, str):
+        try:
+            parsed = UUID(value)
+            if (
+                len(value) == 36
+                and str(parsed) == value
+                and parsed.version in range(1, 9)
+                and parsed.variant == RFC_4122
+            ):
+                return value
+        except (AttributeError, TypeError, ValueError):
+            pass
+    return str(uuid4())
 
 
 def _status_error(status_code: int) -> tuple[str, str]:
