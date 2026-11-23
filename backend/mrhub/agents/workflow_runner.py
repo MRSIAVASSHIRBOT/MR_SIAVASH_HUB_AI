@@ -93,9 +93,11 @@ class AgentWorkflowRunner:
                         ].depends_on
                     ),
                     "kind": (
-                        "external_tool"
+                        "safe_tool"
+                        if definition.replay_safety.value == "retry_safe"
+                        else "external_tool"
                         if definition.external_side_effect
-                        else "safe_tool"
+                        else "non_replayable_tool"
                     ),
                     "name": requested_tool.name,
                     "input_digest": core.workflow_step_input_digest(
@@ -331,7 +333,7 @@ class AgentWorkflowRunner:
                             workflow_id,
                             attempt,
                             failure_code,
-                            unknown_outcome=definition.external_side_effect,
+                            unknown_outcome=definition.replay_safety.value != "retry_safe",
                             lease=lease,
                         )
 
@@ -727,7 +729,7 @@ class AgentWorkflowRunner:
                                 workflow_id,
                                 attempt,
                                 error_code or "tool_execution_failed",
-                                unknown_outcome=definition.external_side_effect,
+                                unknown_outcome=definition.replay_safety.value != "retry_safe",
                                 lease=lease,
                             )
 
