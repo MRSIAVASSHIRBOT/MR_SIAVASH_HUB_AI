@@ -65,32 +65,31 @@ def validate_plan(plan: Mapping[str, object]) -> ValidationReport:
             if dep == sid:
                 findings.add("self_dependency")
 
-    # Iterative DFS avoids recursion and traverses only normalized string edges.
+    # Iterative three-color DFS: each active node has exactly one stack frame,
+    # avoiding false cycle reports from queued-but-not-yet-entered siblings.
     state: dict[str, int] = {}  # 0/unseen, 1/active, 2/finished
     for root in graph:
-        if state.get(root, 0) == 2:
+        if state.get(root, 0) != 0:
             continue
-        stack: list[tuple[str, bool]] = [(root, False)]
+        state[root] = 1
+        stack: list[tuple[str, int]] = [(root, 0)]
         while stack:
-            node, exiting = stack.pop()
-            if exiting:
+            node, edge_index = stack[-1]
+            edges = graph[node]
+            if edge_index >= len(edges):
+                stack.pop()
                 state[node] = 2
                 continue
-            node_state = state.get(node, 0)
-            if node_state == 2:
+            dep = edges[edge_index]
+            stack[-1] = (node, edge_index + 1)
+            if dep not in graph:
                 continue
-            if node_state == 1:
+            dep_state = state.get(dep, 0)
+            if dep_state == 1:
                 findings.add("dependency_cycle")
-                continue
-            state[node] = 1
-            stack.append((node, True))
-            for dep in graph.get(node, []):
-                if dep not in graph:
-                    continue
-                if state.get(dep, 0) == 1:
-                    findings.add("dependency_cycle")
-                elif state.get(dep, 0) == 0:
-                    stack.append((dep, False))
+            elif dep_state == 0:
+                state[dep] = 1
+                stack.append((dep, 0))
 
     ordered = tuple(sorted(findings))
     return ValidationReport(not ordered, ordered, checked)
