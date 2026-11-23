@@ -134,12 +134,22 @@ class WorkflowWorkerHandler:
                         tool_fingerprint=fingerprint,
                         audit_event=audit_event,
                     )
-                return approval_store.validate(
+                if approval_store.validate(
                     approval_id,
                     owner_user_id=owner_user_id,
                     tool_name=tool_name,
                     payload_digest=payload_digest,
                     tool_fingerprint=fingerprint,
+                ):
+                    return True
+                return AgentWorkflowRunner.completed_approval_checkpoint_matches(
+                    self.recovery,
+                    workflow_id,
+                    owner_user_id,
+                    request,
+                    approval_id,
+                    tool_name,
+                    tool_payload,
                 )
             except (LookupError, ToolApprovalError, TypeError, ValueError):
                 return False
