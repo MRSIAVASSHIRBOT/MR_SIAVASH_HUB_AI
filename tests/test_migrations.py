@@ -1190,7 +1190,7 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
     connection.close()
 
 
-def test_v54_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
+def test_v55_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
     connection = connect(tmp_path / "agent-work-order-plans.sqlite3")
     SchemaMigrator(connection).migrate()
 
@@ -1223,7 +1223,7 @@ def test_v54_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
     applied = connection.execute(
         "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
     ).fetchone()
-    assert tuple(applied) == (54, "owner_scoped_encrypted_agent_work_order_plans")
+    assert tuple(applied) == (55, "owner_scoped_encrypted_agent_work_order_plans")
     connection.close()
 
 
