@@ -337,10 +337,10 @@ class AgentCore:
                         "The current plan has no matching tool assessment",
                     )
 
+                tool = self.tool_registry.get(requested_tool.name)
                 user_approved = False
                 approval_required = step_assessment.get("approval_required") is True
                 if approval_required:
-                    tool = self.tool_registry.get(requested_tool.name)
                     # Avoid consuming a valid receipt after its owner grant has
                     # already been revoked. ToolRegistry performs the final
                     # server-side policy check again immediately before handler.
@@ -371,6 +371,15 @@ class AgentCore:
                         "Approval receipt does not match an action requiring approval",
                     )
 
+                # Refresh owner grants after the potentially blocking receipt
+                # lookup/consume and immediately before registry invocation.
+                latest_permissions = self._current_permissions()
+                if not tool.required_permissions.issubset(latest_permissions):
+                    raise ToolPolicyError(
+                        PolicyDecision.DENY,
+                        "Required owner permissions are no longer active",
+                    )
+                current_permissions = latest_permissions
                 result = self.tool_registry.invoke(
                     requested_tool.name,
                     requested_tool.payload,
