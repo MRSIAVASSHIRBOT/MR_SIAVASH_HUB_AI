@@ -1,5 +1,6 @@
 """Loopback-only Ollama adapter with bounded synchronous HTTP requests."""
 
+import math
 from urllib.parse import urlsplit
 
 import httpx
@@ -27,7 +28,16 @@ class OllamaProvider:
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid local model name")
-        if not 1 <= timeout_seconds <= 300:
+        try:
+            valid_timeout = (
+                not isinstance(timeout_seconds, bool)
+                and isinstance(timeout_seconds, (int, float))
+                and math.isfinite(float(timeout_seconds))
+                and 1 <= timeout_seconds <= 300
+            )
+        except (OverflowError, ValueError):
+            valid_timeout = False
+        if not valid_timeout:
             raise ProviderConfigurationError("Timeout must be between 1 and 300 seconds")
         self.base_url = self._validate_loopback_url(base_url)
         self.timeout_seconds = timeout_seconds
@@ -83,7 +93,16 @@ class OllamaProvider:
         return None
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
-        if not 0.1 <= timeout_seconds <= 10:
+        try:
+            valid_timeout = (
+                not isinstance(timeout_seconds, bool)
+                and isinstance(timeout_seconds, (int, float))
+                and math.isfinite(float(timeout_seconds))
+                and 0.1 <= timeout_seconds <= 10
+            )
+        except (OverflowError, ValueError):
+            valid_timeout = False
+        if not valid_timeout:
             raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
@@ -96,8 +115,14 @@ class OllamaProvider:
             return ProviderHealth(available=False, reason_code="provider_unavailable")
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        request_timeout = (
+            min(self.timeout_seconds, request.timeout_seconds)
+            if request.timeout_seconds is not None
+            else self.timeout_seconds
+        )
+        failure = None
         try:
-            with self._client() as client:
+            with self._client(request_timeout) as client:
                 response = client.post(
                     "/api/generate",
                     json={
@@ -109,12 +134,14 @@ class OllamaProvider:
                 )
                 response.raise_for_status()
                 payload = response.json()
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Local model request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailableError("Local model service is unavailable") from exc
-        except ValueError as exc:
-            raise ProviderUnavailableError("Local model returned an invalid response") from exc
+        except httpx.TimeoutException:
+            failure = ProviderTimeoutError("Local model request timed out")
+        except httpx.HTTPError:
+            failure = ProviderUnavailableError("Local model service is unavailable")
+        except ValueError:
+            failure = ProviderUnavailableError("Local model returned an invalid response")
+        if failure is not None:
+            raise failure
 
         if not isinstance(payload, dict):
             raise ProviderUnavailableError("Local model returned an invalid response")
