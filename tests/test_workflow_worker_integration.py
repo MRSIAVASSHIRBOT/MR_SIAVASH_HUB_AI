@@ -854,8 +854,8 @@ def test_durable_workflow_consumes_owner_approval_for_exact_external_tool(monkey
 
     from mrhub.api.routes import agent as agent_routes
     from mrhub.api.routes import tools as tools_routes
-    from mrhub.jobs import workflow_dispatch
     from mrhub.domain.tasks import RiskClass
+    from mrhub.jobs import workflow_dispatch
     from mrhub.tools.registry import ToolDefinition, ToolRegistry
 
     class PublishInput(BaseModel):
