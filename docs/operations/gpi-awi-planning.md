@@ -48,7 +48,7 @@ A successful response includes:
 - `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, estimated complexity, missing information, clarification questions, research requirement/questions, acceptance criteria, verification steps, and advisory risk class.
 - `plan`: the validated dependency graph and rationale.
 - `capability_assessment`: required, available, and missing capability names.
-- Derived `tool_use_required` is based on validated required capabilities. `planning_readiness` is either `needs_clarification` or `ready_for_review`; neither value grants execution authority.
+- Derived `tool_use_required` is based on validated required capabilities. `planning_readiness` is `needs_clarification`, `needs_research`, or `ready_for_review`; none of these states grants execution authority.
 - Explicit safety indicators: `planning_only: true`, `execution_ready: false`, `execution_started: false`, `tools_executed: false`, `permissions_changed: false`, and `authorization_checked: false`.
 
 The risk classification is not an authorization decision. Actual execution, if added in a later release, must independently pass the existing Hub policy, permission, approval, idempotency, and audit controls. A plan must never be treated as an executable payload.
