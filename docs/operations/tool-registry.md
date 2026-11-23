@@ -51,3 +51,32 @@ When the isolated gateway is fully configured, the authenticated tool catalog re
 Every operation requires the owner's active `cloudflare.read` grant. The grant is never inferred from model output or the invocation payload. It defaults to one hour and can be bounded from 60 seconds to 24 hours. Revocation or expiry causes subsequent invocations to be denied. Gateway credentials remain in server-side settings and never enter tool schemas, results, audit metadata, or frontend assets.
 
 The integration remains disabled by default. Enabling it requires a dedicated HTTPS `*.workers.dev` gateway URL and a separate gateway token; the Cloudflare provider token must remain exclusively in the gateway Worker. Only fixed GET operations are exposed. No deployments, route mutations, secrets, D1 rows, source downloads, deletions, or billing operations are registered.
+
+
+## Registration-time contract validation
+
+A tool is accepted into the registry only after all definition fields pass
+server-side validation:
+
+- Tool names and descriptions are bounded and canonical.
+- Input and output schemas must be actual Pydantic `BaseModel` subclasses.
+- The handler must be callable and synchronous; coroutine handlers are rejected
+  because the current invocation boundary is synchronous.
+- Risk classification must be a `RiskClass` value, not a client/model string.
+- The external-side-effect flag must be an actual boolean.
+- Required permissions must be an immutable `frozenset` of at most 32 bounded,
+  canonical permission identifiers.
+
+The registry inserts a definition only after every check succeeds. Invalid
+definitions are rejected at startup/registration rather than failing later
+during tool invocation.
+
+## Execution isolation limitation
+
+Registration validation does not provide process isolation or a hard runtime
+timeout for arbitrary Python handlers. The current registry invokes trusted,
+server-registered synchronous handlers in-process. Do not add untrusted or
+long-running handlers and do not simulate a hard timeout with a background
+thread: a thread timeout cannot safely terminate a side-effecting operation.
+Hard execution deadlines require a separately designed process/container
+boundary with cancellation and idempotency semantics.
