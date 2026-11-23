@@ -202,7 +202,10 @@ def analyze_goal(
         information_gaps.append("target_scope")
         reason_codes.append("action_scope_not_specified")
 
-    if any(_contains_any(_normalize(item), _UNCERTAINTY_TERMS) for item in assumptions + constraints):
+    if any(
+        _contains_any(_normalize(item), _UNCERTAINTY_TERMS)
+        for item in assumptions + constraints
+    ):
         information_gaps.append("unresolved_assumption_or_constraint")
         reason_codes.append("work_order_contains_unresolved_information")
 
@@ -225,7 +228,8 @@ def analyze_goal(
     # burden increase the score; this is not a learned estimate or SLA prediction.
     score = 5
     score += min(20, len(normalized_goal) // 40)
-    conjunction_count = len(re.findall(r"\b(and|then|also|plus)\b|(?<!\w)و(?!\w)|سپس|همچنین", normalized))
+    conjunction_pattern = r"\b(and|then|also|plus)\b|(?<!\w)و(?!\w)|سپس|همچنین"
+    conjunction_count = len(re.findall(conjunction_pattern, normalized))
     score += min(20, conjunction_count * 5)
     score += min(15, len(dependencies) * 4)
     score += min(15, capability_count * 5)
