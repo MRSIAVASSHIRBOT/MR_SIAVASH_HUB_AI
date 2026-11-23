@@ -1,9 +1,10 @@
 """Typed provider contracts. Provider implementations must not log request content or secrets."""
 
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.providers.types import ModelDescriptor
 
@@ -35,10 +36,28 @@ class ProviderContractError(ProviderError):
 
 
 class ProviderRequest(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    """One bounded generation request with an optional per-call timeout cap."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     input_text: str = Field(min_length=1, max_length=MAX_PROVIDER_INPUT_CHARS)
-    max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+    max_output_tokens: int = Field(default=1024, ge=1, le=8192, strict=True)
+    timeout_seconds: float | None = Field(default=None, ge=1.0, le=300.0)
+
+    @field_validator("timeout_seconds", mode="before")
+    @classmethod
+    def validate_timeout(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("Provider request timeout must be a finite number")
+        try:
+            finite = math.isfinite(float(value))
+        except (OverflowError, ValueError):
+            finite = False
+        if not finite:
+            raise ValueError("Provider request timeout must be a finite number")
+        return value
 
 
 class ProviderResponse(BaseModel):
@@ -71,7 +90,11 @@ def validate_provider_health(value: object) -> ProviderHealth:
 
 
 class ModelProvider(Protocol):
-    """Synchronous provider contract; implementations must enforce their own timeout."""
+    """Synchronous provider contract; adapters must honor request timeout caps.
+
+    A request timeout bounds the adapter's HTTP operation. It does not promise
+    to terminate arbitrary local handler code or undo a remote side effect.
+    """
 
     descriptor: ModelDescriptor
 
