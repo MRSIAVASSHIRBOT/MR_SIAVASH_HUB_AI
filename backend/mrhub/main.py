@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from mrhub.api.errors import (
+    API_ERROR_RESPONSES,
     http_exception_handler,
     unhandled_exception_handler,
     validation_exception_handler,
@@ -77,6 +78,10 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
+    def include_api_router(router) -> None:
+        """Attach the common typed error contract to every mounted API router."""
+        app.include_router(router, responses=API_ERROR_RESPONSES)
+
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
         supplied_request_id = request.headers.get("X-Request-ID", "")
@@ -127,39 +132,39 @@ def create_app() -> FastAPI:
             )
         return response
 
-    app.include_router(health_router)
-    app.include_router(assistant_gateway_router)
-    app.include_router(code_engine_router)
-    app.include_router(auth_router)
-    app.include_router(approvals_router)
-    app.include_router(capabilities_router)
-    app.include_router(content_router)
-    app.include_router(devices_router)
-    app.include_router(content_campaigns_router)
-    app.include_router(content_schedules_router)
-    app.include_router(tasks_router)
-    app.include_router(telegram_integration_router)
-    app.include_router(jobs_router)
-    app.include_router(knowledge_router)
-    app.include_router(knowledge_evaluation_router)
-    app.include_router(policy_router)
-    app.include_router(platform_router)
-    app.include_router(research_router)
-    app.include_router(projects_router)
-    app.include_router(models_router)
-    app.include_router(nexus_router)
-    app.include_router(memory_router)
-    app.include_router(media_router)
-    app.include_router(public_media_router)
-    app.include_router(resource_reply_router)
-    app.include_router(security_lab_router)
-    app.include_router(tools_router)
-    app.include_router(video_intelligence_router)
-    app.include_router(agent_router)
-    app.include_router(agent_context_router)
-    app.include_router(agent_run_router)
-    app.include_router(agent_model_runs_router)
-    app.include_router(agent_proposals_router)
+    include_api_router(health_router)
+    include_api_router(assistant_gateway_router)
+    include_api_router(code_engine_router)
+    include_api_router(auth_router)
+    include_api_router(approvals_router)
+    include_api_router(capabilities_router)
+    include_api_router(content_router)
+    include_api_router(devices_router)
+    include_api_router(content_campaigns_router)
+    include_api_router(content_schedules_router)
+    include_api_router(tasks_router)
+    include_api_router(telegram_integration_router)
+    include_api_router(jobs_router)
+    include_api_router(knowledge_router)
+    include_api_router(knowledge_evaluation_router)
+    include_api_router(policy_router)
+    include_api_router(platform_router)
+    include_api_router(research_router)
+    include_api_router(projects_router)
+    include_api_router(models_router)
+    include_api_router(nexus_router)
+    include_api_router(memory_router)
+    include_api_router(media_router)
+    include_api_router(public_media_router)
+    include_api_router(resource_reply_router)
+    include_api_router(security_lab_router)
+    include_api_router(tools_router)
+    include_api_router(video_intelligence_router)
+    include_api_router(agent_router)
+    include_api_router(agent_context_router)
+    include_api_router(agent_run_router)
+    include_api_router(agent_model_runs_router)
+    include_api_router(agent_proposals_router)
     app.mount(
         "/ui",
         StaticFiles(directory=Path(__file__).resolve().parent / "web", html=True),
