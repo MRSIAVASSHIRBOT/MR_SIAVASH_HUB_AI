@@ -272,3 +272,146 @@ def test_registry_cancels_awaitable_results_from_synchronous_handlers():
         registry.invoke("custom.contract", {"value": "safe"})
 
     assert pending.cancelled is True
+
+
+from mrhub.tools.registry import ToolLifecycleEvent, ToolLifecycleStage
+
+
+def test_registry_emits_ordered_metadata_only_lifecycle_events_for_success():
+    registry = ToolRegistry()
+    registry.register(_tool_definition())
+    events: list[ToolLifecycleEvent] = []
+
+    result = registry.invoke(
+        "custom.contract",
+        {"value": "safe-input"},
+        lifecycle_observer=events.append,
+    )
+
+    assert result == {"value": "safe-input"}
+    assert [event.stage for event in events] == [
+        ToolLifecycleStage.INPUT_VALIDATED,
+        ToolLifecycleStage.AUTHORIZATION_GRANTED,
+        ToolLifecycleStage.HANDLER_STARTED,
+        ToolLifecycleStage.HANDLER_RETURNED,
+        ToolLifecycleStage.OUTPUT_VALIDATED,
+        ToolLifecycleStage.SUCCEEDED,
+    ]
+    assert all(event.tool_name == "custom.contract" for event in events)
+    assert all(event.input_digest and len(event.input_digest) == 64 for event in events)
+    assert events[-1].output_digest and len(events[-1].output_digest) == 64
+    assert all(not hasattr(event, "payload") for event in events)
+    assert all(not hasattr(event, "result") for event in events)
+
+
+def test_registry_reports_input_rejection_without_running_handler():
+    called = []
+    events: list[ToolLifecycleEvent] = []
+    registry = ToolRegistry()
+    registry.register(_tool_definition(handler=lambda value: called.append(value) or {"value": "ok"}))
+
+    with pytest.raises(ValueError):
+        registry.invoke(
+            "custom.contract",
+            {"unexpected": "private-sentinel"},
+            lifecycle_observer=events.append,
+        )
+
+    assert called == []
+    assert len(events) == 1
+    assert events[0].stage is ToolLifecycleStage.INPUT_REJECTED
+    assert events[0].reason_code == "input_schema_validation_failed"
+    assert "private-sentinel" not in repr(events)
+
+
+def test_registry_reports_policy_denial_before_handler_invocation():
+    called = []
+    events: list[ToolLifecycleEvent] = []
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(
+            external_side_effect=True,
+            handler=lambda value: called.append(value) or {"value": "unexpected"},
+        )
+    )
+
+    with pytest.raises(ToolPolicyError):
+        registry.invoke(
+            "custom.contract",
+            {"value": "safe"},
+            lifecycle_observer=events.append,
+        )
+
+    assert called == []
+    assert [event.stage for event in events] == [
+        ToolLifecycleStage.INPUT_VALIDATED,
+        ToolLifecycleStage.AUTHORIZATION_DENIED,
+    ]
+    assert events[-1].reason_code == "approval_required"
+
+
+def test_registry_marks_ambiguous_external_handler_failure_as_unknown_outcome():
+    events: list[ToolLifecycleEvent] = []
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(
+            external_side_effect=True,
+            handler=lambda _value: (_ for _ in ()).throw(
+                RuntimeError("private-response-sentinel")
+            ),
+        )
+    )
+
+    with pytest.raises(ToolPolicyError):
+        registry.invoke(
+            "custom.contract",
+            {"value": "safe"},
+            user_approved=True,
+            lifecycle_observer=events.append,
+        )
+
+    assert events[-1].stage is ToolLifecycleStage.UNKNOWN_OUTCOME
+    assert events[-1].reason_code == "handler_failed"
+    assert "private-response-sentinel" not in repr(events)
+
+
+def test_registry_marks_ambiguous_external_output_rejection_as_unknown_outcome():
+    events: list[ToolLifecycleEvent] = []
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(
+            external_side_effect=True,
+            handler=lambda _value: {"private_output": "sentinel"},
+        )
+    )
+
+    with pytest.raises(ToolExecutionError, match="Tool output validation failed"):
+        registry.invoke(
+            "custom.contract",
+            {"value": "safe"},
+            user_approved=True,
+            lifecycle_observer=events.append,
+        )
+
+    assert events[-1].stage is ToolLifecycleStage.UNKNOWN_OUTCOME
+    assert events[-1].reason_code == "output_schema_validation_failed"
+    assert "sentinel" not in repr(events)
+
+
+def test_registry_observer_failure_never_changes_tool_execution():
+    called = []
+
+    def broken_observer(_event):
+        raise RuntimeError("observer private failure")
+
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(handler=lambda value: called.append(value.value) or {"value": "ok"})
+    )
+
+    assert registry.invoke(
+        "custom.contract",
+        {"value": "safe"},
+        lifecycle_observer=broken_observer,
+    ) == {"value": "ok"}
+    assert called == ["safe"]
