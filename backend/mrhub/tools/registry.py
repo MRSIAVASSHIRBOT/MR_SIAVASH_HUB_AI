@@ -73,7 +73,12 @@ class ToolRegistry:
         if not callable(tool.handler):
             raise ValueError("Tool handler must be callable")
         handler_call = getattr(tool.handler, "__call__", None)
-        if inspect.iscoroutinefunction(tool.handler) or inspect.iscoroutinefunction(handler_call):
+        if (
+            inspect.iscoroutinefunction(tool.handler)
+            or inspect.iscoroutinefunction(handler_call)
+            or inspect.isasyncgenfunction(tool.handler)
+            or inspect.isasyncgenfunction(handler_call)
+        ):
             raise ValueError("Tool handlers must be synchronous")
 
         if not isinstance(tool.risk_class, RiskClass):
@@ -176,9 +181,9 @@ class ToolRegistry:
         handler_failed = False
         try:
             raw_result = tool.handler(validated_input)
-            if inspect.isawaitable(raw_result):
-                # A synchronous handler must not leak an un-awaited coroutine into
-                # schema validation. Cancel scheduled awaitables and close coroutines.
+            if inspect.isawaitable(raw_result) or inspect.isasyncgen(raw_result):
+                # The synchronous registry cannot safely drive asynchronous work.
+                # Cancel scheduled awaitables and close un-awaited coroutines.
                 cancel = getattr(raw_result, "cancel", None)
                 if callable(cancel):
                     cancel()
