@@ -284,3 +284,76 @@ def test_kimi_transport_error_does_not_retain_api_key_context() -> None:
     assert str(error.value) == "Kimi service is unavailable"
     assert error.value.__cause__ is None
     assert error.value.__context__ is None
+
+
+def test_kimi_honors_lower_per_request_timeout_cap():
+    observed = []
+    provider = KimiProvider(
+        model="kimi-k3.1-pro",
+        api_key="test-key",
+        timeout_seconds=90,
+        transport=httpx.MockTransport(
+            lambda request: (
+                observed.append(request.extensions.get("timeout"))
+                or httpx.Response(
+                    200,
+                    json={
+                        "choices": [{"message": {"content": "bounded"}, "finish_reason": "stop"}],
+                        "usage": {},
+                    },
+                )
+            )
+        ),
+    )
+
+    result = provider.generate(
+        ProviderRequest(input_text="hello", timeout_seconds=3)
+    )
+
+    assert result.output_text == "bounded"
+    assert observed
+    assert observed[0]["read"] == 3
+
+
+def test_kimi_vision_honors_explicit_request_timeout_cap():
+    import base64
+
+    observed = []
+    image = b"\x89PNG\r\n\x1a\n" + b"test-image"
+    image_data_url = "data:image/png;base64," + base64.b64encode(image).decode()
+    provider = KimiProvider(
+        model="kimi-k3.1-pro",
+        api_key="test-key",
+        timeout_seconds=90,
+        transport=httpx.MockTransport(
+            lambda request: (
+                observed.append(request.extensions.get("timeout"))
+                or httpx.Response(
+                    200,
+                    json={
+                        "choices": [{"message": {"content": "bounded vision"}, "finish_reason": "stop"}],
+                        "usage": {},
+                    },
+                )
+            )
+        ),
+    )
+
+    result = provider.generate_vision(
+        prompt="Describe this image",
+        image_data_url=image_data_url,
+        timeout_seconds=5,
+    )
+
+    assert result.output_text == "bounded vision"
+    assert observed and observed[0]["read"] == 5
+
+
+def test_kimi_vision_rejects_invalid_request_timeout():
+    provider = KimiProvider(model="kimi-k3.1-pro", api_key="test-key")
+    with pytest.raises(ProviderConfigurationError, match="Request timeout"):
+        provider.generate_vision(
+            prompt="Describe image",
+            image_data_url="data:image/png;base64,a",
+            timeout_seconds=True,
+        )
