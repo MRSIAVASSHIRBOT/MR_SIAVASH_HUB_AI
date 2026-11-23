@@ -168,6 +168,11 @@ def test_failed_tool_digest_is_bound_to_its_persisted_workflow_checkpoint():
     assert first["decision"] == "reject"
     assert len(first_digest) == 64
     assert first_digest != second_digest
+    correction = first["correction_plan"]
+    assert correction["decision"] == "repair_and_replan"
+    assert correction["actions"][0]["action"] == "repair_failed_criterion"
+    assert correction["actions"][0]["evidence_digest"] == first_digest
+    assert correction["execution_started"] is False
 
 
 def test_evaluation_follows_topological_execution_order_not_request_array_order():
