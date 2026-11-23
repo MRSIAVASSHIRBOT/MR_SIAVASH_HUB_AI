@@ -31,8 +31,11 @@ Raw `input` and Pydantic `context` values are never reflected in this response.
 
 Unhandled exceptions return a generic 500 response. Exception text, stack
 details, prompts, credentials, and arbitrary handler output are not included
-in the response body. Server logs record the correlation ID and exception type,
-not the exception message.
+in the HTTP response body. The application error handler logs only the
+correlation ID and exception type. The ASGI server/runtime may independently
+emit a traceback for unhandled exceptions depending on its logging
+configuration; deployment log access, retention, and redaction must therefore
+be configured separately.
 
 ## Request correlation
 
