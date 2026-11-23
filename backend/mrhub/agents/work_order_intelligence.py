@@ -10,8 +10,8 @@ from enum import StrEnum
 
 from mrhub.agents.awi_planner import ExecutionPlan
 from mrhub.agents.capability_gaps import CapabilityGapReport
-from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 from mrhub.agents.work_order import WorkOrder
+from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
 
 
 class ComplexityLevel(StrEnum):
