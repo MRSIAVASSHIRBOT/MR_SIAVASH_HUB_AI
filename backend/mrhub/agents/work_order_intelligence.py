@@ -10,8 +10,8 @@ from enum import StrEnum
 
 from mrhub.agents.awi_planner import ExecutionPlan
 from mrhub.agents.capability_gaps import CapabilityGapReport
-from mrhub.agents.work_order import WorkOrder
 from mrhub.agents.workflow_plan import WorkflowStep, build_workflow_plan
+from mrhub.agents.work_order import WorkOrder
 
 
 class ComplexityLevel(StrEnum):
@@ -175,12 +175,62 @@ def _matched_signals(text: str, signals: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(signal for signal in signals if signal.casefold() in text)
 
 
+def _validate_assessment_inputs(
+    work_order: WorkOrder,
+    plan: ExecutionPlan,
+    capability_report: CapabilityGapReport,
+) -> None:
+    """Reject inconsistent artifacts before deriving an intelligence summary."""
+    if not isinstance(work_order, WorkOrder):
+        raise TypeError("work_order must be a validated WorkOrder")
+    if not isinstance(plan, ExecutionPlan):
+        raise TypeError("plan must be a validated ExecutionPlan")
+    if not isinstance(capability_report, CapabilityGapReport):
+        raise TypeError("capability_report must be a CapabilityGapReport")
+
+    declared_criteria = tuple(work_order.acceptance_criteria)
+    if len(declared_criteria) != len(set(declared_criteria)):
+        raise ValueError("WorkOrder acceptance criteria must be unique")
+    planned_criteria = {
+        criterion for step in plan.steps for criterion in step.verifies_criteria
+    }
+    if planned_criteria != set(declared_criteria):
+        raise ValueError("Plan criterion coverage does not match the WorkOrder")
+
+    declared_capabilities = tuple(work_order.required_capabilities)
+    canonical_capabilities = tuple(item.casefold() for item in declared_capabilities)
+    if len(canonical_capabilities) != len(set(canonical_capabilities)):
+        raise ValueError("WorkOrder required capabilities must be unique")
+    planned_capabilities = {
+        capability
+        for step in plan.steps
+        for capability in step.required_capabilities
+    }
+    if planned_capabilities != set(declared_capabilities):
+        raise ValueError("Plan capability coverage does not match the WorkOrder")
+
+    reported_required = tuple(capability_report.required)
+    if reported_required != declared_capabilities:
+        raise ValueError("Capability report requirements do not match the WorkOrder")
+
+    available = tuple(capability_report.available)
+    missing = tuple(capability_report.missing)
+    if (
+        len(available) != len(set(available))
+        or len(missing) != len(set(missing))
+        or set(available) & set(missing)
+        or set(available) | set(missing) != set(declared_capabilities)
+    ):
+        raise ValueError("Capability report does not partition the WorkOrder requirements")
+
+
 def assess_work_order_intelligence(
     work_order: WorkOrder,
     plan: ExecutionPlan,
     capability_report: CapabilityGapReport,
 ) -> WorkOrderIntelligenceAssessment:
-    """Assess a validated work order without turning it into an executable command."""
+    """Assess consistent planning artifacts without turning them into commands."""
+    _validate_assessment_inputs(work_order, plan, capability_report)
     workflow_steps = tuple(
         WorkflowStep(step.step_id, step.description, tuple(step.depends_on))
         for step in plan.steps
