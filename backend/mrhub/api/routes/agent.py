@@ -84,7 +84,12 @@ class WorkflowLessonPreviewRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    step_id: str = Field(min_length=1, max_length=64, pattern="^[a-z][a-z0-9-]{0,63}$", strict=True)
+    step_id: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern="^[a-z][a-z0-9-]{0,63}$",
+        strict=True,
+    )
     category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$", strict=True)
     lesson_text: str = Field(min_length=20, max_length=500, strict=True)
 
@@ -637,20 +642,26 @@ def preview_workflow_lesson(
 
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
-    AuditLogger(tasks).record(
-        event_type="agent.lesson_previewed",
-        outcome="owner_review_required",
-        subject_type="lesson_proposal",
-        subject_id=proposal.proposal_id,
-        actor_type="user",
-        actor_id=current_user.user_id,
-        metadata={
-            "status": "preview_only",
-            "reason_code": "evidence_linked_lesson_preview",
-            "proposal_count": 1,
-            "state_changed": False,
-        },
-    )
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.lesson_previewed",
+            outcome="owner_review_required",
+            subject_type="lesson_proposal",
+            subject_id=proposal.proposal_id,
+            actor_type="user",
+            actor_id=current_user.user_id,
+            metadata={
+                "status": "preview_only",
+                "reason_code": "evidence_linked_lesson_preview",
+                "proposal_count": 1,
+                "state_changed": False,
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Lesson proposal audit storage is unavailable",
+        ) from exc
     return {
         "workflow_id": str(workflow_id),
         "proposal": proposal.as_dict(),
