@@ -446,7 +446,7 @@ def revoke_persisted_goal_work_order_plan(
             actor_id=current_user.user_id,
             subject_type="agent_work_order_plan",
             subject_id=str(plan_id),
-            metadata={"operation": "revoke", "owner_scope": "authenticated_user"},
+            metadata={"status": "revocation_requested", "decision": "revoke"},
         )
     except sqlite3.Error as exc:
         raise HTTPException(
