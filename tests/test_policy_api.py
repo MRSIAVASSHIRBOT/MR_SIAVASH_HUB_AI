@@ -110,3 +110,17 @@ def test_policy_api_uses_only_the_authenticated_owners_active_grants() -> None:
     assert events[-1]["actor_id"] == "local-owner"
     assert events[-1]["metadata"]["granted_permission_count"] == 1
     assert events[-1]["metadata"]["required_permission_count"] == 1
+
+
+
+def test_policy_api_rejects_duplicate_required_permissions() -> None:
+    client = authenticated_client()
+    response = client.post(
+        "/policy/evaluate",
+        json={
+            "action": "cloudflare.inventory",
+            "risk_class": "low",
+            "required_permissions": ["cloudflare.read", "cloudflare.read"],
+        },
+    )
+    assert response.status_code == 422
