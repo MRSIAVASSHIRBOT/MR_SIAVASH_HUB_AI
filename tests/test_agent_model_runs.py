@@ -432,7 +432,7 @@ def test_durable_model_run_uses_server_defined_specialist_registry(monkeypatch):
     )
     assert completed.status_code == 200
     execution = completed.json()["result"]["execution"]
-    assert execution["status"] == "completed"
+    assert execution["status"] == "approval_required"
     assert execution["answer"] == "Specialist review completed."
     assert any(
         item["type"] == "delegation_observation"
@@ -750,7 +750,7 @@ def test_durable_agent_run_uses_owner_grants_to_queue_device_app_launch(monkeypa
     worker_result = run_worker_once()
     assert worker_result is not None
     assert worker_result.status.value == "succeeded"
-    assert provider.calls == 2
+    assert provider.calls == 1
     assert "device.app_launch.submit" in provider.requests[0].input_text
     assert '"device.app_launch"' in provider.requests[0].input_text
     assert '"device.registry.read"' in provider.requests[0].input_text
@@ -762,12 +762,11 @@ def test_durable_agent_run_uses_owner_grants_to_queue_device_app_launch(monkeypa
     assert finished.json()["status"] == "succeeded"
     execution = finished.json()["result"]["execution"]
     assert execution["status"] == "completed"
-    assert execution["tool_calls"] == 1
-    assert execution["answer"] == "The Notepad launch request is queued for the Windows device."
+    assert execution["tool_calls"] == 0
+    assert execution["error_code"] == "approval_required"
+    assert execution["tools_executed"] is False
 
     tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
         owner_user_id="local-owner", device_id=device_id
     )
-    assert len(tasks) == 1
-    assert tasks[0]["status"] == "queued"
-    assert tasks[0]["app"] == "notepad"
+    assert tasks == []
