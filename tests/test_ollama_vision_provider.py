@@ -18,7 +18,7 @@ from mrhub.providers.vision import (
 )
 
 
-def _request() -> VisionRequest:
+def _request(*, timeout_seconds: float | None = None) -> VisionRequest:
     return VisionRequest(
         prompt="Describe only observable visual details.",
         images=(
@@ -26,6 +26,7 @@ def _request() -> VisionRequest:
             VisionImage(timestamp_seconds=1.5, jpeg_bytes=b"jpeg-frame-1"),
         ),
         max_output_tokens=256,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -167,3 +168,38 @@ def test_ollama_vision_accepts_response_at_size_limit():
 
     assert len(response_body) == MAX_VISION_RESPONSE_BYTES
     assert result.output_text == "bounded"
+
+
+def test_ollama_vision_honors_lower_per_request_timeout_cap():
+    observed = []
+    provider = OllamaVisionProvider(
+        "llava-local",
+        timeout_seconds=90,
+        transport=httpx.MockTransport(
+            lambda request: (
+                observed.append(request.extensions.get("timeout"))
+                or httpx.Response(200, json={"response": '{"style_summary":"bounded"}'})
+            )
+        ),
+    )
+
+    result = provider.generate(_request(timeout_seconds=4))
+
+    assert result.output_text == '{"style_summary":"bounded"}'
+    assert observed
+    assert observed[0]["read"] == 4
+
+
+@pytest.mark.parametrize("timeout", [True, False, "5", 0, 181, float("nan"), float("inf")])
+def test_vision_request_rejects_invalid_per_request_timeout(timeout):
+    with pytest.raises(ValueError, match="Vision timeout"):
+        VisionRequest(
+            prompt="Observe the frames",
+            images=(VisionImage(timestamp_seconds=0, jpeg_bytes=b"jpeg-frame"),),
+            timeout_seconds=timeout,
+        )
+
+
+def test_vision_request_accepts_bounded_per_request_timeout():
+    request = _request(timeout_seconds=5)
+    assert request.timeout_seconds == 5
