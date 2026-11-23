@@ -846,3 +846,97 @@ def test_workflow_request_digest_preserves_legacy_none_free_serialization():
         ],
     )
     assert _workflow_digest(explicit) != expected
+
+def test_durable_workflow_consumes_owner_approval_for_exact_external_tool(monkeypatch):
+    from pydantic import ConfigDict, Field
+
+    from mrhub.api.routes import agent as agent_routes
+    from mrhub.api.routes import tools as tools_routes
+    from mrhub.jobs import workflow_dispatch
+    from mrhub.tools.registry import ToolDefinition, ToolRegistry
+
+    class PublishInput(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        text: str = Field(min_length=1, max_length=120)
+
+    class PublishOutput(BaseModel):
+        accepted: bool
+
+    calls = []
+
+    def handler(payload):
+        calls.append(payload.text)
+        return {"accepted": True}
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="test.external.publish",
+            description="Publish one explicitly approved external test action.",
+            input_model=PublishInput,
+            output_model=PublishOutput,
+            handler=handler,
+            risk_class=RiskClass.LOW,
+            external_side_effect=True,
+        )
+    )
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **_kwargs: registry)
+    monkeypatch.setattr(tools_routes, "build_tool_registry", lambda **_kwargs: registry)
+    monkeypatch.setattr(workflow_dispatch, "build_tool_registry", lambda **_kwargs: registry)
+
+    client = authenticated_client()
+    action_payload = {"text": "publish only after explicit owner approval"}
+    pending = client.post(
+        "/tools/test.external.publish/approvals",
+        json={"payload": action_payload},
+    )
+    assert pending.status_code == 201
+    approval_id = pending.json()["approval_id"]
+
+    decided = client.post(
+        f"/tools/test.external.publish/approvals/{approval_id}/decision",
+        json={"decision": "approved"},
+    )
+    assert decided.status_code == 200
+    assert decided.json()["status"] == "approved"
+    assert calls == []
+
+    request = {
+        "goal": "Run the exact owner-approved external action",
+        "tools": [{
+            "name": "test.external.publish",
+            "payload": action_payload,
+            "step_id": "publish",
+            "depends_on": [],
+            "approval_id": approval_id,
+        }],
+    }
+    queued = client.post("/agent/workflows", json=request)
+    assert queued.status_code == 200
+    assert queued.json()["queued"] is True
+    assert queued.json()["execution"] is None
+    assert calls == []
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert calls == [action_payload["text"]]
+
+    repository = TaskRepository(get_settings().database_path)
+    workflow_id = queued.json()["workflow"]["workflow_id"]
+    history = client.get(f"/agent/workflows/{workflow_id}")
+    assert history.status_code == 200
+    assert history.json()["status"] == "succeeded"
+
+    with repository._connection() as connection:
+        stored_approval = connection.execute(
+            "SELECT status, payload_digest, tool_fingerprint "
+            "FROM tool_invocation_approvals WHERE approval_id = ?",
+            (approval_id,),
+        ).fetchone()
+    assert stored_approval is not None
+    assert stored_approval["status"] == "consumed"
+    assert len(stored_approval["payload_digest"]) == 64
+    assert len(stored_approval["tool_fingerprint"]) == 64
+    assert action_payload["text"] not in str(dict(stored_approval))
+
