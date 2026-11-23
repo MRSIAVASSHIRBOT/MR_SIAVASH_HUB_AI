@@ -730,7 +730,9 @@ class AgentWorkflowRunner:
                                 workflow_id,
                                 attempt,
                                 error_code or "tool_execution_failed",
-                                unknown_outcome=definition.replay_safety is not ReplaySafety.RETRY_SAFE,
+                                unknown_outcome=(
+                                    definition.replay_safety is not ReplaySafety.RETRY_SAFE
+                                ),
                                 lease=lease,
                             )
 
