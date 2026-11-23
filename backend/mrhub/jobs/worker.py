@@ -767,6 +767,10 @@ class WorkerEngine:
     def run_once(self) -> TaskRecord | None:
         """Execute at most one eligible task; serialize calls through this worker instance."""
         with self._run_lock:
+            # Recovery is state reconciliation, not dispatch. Keep it running
+            # while the emergency stop is latched so jobs that cross the stale
+            # threshold after process startup are still recovered.
+            self._recover_interrupted()
             if self._control.is_stopped():
                 return None
             result = self._run_once()
@@ -778,7 +782,6 @@ class WorkerEngine:
             return result
 
     def _run_once(self) -> TaskRecord | None:
-        self._recover_interrupted()
         task = self._claim()
         if task is None:
             return None
