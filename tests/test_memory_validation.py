@@ -3,6 +3,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from mrhub.memory.repository import MemoryRepository
+import pytest
+
 from mrhub.memory.validation import MemoryValidationEngine
 
 
@@ -13,6 +15,14 @@ def _owner(repository: MemoryRepository, owner_id: str) -> None:
             "VALUES (?, ?, ?, ?, ?)",
             (owner_id, owner_id, "00", "00", datetime.now(UTC).isoformat()),
         )
+
+
+def test_memory_repository_rejects_coerced_confidence_types():
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence("0.8")
+
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence(True)
 
 
 def test_validation_flags_polarity_conflicts_without_mutating_memory(tmp_path: Path) -> None:
