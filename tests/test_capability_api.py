@@ -77,6 +77,41 @@ def test_capability_approval_requires_review_evidence(tmp_path, monkeypatch):
         get_settings.cache_clear()
 
 
+
+def test_capability_error_does_not_echo_unrecognized_evidence_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "capability-error-sanitization.sqlite3"))
+    get_settings.cache_clear()
+    sentinel = "private-evidence-key-sentinel"
+    try:
+        client = authenticated_client()
+        created = client.post(
+            "/capabilities/candidates",
+            json={"source_url": "https://github.com/example/sanitization", "display_name": "Sanitization"},
+        )
+        assert created.status_code == 201
+        candidate_id = created.json()["candidate_id"]
+
+        reviewing = client.post(
+            f"/capabilities/candidates/{candidate_id}/transition",
+            json={"status": "reviewing"},
+        )
+        assert reviewing.status_code == 200
+
+        response = client.post(
+            f"/capabilities/candidates/{candidate_id}/transition",
+            json={
+                "status": "approved",
+                "license_id": "MIT",
+                "evidence": {sentinel: "untrusted value"},
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Unsupported review evidence field"
+        assert sentinel not in response.text
+    finally:
+        get_settings.cache_clear()
+
+
 def test_capability_catalog_requires_authentication(tmp_path, monkeypatch):
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "capability-auth-api.sqlite3"))
     get_settings.cache_clear()

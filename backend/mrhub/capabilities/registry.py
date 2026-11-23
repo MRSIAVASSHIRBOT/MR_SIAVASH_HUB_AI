@@ -286,7 +286,7 @@ class CapabilityRegistry:
                 raise CapabilityValidationError("Review evidence must be an object")
             for key, value in evidence.items():
                 if key not in self.REQUIRED_APPROVAL_EVIDENCE:
-                    raise CapabilityValidationError(f"Unsupported review evidence field: {key}")
+                    raise CapabilityValidationError("Unsupported review evidence field")
                 next_evidence[key] = self._normalize_text(value, key, 2000)
         if status == "approved":
             missing = self.REQUIRED_APPROVAL_EVIDENCE - next_evidence.keys()
