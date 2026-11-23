@@ -1271,3 +1271,29 @@ def test_agent_core_dependency_plan_uses_caller_stable_step_ids():
     ]
 
     assert ids == ["step-1", "first", "second"]
+
+
+def test_agent_execute_forwards_metadata_only_tool_lifecycle_events():
+    events = []
+
+    response = make_core().execute(
+        AgentPlanRequest(
+            goal="Observe a safe tool lifecycle",
+            tools=[{"name": "text.echo", "payload": {"text": "hello"}}],
+        ),
+        on_tool_lifecycle=events.append,
+    )
+
+    assert response["execution_completed"] is True
+    assert [event.stage.value for event in events] == [
+        "input_validated",
+        "authorization_granted",
+        "handler_started",
+        "handler_returned",
+        "output_validated",
+        "succeeded",
+    ]
+    assert all(event.tool_name == "text.echo" for event in events)
+    assert all(event.input_digest is not None for event in events)
+    assert events[-1].output_digest is not None
+    assert all(not hasattr(event, "payload") for event in events)
