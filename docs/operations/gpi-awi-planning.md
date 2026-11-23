@@ -45,8 +45,11 @@ GPI and AWI each make one local model-generation request. The dedicated Kimi end
 
 A successful response includes:
 
-- `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, acceptance criteria, verification steps, and advisory risk class.
+- `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, acceptance criteria, verification steps, clarification needs, research needs, estimated complexity, and advisory risk class.
+- `decision_analysis`: deterministic, explainable signals for complexity, research, tool need, information gaps, and model input modalities. These are advisory heuristics, not authorization or proof that research occurred.
 - `plan`: the validated dependency graph and rationale.
+- `planning_assessment`: structural complexity, information gaps, research decision, capability availability, and validated topological step order.
+- `model_selection`: the provider/model selected for the planning request and its local/remote classification.
 - `capability_assessment`: required, available, and missing capability names.
 - Explicit safety indicators: `planning_only: true`, `execution_ready: false`, `execution_started: false`, `tools_executed: false`, `permissions_changed: false`, and `authorization_checked: false`.
 
@@ -91,7 +94,7 @@ GET /agent/work-orders/plans/{plan_id}
 Authorization: Bearer <session-token>
 \`\`\`
 
-The read endpoint verifies the owner binding, envelope authentication, strict WorkOrder/ExecutionPlan schemas, and canonical digest before returning the decrypted content. It recalculates the capability-presence report against the current owner tool catalog. It does not authorize or execute any tool.
+The read endpoint verifies the owner binding, envelope authentication, strict WorkOrder/ExecutionPlan schemas, and canonical digest before returning the decrypted content. It recalculates the deterministic goal decision and work-order intelligence assessments, plus the capability-presence report, against the current owner tool catalog. Historical model-selection metadata remains part of the encrypted record. It does not authorize or execute any tool.
 
 Expired records are marked expired and their ciphertext fields are erased when accessed. New plan creation also runs a bounded expiry sweep (up to 100 due records); this is opportunistic cleanup, not a background scheduler.
 
