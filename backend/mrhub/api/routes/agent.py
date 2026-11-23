@@ -50,6 +50,12 @@ from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.tool_approvals import (
+    ToolApprovalError,
+    ToolInvocationApprovalStore,
+    canonical_tool_payload,
+    tool_definition_fingerprint,
+)
 from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
@@ -60,16 +66,57 @@ def _build_owner_agent_core(
     owner_user_id: str,
     repository: TaskRepository | None = None,
 ) -> AgentCore:
-    """Build an AgentCore whose grants come only from the authenticated owner store."""
+    """Build an owner-scoped AgentCore with action-bound approval receipts."""
     tasks = repository or TaskRepository(get_settings().database_path)
     tasks.initialize()
     permissions = ToolPermissionService(tasks, AuditLogger(tasks))
+    registry = build_tool_registry()
+    approval_store = ToolInvocationApprovalStore(tasks)
+
+    def resolve_approval(
+        approval_id: str,
+        tool_name: str,
+        payload: dict[str, object],
+        granted_permissions: frozenset[str],
+        *,
+        consume: bool,
+    ) -> bool:
+        """Validate or consume only a receipt for this exact currently-authorized action."""
+        try:
+            tool = registry.get(tool_name)
+            # The caller reaches this helper only when policy evaluation identified
+            # an approval-required tool. Rechecking required grants here prevents
+            # consuming a receipt after a concurrent permission revocation.
+            if not (tool.risk_class.value == "high" or tool.external_side_effect):
+                return False
+            if not tool.required_permissions.issubset(granted_permissions):
+                return False
+            _normalized, payload_digest = canonical_tool_payload(tool, payload)
+            fingerprint = tool_definition_fingerprint(tool)
+            method = approval_store.consume if consume else approval_store.validate
+            return method(
+                approval_id,
+                owner_user_id=owner_user_id,
+                tool_name=tool_name,
+                payload_digest=payload_digest,
+                tool_fingerprint=fingerprint,
+            )
+        except (LookupError, ToolApprovalError, TypeError, ValueError):
+            return False
+        except Exception:  # noqa: BLE001 - receipt checks fail closed
+            return False
+
     return AgentCore(
         build_model_router(),
-        build_tool_registry(),
+        registry,
         permission_provider=lambda: permissions.active_permissions(owner_user_id),
+        approval_validator=lambda approval_id, tool_name, payload, grants: resolve_approval(
+            approval_id, tool_name, payload, grants, consume=False
+        ),
+        approval_consumer=lambda approval_id, tool_name, payload, grants: resolve_approval(
+            approval_id, tool_name, payload, grants, consume=True
+        ),
     )
-
 
 class WorkflowReconciliationRequest(BaseModel):
     step_number: int | None = Field(default=None, ge=1)
