@@ -192,7 +192,7 @@ def test_ollama_vision_honors_lower_per_request_timeout_cap():
     assert observed[0]["read"] == 4
 
 
-@pytest.mark.parametrize("timeout", [True, False, "5", 0, 181, float("nan"), float("inf")])
+@pytest.mark.parametrize("timeout", [True, False, "5", 0, 181, float("nan"), float("inf"), 10**1000])
 def test_vision_request_rejects_invalid_per_request_timeout(timeout):
     with pytest.raises(ValueError, match="Vision timeout"):
         VisionRequest(
@@ -216,7 +216,8 @@ def test_ollama_vision_rejects_invalid_adapter_timeout_configuration(timeout_sec
         OllamaVisionProvider("llava-local", timeout_seconds=timeout_seconds)
 
 
-def test_ollama_vision_rejects_boolean_health_timeout():
+@pytest.mark.parametrize("timeout_seconds", [True, False, "5", float("nan"), float("inf"), 10**1000])
+def test_ollama_vision_rejects_boolean_health_timeout(timeout_seconds):
     provider = OllamaVisionProvider("llava-local")
     with pytest.raises(ProviderConfigurationError):
-        provider.health(timeout_seconds=True)
+        provider.health(timeout_seconds=timeout_seconds)
