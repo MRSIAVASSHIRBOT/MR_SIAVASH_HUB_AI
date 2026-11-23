@@ -661,8 +661,25 @@ def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkey
     assert result["plan_id"] == plan_id
     assert result["work_order"]["goal"] == work_order.goal
     assert result["plan"]["steps"][0]["step_id"] == "review"
-    assert result["decision_analysis"] == payload["decision_analysis"]
-    assert result["planning_assessment"] == payload["planning_assessment"]
+    # Recompute advisory assessments from the validated plan and current server-side
+    # capability catalog; persisted summary objects are not trusted as live assessments.
+    expected_analysis = agent_routes.analyze_goal(
+        work_order.goal,
+        work_order=work_order,
+    ).model_dump(mode="json")
+    expected_capabilities = agent_routes.assess_work_order_capabilities(
+        work_order,
+        [{"name": "tool.alpha"}],
+    )
+    expected_planning_assessment = agent_routes.assess_work_order_intelligence(
+        work_order,
+        plan,
+        expected_capabilities,
+    ).as_dict()
+    assert result["decision_analysis"] == expected_analysis
+    assert result["planning_assessment"] == expected_planning_assessment
+    assert result["decision_analysis"] != payload["decision_analysis"]
+    assert result["planning_assessment"] != payload["planning_assessment"]
     assert result["model_selection"] == payload["model_selection"]
     assert result["capability_assessment"]["available"] == ["tool.alpha"]
     assert result["capability_assessment"]["authorization_checked"] is False
