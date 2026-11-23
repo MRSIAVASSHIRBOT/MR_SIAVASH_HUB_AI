@@ -124,7 +124,7 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
         SimpleNamespace(user_id="owner-1"),
     )
 
-    assert captured == {"include_stub": False, "max_timeout_seconds": 60}
+    assert captured == {"provider_mode": "local", "include_stub": False, "max_timeout_seconds": 60}
     assert result["capability_assessment"]["available"] == ["tool.alpha"]
     assert result["capability_assessment"]["missing"] == ["tool.missing"]
     assert result["capability_assessment"]["authorization_checked"] is False
@@ -177,11 +177,6 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monk
     )
     monkeypatch.setattr(
         agent_routes,
-        "_enforce_kimi_request_limit",
-        lambda *_args, **_kwargs: pytest.fail("provider quota must not be consumed"),
-    )
-    monkeypatch.setattr(
-        agent_routes,
         "build_tool_registry",
         lambda **kwargs: pytest.fail("tool catalog must not be read for prohibited goals"),
     )
@@ -201,14 +196,15 @@ def test_goal_plan_endpoint_blocks_prohibited_goal_before_provider_or_quota(monk
 
 
 
-def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
+def test_goal_plan_endpoint_uses_local_only_provider_mode_without_remote_quota(monkeypatch):
     router = build_router(
         work_order_output(),
         plan_output(),
-        provider="moonshot",
-        local=False,
+        provider="ollama",
+        local=True,
     )
-    limited_owners = []
+    captured = {}
+    audit_events = []
 
     class FakeToolRegistry:
         def catalog(self):
@@ -226,27 +222,32 @@ def test_goal_plan_endpoint_rate_limits_remote_model_provider(monkeypatch):
             self.repository = repository
 
         def record(self, **kwargs):
-            return None
+            audit_events.append(kwargs)
 
-    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    def fake_router(**kwargs):
+        captured.update(kwargs)
+        return router
+
+    monkeypatch.setattr(agent_routes, "build_model_router", fake_router)
     monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: FakeToolRegistry())
-    monkeypatch.setattr(
-        agent_routes,
-        "_enforce_kimi_request_limit",
-        lambda owner_id: limited_owners.append(owner_id),
-    )
     monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
 
-    agent_routes.create_goal_work_order_plan(
+    result = agent_routes.create_goal_work_order_plan(
         agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
-        SimpleNamespace(user_id="owner-remote"),
+        SimpleNamespace(user_id="owner-local"),
     )
 
-    # Work-order generation and AWI planning each issue one remote model request.
-    assert limited_owners == ["owner-remote", "owner-remote"]
-
+    assert captured == {
+        "provider_mode": "local",
+        "include_stub": False,
+        "max_timeout_seconds": 60,
+    }
+    assert result["planning_only"] is True
+    assert result["execution_started"] is False
+    assert audit_events[-1]["metadata"]["provider_mode"] == "local"
+    assert audit_events[-1]["metadata"]["selected_provider"] == "ollama"
 
 
 def test_goal_plan_endpoint_fails_closed_when_audit_storage_is_unavailable(monkeypatch):
@@ -283,18 +284,15 @@ def test_goal_plan_endpoint_fails_closed_when_audit_storage_is_unavailable(monke
     assert error.value.detail == "Audit storage is unavailable"
 
 
+def generated_prohibited_work_order_output() -> str:
+    payload = json.loads(work_order_output())
+    payload["scope"] = "credential harvesting"
+    return json.dumps(payload)
 
-def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monkeypatch):
-    router = build_router(
-        work_order_output(),
-        plan_output(),
-        provider="moonshot",
-        local=False,
-    )
-    provider = router.registry.get("moonshot", "queue-v1")
 
-    def reject_remote_request(_owner_id):
-        raise HTTPException(status_code=429, detail="rate limited")
+def test_generated_prohibited_work_order_records_terminal_block_audit(monkeypatch):
+    router = build_router(generated_prohibited_work_order_output())
+    audit_events = []
 
     class FakeTaskRepository:
         def __init__(self, database_path):
@@ -303,22 +301,79 @@ def test_goal_plan_endpoint_stops_before_remote_inference_when_rate_limited(monk
         def initialize(self):
             return None
 
-        def record_audit(self, event):
-            return None
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
 
-    monkeypatch.setattr(agent_routes, "get_settings", lambda: SimpleNamespace(database_path="test.db"))
-    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
     monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
-    monkeypatch.setattr(agent_routes, "_enforce_kimi_request_limit", reject_remote_request)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: pytest.fail(
+        "a generated prohibited work order must not reach capability discovery"
+    ))
+    monkeypatch.setattr(
+        agent_routes, "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
 
     with pytest.raises(HTTPException) as error:
         agent_routes.create_goal_work_order_plan(
-            agent_routes.GoalPlanningRequest(goal="Build a validated plan"),
-            SimpleNamespace(user_id="owner-remote"),
+            agent_routes.GoalPlanningRequest(goal="Review login security controls"),
+            SimpleNamespace(user_id="owner-generated"),
         )
 
-    assert error.value.status_code == 429
-    assert provider.calls == 0
+    assert error.value.status_code == 422
+    assert [event["event_type"] for event in audit_events] == [
+        "agent.work_order_planning_started",
+        "agent.work_order_blocked",
+    ]
+    blocked = audit_events[-1]
+    assert blocked["outcome"] == "denied"
+    assert blocked["actor_id"] == "owner-generated"
+    assert blocked["metadata"] == {"status": "generated_output_prohibited"}
+    assert "goal" not in blocked["metadata"]
+
+
+def test_generated_prohibited_work_order_fails_closed_when_block_audit_fails(monkeypatch):
+    router = build_router(generated_prohibited_work_order_output())
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FailingBlockedAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            if kwargs["event_type"] == "agent.work_order_blocked":
+                raise sqlite3.OperationalError("audit storage unavailable")
+
+    monkeypatch.setattr(agent_routes, "build_model_router", lambda **kwargs: router)
+    monkeypatch.setattr(agent_routes, "build_tool_registry", lambda **kwargs: pytest.fail(
+        "a generated prohibited work order must not reach capability discovery"
+    ))
+    monkeypatch.setattr(
+        agent_routes, "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FailingBlockedAuditLogger)
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.create_goal_work_order_plan(
+            agent_routes.GoalPlanningRequest(goal="Review login security controls"),
+            SimpleNamespace(user_id="owner-generated"),
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Audit storage is unavailable"
 
 
 def test_persisted_plan_endpoint_fails_before_inference_without_encryption_key(monkeypatch):
