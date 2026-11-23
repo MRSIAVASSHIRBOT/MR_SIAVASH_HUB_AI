@@ -1,7 +1,7 @@
 """Deterministic policy checks for agent and tool actions."""
 
 from enum import StrEnum
-from typing import ClassVar
+from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,15 +14,34 @@ class PolicyDecision(StrEnum):
     DENY = "deny"
 
 
-class ActionRequest(BaseModel):
-    model_config = ConfigDict(frozen=True)
+PermissionName = Annotated[
+    str,
+    Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9_.:-]{0,79}$"),
+]
 
-    action: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.:-]+$")
+
+class ActionRequest(BaseModel):
+    """Trusted, validated policy facts. Permission sets are immutable snapshots."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    action: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9_.:-]+$",
+        strict=True,
+    )
     risk_class: RiskClass
-    granted_permissions: frozenset[str] = frozenset()
-    required_permissions: frozenset[str] = frozenset()
-    external_side_effect: bool = False
-    user_approved: bool = False
+    granted_permissions: frozenset[PermissionName] = Field(
+        default_factory=frozenset,
+        max_length=32,
+    )
+    required_permissions: frozenset[PermissionName] = Field(
+        default_factory=frozenset,
+        max_length=32,
+    )
+    external_side_effect: bool = Field(default=False, strict=True)
+    user_approved: bool = Field(default=False, strict=True)
 
 
 class PolicyResult(BaseModel):
