@@ -161,6 +161,12 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
         "Check the vendor compatibility documentation"
     ]
     assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
+    assert result["decision_analysis"]["research_required"] is True
+    assert result["decision_analysis"]["tool_use_required"] is True
+    assert result["decision_analysis"]["authorization_checked"] is False
+    assert result["decision_analysis"]["execution_started"] is False
+    assert result["decision_analysis"]["model_requirements"]["modalities"] == ["text"]
+    assert result["decision_analysis"]["complexity"] in {"low", "moderate", "high"}
     assert result["planning_assessment"]["planning_only"] is True
     assert result["planning_assessment"]["complexity"]["method"] == "bounded_structural_heuristic_v1"
     assert result["planning_assessment"]["research"]["execution_started"] is False
