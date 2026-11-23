@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.work_order import WorkOrder
 
-
 Complexity = Literal["low", "moderate", "high"]
 Modality = Literal["text", "vision", "audio"]
 
