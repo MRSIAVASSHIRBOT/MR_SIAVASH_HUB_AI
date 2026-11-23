@@ -116,9 +116,12 @@ the old step. Operators must reconcile such a workflow before continuing.
 ## Per-invocation lifecycle observation
 
 The registry supports an optional metadata-only lifecycle observer. Events carry
-the registered tool name, transition stage, canonical input/output digests,
+the registered tool name, transition stage, keyed input/output fingerprints,
 and a bounded reason code; they never include raw payloads, result bodies,
-exception messages, or credentials.
+exception messages, or credentials. Fingerprints use HMAC-SHA-256 with an
+ephemeral process-local key: equal values can be correlated only within the
+same process lifetime. They intentionally do not correlate across restarts,
+are not authorization evidence, and must not be treated as anonymized data.
 
 The ordered lifecycle distinguishes input validation, authorization decisions,
 handler start/return/failure, output validation, success, and unknown outcomes.
