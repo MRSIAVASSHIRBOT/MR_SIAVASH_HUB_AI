@@ -1414,3 +1414,87 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
     }
     assert "idx_memory_owner_type_updated" in index_names
     connection.close()
+
+
+def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path):
+    connection = connect(tmp_path / "tool-approvals.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(tool_invocation_approvals)")
+    }
+    assert {
+        "approval_id",
+        "owner_user_id",
+        "tool_name",
+        "payload_digest",
+        "tool_fingerprint",
+        "status",
+        "created_at",
+        "expires_at",
+        "decided_at",
+        "consumed_at",
+    } <= columns
+
+    indexes = {
+        row["name"]
+        for row in connection.execute("PRAGMA index_list(tool_invocation_approvals)")
+    }
+    assert {
+        "idx_tool_approvals_owner_status_expiry",
+        "idx_tool_approvals_owner_action",
+    } <= indexes
+
+    foreign_keys = {
+        (row["table"], row["from"], row["to"], row["on_delete"])
+        for row in connection.execute("PRAGMA foreign_key_list(tool_invocation_approvals)")
+    }
+    assert ("auth_users", "owner_user_id", "user_id", "CASCADE") in foreign_keys
+
+    owner_id = "approval-migration-owner"
+    connection.execute(
+        """
+        INSERT INTO auth_users (
+            user_id, username, salt, password_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            owner_id,
+            "approval-migration-owner@example.test",
+            "salt",
+            "hash",
+            "2026-11-23T00:00:00+00:00",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO tool_invocation_approvals (
+            approval_id, owner_user_id, tool_name, payload_digest,
+            tool_fingerprint, status, created_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        """,
+        (
+            "12345678-1234-5678-1234-567812345678",
+            owner_id,
+            "content.publish",
+            "a" * 64,
+            "b" * 64,
+            "2026-11-23T00:00:00+00:00",
+            "2026-11-23T00:05:00+00:00",
+        ),
+    )
+    connection.commit()
+
+    applied = connection.execute(
+        "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
+    ).fetchone()
+    assert tuple(applied) == (57, "owner_scoped_action_bound_tool_approvals")
+
+    connection.execute("DELETE FROM auth_users WHERE user_id = ?", (owner_id,))
+    connection.commit()
+    assert connection.execute(
+        "SELECT 1 FROM tool_invocation_approvals WHERE owner_user_id = ?",
+        (owner_id,),
+    ).fetchone() is None
+    connection.close()
