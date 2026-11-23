@@ -1600,8 +1600,6 @@ MIGRATIONS = (
                 "CREATE INDEX idx_tool_approvals_owner_action ON tool_invocation_approvals(owner_user_id, tool_name, payload_digest)",
             ),
         ),
-    )
-    
 )
 
 
