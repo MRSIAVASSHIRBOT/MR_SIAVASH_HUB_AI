@@ -84,7 +84,7 @@ Content-Type: application/json
 
 - \`expires_in_seconds\` defaults to 900 and is bounded to 60–86,400 seconds.
 - The endpoint requires \`MRH_WORKFLOW_PAYLOAD_KEY\` (or the equivalent protected application setting) to decode to exactly 32 bytes. There is no plaintext fallback or generated default key.
-- WorkOrder and plan JSON are encrypted with AES-GCM. Associated data binds the ciphertext to the plan resource type, plan UUID, and authenticated owner. The database stores ciphertext, a canonical SHA-256 digest, owner/status metadata, and timestamps—not plaintext goal, WorkOrder, or plan text.
+- WorkOrder, execution plan, deterministic decision analysis, structural planning assessment, and historical model-selection metadata are encrypted together with AES-GCM. Associated data binds the ciphertext to the plan resource type, plan UUID, and authenticated owner. The database stores ciphertext, a canonical SHA-256 digest, owner/status metadata, and timestamps—not plaintext goal, WorkOrder, plan text, or assessment content.
 - The response includes the plan ID, digest, expiry, and the newly generated plan, while retaining all planning-only flags.
 
 Retrieve an active plan using the same authenticated owner:
