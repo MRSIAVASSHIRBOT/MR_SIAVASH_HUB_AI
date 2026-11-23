@@ -317,6 +317,15 @@ def invoke_tool(
         elif approval_id is not None:
             raise ToolApprovalError("This tool action does not accept an approval receipt")
 
+        # Receipt lookup/consumption is a separate transaction. Refresh grants
+        # again immediately before invoking the registry so a revoked permission
+        # cannot be carried forward from the request's initial policy snapshot.
+        permissions = _permission_service(repository).active_permissions(user.user_id)
+        if not tool.required_permissions.issubset(permissions):
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Required owner permissions are no longer active",
+            )
         result = registry.invoke(
             tool_name,
             request.payload,
