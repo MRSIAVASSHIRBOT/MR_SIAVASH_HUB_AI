@@ -154,7 +154,9 @@ class MemoryRepository:
         for key, value in changes.items():
             if key not in allowed:
                 raise ValueError("Unsupported memory field")
-            if key == "memory_type" and value not in self.MEMORY_TYPES:
+            if key == "memory_type" and (
+                not isinstance(value, str) or value not in self.MEMORY_TYPES
+            ):
                 raise ValueError("Unsupported memory type")
             if key == "expires_at":
                 value = self._serialize_expiry(value)  # type: ignore[arg-type]
