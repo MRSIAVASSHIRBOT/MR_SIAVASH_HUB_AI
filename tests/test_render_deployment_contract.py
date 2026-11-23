@@ -32,7 +32,7 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
 
     hub, bridge = blueprint.split("  - type: worker", 1)
     worker_build = bridge.split("    startCommand:", 1)[0]
-    install_marker = "MR_SIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@"
+    install_marker = "MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@"
     assert worker_build.count(install_marker) == 1
     pinned_commit = worker_build.split(install_marker, 1)[1].split('"', 1)[0]
     assert len(pinned_commit) == 40
