@@ -67,4 +67,14 @@ inspection-only. Every response explicitly includes
 `evaluation_only=true`, `execution_authorized=false`, and
 `action_executed=false`. A caller must still use the separate authenticated
 tool invocation endpoint, which rebuilds the registered definition and checks
-current grants and approval before any handler is invoked.
+current grants before any handler is invoked.
+
+The current direct tool-invocation API does not yet accept a server-issued,
+action-bound approval receipt. Therefore, a tool whose policy requires explicit
+approval remains fail-closed at this endpoint and returns
+`require_approval`; it is not executable through a caller-supplied
+`user_approved` flag (unknown request fields are rejected). Task-level
+approval records are not substitutes for tool-invocation approvals because
+they do not bind the exact tool definition and canonical payload digest.
+A future approval flow must issue an owner-scoped, expiring, one-time approval
+bound to that exact action before enabling such invocations.
