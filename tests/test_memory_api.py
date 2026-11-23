@@ -23,6 +23,7 @@ def test_memory_crud_search_update_and_delete_keep_fts_index_consistent() -> Non
     assert created.status_code == 201
     entry = created.json()
     assert entry["scope"] == "private"
+    assert entry["memory_type"] == "unspecified"
     assert entry["verification_status"] == "user_authored"
     repository = MemoryRepository(get_settings().database_path)
     with repository.tasks._connection() as connection:
@@ -164,6 +165,85 @@ def test_memory_export_is_owner_scoped_and_contains_expired_entries() -> None:
     assert [entry["memory_id"] for entry in exported.json()["entries"]] == [
         created.json()["memory_id"]
     ]
+
+
+def test_memory_type_is_persisted_filtered_and_updated() -> None:
+    client = authenticated_client()
+    created = {}
+    for memory_type in ("episodic", "semantic", "procedural"):
+        response = client.post(
+            "/memory",
+            json={
+                "memory_type": memory_type,
+                "category": "apollo",
+                "content": "Apollo mission memory classification marker",
+            },
+        )
+        assert response.status_code == 201
+        created[memory_type] = response.json()["memory_id"]
+        assert response.json()["memory_type"] == memory_type
+
+    episodic = client.post(
+        "/memory/search",
+        json={"query": "Apollo mission", "memory_types": ["episodic"]},
+    )
+    assert episodic.status_code == 200
+    assert [item["memory_id"] for item in episodic.json()["results"]] == [
+        created["episodic"]
+    ]
+
+    updated = client.patch(
+        f"/memory/{created['episodic']}",
+        json={"memory_type": "procedural"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["memory_type"] == "procedural"
+
+    old_type = client.post(
+        "/memory/search",
+        json={"query": "Apollo mission", "memory_types": ["episodic"]},
+    )
+    assert old_type.status_code == 200
+    assert old_type.json()["results"] == []
+
+    new_type = client.post(
+        "/memory/search",
+        json={"query": "Apollo mission", "memory_types": ["procedural"]},
+    )
+    assert new_type.status_code == 200
+    assert [item["memory_id"] for item in new_type.json()["results"]] == [
+        created["episodic"]
+    ]
+
+
+def test_memory_type_validation_rejects_unknown_values_and_null_updates() -> None:
+    client = authenticated_client()
+    invalid = client.post(
+        "/memory",
+        json={
+            "memory_type": "working",
+            "category": "invalid",
+            "content": "This must not be persisted",
+        },
+    )
+    assert invalid.status_code == 422
+
+    created = client.post(
+        "/memory",
+        json={"category": "valid", "content": "A valid memory record"},
+    )
+    assert created.status_code == 201
+    invalid_update = client.patch(
+        f"/memory/{created.json()['memory_id']}",
+        json={"memory_type": None},
+    )
+    assert invalid_update.status_code == 422
+
+    invalid_search = client.post(
+        "/memory/search",
+        json={"query": "valid record", "memory_types": ["working"]},
+    )
+    assert invalid_search.status_code == 422
 
 
 @pytest.mark.parametrize("field", ["content", "provenance"])
