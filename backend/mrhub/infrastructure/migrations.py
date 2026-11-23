@@ -1471,7 +1471,7 @@ MIGRATIONS = (
         ),
     ),
     Migration.build(
-        54,
+        55,
         "owner_scoped_encrypted_agent_work_order_plans",
         (
             """CREATE TABLE agent_work_order_plans (
