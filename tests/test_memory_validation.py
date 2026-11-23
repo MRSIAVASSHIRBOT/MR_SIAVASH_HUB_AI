@@ -1,4 +1,6 @@
 import json
+
+import pytest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -190,3 +192,21 @@ def test_validation_does_not_treat_not_only_as_negation(tmp_path: Path) -> None:
 
     result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
     assert result["contradiction_count"] == 0
+
+
+@pytest.mark.parametrize("limit", [True, 1.5])
+def test_validation_preview_rejects_non_integer_limits(tmp_path: Path, limit):
+    engine = MemoryValidationEngine(tmp_path / "validation.sqlite3")
+
+    with pytest.raises(ValueError, match="integer between 1 and 100"):
+        engine.preview("owner-a", limit=limit)
+
+
+@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), "0.8"])
+def test_validation_preview_rejects_non_finite_or_non_numeric_thresholds(
+    tmp_path: Path, threshold
+):
+    engine = MemoryValidationEngine(tmp_path / "validation.sqlite3")
+
+    with pytest.raises(ValueError, match="finite number"):
+        engine.preview("owner-a", threshold=threshold)
