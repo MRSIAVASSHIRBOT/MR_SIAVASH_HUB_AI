@@ -88,3 +88,30 @@ Classification is descriptive metadata, not proof of truth, owner approval, safe
 ## Numeric input boundaries
 
 Memory confidence is restricted to finite numeric values in the inclusive range 0–1. Boolean values, numeric strings, non-finite floats and out-of-range values are rejected both at the API model boundary and again in the persistence repository. Search and preview limits require strict integers; booleans and numeric strings are not accepted as limits. Similarity thresholds must be finite numeric values within each endpoint's documented range. Invalid non-standard JSON NaN/Infinity inputs return a JSON-safe 422 response and never persist.
+
+## Evidence-linked workflow lessons — preview only
+
+The authenticated
+`POST /agent/workflows/{workflow_id}/lessons/preview` endpoint accepts a
+user-authored lesson candidate only when its source workflow is owned by the
+caller, the workflow completed successfully, and the selected step is marked
+succeeded with a persisted SHA-256 output digest.
+
+- The proposal carries a stable proposal ID and a `workflow://` provenance
+  reference containing the source workflow, stable step ID, and output digest.
+- The candidate text is bounded and checked against the memory repository's
+  common credential-pattern filters.
+- The preview returns a proposed Memory payload using fields supported by
+  `POST /memory`, including `memory_type=procedural`, neutral confidence,
+  and `user_authored` status.
+- The proposal's `procedural_candidate` label is a suggestion, not a fact
+  verification or permission grant. The owner must inspect the content.
+- The endpoint does not insert, update, merge, or approve any Memory record.
+  It does not store raw workflow outputs, prompts, tool payloads, or lesson
+  text in the audit event.
+- A successful step digest proves linkage to a persisted step result; it does
+  not prove that a user-authored generalized lesson is true or reusable.
+
+The owner must inspect the proposed content and separately create a Memory
+entry through the authenticated Memory API. Failed, running, blocked, stale,
+or digest-less steps cannot support this preview.
