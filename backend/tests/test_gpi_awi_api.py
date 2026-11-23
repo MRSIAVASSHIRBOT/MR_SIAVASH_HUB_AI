@@ -442,6 +442,14 @@ def test_persisted_plan_endpoint_encrypts_and_stores_the_plan(monkeypatch):
             "complete": True,
             "authorization_checked": False,
         },
+        "decision_analysis": {"complexity": "low", "research_required": False},
+        "planning_assessment": {"readiness": "ready_for_review", "execution_ready": False},
+        "model_selection": {
+            "provider": "local-test",
+            "model": "planner-test",
+            "local": True,
+            "rationale": "test-only local selection",
+        },
     }
 
     class FakeTaskRepository:
@@ -509,7 +517,13 @@ def test_persisted_plan_endpoint_encrypts_and_stores_the_plan(monkeypatch):
     assert decrypted == {
         "work_order": payload_result["work_order"],
         "plan": payload_result["plan"],
+        "decision_analysis": payload_result["decision_analysis"],
+        "planning_assessment": payload_result["planning_assessment"],
+        "model_selection": payload_result["model_selection"],
     }
+    assert result["decision_analysis"] == payload_result["decision_analysis"]
+    assert result["planning_assessment"] == payload_result["planning_assessment"]
+    assert result["model_selection"] == payload_result["model_selection"]
 
 
 def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkeypatch):
@@ -542,6 +556,14 @@ def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkey
     payload = {
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
+        "decision_analysis": {"complexity": "moderate", "research_required": True},
+        "planning_assessment": {"readiness": "needs_research", "execution_ready": False},
+        "model_selection": {
+            "provider": "local-test",
+            "model": "planner-test",
+            "local": True,
+            "rationale": "test-only local selection",
+        },
     }
     plan_digest = agent_routes._canonical_plan_digest(payload)
     envelope = encrypt_plan_payload(
@@ -600,6 +622,9 @@ def test_persisted_plan_read_checks_owner_and_validates_encrypted_content(monkey
     assert result["plan_id"] == plan_id
     assert result["work_order"]["goal"] == work_order.goal
     assert result["plan"]["steps"][0]["step_id"] == "review"
+    assert result["decision_analysis"] == payload["decision_analysis"]
+    assert result["planning_assessment"] == payload["planning_assessment"]
+    assert result["model_selection"] == payload["model_selection"]
     assert result["capability_assessment"]["available"] == ["tool.alpha"]
     assert result["capability_assessment"]["authorization_checked"] is False
     assert result["planning_only"] is True
