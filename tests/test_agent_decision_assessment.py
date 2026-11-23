@@ -1,5 +1,8 @@
 """Tests for explainable, non-executable GPI/AWI decision assessment."""
 
+import pytest
+from pydantic import ValidationError
+
 from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.capability_gaps import CapabilityGapReport
 from mrhub.agents.decision_assessment import (
@@ -72,6 +75,8 @@ def test_assessment_reports_gaps_research_and_dependency_order_without_execution
     }
     assert result["clarification"]["required"] is True
     assert result["clarification"]["resolve_before_execution"] is True
+    assert result["planning_readiness"] == "needs_clarification"
+    assert result["tool_use_required"] is True
     assert result["research"]["required"] is True
     assert result["research"]["research_started"] is False
     assert result["tools"]["matched_registered_tools"] == ["tool.alpha"]
@@ -117,6 +122,8 @@ def test_complexity_is_deterministic_and_increases_with_dependency_work():
     assert first == second
     assert first["complexity"]["score"] <= 20
     assert first["complexity"]["band"] == ComplexityBand.LOW.value
+    assert first["planning_readiness"] == "ready_for_review"
+    assert first["tool_use_required"] is False
 
 
 def test_tool_capability_matches_are_candidates_not_authorization():
@@ -157,3 +164,52 @@ def test_tool_capability_matches_are_candidates_not_authorization():
     assert result["tools"]["matched_registered_tools"] == ["tool.alpha"]
     assert result["tools"]["authorization_checked"] is False
     assert result["tools"]["execution_started"] is False
+
+
+
+def test_missing_information_requires_at_least_one_clarifying_question():
+    with pytest.raises(ValidationError):
+        WorkOrder(
+            goal="Prepare a reviewed plan",
+            intent="Prepare a reviewed plan",
+            missing_information=["The target environment is unknown"],
+            acceptance_criteria=["The plan is reviewed"],
+            verification_steps=["Check the review result"],
+            risk_class=RiskClass.LOW,
+        )
+
+
+def test_research_required_sets_planning_readiness_without_starting_research():
+    work_order = WorkOrder(
+        goal="Check the current supported API version",
+        intent="Identify the supported API version",
+        research_required=True,
+        research_questions=["Which API version is currently supported?"],
+        acceptance_criteria=["The version is supported"],
+        verification_steps=["Check the official source"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        rationale="Research is a planning requirement only",
+        steps=[
+            PlanStep(
+                step_id="verify",
+                description="Verify the current API version",
+                verifies_criteria=["The version is supported"],
+                verification="Compare with the official source",
+            )
+        ],
+    )
+    report = CapabilityGapReport(required=(), available=(), missing=())
+    model = ModelSelection(
+        provider="ollama",
+        model="local-text-model",
+        local=True,
+        rationale="Local text-only planning",
+    )
+
+    result = assess_work_order_decisions(work_order, plan, report, model).as_dict()
+
+    assert result["planning_readiness"] == "needs_research"
+    assert result["research"]["required"] is True
+    assert result["research"]["research_started"] is False
