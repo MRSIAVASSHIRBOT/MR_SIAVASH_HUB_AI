@@ -1,8 +1,8 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
