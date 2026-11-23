@@ -1,5 +1,6 @@
 """Authenticated tool catalog, owner permission grants, and invocation API."""
 
+import sqlite3
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -156,32 +157,40 @@ def request_tool_approval(
         raise HTTPException(status_code=409, detail="This tool action does not require approval")
 
     fingerprint = tool_definition_fingerprint(tool)
-    try:
-        record = _approval_store(repository).create(
-            approval_id=str(uuid4()),
-            owner_user_id=user.user_id,
-            tool_name=tool_name,
-            payload_digest=payload_digest,
-            tool_fingerprint=fingerprint,
-            ttl_seconds=request.expires_in_seconds,
-        )
-    except ToolApprovalError as exc:
-        raise HTTPException(status_code=422, detail="Tool approval request is invalid") from exc
-
-    audit.record(
+    approval_id = str(uuid4())
+    audit_event = audit.build_event(
         event_type="tool.approval_requested",
         outcome="pending",
-        subject_id=record["approval_id"],
+        subject_id=approval_id,
         subject_type="tool_approval",
         actor_type="user",
         actor_id=user.user_id,
         metadata={
             "tool_name": tool_name,
-            "approval_id": record["approval_id"],
+            "approval_id": approval_id,
             "status": "pending",
             "reason_code": "owner_requested_approval",
         },
-    )
+    ).model_dump(mode="json")
+    try:
+        record = _approval_store(repository).create(
+            approval_id=approval_id,
+            owner_user_id=user.user_id,
+            tool_name=tool_name,
+            payload_digest=payload_digest,
+            tool_fingerprint=fingerprint,
+            ttl_seconds=request.expires_in_seconds,
+            audit_event=audit_event,
+        )
+    except ToolApprovalError as exc:
+        raise HTTPException(status_code=422, detail="Tool approval request is invalid") from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Approval storage is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
+
     return {
         "approval_id": record["approval_id"],
         "tool_name": tool_name,
@@ -214,22 +223,7 @@ def decide_tool_approval(
         raise HTTPException(status_code=404, detail="Tool is not registered") from exc
 
     fingerprint = tool_definition_fingerprint(tool)
-    try:
-        record = _approval_store(repository).decide(
-            str(approval_id),
-            owner_user_id=user.user_id,
-            tool_name=tool_name,
-            tool_fingerprint=fingerprint,
-            decision=request.decision,
-        )
-    except ToolApprovalError as exc:
-        raise HTTPException(status_code=409, detail="Tool approval is no longer valid") from exc
-    if record is None:
-        raise HTTPException(status_code=404, detail="Tool approval not found")
-    if record["status"] == "expired":
-        raise HTTPException(status_code=409, detail="Tool approval expired or its definition changed")
-
-    AuditLogger(repository).record(
+    audit_event = AuditLogger(repository).build_event(
         event_type="tool.approval_decided",
         outcome=request.decision,
         subject_id=str(approval_id),
@@ -243,7 +237,29 @@ def decide_tool_approval(
             "decision": request.decision,
             "reason_code": "owner_decision",
         },
-    )
+    ).model_dump(mode="json")
+    try:
+        record = _approval_store(repository).decide(
+            str(approval_id),
+            owner_user_id=user.user_id,
+            tool_name=tool_name,
+            tool_fingerprint=fingerprint,
+            decision=request.decision,
+            audit_event=audit_event,
+        )
+    except ToolApprovalError as exc:
+        raise HTTPException(status_code=409, detail="Tool approval is no longer valid") from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Approval storage is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail="Tool approval not found")
+    if record["status"] == "expired":
+        raise HTTPException(status_code=409, detail="Tool approval expired or its definition changed")
+
     return {
         "approval_id": str(approval_id),
         "tool_name": tool_name,
@@ -283,12 +299,28 @@ def invoke_tool(
         if policy.decision is PolicyDecision.REQUIRE_APPROVAL:
             if approval_id is None:
                 raise ToolPolicyError(policy.decision, policy.reason)
+            consumed_event = audit.build_event(
+                event_type="tool.approval_consumed",
+                outcome="consumed",
+                subject_id=approval_id,
+                subject_type="tool_approval",
+                actor_type="user",
+                actor_id=user.user_id,
+                metadata={
+                    "tool_name": tool_name,
+                    "approval_id": approval_id,
+                    "status": "consumed",
+                    "decision": "consumed",
+                    "reason_code": "single_use_receipt_consumed",
+                },
+            ).model_dump(mode="json")
             consumed = _approval_store(repository).consume(
                 approval_id,
                 owner_user_id=user.user_id,
                 tool_name=tool_name,
                 payload_digest=payload_digest,
                 tool_fingerprint=fingerprint,
+                audit_event=consumed_event,
             )
             if not consumed:
                 raise ToolApprovalError(
@@ -298,6 +330,15 @@ def invoke_tool(
         elif approval_id is not None:
             raise ToolApprovalError("This tool action does not accept an approval receipt")
 
+        # Receipt lookup/consumption is a separate transaction. Refresh grants
+        # again immediately before invoking the registry so a revoked permission
+        # cannot be carried forward from the request's initial policy snapshot.
+        permissions = _permission_service(repository).active_permissions(user.user_id)
+        if not tool.required_permissions.issubset(permissions):
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Required owner permissions are no longer active",
+            )
         result = registry.invoke(
             tool_name,
             request.payload,
@@ -336,6 +377,12 @@ def invoke_tool(
             },
         )
         raise HTTPException(status_code=422, detail="Tool input validation failed", headers={"Cache-Control": "no-store"}) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Approval or permission storage is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     except ToolApprovalError as exc:
         audit.record(
             event_type="tool.invocation",
