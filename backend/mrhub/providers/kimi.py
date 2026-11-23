@@ -108,12 +108,17 @@ class KimiProvider:
         """Clamp a caller budget to the configured adapter maximum."""
         if timeout_seconds is None:
             return self.timeout_seconds
-        if (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, (int, float))
-            or not math.isfinite(float(timeout_seconds))
-            or not 1 <= timeout_seconds <= 300
+        if isinstance(timeout_seconds, bool) or not isinstance(
+            timeout_seconds, (int, float)
         ):
+            raise ProviderConfigurationError(
+                "Request timeout must be between 1 and 300 seconds"
+            )
+        try:
+            finite = math.isfinite(float(timeout_seconds))
+        except (OverflowError, ValueError):
+            finite = False
+        if not finite or not 1 <= timeout_seconds <= 300:
             raise ProviderConfigurationError(
                 "Request timeout must be between 1 and 300 seconds"
             )
