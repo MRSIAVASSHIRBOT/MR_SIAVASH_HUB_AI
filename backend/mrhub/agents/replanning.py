@@ -5,9 +5,9 @@ steps, calls tools, or treats missing evidence as proof of failure.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from collections.abc import Mapping
 
 MAX_GAPS = 100
 MAX_TEXT_LENGTH = 500
