@@ -6,14 +6,35 @@ The first memory release is a local SQLite feature for explicit, owner-authored 
 
 All endpoints require the local owner's bearer session.
 
-- `POST /memory` — create a private entry. Required: `category`, `content`. Optional: `provenance`, `confidence`, `verification_status`, `expires_at`.
+- `POST /memory` — create a private entry. Required: `category`, `content`. Optional: `memory_type` (`unspecified`, `episodic`, `semantic`, or `procedural`), `provenance`, `confidence`, `verification_status`, `expires_at`.
 - `GET /memory?limit=50` — list active entries for the authenticated owner (maximum 100).
 - `GET /memory/{memory_id}` — read one active owned entry.
-- `PATCH /memory/{memory_id}` — update fields; send `{"expires_at": null}` to clear expiry.
+- `PATCH /memory/{memory_id}` — update fields, including `memory_type`; send `{"expires_at": null}` to clear expiry.
 - `DELETE /memory/{memory_id}` — delete one owned entry.
-- `POST /memory/search` — lexical SQLite FTS5 search, with a query up to 200 characters and at most 25 results.
+- `POST /memory/search` — bounded SQLite FTS5 candidate retrieval with deterministic hybrid reranking, an optional `memory_types` filter, a query up to 200 characters and at most 25 results.
 - `GET /memory/export` — export all owned entries, including expired entries, as JSON.
 - `DELETE /memory/expired` — permanently delete expired entries owned by the caller.
+
+## Memory taxonomy
+
+Each entry carries one bounded type:
+- `episodic`: a specific event or interaction record;
+- `semantic`: a general fact or concept;
+- `procedural`: a reusable method or operating procedure;
+- `unspecified`: the compatibility default for older and unclassified notes.
+
+The API supports type filtering during retrieval. A type is classification metadata, not a truth or verification label. Transient working context remains ephemeral in the Agent context assembler rather than being persisted as a permanent note. Dreaming and validation previews do not merge or compare entries across different memory types.
+
+## Retrieval ranking
+
+Search first selects up to 100 lexical FTS5 candidates after applying owner and expiry filters in SQL. It then reranks that bounded set using a deterministic score:
+
+- lexical relevance: 70% (normalized FTS5 BM25 rank within the candidate set);
+- owner-supplied confidence: 15%;
+- owner-declared approval: 10% (the user_approved state is self-attested by the authenticated owner, not independently verified);
+- freshness: 5% (90-day exponential decay based on updated_at).
+
+Each result includes its memory type plus the score and component signals under the retrieval field. The response identifies the ranking scheme and its weights. This is a retrieval-order heuristic only: confidence and approval are owner-supplied signals, not independent verification. The score is not a truth score, safety assessment, authorization grant, or substitute for reading provenance and reviewing source quality. A new ranking version may change ordering without changing saved memory data.
 
 ## Security and data handling
 
