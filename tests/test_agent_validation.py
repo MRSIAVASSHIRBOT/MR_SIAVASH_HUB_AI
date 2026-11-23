@@ -37,3 +37,21 @@ def test_non_mapping_plan_rejected():
 def test_cycle_reported_without_recursion():
     steps = [step("a", ["b"]), step("b", ["c"]), step("c", ["a"])]
     assert "dependency_cycle" in validate_plan({"steps": steps}).findings
+
+
+def test_branching_dag_with_shared_descendant_has_no_false_cycle():
+    steps = [step("root", ["left", "right"]), step("left", ["leaf"]),
+             step("right", ["leaf"]), step("leaf")]
+    report = validate_plan({"steps": steps})
+    assert report.valid and "dependency_cycle" not in report.findings
+
+
+def test_cross_edge_to_finished_node_has_no_false_cycle():
+    steps = [step("a", ["b", "c"]), step("b", ["c"]), step("c")]
+    report = validate_plan({"steps": steps})
+    assert report.valid
+
+
+def test_long_cycle_detected_iteratively():
+    steps = [step(str(i), [str((i + 1) % 100)]) for i in range(100)]
+    assert "dependency_cycle" in validate_plan({"steps": steps}).findings
