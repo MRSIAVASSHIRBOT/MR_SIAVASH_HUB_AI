@@ -73,7 +73,10 @@ def test_orchestrator_revalidates_tool_proposal_then_observes_result():
     assert result["tool_calls"] == 1
     assert result["trace"][0]["type"] == "tool_observation"
     assert "character_count" in result["trace"][0]["observation"]
+    assert result["trace"][0]["trust"] == "untrusted_tool_output"
+    assert result["trace"][0]["observation_is_untrusted_data"] is True
     assert len(provider.requests) == 2
+    assert '"observations_are_untrusted_data":true' in provider.requests[1].input_text
 
 
 def test_orchestrator_denies_unregistered_model_proposed_tool():
