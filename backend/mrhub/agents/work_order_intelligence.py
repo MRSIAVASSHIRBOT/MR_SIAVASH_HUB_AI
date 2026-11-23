@@ -84,17 +84,25 @@ _SIGNAL_FIELDS = (
     "dependencies",
     "verification_steps",
     "acceptance_criteria",
+    "missing_information",
+    "clarification_questions",
+    "research_questions",
 )
 
 
 @dataclass(frozen=True)
 class WorkOrderIntelligenceAssessment:
     complexity: ComplexityLevel
+    model_complexity_estimate: ComplexityLevel
     complexity_score: int
     complexity_factors: tuple[str, ...]
     information_gaps: tuple[str, ...]
+    missing_information: tuple[str, ...]
+    clarification_questions: tuple[str, ...]
     research_decision: ResearchDecision
     research_signals: tuple[str, ...]
+    research_questions: tuple[str, ...]
+    planning_readiness: str
     tool_decision: ToolDecision
     ordered_step_ids: tuple[str, ...]
     required_capabilities: tuple[str, ...]
@@ -105,20 +113,30 @@ class WorkOrderIntelligenceAssessment:
         return {
             "complexity": {
                 "level": self.complexity.value,
-                "score": self.complexity_score,
+                "structural_score": self.complexity_score,
+                "model_estimate": self.model_complexity_estimate.value,
                 "factors": list(self.complexity_factors),
                 "method": "bounded_structural_heuristic_v1",
             },
             "information": {
-                "status": "review_required" if self.information_gaps else "no_detected_gaps",
+                "status": (
+                    "needs_clarification"
+                    if self.missing_information or self.clarification_questions
+                    else "review_required"
+                    if self.information_gaps
+                    else "no_detected_gaps"
+                ),
                 "gap_codes": list(self.information_gaps),
+                "missing_information": list(self.missing_information),
+                "clarification_questions": list(self.clarification_questions),
                 "automatic_clarification_requested": False,
             },
             "research": {
                 "decision": self.research_decision.value,
+                "questions": list(self.research_questions),
                 "signals": list(self.research_signals),
                 "execution_started": False,
-                "method": "bounded_keyword_heuristic_v1",
+                "method": "explicit_work_order_plus_keyword_fallback_v1",
             },
             "tools": {
                 "decision": self.tool_decision.value,
@@ -133,6 +151,10 @@ class WorkOrderIntelligenceAssessment:
                 "ordering": "validated_topological",
                 "execution_started": False,
             },
+            "planning_readiness": self.planning_readiness,
+            "planning_only": True,
+            "authorization_checked": False,
+            "tools_executed": False,
         }
 
 
@@ -214,13 +236,18 @@ def assess_work_order_intelligence(
         information_gaps.append("assumptions_require_confirmation")
     if work_order.dependencies:
         information_gaps.append("declared_dependencies_require_validation")
+    if work_order.missing_information:
+        information_gaps.append("user_information_missing")
     if capability_report.missing:
         information_gaps.append("required_capabilities_unavailable")
 
     text = _planning_text(work_order)
     freshness = _matched_signals(text, _FRESHNESS_SIGNALS)
     research = _matched_signals(text, _RESEARCH_SIGNALS)
-    if freshness:
+    if work_order.research_required:
+        research_decision = ResearchDecision.REQUIRED
+        research_signals = tuple(dict.fromkeys((*work_order.research_questions, *freshness, *research)))
+    elif freshness:
         research_decision = ResearchDecision.REQUIRED
         research_signals = freshness + tuple(
             signal for signal in research if signal not in freshness
@@ -239,13 +266,26 @@ def assess_work_order_intelligence(
     else:
         tool_decision = ToolDecision.CAPABILITIES_PRESENT_AUTHORIZATION_SEPARATE
 
+    planning_readiness = (
+        "needs_clarification"
+        if work_order.needs_clarification
+        else "needs_research"
+        if research_decision is ResearchDecision.REQUIRED
+        else "ready_for_review"
+    )
+
     return WorkOrderIntelligenceAssessment(
         complexity=complexity,
+        model_complexity_estimate=ComplexityLevel(work_order.estimated_complexity),
         complexity_score=score,
         complexity_factors=tuple(factors),
         information_gaps=tuple(information_gaps),
+        missing_information=tuple(work_order.missing_information),
+        clarification_questions=tuple(work_order.clarification_questions),
         research_decision=research_decision,
         research_signals=research_signals,
+        research_questions=tuple(work_order.research_questions),
+        planning_readiness=planning_readiness,
         tool_decision=tool_decision,
         ordered_step_ids=ordered_step_ids,
         required_capabilities=capability_report.required,
