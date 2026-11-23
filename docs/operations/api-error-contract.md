@@ -25,10 +25,17 @@ This means exception-derived text (`str(exc)`), provider codes or bodies,
 policy decision reasons, request-controlled identifiers (including unknown
 model-profile IDs), nested objects and arbitrary mappings are never reflected
 by the HTTP exception handler. Unknown model profiles return only a stable
-message; clients should not depend on the caller-supplied identifier being
-echoed back. New
-legacy detail strings must be reviewed and added to the allowlist deliberately;
-do not add dynamic values or interpolate user/provider data.
+message; caller-supplied identifiers are not echoed.
+
+A small set of structured legacy details is also allowlisted by server-owned
+error code. Their message is always replaced with a fixed reviewed string;
+only explicitly approved fields may survive (for example, the fixed
+`execution=not_started` marker, a bounded integer retry delay, a bounded
+maximum byte count, or one of the known security-lab reason codes). Unknown
+codes and all unapproved fields fall back to the generic status message.
+New legacy detail strings or structured codes must be reviewed and added to
+the allowlist deliberately; do not add dynamic values or interpolate
+user/provider data.
 
 New clients should use `error.code` for programmatic branching and
 `error.request_id` for support and log correlation. Error codes are stable API
