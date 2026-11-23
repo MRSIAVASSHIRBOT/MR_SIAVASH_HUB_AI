@@ -345,7 +345,7 @@ def test_cancelling_running_step_blocks_its_pending_descendants(tmp_path):
     recovery.start_run(workflow_id)
     provider = recovery.start_step(workflow_id, "step-1")
     recovery.complete_step(workflow_id, provider, "8" * 64)
-    active = recovery.start_step(workflow_id, "active")
+    recovery.start_step(workflow_id, "active")
 
     recovery.finish_run(workflow_id, "cancelled")
     stored = recovery.get_run(workflow_id)
