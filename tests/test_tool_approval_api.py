@@ -18,6 +18,25 @@ from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
+def _approval_audit_event(repository, approval_id, *, event_type, outcome, status, decision=None):
+    metadata = {
+        "tool_name": "content.publish",
+        "approval_id": approval_id,
+        "status": status,
+    }
+    if decision is not None:
+        metadata["decision"] = decision
+    return AuditLogger(repository).build_event(
+        event_type=event_type,
+        outcome=outcome,
+        subject_id=approval_id,
+        subject_type="tool_approval",
+        actor_type="user",
+        actor_id="local-owner",
+        metadata=metadata,
+    ).model_dump(mode="json")
+
+
 class PublishInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=200)
@@ -240,6 +259,13 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         tool_name="content.publish",
         payload_digest="a" * 64,
         tool_fingerprint="b" * 64,
+        audit_event=_approval_audit_event(
+            repository,
+            "12345678-1234-5678-1234-567812345678",
+            event_type="tool.approval_requested",
+            outcome="pending",
+            status="pending",
+        ),
     )
     assert record["status"] == "pending"
 
@@ -249,6 +275,14 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         tool_name="content.publish",
         payload_digest="a" * 64,
         tool_fingerprint="b" * 64,
+        audit_event=_approval_audit_event(
+            repository,
+            record["approval_id"],
+            event_type="tool.approval_consumed",
+            outcome="consumed",
+            status="consumed",
+            decision="consumed",
+        ),
     )
     assert wrong_owner is False
 
@@ -258,6 +292,14 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         tool_name="content.publish",
         tool_fingerprint="b" * 64,
         decision="approved",
+        audit_event=_approval_audit_event(
+            repository,
+            record["approval_id"],
+            event_type="tool.approval_decided",
+            outcome="approved",
+            status="approved",
+            decision="approved",
+        ),
     )
     assert decided is not None
     assert decided["status"] == "approved"
@@ -268,6 +310,14 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         tool_name="content.publish",
         payload_digest="a" * 64,
         tool_fingerprint="b" * 64,
+        audit_event=_approval_audit_event(
+            repository,
+            record["approval_id"],
+            event_type="tool.approval_consumed",
+            outcome="consumed",
+            status="consumed",
+            decision="consumed",
+        ),
     )
     replayed = store.consume(
         record["approval_id"],
@@ -275,6 +325,14 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         tool_name="content.publish",
         payload_digest="a" * 64,
         tool_fingerprint="b" * 64,
+        audit_event=_approval_audit_event(
+            repository,
+            record["approval_id"],
+            event_type="tool.approval_consumed",
+            outcome="consumed",
+            status="consumed",
+            decision="consumed",
+        ),
     )
     assert consumed is True
     assert replayed is False
@@ -348,6 +406,13 @@ def test_decision_and_consumption_roll_back_when_audit_insert_fails(monkeypatch)
         tool_name="content.publish",
         payload_digest="a" * 64,
         tool_fingerprint="b" * 64,
+        audit_event=_approval_audit_event(
+            repository,
+            approval_id,
+            event_type="tool.approval_requested",
+            outcome="pending",
+            status="pending",
+        ),
     )
 
     audit_event = AuditLogger(repository).build_event(
@@ -389,6 +454,14 @@ def test_decision_and_consumption_roll_back_when_audit_insert_fails(monkeypatch)
         tool_name="content.publish",
         tool_fingerprint="b" * 64,
         decision="approved",
+        audit_event=_approval_audit_event(
+            repository,
+            approval_id,
+            event_type="tool.approval_decided",
+            outcome="approved",
+            status="approved",
+            decision="approved",
+        ),
     )
     consumed_event = AuditLogger(repository).build_event(
         event_type="tool.approval_consumed",
