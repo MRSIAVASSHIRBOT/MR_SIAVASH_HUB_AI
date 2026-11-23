@@ -4,7 +4,14 @@ from pydantic import BaseModel, Field
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import PolicyDecision
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ToolDefinition, ToolExecutionError, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import (
+    ToolDefinition,
+    ToolExecutionError,
+    ToolLifecycleEvent,
+    ToolLifecycleStage,
+    ToolPolicyError,
+    ToolRegistry,
+)
 
 
 class InputValue(BaseModel):
@@ -273,8 +280,6 @@ def test_registry_cancels_awaitable_results_from_synchronous_handlers():
 
     assert pending.cancelled is True
 
-
-from mrhub.tools.registry import ToolLifecycleEvent, ToolLifecycleStage
 
 
 def test_registry_emits_ordered_metadata_only_lifecycle_events_for_success():
