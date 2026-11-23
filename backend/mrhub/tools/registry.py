@@ -6,6 +6,7 @@ import inspect
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -15,6 +16,14 @@ from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine, P
 
 InputModel = TypeVar("InputModel", bound=BaseModel)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
+
+
+class ReplaySafety(StrEnum):
+    """Server-owned classification for retrying an interrupted tool invocation."""
+
+    RETRY_SAFE = "retry_safe"
+    RECONCILE_REQUIRED = "reconcile_required"
+
 
 _PERMISSION_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,79}$")
 
@@ -29,6 +38,7 @@ class ToolDefinition:
     risk_class: RiskClass = RiskClass.LOW
     required_permissions: frozenset[str] = frozenset()
     external_side_effect: bool = False
+    replay_safety: ReplaySafety = ReplaySafety.RECONCILE_REQUIRED
 
 
 class ToolExecutionError(RuntimeError):
@@ -85,6 +95,9 @@ class ToolRegistry:
             raise ValueError("Tool risk_class must be a server-defined RiskClass")
         if type(tool.external_side_effect) is not bool:
             raise ValueError("Tool external_side_effect must be a boolean")
+
+        if not isinstance(tool.replay_safety, ReplaySafety):
+            raise ValueError("Tool replay_safety must be a server-defined ReplaySafety value")
 
         if not isinstance(tool.required_permissions, frozenset):
             raise ValueError("Tool required_permissions must be an immutable frozenset")
@@ -154,6 +167,7 @@ class ToolRegistry:
                 "risk_class": tool.risk_class.value,
                 "required_permissions": sorted(tool.required_permissions),
                 "external_side_effect": tool.external_side_effect,
+                "replay_safety": tool.replay_safety.value,
                 "input_schema": tool.input_model.model_json_schema(),
                 "output_schema": tool.output_model.model_json_schema(),
             }
