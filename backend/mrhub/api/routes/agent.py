@@ -423,6 +423,42 @@ def get_persisted_goal_work_order_plan(
     }
 
 
+
+
+@router.delete("/work-orders/plans/{plan_id}")
+def revoke_persisted_goal_work_order_plan(
+    plan_id: UUID,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+) -> dict[str, object]:
+    """Revoke an owned active plan and erase its ciphertext without executing it."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    settings = get_settings()
+    TaskRepository(settings.database_path).initialize()
+    record = AgentWorkOrderPlanRepository(settings.database_path).revoke(
+        str(plan_id),
+        owner_user_id=current_user.user_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Plan record not found")
+    if record.status == "expired":
+        raise HTTPException(status_code=410, detail="Plan record has expired")
+    if record.status == "consumed":
+        raise HTTPException(status_code=409, detail="Consumed plan cannot be revoked")
+    if record.status != "revoked":
+        raise HTTPException(status_code=409, detail="Plan record is not revocable")
+    return {
+        "plan_id": record.plan_id,
+        "status": "revoked",
+        "revoked": True,
+        "ciphertext_erased": True,
+        "execution_started": False,
+        "tools_executed": False,
+    }
+
+
 @router.post("/work-orders/assess")
 def assess_agent_work_order(
     request: WorkOrder,
