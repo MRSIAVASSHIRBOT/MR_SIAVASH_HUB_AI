@@ -1,7 +1,8 @@
 """Regression tests for bounded safe workflow recovery attempts."""
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
