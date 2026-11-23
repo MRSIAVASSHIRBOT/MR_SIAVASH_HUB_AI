@@ -99,6 +99,23 @@ def _fingerprint_value(value: object, *, depth: int = 0) -> object:
                 for key in sorted(value)
             },
         }
+    # Trusted server-owned clients may opt in to a deliberately small,
+    # non-secret identity contract. Never inspect their arbitrary attributes.
+    identity_provider = getattr(value, "approval_fingerprint", None)
+    if callable(identity_provider):
+        try:
+            identity = identity_provider()
+        except Exception as exc:  # noqa: BLE001 - approval binding fails closed
+            raise ToolApprovalError("Tool configuration fingerprint is unavailable") from exc
+        if not isinstance(identity, dict) or any(
+            not isinstance(key, str) for key in identity
+        ):
+            raise ToolApprovalError("Tool configuration fingerprint is invalid")
+        return {
+            "kind": "approved_identity",
+            "type": f"{type(value).__module__}.{type(value).__qualname__}",
+            "value": _fingerprint_value(identity, depth=depth + 1),
+        }
     # Do not introspect arbitrary objects: they may contain credentials, clients,
     # sockets, or mutable state. Their concrete type is still part of the contract.
     return {"kind": "opaque", "type": f"{type(value).__module__}.{type(value).__qualname__}"}
