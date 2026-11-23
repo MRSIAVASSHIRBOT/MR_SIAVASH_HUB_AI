@@ -102,7 +102,7 @@ DELETE /agent/work-orders/plans/{plan_id}
 Authorization: Bearer <session-token>
 ```
 
-Revocation uses an owner-scoped atomic transition. The ciphertext and nonce fields are overwritten with non-secret terminal markers; repeated DELETE requests are idempotent. A foreign owner's plan is reported as not found. Expired plans remain expired, and consumed plans cannot be revoked. The `consumed` state remains reserved for a future reviewed plan-to-workflow integration; no plan-to-execution endpoint is exposed by this change.
+The endpoint records a minimal owner-scoped audit event before mutation. Revocation uses an owner-scoped atomic transition. The ciphertext and nonce fields are overwritten with non-secret terminal markers; repeated DELETE requests are idempotent. A foreign owner's plan is reported as not found. Expired plans remain expired, and consumed plans cannot be revoked. The `consumed` state remains reserved for a future reviewed plan-to-workflow integration; no plan-to-execution endpoint is exposed by this change.
 
 | Status | Meaning |
 | --- | --- |
