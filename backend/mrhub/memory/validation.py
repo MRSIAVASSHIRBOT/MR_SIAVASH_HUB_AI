@@ -1,6 +1,7 @@
 """Conservative, read-only memory validation and contradiction hints."""
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from datetime import UTC, datetime
@@ -86,10 +87,16 @@ class MemoryValidationEngine:
         limit: int = _MAX_ENTRIES,
         threshold: float = _DEFAULT_THRESHOLD,
     ) -> dict[str, Any]:
-        if not 1 <= limit <= _MAX_ENTRIES:
-            raise ValueError("Validation limit must be between 1 and 100")
-        if not 0.65 <= threshold <= 1.0:
-            raise ValueError("Contradiction threshold must be between 0.65 and 1.0")
+        if type(limit) is not int or not 1 <= limit <= _MAX_ENTRIES:
+            raise ValueError("Validation limit must be an integer between 1 and 100")
+        if (
+            type(threshold) not in (int, float)
+            or not 0.65 <= threshold <= 1.0
+            or not math.isfinite(threshold)
+        ):
+            raise ValueError(
+                "Contradiction threshold must be a finite number between 0.65 and 1.0"
+            )
 
         entries = self.repository.list_entries(
             owner_user_id, limit=limit, include_expired=True
@@ -106,6 +113,7 @@ class MemoryValidationEngine:
                 expired.append({
                     "memory_id": entry["memory_id"],
                     "category": entry["category"],
+                    "memory_type": entry.get("memory_type", "unspecified"),
                     "excerpt": content[:300],
                     "reason": "expired",
                     "requires_owner_review": True,
@@ -123,6 +131,7 @@ class MemoryValidationEngine:
                 review_queue.append({
                     "memory_id": entry["memory_id"],
                     "category": entry["category"],
+                    "memory_type": entry.get("memory_type", "unspecified"),
                     "excerpt": content[:300],
                     "confidence": confidence,
                     "verification_status": verification_status,
@@ -140,7 +149,11 @@ class MemoryValidationEngine:
         contradictions: list[dict[str, object]] = []
         for index, (left, left_tokens, left_negated) in enumerate(prepared):
             for right, right_tokens, right_negated in prepared[index + 1:]:
-                if left.get("category") != right.get("category"):
+                if (
+                    left.get("category") != right.get("category")
+                    or left.get("memory_type", "unspecified")
+                    != right.get("memory_type", "unspecified")
+                ):
                     continue
                 if left_negated == right_negated:
                     continue
@@ -151,6 +164,7 @@ class MemoryValidationEngine:
                     "proposal_type": "possible_contradiction",
                     "memory_ids": [left["memory_id"], right["memory_id"]],
                     "category": left["category"],
+                    "memory_type": left.get("memory_type", "unspecified"),
                     "similarity": round(similarity, 4),
                     "confidence": "heuristic",
                     "evidence": "similar wording with different negation polarity",
