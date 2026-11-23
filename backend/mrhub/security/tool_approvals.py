@@ -220,7 +220,17 @@ class ToolInvocationApprovalStore:
                     "WHERE approval_id = ? AND status = 'pending'",
                     (normalized_id,),
                 )
-                raise ToolApprovalError("Tool approval expired or its definition changed")
+                expired = connection.execute(
+                    """
+                    SELECT approval_id, owner_user_id, tool_name, payload_digest,
+                           tool_fingerprint, status, created_at, expires_at,
+                           decided_at, consumed_at
+                    FROM tool_invocation_approvals
+                    WHERE approval_id = ? AND owner_user_id = ?
+                    """,
+                    (normalized_id, owner_user_id),
+                ).fetchone()
+                return dict(expired) if expired is not None else None
             cursor = connection.execute(
                 """
                 UPDATE tool_invocation_approvals
