@@ -194,7 +194,6 @@ def create_goal_work_order_plan(
             ModelRequest(requires_text=True, prefer_local=True)
         )
         work_order = generate_work_order(request.goal, model_router)
-        decision_analysis = analyze_goal(request.goal, work_order=work_order)
         if work_order.risk_class.value == "prohibited":
             try:
                 audit_logger.record(
@@ -253,7 +252,6 @@ def create_goal_work_order_plan(
     )
     return {
         "work_order": work_order.model_dump(mode="json"),
-        "decision_analysis": decision_analysis.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
         "capability_assessment": {
             **assessment.as_dict(),
