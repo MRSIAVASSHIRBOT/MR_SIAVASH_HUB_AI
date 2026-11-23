@@ -7,7 +7,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from mrhub.agents.capability_gaps import (
     MAX_NAME_LENGTH as MAX_REGISTERED_TOOL_NAME_LENGTH,
@@ -106,9 +113,15 @@ class WorkOrder(BaseModel):
 
     @computed_field
     @property
-    def planning_readiness(self) -> Literal["needs_clarification", "ready_for_review"]:
-        """Readiness for human review; never means execution is authorized."""
-        return "needs_clarification" if self.needs_clarification else "ready_for_review"
+    def planning_readiness(
+        self,
+    ) -> Literal["needs_clarification", "needs_research", "ready_for_review"]:
+        """Readiness for review; never means execution is authorized."""
+        if self.needs_clarification:
+            return "needs_clarification"
+        if self.research_required:
+            return "needs_research"
+        return "ready_for_review"
 
 
 # Backwards-compatible public name retained for existing route and client imports.
