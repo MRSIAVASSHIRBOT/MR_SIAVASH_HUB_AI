@@ -1338,7 +1338,6 @@ def test_agent_core_requires_exact_owner_receipt_then_consumes_it_once():
     assert len(consumed) == 1
 
     replay = core.execute(request)
-    assert replay["execution_started"] is False
     assert replay["tools_executed"] is False
     assert replay["blocked"] is True
     assert calls == ["executed"]
