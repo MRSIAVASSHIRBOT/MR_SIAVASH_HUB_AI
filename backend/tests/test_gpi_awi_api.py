@@ -144,9 +144,10 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["execution_started"] is False
     assert result["tools_executed"] is False
     assert result["permissions_changed"] is False
-    assert result["work_order"]["needs_clarification"] is True
-    assert result["work_order"]["tool_use_required"] is True
-    assert result["work_order"]["planning_readiness"] == "needs_clarification"
+    assert "needs_clarification" not in result["work_order"]
+    assert "tool_use_required" not in result["work_order"]
+    assert "planning_readiness" not in result["work_order"]
+    assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
     assert result["planning_assessment"]["complexity"]["model_estimate"] == "high"
     assert result["planning_assessment"]["information"]["status"] == "needs_clarification"
     assert result["planning_assessment"]["information"]["missing_information"] == [
