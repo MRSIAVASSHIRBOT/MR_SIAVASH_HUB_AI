@@ -84,3 +84,36 @@ def test_workflow_trace_event_metadata_is_allow_listed_and_non_intrusive(tmp_pat
         "trace_id": task_id,
         "workflow_id": str(workflow_id),
     }
+
+
+
+def test_trace_cursor_normalizes_equivalent_timezone_offsets():
+    from datetime import datetime, timedelta, timezone
+
+    client = authenticated_client()
+    submitted = client.post(
+        "/tasks",
+        json={"task_type": "demo.echo", "description": "trace cursor canonicalization"},
+    )
+    assert submitted.status_code == 201
+    task_id = submitted.json()["task_id"]
+
+    first_page = client.get(f"/agent/traces/{task_id}")
+    assert first_page.status_code == 200
+    event = first_page.json()["events"][0]
+    stored_time = datetime.fromisoformat(event["created_at"])
+    equivalent_offset = stored_time.astimezone(
+        timezone(timedelta(hours=3))
+    ).isoformat()
+
+    page = client.get(
+        f"/agent/traces/{task_id}",
+        params={
+            "before_created_at": equivalent_offset,
+            "before_event_id": event["event_id"],
+        },
+    )
+
+    assert page.status_code == 200
+    assert page.json()["events"] == []
+    assert page.json()["has_more"] is False
