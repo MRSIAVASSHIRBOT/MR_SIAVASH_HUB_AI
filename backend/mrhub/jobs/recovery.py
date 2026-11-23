@@ -60,7 +60,7 @@ class WorkflowRecoveryRepository:
     _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
     _ERROR_PATTERN = re.compile(r"^[a-z0-9_.-]{1,80}$")
     # Includes the initial execution: interrupted safe steps get at most two
-    # additional recovery attempts. External-side-effect steps are never replayed. 
+    # additional recovery attempts. External-side-effect steps are never replayed.
     MAX_SAFE_STEP_ATTEMPTS = 3
 
     def __init__(
