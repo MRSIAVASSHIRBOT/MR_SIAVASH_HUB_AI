@@ -76,6 +76,7 @@ def test_local_vision_analysis_uses_actual_timestamps_and_transient_frames():
     assert "1: 0.000 seconds" in request.prompt
     assert "2: 1.500 seconds" in request.prompt
     assert captured["settings"]["base_url"] == "http://127.0.0.1:11434"
+    assert request.timeout_seconds == 30
 
 
 def test_local_vision_is_opt_in_and_never_constructs_provider_when_disabled():
