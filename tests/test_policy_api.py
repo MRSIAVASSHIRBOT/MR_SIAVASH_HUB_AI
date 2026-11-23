@@ -142,6 +142,9 @@ def test_policy_api_uses_registered_metadata_and_only_owner_active_grants(
     allowed = client.post("/policy/evaluate", json=payload)
     assert allowed.status_code == 200
     assert allowed.json()["decision"] == "allow"
+    assert allowed.json()["evaluation_only"] is True
+    assert allowed.json()["execution_authorized"] is False
+    assert allowed.json()["action_executed"] is False
 
     events = [
         item for item in repository.list_audit()
