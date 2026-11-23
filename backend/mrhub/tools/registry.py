@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -86,6 +88,31 @@ class ToolRegistry:
             return self._tools[name]
         except KeyError as exc:
             raise LookupError("Tool is not registered") from exc
+
+    def contract_digest(self, name: str) -> str:
+        """Return a canonical digest of the registered tool's public contract.
+
+        Handler code is never serialized. Maintainers must bump the contract
+        version when handler semantics change without a schema/metadata change.
+        """
+        tool = self.get(name)
+        contract = {
+            "version": 1,
+            "name": tool.name,
+            "input_schema": tool.input_model.model_json_schema(),
+            "output_schema": tool.output_model.model_json_schema(),
+            "risk_class": tool.risk_class.value,
+            "required_permissions": sorted(tool.required_permissions),
+            "external_side_effect": tool.external_side_effect,
+        }
+        encoded = json.dumps(
+            contract,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
     def scoped(self, allowed_names: frozenset[str] | set[str]) -> ToolRegistry:
         """Return a registry restricted to reviewed names while preserving policy."""

@@ -147,8 +147,9 @@ class WorkflowRecoveryRepository:
         payload_envelope: dict[str, object] | None = None,
         workflow_id: UUID | None = None,
         idempotency_binding: dict[str, str] | None = None,
+        plan_binding: dict[str, str] | None = None,
     ) -> UUID:
-        """Atomically create workflow/job, encrypted payload, and optional idempotency binding."""
+        """Atomically create workflow/job, encrypted payload, idempotency, and plan consumption."""
         self._validate_digest(request_digest, "Request digest")
         if task is not None and task_id is not None:
             raise WorkflowRecoveryError("Provide either task or task_id, not both")
@@ -269,6 +270,45 @@ class WorkflowRecoveryRepository:
                     definition_version, now, now, owner_user_id,
                 ),
             )
+            if plan_binding is not None:
+                plan_id = plan_binding.get("plan_id")
+                plan_owner = plan_binding.get("owner_user_id")
+                plan_digest = plan_binding.get("plan_digest")
+                if (
+                    not isinstance(plan_id, str)
+                    or not isinstance(plan_owner, str)
+                    or not isinstance(plan_digest, str)
+                    or plan_owner != owner_user_id
+                    or not re.fullmatch(
+                        r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+                        plan_id,
+                    )
+                    or not self._DIGEST_PATTERN.fullmatch(plan_digest)
+                    or task_id is None
+                    or owner_user_id is None
+                ):
+                    raise WorkflowRecoveryError("Plan consumption binding is invalid")
+                consumed = connection.execute(
+                    """
+                    UPDATE agent_work_order_plans
+                    SET status = 'consumed', consumed_at = ?, workflow_id = ?
+                    WHERE plan_id = ? AND owner_user_id = ? AND status = 'active'
+                      AND plan_digest = ? AND expires_at > ?
+                    """,
+                    (
+                        now,
+                        str(workflow_id),
+                        plan_id,
+                        plan_owner,
+                        plan_digest,
+                        now,
+                    ),
+                )
+                if consumed.rowcount != 1:
+                    raise WorkflowRecoveryError(
+                        "Source plan is expired, consumed, revoked, or no longer matches"
+                    )
+
             if idempotency_binding is not None:
                 scope = idempotency_binding.get("scope")
                 key = idempotency_binding.get("key")

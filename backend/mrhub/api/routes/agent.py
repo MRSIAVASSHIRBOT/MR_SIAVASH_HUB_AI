@@ -12,6 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.plan_execution_bridge import (
+    PlanExecutionBridgeError,
+    PlanToolBinding,
+    build_plan_execution_request,
+)
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
@@ -111,6 +116,14 @@ class PersistedGoalPlanningRequest(GoalPlanningRequest):
     """Bounded request for a short-lived, encrypted plan record."""
 
     expires_in_seconds: int = Field(default=900, ge=60, le=86_400)
+
+
+class ExecutePersistedPlanRequest(BaseModel):
+    """Explicit typed bindings supplied by the owner for a stored AWI plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bindings: list[PlanToolBinding] = Field(min_length=1, max_length=5)
 
 
 def _canonical_plan_digest(payload: dict[str, object]) -> str:
@@ -648,13 +661,30 @@ def list_agent_workflows(
     return {"workflows": workflows, "count": len(workflows)}
 
 
-@router.post("/workflows")
-def execute_agent_workflow(
+def _queue_agent_workflow(
     request: AgentPlanRequest,
-    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
+    current_user: AuthenticatedUser,
+    idempotency_key: str | None,
+    *,
+    plan_binding: dict[str, str] | None = None,
 ) -> dict[str, object]:
-    """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
+    """Validate and atomically queue a worker-owned workflow."""
+    if (
+        request.source_plan_id is not None
+        and (
+            plan_binding is None
+            or request.source_plan_id != plan_binding.get("plan_id")
+            or request.source_plan_digest != plan_binding.get("plan_digest")
+            or current_user.user_id != plan_binding.get("owner_user_id")
+        )
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Source plan metadata must come from the validated plan execution bridge",
+        )
+    if plan_binding is not None and request.source_plan_id is None:
+        raise HTTPException(status_code=422, detail="Plan execution request is missing its source binding")
+
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
@@ -663,6 +693,8 @@ def execute_agent_workflow(
         plan = core.plan(request)
         request_digest = _workflow_digest(request)
         if not plan.get("execution_ready"):
+            if plan_binding is not None:
+                raise HTTPException(status_code=422, detail="Bound workflow is not executable")
             legacy = AgentWorkflowRepository(settings.database_path)
             workflow = legacy.create(request_digest, plan, owner_user_id=current_user.user_id)
             return {"workflow": workflow, "execution": None}
@@ -703,7 +735,8 @@ def execute_agent_workflow(
                     )
                 if existing_record.workflow_id:
                     existing = recovery.get_run(
-                        UUID(existing_record.workflow_id), owner_user_id=current_user.user_id
+                        UUID(existing_record.workflow_id),
+                        owner_user_id=current_user.user_id,
                     )
                     if existing is not None:
                         return {
@@ -738,13 +771,24 @@ def execute_agent_workflow(
                     "ciphertext_b64": encrypted.ciphertext_b64,
                 },
                 idempotency_binding=idempotency_binding,
+                plan_binding=plan_binding,
             )
+        except WorkflowRecoveryError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Workflow or source plan is no longer available for execution",
+            ) from exc
         except sqlite3.IntegrityError as exc:
             if idempotency_key is not None:
                 record = idempotency.get(scope, idempotency_key)
-                if record is not None and record.request_digest == request_digest and record.workflow_id:
+                if (
+                    record is not None
+                    and record.request_digest == request_digest
+                    and record.workflow_id
+                ):
                     existing = recovery.get_run(
-                        UUID(record.workflow_id), owner_user_id=current_user.user_id
+                        UUID(record.workflow_id),
+                        owner_user_id=current_user.user_id,
                     )
                     if existing is not None:
                         return {
@@ -766,8 +810,21 @@ def execute_agent_workflow(
                 "decision": "allow",
             },
         )
+        if plan_binding is not None:
+            AuditLogger(tasks).record(
+                event_type="agent.work_order_plan_consumed",
+                outcome="queued",
+                subject_id=plan_binding["plan_id"],
+                actor_type="user",
+                actor_id=current_user.user_id,
+                subject_type="agent_work_order_plan",
+                metadata={"status": "consumed", "decision": "allow"},
+            )
         return {
-            "workflow": recovery.get_run(workflow_id, owner_user_id=current_user.user_id),
+            "workflow": recovery.get_run(
+                workflow_id,
+                owner_user_id=current_user.user_id,
+            ),
             "execution": None,
             "queued": True,
         }
@@ -776,6 +833,107 @@ def execute_agent_workflow(
             status_code=503,
             detail="No registered provider satisfies the requested capabilities",
         ) from exc
+
+
+@router.post("/workflows")
+def execute_agent_workflow(
+    request: AgentPlanRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=255)] = None,
+) -> dict[str, object]:
+    """Validate and durably enqueue a workflow; execution belongs to WorkerEngine."""
+    return _queue_agent_workflow(request, current_user, idempotency_key)
+
+
+@router.post("/work-orders/plans/{plan_id}/execute")
+def execute_persisted_goal_work_order_plan(
+    plan_id: UUID,
+    request: ExecutePersistedPlanRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=255)],
+    response: Response,
+) -> dict[str, object]:
+    """Bind an owned AWI plan to typed tools and atomically consume it into a workflow."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    plan_repository = AgentWorkOrderPlanRepository(settings.database_path)
+    record = plan_repository.get(
+        str(plan_id),
+        owner_user_id=current_user.user_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Plan record not found")
+    if record.status == "expired":
+        raise HTTPException(status_code=410, detail="Plan record has expired")
+    if record.status == "revoked":
+        raise HTTPException(status_code=410, detail="Plan record has been revoked")
+    if record.status not in {"active", "consumed"}:
+        raise HTTPException(status_code=409, detail="Plan record is not available")
+
+    try:
+        key = load_payload_key()
+        payload = decrypt_plan_payload(
+            record.envelope,
+            plan_id=record.plan_id,
+            owner_user_id=record.owner_user_id,
+            key=key,
+        )
+        if set(payload) != {"work_order", "plan"}:
+            raise PayloadEnvelopeError("Agent plan payload shape is invalid")
+        work_order = WorkOrder.model_validate(payload["work_order"])
+        execution_plan = ExecutionPlan.model_validate(payload["plan"])
+        canonical = {
+            "work_order": work_order.model_dump(mode="json"),
+            "plan": execution_plan.model_dump(mode="json"),
+        }
+        verified_digest = _canonical_plan_digest(canonical)
+        if not hmac.compare_digest(verified_digest, record.plan_digest):
+            raise PayloadEnvelopeError("Agent plan digest does not match its stored record")
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Plan record failed encryption or integrity validation",
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Plan record failed schema validation",
+        ) from exc
+
+    permissions = ToolPermissionService(tasks, AuditLogger(tasks))
+    registry = build_tool_registry()
+    try:
+        agent_request = build_plan_execution_request(
+            work_order,
+            execution_plan,
+            request.bindings,
+            registry=registry,
+            granted_permissions=permissions.active_permissions(current_user.user_id),
+            plan_id=record.plan_id,
+            plan_digest=record.plan_digest,
+        )
+    except PlanExecutionBridgeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Plan bindings do not satisfy the typed execution contract",
+        ) from exc
+
+    if record.status == "consumed" and idempotency_key is None:
+        raise HTTPException(status_code=409, detail="Plan has already been consumed")
+    return _queue_agent_workflow(
+        agent_request,
+        current_user,
+        idempotency_key,
+        plan_binding={
+            "plan_id": record.plan_id,
+            "owner_user_id": current_user.user_id,
+            "plan_digest": record.plan_digest,
+        },
+    )
 
 
 @router.get("/workflows/{workflow_id}")

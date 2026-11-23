@@ -36,6 +36,8 @@ class AgentToolRequest(BaseModel):
     # None preserves legacy sequential request order. An explicit list declares
     # dependencies on other request steps; provider selection is always implicit.
     depends_on: list[WorkflowDependencyId] | None = Field(default=None, max_length=5)
+    # Optional schema pin for reviewed AWI bindings. Legacy callers omit it.
+    expected_schema_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("name")
     @classmethod
@@ -73,6 +75,12 @@ class AgentPlanRequest(BaseModel):
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
     required_capabilities: list[str] = Field(default_factory=list, max_length=50)
+    # Set only by the validated AWI bridge; these fields are not permissions.
+    source_plan_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
+    source_plan_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("goal")
     @classmethod
@@ -124,6 +132,12 @@ class AgentPlanRequest(BaseModel):
                 )
             )
         return steps
+
+    @model_validator(mode="after")
+    def validate_source_plan_binding(self) -> "AgentPlanRequest":
+        if (self.source_plan_id is None) != (self.source_plan_digest is None):
+            raise ValueError("source plan ID and digest must be provided together")
+        return self
 
     @model_validator(mode="after")
     def validate_tool_dependency_graph(self) -> "AgentPlanRequest":
@@ -208,6 +222,8 @@ class AgentCore:
                 else None
             ),
         }
+        if requested_tool.expected_schema_digest is not None:
+            definition["tool_contract_digest"] = requested_tool.expected_schema_digest
         encoded = json.dumps(
             definition, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode()
@@ -415,6 +431,22 @@ class AgentCore:
                         "kind": "tool",
                         "name": requested_tool.name,
                         "status": "not_registered",
+                        "decision": PolicyDecision.DENY.value,
+                    }
+                )
+                continue
+
+            if (
+                requested_tool.expected_schema_digest is not None
+                and requested_tool.expected_schema_digest
+                != self.tool_registry.contract_digest(tool.name)
+            ):
+                steps.append(
+                    {
+                        "step": index,
+                        "kind": "tool",
+                        "name": requested_tool.name,
+                        "status": "schema_mismatch",
                         "decision": PolicyDecision.DENY.value,
                     }
                 )
