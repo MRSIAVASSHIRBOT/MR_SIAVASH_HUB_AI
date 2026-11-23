@@ -1,6 +1,7 @@
 """Authenticated agent planning API."""
 
 import sqlite3
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -422,18 +423,19 @@ def get_agent_trace(
         )
     before = None
     if before_created_at is not None and before_event_id is not None:
-        from datetime import datetime
-
         try:
             parsed_cursor_time = datetime.fromisoformat(before_created_at)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Invalid trace cursor timestamp") from exc
-        if parsed_cursor_time.tzinfo is None:
+            if parsed_cursor_time.tzinfo is None or parsed_cursor_time.utcoffset() is None:
+                raise ValueError("timezone offset is required")
+            # Database timestamps are stored in UTC ISO-8601 form. Canonicalize
+            # equivalent offsets before applying the lexicographic keyset cursor.
+            canonical_cursor_time = parsed_cursor_time.astimezone(UTC).isoformat()
+        except (OverflowError, ValueError) as exc:
             raise HTTPException(
                 status_code=422,
-                detail="Trace cursor timestamp must include timezone",
-            )
-        before = (before_created_at, str(before_event_id))
+                detail="Invalid timezone-aware trace cursor timestamp",
+            ) from exc
+        before = (canonical_cursor_time, str(before_event_id))
 
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
