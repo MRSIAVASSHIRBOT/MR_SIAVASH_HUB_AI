@@ -10,9 +10,11 @@ def validate_retry_error_code(value: str) -> str:
     valid = (
         isinstance(value, str)
         and 1 <= len(value) <= 80
-        and value[0].islower()
-        and value[0].isascii()
-        and all(char.islower() or char.isdigit() or char == "_" for char in value)
+        and "a" <= value[0] <= "z"
+        and all(
+            "a" <= char <= "z" or "0" <= char <= "9" or char == "_"
+            for char in value
+        )
     )
     if not valid:
         raise ValueError("Retry error code must be a lowercase ASCII identifier")
