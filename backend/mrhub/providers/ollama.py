@@ -120,6 +120,7 @@ class OllamaProvider:
             if request.timeout_seconds is not None
             else self.timeout_seconds
         )
+        failure = None
         try:
             with self._client(request_timeout) as client:
                 response = client.post(
@@ -133,12 +134,14 @@ class OllamaProvider:
                 )
                 response.raise_for_status()
                 payload = response.json()
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Local model request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailableError("Local model service is unavailable") from exc
-        except ValueError as exc:
-            raise ProviderUnavailableError("Local model returned an invalid response") from exc
+        except httpx.TimeoutException:
+            failure = ProviderTimeoutError("Local model request timed out")
+        except httpx.HTTPError:
+            failure = ProviderUnavailableError("Local model service is unavailable")
+        except ValueError:
+            failure = ProviderUnavailableError("Local model returned an invalid response")
+        if failure is not None:
+            raise failure
 
         if not isinstance(payload, dict):
             raise ProviderUnavailableError("Local model returned an invalid response")
