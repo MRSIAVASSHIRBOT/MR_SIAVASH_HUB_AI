@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,6 +15,8 @@ from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine, P
 
 InputModel = TypeVar("InputModel", bound=BaseModel)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
+
+_PERMISSION_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,79}$")
 
 
 @dataclass(frozen=True)
@@ -42,18 +45,62 @@ class ToolRegistry:
     """Only explicitly registered, schema-validated tools can be invoked."""
 
     NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{0,79}$")
+    MAX_REQUIRED_PERMISSIONS = 32
 
     def __init__(self, policy: PolicyEngine | None = None) -> None:
         self._tools: dict[str, ToolDefinition] = {}
         self._policy = policy if policy is not None else PolicyEngine()
 
-    def register(self, tool: ToolDefinition) -> None:
-        if not self.NAME_PATTERN.fullmatch(tool.name):
+    @staticmethod
+    def _validate_schema_model(model: object, field_name: str) -> None:
+        if not isinstance(model, type) or not issubclass(model, BaseModel):
+            raise ValueError(f"{field_name} must be a Pydantic BaseModel subclass")
+
+    @classmethod
+    def _validate_definition(cls, tool: ToolDefinition) -> None:
+        if not isinstance(tool.name, str) or not cls.NAME_PATTERN.fullmatch(tool.name):
             raise ValueError("Invalid tool name")
-        if not tool.description.strip() or len(tool.description) > 200:
+        if (
+            not isinstance(tool.description, str)
+            or not tool.description.strip()
+            or len(tool.description) > 200
+        ):
             raise ValueError("Tool description must contain 1 to 200 characters")
+
+        cls._validate_schema_model(tool.input_model, "input_model")
+        cls._validate_schema_model(tool.output_model, "output_model")
+
+        if not callable(tool.handler):
+            raise ValueError("Tool handler must be callable")
+        handler_call = getattr(tool.handler, "__call__", None)
+        if inspect.iscoroutinefunction(tool.handler) or inspect.iscoroutinefunction(handler_call):
+            raise ValueError("Tool handlers must be synchronous")
+
+        if not isinstance(tool.risk_class, RiskClass):
+            raise ValueError("Tool risk_class must be a server-defined RiskClass")
+        if type(tool.external_side_effect) is not bool:
+            raise ValueError("Tool external_side_effect must be a boolean")
+
+        if not isinstance(tool.required_permissions, frozenset):
+            raise ValueError("Tool required_permissions must be an immutable frozenset")
+        if len(tool.required_permissions) > cls.MAX_REQUIRED_PERMISSIONS:
+            raise ValueError(
+                f"Tool required_permissions cannot exceed {cls.MAX_REQUIRED_PERMISSIONS} entries"
+            )
+        if any(
+            not isinstance(permission, str)
+            or _PERMISSION_PATTERN.fullmatch(permission) is None
+            for permission in tool.required_permissions
+        ):
+            raise ValueError("Tool required_permissions contain an invalid permission name")
+
+    def register(self, tool: ToolDefinition) -> None:
+        if not isinstance(tool, ToolDefinition):
+            raise TypeError("Only ToolDefinition instances can be registered")
+        self._validate_definition(tool)
         if tool.name in self._tools:
             raise ValueError("Tool is already registered")
+        # Register only after every contract check succeeds.
         self._tools[tool.name] = tool
 
     @property
