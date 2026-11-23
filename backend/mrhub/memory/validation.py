@@ -91,8 +91,8 @@ class MemoryValidationEngine:
             raise ValueError("Validation limit must be an integer between 1 and 100")
         if (
             type(threshold) not in (int, float)
-            or not math.isfinite(threshold)
             or not 0.65 <= threshold <= 1.0
+            or not math.isfinite(threshold)
         ):
             raise ValueError("Contradiction threshold must be a finite number between 0.65 and 1.0")
 
