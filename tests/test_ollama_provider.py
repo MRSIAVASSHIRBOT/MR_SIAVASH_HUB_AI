@@ -75,6 +75,8 @@ def test_ollama_maps_timeout_to_sanitized_error():
     with pytest.raises(ProviderTimeoutError) as error:
         provider.generate(ProviderRequest(input_text="hello"))
     assert str(error.value) == "Local model request timed out"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
 
 
 def test_ollama_rejects_invalid_response_shape():
@@ -170,3 +172,18 @@ def test_ollama_request_timeout_cannot_raise_adapter_timeout():
     provider._client = tracked
     provider.generate(ProviderRequest(input_text="hello", timeout_seconds=120))
     assert captured == [8.0]
+
+
+@pytest.mark.parametrize(
+    "timeout_seconds",
+    [True, False, "5", 0, 301, float("nan"), float("inf")],
+)
+def test_ollama_rejects_invalid_adapter_timeout_configuration(timeout_seconds):
+    with pytest.raises(ProviderConfigurationError):
+        OllamaProvider("tiny-model", timeout_seconds=timeout_seconds)
+
+
+def test_ollama_rejects_boolean_health_timeout():
+    provider = OllamaProvider("tiny-model")
+    with pytest.raises(ProviderConfigurationError):
+        provider.health(timeout_seconds=True)
