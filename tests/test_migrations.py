@@ -625,7 +625,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -757,7 +757,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -1094,7 +1094,7 @@ def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [52, 53, 54, 55]
+    assert SchemaMigrator(connection).migrate() == [52, 53, 54, 55, 56]
 
     existing = connection.execute(
         "SELECT permission, granted_at, expires_at FROM tool_permission_grants "
@@ -1169,7 +1169,7 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
     ]
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [53, 54, 55]
+    assert SchemaMigrator(connection).migrate() == [53, 54, 55, 56]
     columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
@@ -1230,7 +1230,7 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [54, 55]
+    assert SchemaMigrator(connection).migrate() == [54, 55, 56]
 
     steps = connection.execute(
         """
@@ -1289,7 +1289,7 @@ def test_v55_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
     assert ("workflow_runs", "workflow_id", "workflow_id", "CASCADE") in foreign_keys
 
     applied = connection.execute(
-        "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
+        "SELECT version, name FROM schema_migrations WHERE version = 55"
     ).fetchone()
     assert tuple(applied) == (55, "owner_scoped_encrypted_agent_work_order_plans")
     connection.close()
@@ -1351,4 +1351,66 @@ def test_consumed_plan_record_is_deleted_with_linked_workflow(tmp_path):
         "SELECT 1 FROM agent_work_order_plans WHERE plan_id = ?",
         (plan_id,),
     ).fetchone() is None
+    connection.close()
+
+def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "typed-memory.sqlite3")
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS[:-1])
+    assert SchemaMigrator(connection).migrate()[-1] == 55
+
+    owner_id = "typed-memory-legacy-owner"
+    connection.execute(
+        """
+        INSERT INTO auth_users (
+            user_id, username, salt, password_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            owner_id,
+            "typed-memory-legacy-owner@example.test",
+            "salt",
+            "hash",
+            "2026-11-23T00:00:00+00:00",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO memory_entries (
+            memory_id, owner_user_id, scope, category, content, provenance,
+            confidence, verification_status, created_at, updated_at
+        ) VALUES (?, ?, 'private', ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "legacy-memory-entry",
+            owner_id,
+            "legacy",
+            "preserved legacy memory content",
+            "legacy-import",
+            0.7,
+            "user_authored",
+            "2026-11-23T00:00:00+00:00",
+            "2026-11-23T00:00:00+00:00",
+        ),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS)
+    assert SchemaMigrator(connection).migrate() == [56]
+
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(memory_entries)")
+    }
+    assert "memory_type" in columns
+    memory = connection.execute(
+        "SELECT memory_type, content FROM memory_entries WHERE memory_id = ?",
+        ("legacy-memory-entry",),
+    ).fetchone()
+    assert tuple(memory) == ("unspecified", "preserved legacy memory content")
+
+    index_names = {
+        row["name"] for row in connection.execute("PRAGMA index_list(memory_entries)")
+    }
+    assert "idx_memory_owner_type_updated" in index_names
     connection.close()
