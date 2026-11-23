@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from logging import getLogger
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
@@ -81,6 +81,12 @@ _SAFE_LEGACY_DETAIL_OBJECTS = (
     {"code": "provider_unavailable", "execution": "not_started"},
 )
 
+_POLICY_DECISION_MESSAGES = {
+    "allow": "Policy checks passed.",
+    "deny": "The requested action is not permitted.",
+    "require_approval": "Explicit owner approval is required.",
+}
+
 
 def _request_id(request: Request) -> str:
     value = getattr(request.state, "request_id", None)
@@ -98,8 +104,25 @@ def _safe_http_detail(status_code: int, detail: object) -> object:
     """Preserve only exact reviewed public literals; never reflect dynamic values."""
     if isinstance(detail, str) and detail in SAFE_PUBLIC_ERROR_DETAILS:
         return detail
-    if isinstance(detail, dict) and any(detail == allowed for allowed in _SAFE_LEGACY_DETAIL_OBJECTS):
-        return detail
+    if isinstance(detail, dict):
+        if any(detail == allowed for allowed in _SAFE_LEGACY_DETAIL_OBJECTS):
+            return detail
+        decision = detail.get("decision")
+        if isinstance(decision, str) and decision in _POLICY_DECISION_MESSAGES:
+            safe_detail: dict[str, str] = {
+                "decision": decision,
+                "reason": _POLICY_DECISION_MESSAGES[decision],
+            }
+            correlation_id = detail.get("correlation_id")
+            if isinstance(correlation_id, str):
+                try:
+                    parsed_correlation_id = UUID(correlation_id)
+                except (TypeError, ValueError, AttributeError):
+                    pass
+                else:
+                    if str(parsed_correlation_id) == correlation_id:
+                        safe_detail["correlation_id"] = correlation_id
+            return safe_detail
     # This also removes provider codes, exception messages, policy reasons,
     # arbitrary identifiers, and nested request-controlled values.
     return _status_error(status_code)[1]
