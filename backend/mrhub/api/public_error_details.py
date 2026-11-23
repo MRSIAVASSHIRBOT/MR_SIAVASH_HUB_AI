@@ -5,6 +5,10 @@ must never be added here; unknown values are replaced by the status fallback.
 """
 
 SAFE_PUBLIC_ERROR_DETAILS = frozenset({
+    "Unsupported review evidence field",
+    "Approval requires a known license and license URL, security review, compatibility notes, and a test plan",
+    "Requested local inference provider is disabled or unavailable",
+    "Requested remote inference provider is disabled or unavailable",
     "A brand with this name already exists",
     "A decision already exists for this task",
     "A pairing challenge for this device is already pending",
