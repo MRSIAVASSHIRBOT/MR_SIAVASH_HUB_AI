@@ -47,3 +47,18 @@ Therefore:
 8. Focused and full CI must pass on the exact candidate commit.
 
 **Validation note:** This document describes code-observed guarantees and the H2 retry-policy delta. It does not claim that a generic hard task timeout or production process supervisor has been implemented.
+
+
+## Worker startup recovery
+
+The worker process runs the stale-execution recovery pass once during startup,
+before entering its polling loop. This pass is deliberately independent from
+the emergency-stop dispatch gate: expired-lease work is classified even while
+the stop switch remains latched. Recovery performs only fenced database-state
+transitions and reconciliation classification; it does not claim tasks or
+invoke handlers. The durable stop switch continues to block new dispatch until
+an authenticated operator clears it.
+
+A regression test verifies that a stale running task is reconciled while the
+dispatch gate is stopped, that the handler is never invoked, and that polling
+remains blocked afterwards.
