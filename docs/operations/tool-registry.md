@@ -121,3 +121,31 @@ server-generated definition no longer matches the persisted step metadata,
 resume validation fails closed rather than silently reclassifying or replaying
 the old step. Operators must reconcile such a workflow before continuing.
 
+## Per-invocation lifecycle observation
+
+The registry supports an optional metadata-only lifecycle observer. Events carry
+the registered tool name, transition stage, canonical input/output digests,
+and a bounded reason code; they never include raw payloads, result bodies,
+exception messages, or credentials.
+
+The ordered lifecycle distinguishes input validation, authorization decisions,
+handler start/return/failure, output validation, success, and unknown outcomes.
+Replay safety is determined by the server-owned `ToolDefinition.replay_safety`
+classification—not by `external_side_effect` or a model-provided label. An
+interrupted failure or invalid output from a `reconcile_required` tool is
+reported as `unknown_outcome`; explicitly `retry_safe` tools are reported as
+ordinary handler/output failures.
+
+Observer callback failures are sanitized to a warning and do not alter policy,
+handler invocation, output validation, or the final tool result. The
+`AgentCore.execute` method exposes the hook as `on_tool_lifecycle` so a caller
+can correlate events with durable workflow step/attempt identifiers.
+
+
+## Policy evaluation API
+
+The authenticated `POST /policy/evaluate` endpoint accepts only a registered action name. It resolves the matching `ToolDefinition` on the server and derives risk class, required permissions, and external-side-effect status from that trusted definition. Active permission grants are loaded from the authenticated owner's persisted grant records. Caller-supplied permission, risk, side-effect, or approval claims are rejected.
+
+The response is inspection-only. It explicitly includes `evaluation_only=true`, `execution_authorized=false`, and `action_executed=false`. A caller must still use the separate authenticated tool invocation endpoint, which rebuilds the registered definition and checks current grants before any handler is invoked.
+
+The current direct tool-invocation API does not accept a server-issued, action-bound approval receipt. Therefore, high-impact and external-effect tools remain fail-closed with `require_approval`; a caller-supplied approval flag is not accepted. Task-level approvals are not substitutes for tool-invocation approvals because they are not bound to the exact tool definition and canonical payload digest. A future approval flow must issue an owner-scoped, expiring, one-time receipt bound to that exact action before enabling those invocations.
