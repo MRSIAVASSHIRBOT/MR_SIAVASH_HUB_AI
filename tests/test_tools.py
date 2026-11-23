@@ -4,7 +4,13 @@ from pydantic import BaseModel, Field
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import PolicyDecision
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolExecutionError, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import (
+    ReplaySafety,
+    ToolDefinition,
+    ToolExecutionError,
+    ToolPolicyError,
+    ToolRegistry,
+)
 
 
 class InputValue(BaseModel):
@@ -203,7 +209,10 @@ def _tool_definition(**overrides):
         ({"replay_safety": "retry_safe"}, "server-defined ReplaySafety"),
         ({"required_permissions": {"custom.read"}}, "immutable frozenset"),
         ({"required_permissions": frozenset({"Invalid Permission"})}, "invalid permission name"),
-        ({"required_permissions": frozenset(f"permission.{i}" for i in range(33))}, "cannot exceed 32"),
+        (
+            {"required_permissions": frozenset(f"permission.{i}" for i in range(33))},
+            "cannot exceed 32",
+        ),
     ],
 )
 def test_registry_rejects_malformed_tool_definitions_without_registering(overrides, message):
