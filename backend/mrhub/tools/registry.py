@@ -7,8 +7,8 @@ import hmac
 import inspect
 import json
 import logging
-import secrets
 import re
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
