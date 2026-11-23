@@ -166,3 +166,36 @@ def test_hardware_report_is_authenticated_read_only_and_not_persisted(monkeypatc
 def test_hardware_report_requires_authentication():
     response = TestClient(create_app()).get("/capabilities/hardware-report")
     assert response.status_code in (401, 403)
+
+
+def test_capability_error_does_not_reflect_untrusted_review_evidence_key():
+    client = authenticated_client()
+    created = client.post(
+        "/capabilities/candidates",
+        json={
+            "source_url": "https://github.com/example/review-tool",
+            "display_name": "Review Tool",
+        },
+    )
+    assert created.status_code == 201
+    candidate_id = created.json()["candidate_id"]
+    reviewing = client.post(
+        f"/capabilities/candidates/{candidate_id}/transition",
+        json={"status": "reviewing"},
+    )
+    assert reviewing.status_code == 200
+
+    untrusted_key = "api_key=example-secret-that-must-not-be-reflected"
+    response = client.post(
+        f"/capabilities/candidates/{candidate_id}/transition",
+        json={
+            "status": "approved",
+            "license_id": "MIT",
+            "evidence": {untrusted_key: "untrusted value"},
+        },
+    )
+
+    assert response.status_code == 409
+    assert "unsupported field" in response.json()["detail"]
+    assert untrusted_key not in response.text
+    assert "example-secret" not in response.text
