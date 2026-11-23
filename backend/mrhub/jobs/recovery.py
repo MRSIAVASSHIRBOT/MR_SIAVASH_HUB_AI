@@ -870,6 +870,9 @@ class WorkflowRecoveryRepository:
             )
             if cursor.rowcount != 1:
                 raise WorkflowRecoveryError("Workflow is not running")
+            # A cancelled in-flight prerequisite must immediately block every
+            # descendant before terminal state becomes externally observable.
+            self._refresh_dependency_states(connection, workflow_id)
 
     def latest_checkpoint(self, workflow_id: UUID) -> WorkflowCheckpoint | None:
         with self._connection() as connection:
