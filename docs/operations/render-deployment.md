@@ -58,7 +58,7 @@ The local loopback-only setup path remains supported for local development. A re
 - Keep exactly one Hub service instance while using SQLite. Do not horizontally scale it or add a second Hub worker against the same database.
 - Hub API and Hub worker remain supervised together; signals are forwarded to both, and an unexpected exit stops the service.
 - EL_AI runs independently as a background worker. Its state and encrypted paired credentials live only on its own disk.
-- The EL_AI worker checks out the EL_AI repository but installs the reviewed, merged revision `49c5833e2128725e3060397a572e29c4cf07400c` explicitly. Update this pin only after a later EL_AI change has passed CI and review; the worker's deploy remains manual.
+- The EL_AI worker checks out the EL_AI repository but installs the reviewed, merged revision `fc97ee7e03e5d9ad26fb7bff7f86232896559e53` explicitly. Update this pin only after a later EL_AI change has passed CI and review; the worker's deploy remains manual.
 - The EL_AI worker uses Cloudflare bridge mode and must never start Telegram `getUpdates`; local polling and an active webhook must not run simultaneously.
 - The local Ollama, local code engine, and loopback-only MCP integrations are unavailable in this cloud deployment unless separately redesigned and secured.
 - Successful deployment does not prove Telegram ingress, queue consumption, Hub pairing, or message replies. Run the complete end-to-end acceptance checklist before declaring the bot online.
