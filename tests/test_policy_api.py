@@ -160,3 +160,11 @@ def test_policy_api_uses_registered_metadata_and_only_owner_active_grants(
     )
     assert review_required.status_code == 200
     assert review_required.json()["decision"] == "require_approval"
+
+def test_device_app_launch_tool_is_marked_as_external_side_effect() -> None:
+    from mrhub.tools.builtins import build_tool_registry
+
+    registry = build_tool_registry(owner_user_id="policy-test-owner")
+    tool = registry.get("device.app_launch.submit")
+
+    assert tool.external_side_effect is True
