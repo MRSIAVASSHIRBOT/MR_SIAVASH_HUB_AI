@@ -2,6 +2,10 @@
 
 ## Purpose
 
+A deterministic preflight endpoint, `POST /agent/work-orders/analyze`, reports bounded complexity, research/tool needs, information gaps, text/vision/audio modality signals, and reason codes without selecting a provider or invoking a tool.
+
+The planning endpoint also returns `decision_analysis` from the deterministic analyzer, refined with the validated WorkOrder. Its separate `planning_assessment` evaluates the final AWI DAG, explicit GPI clarification/research fields, model complexity estimate, capability gaps, and effective readiness. Both analyses are advisory; permission checks remain separate.
+
 The authenticated `POST /agent/work-orders/plan` endpoint converts one natural-language goal into:
 
 1. A bounded, schema-validated `WorkOrder` (Goal-to-Prompt Intelligence / GPI).
@@ -122,3 +126,26 @@ Revocation uses an owner-scoped atomic transition. The ciphertext and nonce fiel
 ## Verification
 
 Focused tests cover work-order validation, server-derived risk classification, dependency graph validation, acceptance-criterion and capability coverage, prohibited-goal handling, capability reporting, and remote-provider rate limiting. CI must pass before this change is considered merge-ready.
+
+## Explainable planning assessment
+
+The planning response includes a read-only assessment alongside the generated WorkOrder and AWI plan:
+
+- Complexity separates the model's bounded low/moderate/high estimate from a deterministic structural score based on plan size, dependency depth and edges, declared capabilities, and unverified assumptions. Neither is a performance estimate or execution budget.
+- Information-gap codes identify unspecified scope, assumptions requiring confirmation, dependencies requiring validation, explicit missing information, and missing registered capabilities. An empty gap list means only that these checks detected none.
+- Explicit GPI research requirements and bounded questions take precedence. Otherwise, freshness-oriented language can flag a required check and source/documentation language can recommend research. This keyword fallback is a heuristic, not a semantic guarantee or an automatic web request.
+- Tool readiness distinguishes no declared capability, missing registered capabilities, and capability presence where authorization remains separate.
+- Plan steps use deterministic topological order from the shared workflow DAG planner.
+- Provider/model selection is exposed for observability. Clarification, research, and ready-for-review states never grant execution permission.
+
+All fields are advisory. Planning does not prompt the owner automatically, perform research, invoke tools, grant permissions, or execute the plan.
+
+## Planning artifact consistency
+
+The intelligence assessment independently verifies its three inputs before
+producing a readiness report: every WorkOrder acceptance criterion must be
+covered by the Plan, every required capability must be represented in the Plan,
+and the capability report must match and partition the same WorkOrder
+requirements into available and missing entries. Inconsistent artifacts are
+rejected rather than summarized as a successful or complete plan.
+
