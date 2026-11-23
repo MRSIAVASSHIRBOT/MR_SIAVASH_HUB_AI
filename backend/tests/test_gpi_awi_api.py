@@ -764,3 +764,125 @@ def test_persisted_plan_read_returns_gone_for_expired_records_before_decryption(
         )
 
     assert error.value.status_code == 410
+
+def test_persisted_plan_revoke_is_owner_scoped_and_returns_no_store_headers(monkeypatch):
+    from uuid import uuid4
+
+    plan_id = uuid4()
+    revoke_calls = []
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakePlanRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def revoke(self, requested_id, *, owner_user_id):
+            revoke_calls.append((requested_id, owner_user_id))
+            return SimpleNamespace(plan_id=requested_id, status="revoked")
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+
+    response = Response()
+    result = agent_routes.revoke_persisted_goal_work_order_plan(
+        plan_id,
+        SimpleNamespace(user_id="owner-revoke"),
+        response,
+    )
+
+    assert revoke_calls == [(str(plan_id), "owner-revoke")]
+    assert result == {
+        "plan_id": str(plan_id),
+        "status": "revoked",
+        "revoked": True,
+        "ciphertext_erased": True,
+        "execution_started": False,
+        "tools_executed": False,
+    }
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_persisted_plan_revoke_hides_records_owned_by_another_user(monkeypatch):
+    from uuid import uuid4
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakePlanRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def revoke(self, _plan_id, *, owner_user_id):
+            assert owner_user_id == "owner-foreign"
+            return None
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.revoke_persisted_goal_work_order_plan(
+            uuid4(),
+            SimpleNamespace(user_id="owner-foreign"),
+            Response(),
+        )
+
+    assert error.value.status_code == 404
+
+
+def test_persisted_plan_revoke_returns_gone_for_expired_records(monkeypatch):
+    from uuid import uuid4
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FakePlanRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def revoke(self, _plan_id, *, owner_user_id):
+            assert owner_user_id == "owner-expired-revoke"
+            return SimpleNamespace(status="expired")
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.revoke_persisted_goal_work_order_plan(
+            uuid4(),
+            SimpleNamespace(user_id="owner-expired-revoke"),
+            Response(),
+        )
+
+    assert error.value.status_code == 410
+
