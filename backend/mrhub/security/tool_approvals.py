@@ -51,7 +51,7 @@ def tool_definition_fingerprint(tool: ToolDefinition) -> str:
         handler_code_digest = hashlib.sha256(marshal.dumps(code)).hexdigest()
     else:
         handler_code_digest = hashlib.sha256(
-            f"{type(handler).__module__}:{type(handler).__qualname__}".encode("utf-8")
+            f"{type(handler).__module__}:{type(handler).__qualname__}".encode()
         ).hexdigest()
     contract = {
         "name": tool.name,
