@@ -171,7 +171,11 @@ class AgentWorkflowRunner:
                 evidence_digest = None
             criteria.append(
                 EvaluationCriterion(
-                    criterion_id=f"tool-step-{step_key}",
+                    criterion_id=(
+                        f"tool-step-{runtime_number}"
+                        if legacy_definition
+                        else f"tool-step-{step_key}"
+                    ),
                     description=f"Tool execution completed: {requested_tool.name}",
                     status=outcome,
                     evidence_digest=evidence_digest,
