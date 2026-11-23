@@ -29,12 +29,10 @@ def test_action_request_is_immutable_and_rejects_unknown_fields():
     [
         {"Invalid Permission"},
         {"x" * 81},
-        {"cloudflare.read", "cloudflare.read"},
     ],
 )
 def test_action_request_rejects_invalid_permission_names(permissions):
-    # A frozenset cannot preserve duplicate entries, so duplicate handling is
-    # enforced at the JSON/API boundary where list input is still available.
+    # The internal policy contract accepts only canonical, immutable permission names.
     with pytest.raises(ValidationError):
         ActionRequest(
             action="tool.read",
