@@ -6,6 +6,7 @@ separate gateway service credential and exposes fixed, read-only operations.
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import re
@@ -182,6 +183,15 @@ class CloudflareGatewayClient:
         self._timeout = float(timeout_seconds)
         self._max_response_bytes = max_response_bytes
         self._correlation_id = correlation_id
+
+    def approval_fingerprint(self) -> dict[str, object]:
+        """Expose only stable, non-secret gateway identity for approval binding."""
+        return {
+            "base_url": self._base_url,
+            "credential_sha256": hashlib.sha256(self._token.encode("ascii")).hexdigest(),
+            "timeout_seconds": self._timeout,
+            "max_response_bytes": self._max_response_bytes,
+        }
 
     def _get_data(self, path: str) -> Any:
         # Callers pass only module-owned, fixed route templates.
