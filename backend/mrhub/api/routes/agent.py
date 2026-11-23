@@ -1,18 +1,25 @@
 """Authenticated agent planning API."""
 
+import hashlib
+import hmac
+import json
 import sqlite3
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
+from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
     generate_work_order,
+)
+from mrhub.agents.plan_repository import (
+    AgentWorkOrderPlanError,
+    AgentWorkOrderPlanRepository,
 )
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
@@ -27,7 +34,13 @@ from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
-from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
+from mrhub.jobs.payload_envelope import (
+    PayloadEnvelopeError,
+    decrypt_plan_payload,
+    encrypt_payload,
+    encrypt_plan_payload,
+    load_payload_key,
+)
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
@@ -92,6 +105,44 @@ class GoalPlanningRequest(BaseModel):
         if not normalized:
             raise ValueError("goal must not be blank")
         return normalized
+
+
+class PersistedGoalPlanningRequest(GoalPlanningRequest):
+    """Bounded request for a short-lived, encrypted plan record."""
+
+    expires_in_seconds: int = Field(default=900, ge=60, le=86_400)
+
+
+def _canonical_plan_digest(payload: dict[str, object]) -> str:
+    """Fingerprint canonical JSON without writing plan content to plaintext storage."""
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+_PERSISTED_PLAN_METADATA_FIELDS = (
+    "decision_analysis",
+    "planning_assessment",
+    "model_selection",
+)
+
+
+def _extract_persisted_plan_metadata(payload: dict[str, object]) -> dict[str, object]:
+    """Validate and retain optional, server-generated planner assessment metadata."""
+    metadata: dict[str, object] = {}
+    for field in _PERSISTED_PLAN_METADATA_FIELDS:
+        if field not in payload:
+            continue
+        value = payload[field]
+        if not isinstance(value, dict):
+            raise PayloadEnvelopeError("Persisted plan assessment metadata is invalid")
+        metadata[field] = value
+    return metadata
 
 
 @router.post("/work-orders/plan")
@@ -227,6 +278,229 @@ def create_goal_work_order_plan(
         "execution_started": False,
         "tools_executed": False,
         "permissions_changed": False,
+    }
+
+
+@router.post("/work-orders/plans")
+def create_persisted_goal_work_order_plan(
+    request: PersistedGoalPlanningRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+) -> dict[str, object]:
+    """Create a short-lived encrypted plan record; this endpoint still never executes tools."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+
+    # Fail before model inference when durable plan encryption is not configured.
+    try:
+        key = load_payload_key()
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Persisted plans are disabled until a valid payload key is configured",
+        ) from exc
+
+    planned = create_goal_work_order_plan(
+        GoalPlanningRequest(goal=request.goal),
+        current_user,
+    )
+    plan_id = str(uuid4())
+    try:
+        plan_metadata = _extract_persisted_plan_metadata(planned)
+        payload = {
+            "work_order": planned["work_order"],
+            "plan": planned["plan"],
+            **plan_metadata,
+        }
+        envelope = encrypt_plan_payload(
+            payload,
+            plan_id=plan_id,
+            owner_user_id=current_user.user_id,
+            key=key,
+        )
+        record = AgentWorkOrderPlanRepository(settings.database_path).create(
+            plan_id=plan_id,
+            owner_user_id=current_user.user_id,
+            plan_digest=_canonical_plan_digest(payload),
+            envelope=envelope,
+            ttl_seconds=request.expires_in_seconds,
+        )
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="The generated plan could not be encrypted safely",
+        ) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Encrypted plan storage is unavailable",
+        ) from exc
+    except AgentWorkOrderPlanError as exc:
+        raise HTTPException(status_code=422, detail="The plan record is invalid") from exc
+
+    return {
+        "plan_id": record.plan_id,
+        "status": record.status,
+        "plan_digest": record.plan_digest,
+        "created_at": record.created_at,
+        "expires_at": record.expires_at,
+        "work_order": planned["work_order"],
+        "plan": planned["plan"],
+        **plan_metadata,
+        "capability_assessment": planned["capability_assessment"],
+        "risk_class_is_authoritative": False,
+        "planning_only": True,
+        "execution_ready": False,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
+
+
+@router.get("/work-orders/plans/{plan_id}")
+def get_persisted_goal_work_order_plan(
+    plan_id: UUID,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+) -> dict[str, object]:
+    """Read and authenticate one encrypted plan record belonging to the current owner."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    settings = get_settings()
+    TaskRepository(settings.database_path).initialize()
+    record = AgentWorkOrderPlanRepository(settings.database_path).get(
+        str(plan_id),
+        owner_user_id=current_user.user_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Plan record not found")
+    if record.status == "expired":
+        raise HTTPException(status_code=410, detail="Plan record has expired")
+    if record.status != "active":
+        raise HTTPException(status_code=409, detail="Plan record is not available")
+
+    try:
+        key = load_payload_key()
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Persisted plans are unavailable until a valid payload key is configured",
+        ) from exc
+
+    try:
+        payload = decrypt_plan_payload(
+            record.envelope,
+            plan_id=record.plan_id,
+            owner_user_id=record.owner_user_id,
+            key=key,
+        )
+        required_fields = {"work_order", "plan"}
+        allowed_fields = required_fields | set(_PERSISTED_PLAN_METADATA_FIELDS)
+        if not required_fields.issubset(payload) or not set(payload).issubset(allowed_fields):
+            raise PayloadEnvelopeError("Agent plan payload shape is invalid")
+        plan_metadata = _extract_persisted_plan_metadata(payload)
+        work_order = WorkOrder.model_validate(payload["work_order"])
+        plan = ExecutionPlan.model_validate(payload["plan"])
+        canonical = {
+            "work_order": work_order.model_dump(mode="json"),
+            "plan": plan.model_dump(mode="json"),
+            **plan_metadata,
+        }
+        digest = _canonical_plan_digest(canonical)
+        if not hmac.compare_digest(digest, record.plan_digest):
+            raise PayloadEnvelopeError("Agent plan digest does not match its stored record")
+    except (PayloadEnvelopeError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Plan record failed integrity or schema validation",
+        ) from exc
+
+    registry = build_tool_registry(owner_user_id=current_user.user_id)
+    try:
+        assessment = assess_work_order_capabilities(work_order, registry.catalog())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Registered tool catalog is not valid for capability assessment",
+        ) from exc
+
+    return {
+        "plan_id": record.plan_id,
+        "status": record.status,
+        "plan_digest": record.plan_digest,
+        "created_at": record.created_at,
+        "expires_at": record.expires_at,
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+        **plan_metadata,
+        "capability_assessment": {
+            **assessment.as_dict(),
+            "authorization_checked": False,
+        },
+        "risk_class_is_authoritative": False,
+        "planning_only": True,
+        "execution_ready": False,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
+
+
+
+
+@router.delete("/work-orders/plans/{plan_id}")
+def revoke_persisted_goal_work_order_plan(
+    plan_id: UUID,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+) -> dict[str, object]:
+    """Revoke an owned active plan and erase its ciphertext without executing it."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.work_order_plan_revocation_requested",
+            outcome="requested",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="agent_work_order_plan",
+            subject_id=str(plan_id),
+            metadata={"status": "revocation_requested", "decision": "revoke"},
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+
+    record = AgentWorkOrderPlanRepository(settings.database_path).revoke(
+        str(plan_id),
+        owner_user_id=current_user.user_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Plan record not found")
+    if record.status == "expired":
+        raise HTTPException(status_code=410, detail="Plan record has expired")
+    if record.status == "consumed":
+        raise HTTPException(status_code=409, detail="Consumed plan cannot be revoked")
+    if record.status != "revoked":
+        raise HTTPException(status_code=409, detail="Plan record is not revocable")
+    return {
+        "plan_id": record.plan_id,
+        "status": "revoked",
+        "revoked": True,
+        "ciphertext_erased": True,
+        "execution_started": False,
+        "tools_executed": False,
     }
 
 
