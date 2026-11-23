@@ -155,4 +155,32 @@ def test_agent_context_response_is_not_cacheable():
     assert response.headers["cache-control"] == "private, no-store"
     assert response.headers["pragma"] == "no-cache"
     assert response.headers["x-content-type-options"] == "nosniff"
+def test_agent_context_filters_memory_by_typed_taxonomy():
+    client = authenticated_client()
+    created = {}
+    for memory_type in ("episodic", "semantic", "procedural"):
+        response = client.post(
+            "/memory",
+            json={
+                "memory_type": memory_type,
+                "category": "context taxonomy",
+                "content": "typedcontextfilter marker for owner memory retrieval",
+            },
+        )
+        assert response.status_code == 201
+        created[memory_type] = response.json()["memory_id"]
+
+    response = client.post(
+        "/agent/context/assemble",
+        json={
+            "query": "typedcontextfilter marker",
+            "memory_types": ["episodic"],
+            "include_knowledge": False,
+        },
+    )
+    assert response.status_code == 200
+    passages = response.json()["passages"]
+    assert [item["memory_type"] for item in passages] == ["episodic"]
+    assert passages[0]["reference"] == f"memory://entries/{created['episodic']}"
+
 
