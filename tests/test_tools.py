@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from mrhub.domain.tasks import RiskClass
 from mrhub.security.policy import PolicyDecision
 from mrhub.tools.builtins import build_tool_registry
-from mrhub.tools.registry import ToolDefinition, ToolExecutionError, ToolPolicyError, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolExecutionError, ToolPolicyError, ToolRegistry
 
 
 class InputValue(BaseModel):
@@ -192,6 +192,7 @@ def _tool_definition(**overrides):
         ({"handler": None}, "handler must be callable"),
         ({"risk_class": "low"}, "server-defined RiskClass"),
         ({"external_side_effect": 1}, "must be a boolean"),
+        ({"replay_safety": "retry_safe"}, "server-defined ReplaySafety"),
         ({"required_permissions": {"custom.read"}}, "immutable frozenset"),
         ({"required_permissions": frozenset({"Invalid Permission"})}, "invalid permission name"),
         ({"required_permissions": frozenset(f"permission.{i}" for i in range(33))}, "cannot exceed 32"),
@@ -248,6 +249,8 @@ def test_registry_accepts_only_validated_immutable_tool_contracts():
 
     assert registry.get("custom.contract").required_permissions == frozenset({"cloudflare.read"})
     assert registry.catalog()[0]["required_permissions"] == ["cloudflare.read"]
+    assert registry.get("custom.contract").replay_safety is ReplaySafety.RECONCILE_REQUIRED
+    assert registry.catalog()[0]["replay_safety"] == "reconcile_required"
 
 
 
@@ -295,3 +298,13 @@ def test_registry_cancels_awaitable_results_from_synchronous_handlers():
         registry.invoke("custom.contract", {"value": "safe"})
 
     assert pending.cancelled is True
+
+
+
+def test_registry_exposes_explicit_retry_safe_classification():
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(replay_safety=ReplaySafety.RETRY_SAFE)
+    )
+
+    assert registry.catalog()[0]["replay_safety"] == "retry_safe"
