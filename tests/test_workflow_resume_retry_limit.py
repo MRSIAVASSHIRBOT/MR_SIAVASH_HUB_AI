@@ -1,9 +1,11 @@
 """Regression tests for bounded safe workflow recovery attempts."""
 
 import pytest
+from uuid import uuid4
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.jobs.payload_envelope import encrypt_payload
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import LeaseManager
 from mrhub.jobs.recovery import (
@@ -19,8 +21,20 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
     jobs = JobEngine(tasks)
     lease_manager = LeaseManager(tasks.database_path, lease_seconds=60)
 
+    owner_user_id = "retry-test-owner"
+    tasks.create_auth_user(
+        owner_user_id, owner_user_id, "test-salt", "test-password-hash"
+    )
     task = TaskRecord(task_type="agent.workflow", description="bounded recovery test")
     request_digest = "a" * 64
+    workflow_id = uuid4()
+    envelope = encrypt_payload(
+        {"request": {"goal": "bounded recovery test"}},
+        workflow_id=str(workflow_id),
+        task_id=str(task.task_id),
+        owner_user_id=owner_user_id,
+        key=b"p" * 32,
+    )
     workflow_id = recovery.create_run(
         request_digest,
         [
@@ -42,8 +56,17 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
         ],
         task=task,
         definition_version=3,
-        owner_user_id="retry-test-owner",
+        owner_user_id=owner_user_id,
+        workflow_id=workflow_id,
+        payload_envelope={
+            "version": envelope.version,
+            "nonce_b64": envelope.nonce_b64,
+            "ciphertext_b64": envelope.ciphertext_b64,
+        },
     )
+    assert recovery.get_encrypted_payload(
+        workflow_id, owner_user_id=owner_user_id
+    ) is not None
 
     jobs.transition(task.task_id, TaskStatus.RUNNING)
     lease = lease_manager.acquire(str(task.task_id), "retry-limit-test-worker")
@@ -75,13 +98,16 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
     with pytest.raises(WorkflowRecoveryError, match="retry limit exceeded"):
         recovery.queue_resume(
             workflow_id,
-            owner_user_id="retry-test-owner",
+            owner_user_id=owner_user_id,
             request_digest=request_digest,
             definition_version=3,
         )
 
-    run = recovery.get_run(workflow_id, owner_user_id="retry-test-owner")
+    run = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
     saved_task = tasks.get(task.task_id)
+    assert recovery.get_encrypted_payload(
+        workflow_id, owner_user_id=owner_user_id
+    ) is None
     assert run is not None and run["status"] == "failed"
     assert saved_task is not None and saved_task.status is TaskStatus.FAILED
 
