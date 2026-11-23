@@ -62,7 +62,11 @@ class MemoryDreamingEngine:
         proposals: list[dict[str, Any]] = []
         for index, (left, left_tokens) in enumerate(prepared):
             for right, right_tokens in prepared[index + 1 :]:
-                if left.get("category") != right.get("category"):
+                if (
+                    left.get("category") != right.get("category")
+                    or left.get("memory_type", "unspecified")
+                    != right.get("memory_type", "unspecified")
+                ):
                     continue
                 similarity = self._similarity(left_tokens, right_tokens)
                 if similarity < threshold:
@@ -77,6 +81,7 @@ class MemoryDreamingEngine:
                         "canonical_memory_id": canonical["memory_id"],
                         "candidate_memory_id": redundant["memory_id"],
                         "category": canonical["category"],
+                        "memory_type": canonical.get("memory_type", "unspecified"),
                         "similarity": round(similarity, 4),
                         "confidence": "heuristic",
                         "canonical_excerpt": str(canonical["content"])[:500],
