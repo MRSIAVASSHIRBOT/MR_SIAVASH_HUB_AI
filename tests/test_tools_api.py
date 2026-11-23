@@ -333,6 +333,13 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     assert summaries[0]["granted_scopes"] == sorted(["device.heartbeat", "app.launch"])
     assert "access_token" not in str(summaries)
 
+    denied_launch = client.post("/tools/device.app_launch.submit/invoke", json={"payload": {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "c4a9c5a7-2fd6-4e8f-b9e9-6a9cfc37d51f",
+    }})
+    assert denied_launch.status_code == 403
+
     assert client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600}).status_code == 200
     blocked = client.post("/tools/device.app_launch.submit/invoke", json={"payload": {
         "device_id": device_id,
