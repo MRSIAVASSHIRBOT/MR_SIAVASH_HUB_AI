@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import inspect
 import json
 import logging
+import secrets
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,6 +31,10 @@ class ReplaySafety(StrEnum):
 
 
 _PERMISSION_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,79}$")
+
+# Ephemeral per-process key prevents low-entropy input/output fingerprints from
+# being verified offline if lifecycle events are persisted by an observer.
+_LIFECYCLE_DIGEST_KEY = secrets.token_bytes(32)
 
 
 @dataclass(frozen=True)
@@ -209,7 +215,7 @@ class ToolRegistry:
 
     @staticmethod
     def _payload_digest(value: object) -> str | None:
-        """Return a canonical SHA-256 digest without making telemetry a gate."""
+        """Return a process-local keyed fingerprint without making telemetry a gate."""
         try:
             encoded = json.dumps(
                 value,
@@ -220,7 +226,7 @@ class ToolRegistry:
             ).encode("utf-8")
         except (TypeError, ValueError, UnicodeEncodeError):
             return None
-        return hashlib.sha256(encoded).hexdigest()
+        return hmac.new(_LIFECYCLE_DIGEST_KEY, encoded, hashlib.sha256).hexdigest()
 
     @staticmethod
     def _emit_lifecycle(
