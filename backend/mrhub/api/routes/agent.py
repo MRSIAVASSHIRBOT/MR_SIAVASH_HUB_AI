@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.registry import build_default_agent_registry
@@ -47,9 +47,22 @@ def _build_owner_agent_core(
 
 
 class WorkflowReconciliationRequest(BaseModel):
-    step_number: int = Field(ge=1)
+    # step_number remains accepted for existing clients; new clients should use step_id.
+    step_number: int | None = Field(default=None, ge=1)
+    step_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        pattern="^[a-z][a-z0-9-]{0,63}$",
+    )
     outcome: Literal["succeeded", "failed"]
     output_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def require_exactly_one_step_identity(self):
+        if (self.step_number is None) == (self.step_id is None):
+            raise ValueError("Provide exactly one of step_id or step_number")
+        return self
 
 
 class WorkflowResumeCheckRequest(BaseModel):
@@ -422,7 +435,7 @@ def reconcile_agent_workflow(
     try:
         checkpoint = recovery.resolve_unknown_step(
             workflow_id,
-            request.step_number,
+            request.step_id if request.step_id is not None else request.step_number,
             request.outcome,
             output_digest=request.output_digest,
             owner_user_id=current_user.user_id,
