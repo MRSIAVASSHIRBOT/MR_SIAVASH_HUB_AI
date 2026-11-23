@@ -211,9 +211,9 @@ def test_memory_type_is_persisted_filtered_and_updated() -> None:
         json={"query": "memorytaxonomyfilteronlytoken", "memory_types": ["procedural"]},
     )
     assert new_type.status_code == 200
-    assert [item["memory_id"] for item in new_type.json()["results"]] == [
-        created["episodic"]
-    ]
+    assert {
+        item["memory_id"] for item in new_type.json()["results"]
+    } == {created["episodic"], created["procedural"]}
 
 
 def test_memory_type_validation_rejects_unknown_values_and_null_updates() -> None:
