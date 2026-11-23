@@ -176,6 +176,12 @@ class ToolRegistry:
         handler_failed = False
         try:
             raw_result = tool.handler(validated_input)
+            if inspect.isawaitable(raw_result):
+                # A synchronous handler must not leak an un-awaited coroutine into
+                # schema validation. Close coroutine objects without awaiting them.
+                if inspect.iscoroutine(raw_result):
+                    raw_result.close()
+                handler_failed = True
         except ToolPolicyError:
             # Domain-specific authorization checks (e.g. a device's exact granted
             # scope) retain the normal policy-denied response and audit path.
