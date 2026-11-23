@@ -225,6 +225,40 @@ class TaskRepository:
             description=row["description"],
         )
 
+    def get_owned_task_trace(
+        self, task_id: UUID, owner_user_id: str
+    ) -> dict[str, str | None] | None:
+        """Verify trace ownership through the user's task submission event."""
+        with self._connection() as connection:
+            root = connection.execute(
+                """
+                SELECT 1 FROM audit_events
+                WHERE event_type = 'task.submitted'
+                  AND subject_type = 'task'
+                  AND subject_id = ?
+                  AND actor_type = 'user'
+                  AND actor_id = ?
+                ORDER BY created_at ASC, event_id ASC
+                LIMIT 1
+                """,
+                (str(task_id), owner_user_id),
+            ).fetchone()
+            if root is None:
+                return None
+            workflow = connection.execute(
+                """
+                SELECT workflow_id FROM workflow_runs
+                WHERE task_id = ? AND owner_user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (str(task_id), owner_user_id),
+            ).fetchone()
+        return {
+            "task_id": str(task_id),
+            "workflow_id": str(workflow["workflow_id"]) if workflow is not None else None,
+        }
+
     def list_task_audit_events(
         self, task_id: UUID, limit: int = 20
     ) -> list[dict[str, object]]:
