@@ -516,11 +516,11 @@ def test_worker_revalidates_owner_grants_after_queue_and_before_dispatch(monkeyp
     )
     monkeypatch.setattr(
         "mrhub.api.routes.agent.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
     monkeypatch.setattr(
         "mrhub.jobs.workflow_dispatch.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     grant = client.put(
