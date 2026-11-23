@@ -98,7 +98,7 @@ def test_mid_sized_work_order_is_moderate_complexity():
     order = make_work_order(capabilities=["tool.one", "tool.two"])
     result = assess_work_order_intelligence(
         order,
-        make_plan(5),
+        make_plan(5, chain=True),
         report(required=order.required_capabilities, available=order.required_capabilities),
     )
     assert result.complexity is ComplexityLevel.MODERATE
