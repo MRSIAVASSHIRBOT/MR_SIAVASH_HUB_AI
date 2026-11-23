@@ -71,7 +71,10 @@ def build_lesson_proposal(
     """Build a stable owner-review proposal from a completed, digest-backed step."""
     if evidence.workflow_status != "succeeded" or evidence.step_status != "succeeded":
         raise LessonProposalError("Lessons require a successfully completed workflow step")
-    if not isinstance(evidence.step_id, str) or not _STEP_KEY_PATTERN.fullmatch(evidence.step_id):
+    if (
+        not isinstance(evidence.step_id, str)
+        or not _STEP_KEY_PATTERN.fullmatch(evidence.step_id)
+    ):
         raise LessonProposalError("Workflow step identity is invalid")
     if (
         not isinstance(evidence.output_digest, str)
@@ -94,7 +97,9 @@ def build_lesson_proposal(
         MemoryRepository.validate_memory_text(normalized_text)
         MemoryRepository.validate_memory_text(normalized_category)
     except (TypeError, ValueError) as exc:
-        raise LessonProposalError("Lesson proposal contains unsupported or sensitive content") from exc
+        raise LessonProposalError(
+            "Lesson proposal contains unsupported or sensitive content"
+        ) from exc
 
     source_reference = (
         f"workflow://{evidence.workflow_id}/steps/{evidence.step_id}"
