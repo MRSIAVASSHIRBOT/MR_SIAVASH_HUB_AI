@@ -214,16 +214,16 @@ def test_reviewed_structured_error_details_are_sanitized_without_losing_contract
         403, {"reason_code": "authorization_scope_denied", "asset": "private-asset"}
     ) == {"reason_code": "authorization_scope_denied"}
 
-    assert _safe_http_detail(
+    sanitized_profile_error = _safe_http_detail(
         404,
         {
             "message": "Unknown model profile ID(s)",
             "profile_ids": ["unknown-profile", "ghp_secret-token-like-value"],
         },
-    ) == {
-        "message": "Unknown model profile ID(s)",
-        "profile_ids": ["unknown-profile"],
-    }
+    )
+    assert sanitized_profile_error == {"message": "Unknown model profile ID(s)"}
+    assert "unknown-profile" not in str(sanitized_profile_error)
+    assert "ghp_secret-token-like-value" not in str(sanitized_profile_error)
 
     assert _safe_http_detail(
         409,
