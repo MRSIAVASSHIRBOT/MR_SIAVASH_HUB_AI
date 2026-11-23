@@ -209,7 +209,7 @@ def test_vision_request_accepts_bounded_per_request_timeout():
 
 @pytest.mark.parametrize(
     "timeout_seconds",
-    [True, False, "5", 0, 181, float("nan"), float("inf")],
+    [True, False, "5", 0, 181, float("nan"), float("inf"), 10**1000],
 )
 def test_ollama_vision_rejects_invalid_adapter_timeout_configuration(timeout_seconds):
     with pytest.raises(ProviderConfigurationError):
