@@ -70,6 +70,9 @@ def test_policy_api_unknown_action_requires_approval() -> None:
     assert response.status_code == 200
     assert response.json()["decision"] == "require_approval"
     assert response.json()["reason"] == "Unregistered action requires explicit review"
+    assert response.json()["evaluation_only"] is True
+    assert response.json()["execution_authorized"] is False
+    assert response.json()["action_executed"] is False
 
 
 def test_policy_api_uses_registered_metadata_and_only_owner_active_grants(
