@@ -254,6 +254,47 @@ class ToolInvocationApprovalStore:
             ).fetchone()
             return dict(updated) if updated is not None else None
 
+    def validate(
+        self,
+        approval_id: str,
+        *,
+        owner_user_id: str,
+        tool_name: str,
+        payload_digest: str,
+        tool_fingerprint: str,
+    ) -> bool:
+        """Check a receipt without consuming it; the executor must consume again atomically."""
+        normalized_id = self._validate_identifiers(approval_id, owner_user_id, tool_name)
+        self._validate_digest(payload_digest)
+        self._validate_digest(tool_fingerprint)
+        now_text = self._now().isoformat()
+        with self.repository._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT tool_name, payload_digest, tool_fingerprint, status, expires_at
+                FROM tool_invocation_approvals
+                WHERE approval_id = ? AND owner_user_id = ?
+                """,
+                (normalized_id, owner_user_id),
+            ).fetchone()
+            if row is None:
+                return False
+            if row["status"] == "approved" and row["expires_at"] <= now_text:
+                connection.execute(
+                    "UPDATE tool_invocation_approvals SET status = 'expired' "
+                    "WHERE approval_id = ? AND status = 'approved'",
+                    (normalized_id,),
+                )
+                return False
+            return (
+                row["status"] == "approved"
+                and row["expires_at"] > now_text
+                and row["tool_name"] == tool_name
+                and row["payload_digest"] == payload_digest
+                and row["tool_fingerprint"] == tool_fingerprint
+            )
+
     def consume(
         self,
         approval_id: str,
