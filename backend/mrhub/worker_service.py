@@ -30,6 +30,10 @@ def main() -> None:
     repository = TaskRepository(settings.database_path)
     repository.initialize()
     worker = WorkerEngine(repository)
+    # Recovery is database-only and must run even when emergency stop is latched.
+    # The stop switch continues to gate all subsequent dispatch/claims.
+    worker.recover_interrupted()
+    logger.info("Worker startup recovery completed")
     media_repository = MediaAssetRepository(settings.database_path)
     stop = Event()
     heartbeat_stop = Event()
