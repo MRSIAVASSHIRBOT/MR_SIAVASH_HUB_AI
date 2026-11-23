@@ -859,6 +859,10 @@ def test_persisted_plan_revoke_hides_records_owned_by_another_user(monkeypatch):
     )
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+    monkeypatch.setattr(
+        agent_routes, "AuditLogger",
+        lambda _repository: SimpleNamespace(record=lambda **_kwargs: None),
+    )
 
     with pytest.raises(HTTPException) as error:
         agent_routes.revoke_persisted_goal_work_order_plan(
@@ -895,6 +899,10 @@ def test_persisted_plan_revoke_returns_gone_for_expired_records(monkeypatch):
     )
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+    monkeypatch.setattr(
+        agent_routes, "AuditLogger",
+        lambda _repository: SimpleNamespace(record=lambda **_kwargs: None),
+    )
 
     with pytest.raises(HTTPException) as error:
         agent_routes.revoke_persisted_goal_work_order_plan(
