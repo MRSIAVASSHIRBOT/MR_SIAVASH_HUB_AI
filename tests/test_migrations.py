@@ -1258,14 +1258,16 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
     connection.close()
 
 
-def test_v55_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, monkeypatch):
+def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, monkeypatch):
     from mrhub.infrastructure import migrations as migrations_module
 
-    connection = connect(tmp_path / "typed-memory-v55.sqlite3")
+    connection = connect(tmp_path / "typed-memory-v56.sqlite3")
     all_migrations = migrations_module.MIGRATIONS
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:54])
+    # Apply every prior migration, including V55 plan storage when present.
+    previous_migrations = all_migrations[:-1]
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", previous_migrations)
     assert SchemaMigrator(connection).migrate() == [
-        migration.version for migration in all_migrations[:54]
+        migration.version for migration in previous_migrations
     ]
 
     now = "2026-11-23T00:00:00+00:00"
@@ -1290,7 +1292,7 @@ def test_v55_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [55]
+    assert SchemaMigrator(connection).migrate() == [56]
 
     entry = connection.execute(
         "SELECT memory_type, content FROM memory_entries WHERE memory_id = 'legacy-memory'"
