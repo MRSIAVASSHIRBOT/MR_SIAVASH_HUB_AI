@@ -21,6 +21,12 @@ from mrhub.jobs.payload_envelope import (
 )
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
+from mrhub.security.tool_approvals import (
+    ToolApprovalError,
+    ToolInvocationApprovalStore,
+    canonical_tool_payload,
+    tool_definition_fingerprint,
+)
 from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
@@ -79,14 +85,77 @@ class WorkflowWorkerHandler:
         if lease_lost.is_set():
             return self._fail_closed(task, lease, workflow_id, "workflow_lease_lost")
 
-        permissions = ToolPermissionService(
-            self.repository,
-            AuditLogger(self.repository),
-        )
+        audit = AuditLogger(self.repository)
+        permissions = ToolPermissionService(self.repository, audit)
+        registry = build_tool_registry()
+        approval_store = ToolInvocationApprovalStore(self.repository)
+
+        def resolve_approval(
+            approval_id: str,
+            tool_name: str,
+            tool_payload: dict[str, object],
+            granted_permissions: frozenset[str],
+            *,
+            consume: bool,
+        ) -> bool:
+            """Revalidate the exact receipt in the worker immediately before tool execution."""
+            try:
+                tool = registry.get(tool_name)
+                # This callback is entered only for a plan step that policy
+                # classified as approval-required. Do not run policy a second time;
+                # the registry performs its final policy check immediately at invoke.
+                if not (tool.risk_class.value == "high" or tool.external_side_effect):
+                    return False
+                if not tool.required_permissions.issubset(granted_permissions):
+                    return False
+                _normalized, payload_digest = canonical_tool_payload(tool, tool_payload)
+                fingerprint = tool_definition_fingerprint(tool)
+                if consume:
+                    audit_event = audit.build_event(
+                        event_type="tool.approval_consumed",
+                        outcome="consumed",
+                        subject_id=approval_id,
+                        subject_type="tool_approval",
+                        actor_type="user",
+                        actor_id=owner_user_id,
+                        metadata={
+                            "tool_name": tool_name,
+                            "approval_id": approval_id,
+                            "status": "consumed",
+                            "decision": "consumed",
+                            "reason_code": "single_use_receipt_consumed",
+                        },
+                    ).model_dump(mode="json")
+                    return approval_store.consume(
+                        approval_id,
+                        owner_user_id=owner_user_id,
+                        tool_name=tool_name,
+                        payload_digest=payload_digest,
+                        tool_fingerprint=fingerprint,
+                        audit_event=audit_event,
+                    )
+                return approval_store.validate(
+                    approval_id,
+                    owner_user_id=owner_user_id,
+                    tool_name=tool_name,
+                    payload_digest=payload_digest,
+                    tool_fingerprint=fingerprint,
+                )
+            except (LookupError, ToolApprovalError, TypeError, ValueError):
+                return False
+            except Exception:  # noqa: BLE001 - approval lookup failures fail closed
+                return False
+
         core = AgentCore(
             build_model_router(),
-            build_tool_registry(),
+            registry,
             permission_provider=lambda: permissions.active_permissions(owner_user_id),
+            approval_validator=lambda approval_id, tool_name, tool_payload, grants: resolve_approval(
+                approval_id, tool_name, tool_payload, grants, consume=False
+            ),
+            approval_consumer=lambda approval_id, tool_name, tool_payload, grants: resolve_approval(
+                approval_id, tool_name, tool_payload, grants, consume=True
+            ),
         )
         plan = core.plan(request)
         if not plan.get("execution_ready"):
