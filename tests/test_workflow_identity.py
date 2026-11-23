@@ -311,3 +311,47 @@ def test_runner_resume_after_reordering_does_not_replay_succeeded_identity(
         "first": "succeeded",
         "later": "succeeded",
     }
+
+
+def test_cancelling_running_step_blocks_its_pending_descendants(tmp_path):
+    _tasks, recovery = make_recovery(tmp_path)
+    workflow_id = recovery.create_run(
+        "9" * 64,
+        [
+            {
+                "step_number": 1,
+                "step_key": "step-1",
+                "depends_on": [],
+                "kind": "provider_selection",
+                "name": "provider",
+            },
+            {
+                "step_number": 2,
+                "step_key": "active",
+                "depends_on": ["step-1"],
+                "kind": "safe_tool",
+                "name": "text.echo",
+            },
+            {
+                "step_number": 3,
+                "step_key": "descendant",
+                "depends_on": ["active"],
+                "kind": "safe_tool",
+                "name": "text.echo",
+            },
+        ],
+        definition_version=3,
+    )
+    recovery.start_run(workflow_id)
+    provider = recovery.start_step(workflow_id, "step-1")
+    recovery.complete_step(workflow_id, provider, "8" * 64)
+    active = recovery.start_step(workflow_id, "active")
+
+    recovery.finish_run(workflow_id, "cancelled")
+    stored = recovery.get_run(workflow_id)
+
+    assert stored is not None
+    states = {step["step_key"]: step for step in stored["steps"]}
+    assert stored["status"] == "cancelled"
+    assert states["active"]["status"] == "cancelled"
+    assert states["descendant"]["dependency_state"] == "blocked"
