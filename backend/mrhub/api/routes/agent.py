@@ -436,7 +436,24 @@ def revoke_persisted_goal_work_order_plan(
     response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
     settings = get_settings()
-    TaskRepository(settings.database_path).initialize()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.work_order_plan_revocation_requested",
+            outcome="requested",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="agent_work_order_plan",
+            subject_id=str(plan_id),
+            metadata={"operation": "revoke", "owner_scope": "authenticated_user"},
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+
     record = AgentWorkOrderPlanRepository(settings.database_path).revoke(
         str(plan_id),
         owner_user_id=current_user.user_id,
