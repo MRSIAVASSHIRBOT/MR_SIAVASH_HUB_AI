@@ -96,8 +96,13 @@ class OllamaProvider:
             return ProviderHealth(available=False, reason_code="provider_unavailable")
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        request_timeout = (
+            min(self.timeout_seconds, request.timeout_seconds)
+            if request.timeout_seconds is not None
+            else self.timeout_seconds
+        )
         try:
-            with self._client() as client:
+            with self._client(request_timeout) as client:
                 response = client.post(
                     "/api/generate",
                     json={
