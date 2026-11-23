@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import math
 from urllib.parse import urlsplit
 
 import httpx
@@ -103,12 +104,33 @@ class KimiProvider:
             return value
         return None
 
-    def _post_json(self, body: dict[str, object]) -> dict[str, object]:
+    def _effective_request_timeout(self, timeout_seconds: float | None) -> float:
+        """Clamp a caller budget to the configured adapter maximum."""
+        if timeout_seconds is None:
+            return self.timeout_seconds
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(float(timeout_seconds))
+            or not 1 <= timeout_seconds <= 300
+        ):
+            raise ProviderConfigurationError(
+                "Request timeout must be between 1 and 300 seconds"
+            )
+        return min(self.timeout_seconds, float(timeout_seconds))
+
+    def _post_json(
+        self,
+        body: dict[str, object],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, object]:
         """Read a provider response incrementally and enforce a hard byte ceiling."""
+        effective_timeout = self._effective_request_timeout(timeout_seconds)
         try:
             content = bytearray()
             with (
-                self._client() as client,
+                self._client(effective_timeout) as client,
                 client.stream("POST", "chat/completions", json=body) as response,
             ):
                 if not 200 <= response.status_code < 300:
@@ -173,6 +195,7 @@ class KimiProvider:
         prompt: str,
         image_data_url: str,
         max_output_tokens: int = 512,
+        timeout_seconds: float | None = None,
     ) -> ProviderResponse:
         """Analyze one bounded inline image; arbitrary remote URLs are never fetched."""
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 8_000:
@@ -226,7 +249,8 @@ class KimiProvider:
                 "max_completion_tokens": max_output_tokens,
                 "reasoning_effort": self.reasoning_effort,
                 "stream": False,
-            }
+            },
+            timeout_seconds=timeout_seconds,
         )
 
         choices = payload.get("choices")
@@ -259,7 +283,8 @@ class KimiProvider:
                 "max_completion_tokens": request.max_output_tokens,
                 "reasoning_effort": self.reasoning_effort,
                 "stream": False,
-            }
+            },
+            timeout_seconds=request.timeout_seconds,
         )
 
         choices = payload.get("choices")
