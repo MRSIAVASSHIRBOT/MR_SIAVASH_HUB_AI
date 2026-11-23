@@ -226,3 +226,43 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
             UUID(created.json()["memory_id"]),
             {field: ["not", "text"]},
         )
+
+
+
+def test_memory_search_uses_confidence_and_owner_verification_as_tie_breakers() -> None:
+    client = authenticated_client()
+    query_text = "retrieval confidence ranking invariant"
+    lower = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": query_text,
+            "confidence": 0.2,
+            "verification_status": "user_authored",
+        },
+    )
+    higher = client.post(
+        "/memory",
+        json={
+            "category": "engineering",
+            "content": query_text,
+            "confidence": 0.95,
+            "verification_status": "user_approved",
+        },
+    )
+    assert lower.status_code == 201
+    assert higher.status_code == 201
+
+    response = client.post(
+        "/memory/search",
+        json={"query": "retrieval confidence ranking invariant", "limit": 10},
+    )
+    assert response.status_code == 200
+    result_ids = [item["memory_id"] for item in response.json()["results"]]
+
+    # Exact lexical matches have equal BM25 rank, so owner verification and
+    # confidence deterministically break the tie. Lexical relevance remains first.
+    assert result_ids[:2] == [
+        higher.json()["memory_id"],
+        lower.json()["memory_id"],
+    ]
