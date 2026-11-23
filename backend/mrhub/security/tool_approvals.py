@@ -63,7 +63,7 @@ def _fingerprint_value(value: object, *, depth: int = 0) -> object:
             "type": f"{type(value).__module__}.{type(value).__qualname__}",
             "value": _fingerprint_value(value.value, depth=depth + 1),
         }
-    if isinstance(value, PurePath) or isinstance(value, os.PathLike):
+    if isinstance(value, (PurePath, os.PathLike)):
         try:
             return {"kind": "path", "value": os.fspath(value)}
         except (TypeError, ValueError, OSError):
@@ -105,7 +105,7 @@ def _fingerprint_value(value: object, *, depth: int = 0) -> object:
     if callable(identity_provider):
         try:
             identity = identity_provider()
-        except Exception as exc:  # noqa: BLE001 - approval binding fails closed
+        except Exception as exc:
             raise ToolApprovalError("Tool configuration fingerprint is unavailable") from exc
         if not isinstance(identity, dict) or any(
             not isinstance(key, str) for key in identity
