@@ -47,7 +47,14 @@ def validate_plan(plan: Mapping[str, object]) -> ValidationReport:
         if status not in ("pending", "completed", "blocked"):
             findings.add("invalid_status")
 
-        valid_deps = isinstance(deps, list) and all(isinstance(d, str) for d in deps)
+        valid_deps = (
+            isinstance(deps, list)
+            and len(deps) <= MAX_STEPS
+            and all(
+                isinstance(dep, str) and dep.strip() and len(dep) <= MAX_TEXT
+                for dep in deps
+            )
+        )
         if not valid_deps:
             findings.add("invalid_dependencies")
             normalized_deps: list[str] = []
