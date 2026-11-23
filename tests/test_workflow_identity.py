@@ -355,6 +355,7 @@ def test_cancelling_running_step_blocks_its_pending_descendants(tmp_path):
     states = {step["step_key"]: step for step in stored["steps"]}
     assert stored["status"] == "cancelled"
     assert states["active"]["status"] == "cancelled"
+    assert states["descendant"]["status"] == "cancelled"
     assert states["descendant"]["dependency_state"] == "blocked"
 
 
@@ -384,3 +385,42 @@ def test_reconciliation_api_accepts_stable_identity_and_legacy_position():
 def test_reconciliation_api_rejects_missing_or_ambiguous_identity(payload):
     with pytest.raises(ValidationError):
         WorkflowReconciliationRequest(**payload)
+
+
+def test_queued_workflow_cancellation_terminalizes_all_pending_steps(tmp_path):
+    _tasks, recovery = make_recovery(tmp_path)
+    owner = "queued-cancellation-owner"
+    workflow_id = recovery.create_run(
+        "7" * 64,
+        [
+            {
+                "step_number": 1,
+                "step_key": "step-1",
+                "depends_on": [],
+                "kind": "provider_selection",
+                "name": "provider",
+            },
+            {
+                "step_number": 2,
+                "step_key": "child",
+                "depends_on": ["step-1"],
+                "kind": "safe_tool",
+                "name": "text.echo",
+            },
+        ],
+        task=TaskRecord(
+            task_type="agent.workflow",
+            description="Queued cancellation regression",
+        ),
+        owner_user_id=owner,
+        definition_version=3,
+    )
+
+    result = recovery.request_cancellation(workflow_id, owner_user_id=owner)
+    stored = recovery.get_run(workflow_id, owner_user_id=owner)
+
+    assert result["status"] == "cancelled"
+    assert stored is not None
+    assert stored["status"] == "cancelled"
+    assert all(step["status"] == "cancelled" for step in stored["steps"])
+    assert stored["steps"][1]["dependency_state"] == "blocked"
