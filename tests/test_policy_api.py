@@ -106,6 +106,17 @@ def test_policy_api_uses_registered_metadata_and_only_owner_active_grants(
             external_side_effect=False,
         )
     )
+    registry.register(
+        ToolDefinition(
+            name="content.publish",
+            description="Publish content to an external destination.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=handler,
+            risk_class=RiskClass.HIGH,
+            external_side_effect=True,
+        )
+    )
     monkeypatch.setattr(
         policy_routes,
         "build_tool_registry",
@@ -141,3 +152,11 @@ def test_policy_api_uses_registered_metadata_and_only_owner_active_grants(
     assert events[-1]["metadata"]["risk_class"] == "low"
     assert events[-1]["metadata"]["granted_permission_count"] == 1
     assert events[-1]["metadata"]["required_permission_count"] == 1
+
+    # High-risk and external-effect classification comes from server metadata.
+    review_required = client.post(
+        "/policy/evaluate",
+        json={"action": "content.publish"},
+    )
+    assert review_required.status_code == 200
+    assert review_required.json()["decision"] == "require_approval"
