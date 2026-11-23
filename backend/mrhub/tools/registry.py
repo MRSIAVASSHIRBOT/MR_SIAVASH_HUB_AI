@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -29,6 +33,36 @@ class ToolDefinition:
     risk_class: RiskClass = RiskClass.LOW
     required_permissions: frozenset[str] = frozenset()
     external_side_effect: bool = False
+
+
+class ToolLifecycleStage(StrEnum):
+    """Sanitized lifecycle transitions emitted at the tool invocation boundary."""
+
+    INPUT_REJECTED = "input_rejected"
+    INPUT_VALIDATED = "input_validated"
+    AUTHORIZATION_DENIED = "authorization_denied"
+    AUTHORIZATION_GRANTED = "authorization_granted"
+    HANDLER_STARTED = "handler_started"
+    HANDLER_RETURNED = "handler_returned"
+    HANDLER_FAILED = "handler_failed"
+    OUTPUT_REJECTED = "output_rejected"
+    OUTPUT_VALIDATED = "output_validated"
+    SUCCEEDED = "succeeded"
+    UNKNOWN_OUTCOME = "unknown_outcome"
+
+
+@dataclass(frozen=True)
+class ToolLifecycleEvent:
+    """Metadata-only event; raw input, output, exceptions, and secrets are excluded."""
+
+    tool_name: str
+    stage: ToolLifecycleStage
+    input_digest: str | None = None
+    output_digest: str | None = None
+    reason_code: str | None = None
+
+
+ToolLifecycleObserver = Callable[[ToolLifecycleEvent], None]
 
 
 class ToolExecutionError(RuntimeError):
@@ -155,6 +189,38 @@ class ToolRegistry:
             for tool in sorted(self._tools.values(), key=lambda item: item.name)
         ]
 
+    @staticmethod
+    def _payload_digest(value: object) -> str | None:
+        """Return a canonical SHA-256 digest without making telemetry a gate."""
+        try:
+            encoded = json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError):
+            return None
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _emit_lifecycle(
+        observer: ToolLifecycleObserver | None,
+        event: ToolLifecycleEvent,
+    ) -> None:
+        """Notify observers best-effort; telemetry must never change tool outcome."""
+        if observer is None:
+            return
+        try:
+            observer(event)
+        except Exception:  # noqa: BLE001 - observability is intentionally non-blocking
+            logging.getLogger("mrhub.tools.lifecycle").warning(
+                "tool_lifecycle_observer_failed tool=%s stage=%s",
+                event.tool_name,
+                event.stage.value,
+            )
+
     def invoke(
         self,
         name: str,
@@ -162,23 +228,88 @@ class ToolRegistry:
         *,
         granted_permissions: frozenset[str] = frozenset(),
         user_approved: bool = False,
+        lifecycle_observer: ToolLifecycleObserver | None = None,
     ) -> dict[str, object]:
         tool = self.get(name)
-        validated_input = tool.input_model.model_validate(payload)
-        decision = self.evaluate_policy(
-            name,
-            granted_permissions=granted_permissions,
-            user_approved=user_approved,
+
+        def emit(
+            stage: ToolLifecycleStage,
+            *,
+            input_digest: str | None = None,
+            output_digest: str | None = None,
+            reason_code: str | None = None,
+        ) -> None:
+            self._emit_lifecycle(
+                lifecycle_observer,
+                ToolLifecycleEvent(
+                    tool_name=tool.name,
+                    stage=stage,
+                    input_digest=input_digest,
+                    output_digest=output_digest,
+                    reason_code=reason_code,
+                ),
+            )
+
+        try:
+            validated_input = tool.input_model.model_validate(payload)
+        except ValidationError:
+            emit(
+                ToolLifecycleStage.INPUT_REJECTED,
+                reason_code="input_schema_validation_failed",
+            )
+            raise
+
+        input_digest = self._payload_digest(validated_input.model_dump(mode="json"))
+        emit(
+            ToolLifecycleStage.INPUT_VALIDATED,
+            input_digest=input_digest,
         )
+
+        try:
+            decision = self.evaluate_policy(
+                name,
+                granted_permissions=granted_permissions,
+                user_approved=user_approved,
+            )
+        except Exception:  # noqa: BLE001 - policy evaluation failures fail closed
+            emit(
+                ToolLifecycleStage.AUTHORIZATION_DENIED,
+                input_digest=input_digest,
+                reason_code="policy_evaluation_failed",
+            )
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Tool policy evaluation failed",
+            ) from None
+
         if decision.decision is not PolicyDecision.ALLOW:
+            reason_code = (
+                "approval_required"
+                if decision.decision is PolicyDecision.REQUIRE_APPROVAL
+                else "policy_denied"
+            )
+            emit(
+                ToolLifecycleStage.AUTHORIZATION_DENIED,
+                input_digest=input_digest,
+                reason_code=reason_code,
+            )
             raise ToolPolicyError(decision.decision, decision.reason)
 
+        emit(
+            ToolLifecycleStage.AUTHORIZATION_GRANTED,
+            input_digest=input_digest,
+        )
+        emit(
+            ToolLifecycleStage.HANDLER_STARTED,
+            input_digest=input_digest,
+        )
+
         handler_failed = False
+        handler_policy_denied = False
         try:
             raw_result = tool.handler(validated_input)
             if inspect.isawaitable(raw_result):
-                # A synchronous handler must not leak an un-awaited coroutine into
-                # schema validation. Cancel scheduled awaitables and close coroutines.
+                # The registry is synchronous; dispose of unsupported awaitables.
                 cancel = getattr(raw_result, "cancel", None)
                 if callable(cancel):
                     cancel()
@@ -187,23 +318,70 @@ class ToolRegistry:
                     close()
                 handler_failed = True
         except ToolPolicyError:
-            # Domain-specific authorization checks (e.g. a device's exact granted
-            # scope) retain the normal policy-denied response and audit path.
-            raise
-        except Exception:  # noqa: BLE001 - sanitize arbitrary untrusted tool failures
-            # Leave the exception handler before raising so the original error
-            # (which may retain credentials or private request data) is not kept
-            # as this public boundary's __context__ or __cause__.
+            handler_policy_denied = True
+        except Exception:  # noqa: BLE001 - sanitize arbitrary handler failures
             handler_failed = True
+
+        if handler_policy_denied:
+            emit(
+                (
+                    ToolLifecycleStage.UNKNOWN_OUTCOME
+                    if tool.external_side_effect
+                    else ToolLifecycleStage.AUTHORIZATION_DENIED
+                ),
+                input_digest=input_digest,
+                reason_code="handler_policy_denied",
+            )
+            raise ToolPolicyError(
+                PolicyDecision.DENY,
+                "Tool handler policy denied execution",
+            ) from None
+
         if handler_failed:
+            emit(
+                (
+                    ToolLifecycleStage.UNKNOWN_OUTCOME
+                    if tool.external_side_effect
+                    else ToolLifecycleStage.HANDLER_FAILED
+                ),
+                input_digest=input_digest,
+                reason_code="handler_failed",
+            )
             raise ToolExecutionError("Tool handler failed")
 
+        emit(
+            ToolLifecycleStage.HANDLER_RETURNED,
+            input_digest=input_digest,
+        )
         output_invalid = False
         try:
             validated_output = tool.output_model.model_validate(raw_result)
         except ValidationError:
             # ValidationError can include the rejected output value. Do not retain it.
             output_invalid = True
+
         if output_invalid:
+            emit(
+                (
+                    ToolLifecycleStage.UNKNOWN_OUTCOME
+                    if tool.external_side_effect
+                    else ToolLifecycleStage.OUTPUT_REJECTED
+                ),
+                input_digest=input_digest,
+                reason_code="output_schema_validation_failed",
+            )
             raise ToolExecutionError("Tool output validation failed")
-        return validated_output.model_dump(mode="json")
+
+        output = validated_output.model_dump(mode="json")
+        output_digest = self._payload_digest(output)
+        emit(
+            ToolLifecycleStage.OUTPUT_VALIDATED,
+            input_digest=input_digest,
+            output_digest=output_digest,
+        )
+        emit(
+            ToolLifecycleStage.SUCCEEDED,
+            input_digest=input_digest,
+            output_digest=output_digest,
+        )
+        return output
