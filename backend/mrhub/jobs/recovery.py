@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 from collections.abc import Callable, Iterator
@@ -30,6 +31,7 @@ class StepAttempt:
     step_id: str
     step_number: int
     attempt_number: int
+    step_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,7 @@ class WorkflowCheckpoint:
     step_number: int
     state_digest: str
     created_at: str
+    step_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ class ResumeDecision:
     next_step: int | None
     checkpoint_version: int | None
     reason_code: str | None
+    next_step_id: str | None = None
 
 
 class WorkflowRecoveryRepository:
@@ -157,25 +161,71 @@ class WorkflowRecoveryRepository:
         if not steps:
             raise WorkflowRecoveryError("A workflow must contain at least one step")
 
-        normalized: list[tuple[int, str, str, str | None]] = []
+        normalized: list[tuple[int, str, str, str | None, str, list[str] | None]] = []
         seen_numbers: set[int] = set()
+        seen_keys: set[str] = set()
         for item in steps:
             number = item.get("step_number")
             kind = item.get("kind")
             name = item.get("name")
             input_digest = item.get("input_digest")
-            if not isinstance(number, int) or number < 1 or number in seen_numbers:
+            step_key = item.get("step_key", f"step-{number}")
+            dependencies = item.get("depends_on")
+            if not isinstance(number, int) or isinstance(number, bool) or number < 1 or number in seen_numbers:
                 raise WorkflowRecoveryError("Workflow step numbers must be unique positive integers")
             if not isinstance(kind, str) or not kind.strip() or len(kind) > 80:
                 raise WorkflowRecoveryError("Workflow step kind is invalid")
             if not isinstance(name, str) or not name.strip() or len(name) > 120:
                 raise WorkflowRecoveryError("Workflow step name is invalid")
+            if (
+                not isinstance(step_key, str)
+                or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", step_key)
+                or step_key in seen_keys
+            ):
+                raise WorkflowRecoveryError("Workflow step identity is invalid or duplicated")
+            if dependencies is not None and (
+                not isinstance(dependencies, list)
+                or any(
+                    not isinstance(dependency, str)
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", dependency)
+                    for dependency in dependencies
+                )
+                or len(dependencies) != len(set(dependencies))
+            ):
+                raise WorkflowRecoveryError("Workflow step dependencies are invalid")
             if input_digest is not None:
                 if not isinstance(input_digest, str):
                     raise WorkflowRecoveryError("Workflow step input digest is invalid")
                 self._validate_digest(input_digest, "Workflow step input digest")
             seen_numbers.add(number)
-            normalized.append((number, kind, name, input_digest))
+            seen_keys.add(step_key)
+            normalized.append((number, kind, name, input_digest, step_key, dependencies))
+
+        # Preserve the historical sequential contract when dependency metadata
+        # is omitted. New definitions may declare an independent or explicit DAG.
+        by_key = {item[4]: item for item in normalized}
+        ordered_numbers = sorted(normalized, key=lambda item: item[0])
+        prepared: list[tuple[int, str, str, str | None, str, list[str]]] = []
+        for index, item in enumerate(ordered_numbers):
+            number, kind, name, input_digest, step_key, dependencies = item
+            if dependencies is None:
+                dependencies = [ordered_numbers[index - 1][4]] if index else []
+            if any(dependency not in by_key for dependency in dependencies):
+                raise WorkflowRecoveryError("Workflow step depends on an unknown identity")
+            if step_key in dependencies:
+                raise WorkflowRecoveryError("Workflow step cannot depend on itself")
+            prepared.append((number, kind, name, input_digest, step_key, dependencies))
+
+        # Validate the persisted dependency graph independently of the API planner.
+        remaining = {item[4]: set(item[5]) for item in prepared}
+        while remaining:
+            ready = {key for key, dependencies in remaining.items() if not dependencies}
+            if not ready:
+                raise WorkflowRecoveryError("Workflow dependency graph contains a cycle")
+            for key in ready:
+                remaining.pop(key)
+            for dependencies in remaining.values():
+                dependencies.difference_update(ready)
 
         workflow_id = workflow_id or uuid4()
         now = self._now()
@@ -262,21 +312,72 @@ class WorkflowRecoveryRepository:
                         nonce_b64, ciphertext_b64, now,
                     ),
                 )
-            for number, kind, name, input_digest in normalized:
+            for number, kind, name, input_digest, step_key, dependencies in prepared:
                 connection.execute(
                     """
                     INSERT INTO workflow_steps (
                         step_id, workflow_id, step_number, step_kind, step_name,
                         status, input_digest, output_digest, error_code,
-                        attempt_count, started_at, finished_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, 0, NULL, NULL, ?, ?)
+                        attempt_count, started_at, finished_at, created_at, updated_at,
+                        step_key, depends_on_json, dependency_state
+                    ) VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, 0, NULL, NULL, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid4()), str(workflow_id), number, kind, name,
-                        input_digest, now, now,
+                        input_digest, now, now, step_key,
+                        json.dumps(dependencies, ensure_ascii=False, separators=(",", ":")),
+                        "ready" if not dependencies else "pending",
                     ),
                 )
         return workflow_id
+
+    def _refresh_dependency_states(
+        self, connection: sqlite3.Connection, workflow_id: UUID
+    ) -> None:
+        """Recompute persisted dependency readiness and propagate blocked descendants."""
+        rows = connection.execute(
+            """
+            SELECT step_key, depends_on_json, status
+            FROM workflow_steps WHERE workflow_id = ? ORDER BY step_number
+            """,
+            (str(workflow_id),),
+        ).fetchall()
+        by_key = {row["step_key"]: row for row in rows}
+        states = {key: "pending" for key in by_key}
+        for _ in range(max(1, len(rows))):
+            changed = False
+            for row in rows:
+                key = row["step_key"]
+                dependencies = json.loads(row["depends_on_json"])
+                if any(
+                    dependency not in by_key
+                    or by_key[dependency]["status"] in {
+                        "failed", "unknown_outcome", "cancelled"
+                    }
+                    or states.get(dependency) == "blocked"
+                    for dependency in dependencies
+                ):
+                    target = "blocked"
+                elif all(
+                    by_key[dependency]["status"] == "succeeded"
+                    for dependency in dependencies
+                ):
+                    target = "ready"
+                else:
+                    target = "pending"
+                if states[key] != target:
+                    states[key] = target
+                    changed = True
+            if not changed:
+                break
+        for key, target in states.items():
+            connection.execute(
+                """
+                UPDATE workflow_steps SET dependency_state = ?
+                WHERE workflow_id = ? AND step_key = ?
+                """,
+                (target, str(workflow_id), key),
+            )
 
     def start_run(self, workflow_id: UUID, *, lease: WorkerLease | None = None) -> None:
         now = self._now()
@@ -294,8 +395,10 @@ class WorkflowRecoveryRepository:
                 raise WorkflowRecoveryError("Workflow is not eligible to start or resume")
 
     def start_step(
-        self, workflow_id: UUID, step_number: int, *, lease: WorkerLease | None = None
+        self, workflow_id: UUID, step_number: int | str, *,
+        lease: WorkerLease | None = None
     ) -> StepAttempt:
+        """Start by persisted identity (string) or legacy numeric position."""
         now = self._now()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -311,28 +414,43 @@ class WorkflowRecoveryRepository:
                 raise WorkflowRecoveryError("Workflow is not running")
             self._assert_lease(connection, workflow_id, lease, now)
 
-            step = connection.execute(
-                """
-                SELECT step_id, status, attempt_count FROM workflow_steps
-                WHERE workflow_id = ? AND step_number = ?
-                """,
-                (str(workflow_id), step_number),
-            ).fetchone()
+            self._refresh_dependency_states(connection, workflow_id)
+            if isinstance(step_number, str):
+                step = connection.execute(
+                    """
+                    SELECT step_id, step_number, step_key, depends_on_json,
+                           dependency_state, status, attempt_count
+                    FROM workflow_steps WHERE workflow_id = ? AND step_key = ?
+                    """,
+                    (str(workflow_id), step_number),
+                ).fetchone()
+            else:
+                step = connection.execute(
+                    """
+                    SELECT step_id, step_number, step_key, depends_on_json,
+                           dependency_state, status, attempt_count
+                    FROM workflow_steps WHERE workflow_id = ? AND step_number = ?
+                    """,
+                    (str(workflow_id), step_number),
+                ).fetchone()
             if step is None:
                 raise LookupError("Workflow step not found")
             if step["status"] == "unknown_outcome":
                 raise RecoveryRequired("Step outcome must be reconciled before resuming")
             if step["status"] not in {"pending", "retry_wait"}:
                 raise WorkflowRecoveryError("Step is not eligible to start")
-            earlier = connection.execute(
-                """
-                SELECT COUNT(*) AS total FROM workflow_steps
-                WHERE workflow_id = ? AND step_number < ? AND status != 'succeeded'
-                """,
-                (str(workflow_id), step_number),
-            ).fetchone()
-            if earlier["total"]:
-                raise WorkflowRecoveryError("Earlier workflow steps must succeed first")
+            if step["dependency_state"] == "blocked":
+                raise WorkflowRecoveryError("Workflow step is blocked by a failed dependency")
+            dependencies = json.loads(step["depends_on_json"])
+            dependency_rows = connection.execute(
+                "SELECT step_key, status FROM workflow_steps WHERE workflow_id = ?",
+                (str(workflow_id),),
+            ).fetchall()
+            dependency_statuses = {row["step_key"]: row["status"] for row in dependency_rows}
+            if any(dependency_statuses.get(key) != "succeeded" for key in dependencies):
+                raise WorkflowRecoveryError(
+                    "Earlier workflow steps or declared dependencies must succeed first"
+                )
 
             attempt_number = int(step["attempt_count"]) + 1
             attempt_id = str(uuid4())
@@ -348,7 +466,8 @@ class WorkflowRecoveryRepository:
             connection.execute(
                 """
                 UPDATE workflow_steps
-                SET status = 'running', attempt_count = ?, started_at = ?,
+                SET status = 'running', dependency_state = 'ready',
+                    attempt_count = ?, started_at = ?,
                     finished_at = NULL, error_code = NULL, updated_at = ?
                 WHERE step_id = ? AND status IN ('pending', 'retry_wait')
                 """,
@@ -359,9 +478,12 @@ class WorkflowRecoveryRepository:
                 UPDATE workflow_runs SET current_step = ?, updated_at = ?
                 WHERE workflow_id = ? AND status = 'running'
                 """,
-                (step_number, now, str(workflow_id)),
+                (step["step_number"], now, str(workflow_id)),
             )
-            return StepAttempt(attempt_id, step["step_id"], step_number, attempt_number)
+            return StepAttempt(
+                attempt_id, step["step_id"], step["step_number"],
+                attempt_number, step["step_key"]
+            )
 
     def complete_step(
         self,
@@ -388,12 +510,16 @@ class WorkflowRecoveryRepository:
 
             step = connection.execute(
                 """
-                SELECT step_id, status FROM workflow_steps
-                WHERE workflow_id = ? AND step_number = ?
+                SELECT step_id, step_key, step_number, status FROM workflow_steps
+                WHERE workflow_id = ? AND step_id = ?
                 """,
-                (str(workflow_id), attempt.step_number),
+                (str(workflow_id), attempt.step_id),
             ).fetchone()
-            if step is None or step["step_id"] != attempt.step_id or step["status"] != "running":
+            if (
+                step is None
+                or step["step_key"] != attempt.step_key
+                or step["status"] != "running"
+            ):
                 raise WorkflowRecoveryError("Step ownership changed before completion")
             cursor = connection.execute(
                 """
@@ -425,28 +551,29 @@ class WorkflowRecoveryRepository:
             previous_digest = latest["state_digest"] if latest else run["request_digest"]
             version = int(latest["checkpoint_version"]) + 1 if latest else 1
             state_digest = hashlib.sha256(
-                f"{previous_digest}:{attempt.step_number}:{output_digest}".encode()
+                f"{previous_digest}:{attempt.step_key}:{output_digest}".encode()
             ).hexdigest()
             checkpoint_id = str(uuid4())
             connection.execute(
                 """
                 INSERT INTO workflow_checkpoints (
                     checkpoint_id, workflow_id, checkpoint_version,
-                    step_number, state_digest, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    step_number, state_digest, created_at, step_key
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     checkpoint_id, str(workflow_id), version,
-                    attempt.step_number, state_digest, now,
+                    attempt.step_number, state_digest, now, attempt.step_key,
                 ),
             )
             connection.execute(
                 "UPDATE workflow_runs SET updated_at = ? WHERE workflow_id = ?",
                 (now, str(workflow_id)),
             )
+            self._refresh_dependency_states(connection, workflow_id)
             return WorkflowCheckpoint(
                 checkpoint_id, str(workflow_id), version,
-                attempt.step_number, state_digest, now,
+                attempt.step_number, state_digest, now, attempt.step_key,
             )
 
     def fail_step(
@@ -476,12 +603,16 @@ class WorkflowRecoveryRepository:
             self._assert_lease(connection, workflow_id, lease, now)
             step = connection.execute(
                 """
-                SELECT step_id, status FROM workflow_steps
-                WHERE workflow_id = ? AND step_number = ?
+                SELECT step_id, step_key, status FROM workflow_steps
+                WHERE workflow_id = ? AND step_id = ?
                 """,
-                (str(workflow_id), attempt.step_number),
+                (str(workflow_id), attempt.step_id),
             ).fetchone()
-            if step is None or step["step_id"] != attempt.step_id or step["status"] != "running":
+            if (
+                step is None
+                or step["step_key"] != attempt.step_key
+                or step["status"] != "running"
+            ):
                 raise WorkflowRecoveryError("Step attempt is no longer active")
             cursor = connection.execute(
                 """
@@ -508,6 +639,7 @@ class WorkflowRecoveryRepository:
                 """,
                 (run_status, error_code, now, str(workflow_id)),
             )
+            self._refresh_dependency_states(connection, workflow_id)
 
     def mark_interrupted(
         self, workflow_id: UUID, *, lease: WorkerLease | None = None
@@ -519,7 +651,7 @@ class WorkflowRecoveryRepository:
             self._assert_lease(connection, workflow_id, lease, now)
             rows = connection.execute(
                 """
-                SELECT step_id, step_number, step_kind FROM workflow_steps
+                SELECT step_id, step_number, step_key, step_kind FROM workflow_steps
                 WHERE workflow_id = ? AND status = 'running'
                 """,
                 (str(workflow_id),),
@@ -570,12 +702,13 @@ class WorkflowRecoveryRepository:
                 """,
                 (run_status, error_code, now, str(workflow_id)),
             )
+            self._refresh_dependency_states(connection, workflow_id)
             return len(rows)
 
     def resolve_unknown_step(
         self,
         workflow_id: UUID,
-        step_number: int,
+        step_number: int | str,
         outcome: str,
         *,
         output_digest: str | None = None,
@@ -599,13 +732,22 @@ class WorkflowRecoveryRepository:
                 raise LookupError("Workflow not found")
             if run["status"] != "recovery_required":
                 raise WorkflowRecoveryError("Workflow is not awaiting recovery")
-            step = connection.execute(
-                """
-                SELECT step_id, status FROM workflow_steps
-                WHERE workflow_id = ? AND step_number = ?
-                """,
-                (str(workflow_id), step_number),
-            ).fetchone()
+            if isinstance(step_number, str):
+                step = connection.execute(
+                    """
+                    SELECT step_id, step_key, step_number, status FROM workflow_steps
+                    WHERE workflow_id = ? AND step_key = ?
+                    """,
+                    (str(workflow_id), step_number),
+                ).fetchone()
+            else:
+                step = connection.execute(
+                    """
+                    SELECT step_id, step_key, step_number, status FROM workflow_steps
+                    WHERE workflow_id = ? AND step_number = ?
+                    """,
+                    (str(workflow_id), step_number),
+                ).fetchone()
             if step is None:
                 raise LookupError("Workflow step not found")
             if step["status"] != "unknown_outcome":
@@ -641,20 +783,24 @@ class WorkflowRecoveryRepository:
                 previous_digest = latest["state_digest"] if latest else run["request_digest"]
                 version = int(latest["checkpoint_version"]) + 1 if latest else 1
                 state_digest = hashlib.sha256(
-                    f"{previous_digest}:{step_number}:{output_digest}".encode()
+                    f"{previous_digest}:{step['step_key']}:{output_digest}".encode()
                 ).hexdigest()
                 checkpoint_id = str(uuid4())
                 connection.execute(
                     """
                     INSERT INTO workflow_checkpoints (
                         checkpoint_id, workflow_id, checkpoint_version,
-                        step_number, state_digest, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        step_number, state_digest, created_at, step_key
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (checkpoint_id, str(workflow_id), version, step_number, state_digest, now),
+                    (
+                        checkpoint_id, str(workflow_id), version,
+                        step["step_number"], state_digest, now, step["step_key"],
+                    ),
                 )
                 checkpoint = WorkflowCheckpoint(
-                    checkpoint_id, str(workflow_id), version, step_number, state_digest, now
+                    checkpoint_id, str(workflow_id), version,
+                    step["step_number"], state_digest, now, step["step_key"]
                 )
                 connection.execute(
                     """
@@ -671,6 +817,7 @@ class WorkflowRecoveryRepository:
                     """,
                     (now, str(workflow_id)),
                 )
+            self._refresh_dependency_states(connection, workflow_id)
             return checkpoint
 
     def finish_run(
@@ -709,8 +856,9 @@ class WorkflowRecoveryRepository:
                     """
                     UPDATE workflow_steps
                     SET status = 'cancelled', error_code = 'cancelled',
-                        finished_at = ?, updated_at = ?
-                    WHERE workflow_id = ? AND status = 'running'
+                        finished_at = COALESCE(finished_at, ?), updated_at = ?
+                    WHERE workflow_id = ?
+                      AND status IN ('running', 'pending', 'retry_wait')
                     """,
                     (now, now, str(workflow_id)),
                 )
@@ -723,6 +871,9 @@ class WorkflowRecoveryRepository:
             )
             if cursor.rowcount != 1:
                 raise WorkflowRecoveryError("Workflow is not running")
+            # A cancelled in-flight prerequisite must immediately block every
+            # descendant before terminal state becomes externally observable.
+            self._refresh_dependency_states(connection, workflow_id)
 
     def latest_checkpoint(self, workflow_id: UUID) -> WorkflowCheckpoint | None:
         with self._connection() as connection:
@@ -742,6 +893,7 @@ class WorkflowRecoveryRepository:
             row["step_number"],
             row["state_digest"],
             row["created_at"],
+            row["step_key"],
         )
 
     def queue_resume(
@@ -777,7 +929,11 @@ class WorkflowRecoveryRepository:
             blocked = connection.execute(
                 """
                 SELECT 1 FROM workflow_steps
-                WHERE workflow_id = ? AND status IN ('failed', 'unknown_outcome', 'cancelled', 'running')
+                WHERE workflow_id = ?
+                  AND (
+                    status IN ('failed', 'unknown_outcome', 'cancelled', 'running')
+                    OR dependency_state = 'blocked'
+                  )
                 LIMIT 1
                 """,
                 (str(workflow_id),),
@@ -832,25 +988,41 @@ class WorkflowRecoveryRepository:
         definition_version: int = 1,
         owner_user_id: str | None = None,
     ) -> ResumeDecision:
-        """Return a safe next action without executing or replaying any step."""
+        """Return an identity-addressed safe next action without executing a step."""
         self._validate_digest(supplied_request_digest, "Supplied request digest")
         with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             run = connection.execute(
                 "SELECT * FROM workflow_runs WHERE workflow_id = ? AND (? IS NULL OR owner_user_id = ?)",
                 (str(workflow_id), owner_user_id, owner_user_id),
             ).fetchone()
             if run is None:
                 raise LookupError("Workflow not found")
+            self._refresh_dependency_states(connection, workflow_id)
             checkpoint = connection.execute(
                 """
-                SELECT checkpoint_version, step_number FROM workflow_checkpoints
+                SELECT checkpoint_version, step_number, step_key FROM workflow_checkpoints
                 WHERE workflow_id = ? ORDER BY checkpoint_version DESC LIMIT 1
                 """,
                 (str(workflow_id),),
             ).fetchone()
             checkpoint_version = checkpoint["checkpoint_version"] if checkpoint else None
             if run["status"] == "recovery_required":
-                return ResumeDecision("reconcile", None, checkpoint_version, run["last_error_code"])
+                unknown = connection.execute(
+                    """
+                    SELECT step_number, step_key FROM workflow_steps
+                    WHERE workflow_id = ? AND status = 'unknown_outcome'
+                    ORDER BY step_number LIMIT 1
+                    """,
+                    (str(workflow_id),),
+                ).fetchone()
+                return ResumeDecision(
+                    "reconcile",
+                    unknown["step_number"] if unknown else None,
+                    checkpoint_version,
+                    run["last_error_code"] or "step_outcome_unknown",
+                    unknown["step_key"] if unknown else None,
+                )
             if run["status"] in {"succeeded", "failed", "cancelled"}:
                 return ResumeDecision("terminal", None, checkpoint_version, run["status"])
             if run["status"] == "waiting_approval":
@@ -860,45 +1032,74 @@ class WorkflowRecoveryRepository:
                     "replan", None, checkpoint_version, "definition_version_mismatch"
                 )
             if run["request_digest"] != supplied_request_digest:
-                return ResumeDecision("request_input", None, checkpoint_version, "request_digest_mismatch")
+                return ResumeDecision(
+                    "request_input", None, checkpoint_version, "request_digest_mismatch"
+                )
 
-            active = connection.execute(
+            rows = connection.execute(
                 """
-                SELECT step_number FROM workflow_steps
-                WHERE workflow_id = ? AND status = 'running'
-                ORDER BY step_number LIMIT 1
+                SELECT step_number, step_key, depends_on_json, dependency_state, status
+                FROM workflow_steps WHERE workflow_id = ? ORDER BY step_number
                 """,
                 (str(workflow_id),),
-            ).fetchone()
+            ).fetchall()
+            active = next((row for row in rows if row["status"] == "running"), None)
             if active is not None:
-                return ResumeDecision("in_progress", active["step_number"], checkpoint_version, None)
+                return ResumeDecision(
+                    "in_progress", active["step_number"], checkpoint_version,
+                    None, active["step_key"],
+                )
 
-            failed = connection.execute(
-                """
-                SELECT step_number, status FROM workflow_steps
-                WHERE workflow_id = ? AND status IN ('failed', 'unknown_outcome', 'cancelled')
-                ORDER BY step_number LIMIT 1
-                """,
-                (str(workflow_id),),
-            ).fetchone()
+            failed = next(
+                (
+                    row for row in rows
+                    if row["status"] in {"failed", "unknown_outcome", "cancelled"}
+                ),
+                None,
+            )
             if failed is not None:
                 reason = {
                     "failed": "step_failed",
                     "unknown_outcome": "step_outcome_unknown",
                     "cancelled": "step_cancelled",
                 }[failed["status"]]
-                return ResumeDecision("reconcile", failed["step_number"], checkpoint_version, reason)
+                return ResumeDecision(
+                    "reconcile", failed["step_number"], checkpoint_version,
+                    reason, failed["step_key"],
+                )
 
-            next_step = connection.execute(
-                """
-                SELECT step_number FROM workflow_steps
-                WHERE workflow_id = ? AND status IN ('pending', 'retry_wait')
-                ORDER BY step_number LIMIT 1
-                """,
-                (str(workflow_id),),
-            ).fetchone()
-            if next_step is not None:
-                return ResumeDecision("resume", next_step["step_number"], checkpoint_version, None)
+            by_key = {row["step_key"]: row for row in rows}
+            eligible = []
+            pending = []
+            for row in rows:
+                if row["status"] not in {"pending", "retry_wait"}:
+                    continue
+                pending.append(row)
+                dependencies = json.loads(row["depends_on_json"])
+                if (
+                    row["dependency_state"] != "blocked"
+                    and all(
+                        dependency in by_key
+                        and by_key[dependency]["status"] == "succeeded"
+                        for dependency in dependencies
+                    )
+                ):
+                    eligible.append(row)
+            if eligible:
+                next_step = eligible[0]
+                return ResumeDecision(
+                    "resume", next_step["step_number"], checkpoint_version,
+                    None, next_step["step_key"],
+                )
+            if pending:
+                blocked = next(
+                    (row for row in pending if row["dependency_state"] == "blocked"),
+                    pending[0],
+                )
+                return ResumeDecision(
+                    "blocked", blocked["step_number"], checkpoint_version,
+                    "dependencies_not_satisfied", blocked["step_key"],
+                )
             return ResumeDecision("finish", None, checkpoint_version, "all_steps_succeeded")
 
     def delete_encrypted_payload(
@@ -962,6 +1163,16 @@ class WorkflowRecoveryRepository:
                 )
                 if run_cursor.rowcount != 1:
                     raise WorkflowRecoveryError("Workflow state changed during cancellation")
+                connection.execute(
+                    """
+                    UPDATE workflow_steps
+                    SET status = 'cancelled', error_code = 'cancelled',
+                        finished_at = COALESCE(finished_at, ?), updated_at = ?
+                    WHERE workflow_id = ? AND status IN ('pending', 'retry_wait')
+                    """,
+                    (now, now, str(workflow_id)),
+                )
+                self._refresh_dependency_states(connection, workflow_id)
                 connection.execute(
                     "DELETE FROM workflow_payloads WHERE workflow_id = ?",
                     (str(workflow_id),),
@@ -1087,7 +1298,8 @@ class WorkflowRecoveryRepository:
                 return None
             steps = connection.execute(
                 """
-                SELECT step_number, step_kind, step_name, status, input_digest,
+                SELECT step_number, step_key, depends_on_json, dependency_state,
+                       step_kind, step_name, status, input_digest,
                        output_digest, error_code, attempt_count, started_at, finished_at
                 FROM workflow_steps WHERE workflow_id = ? ORDER BY step_number
                 """,
@@ -1101,7 +1313,13 @@ class WorkflowRecoveryRepository:
             "definition_version": run["definition_version"],
             "current_step": run["current_step"],
             "last_error_code": run["last_error_code"],
-            "steps": [dict(row) for row in steps],
+            "steps": [
+                {
+                    **dict(row),
+                    "depends_on": json.loads(row["depends_on_json"]),
+                }
+                for row in steps
+            ],
             "stored_request": False,
             "stored_step_payloads": False,
             "stored_step_outputs": False,

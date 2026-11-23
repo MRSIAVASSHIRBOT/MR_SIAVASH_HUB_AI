@@ -753,7 +753,8 @@ def test_resume_rejects_mismatched_persisted_step_input_digest(monkeypatch):
     recovery = WorkflowRecoveryRepository(repository.database_path)
     paused = recovery.get_run(workflow_id, owner_user_id="local-owner")
     assert paused is not None and paused["status"] == "paused"
-    assert paused["definition_version"] == 2
+    # Caller-stable step identities and dependency edges use definition v3.
+    assert paused["definition_version"] == 3
 
     typed_request = AgentPlanRequest.model_validate(request)
     first_digest = AgentCore.workflow_step_input_digest(2, typed_request.tools[0])

@@ -5,9 +5,15 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.gpi import (
+    WorkOrderGenerationError,
+    derive_server_risk_class,
+    generate_work_order,
+)
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
@@ -17,12 +23,14 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
-from mrhub.domain.tasks import TaskRecord
+from mrhub.domain.tasks import RiskClass, TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.health_probe import INTEGRATION_CONTRACT_VERSION
 from mrhub.jobs.idempotency import IdempotencyError, IdempotencyRepository
 from mrhub.jobs.payload_envelope import PayloadEnvelopeError, encrypt_payload, load_payload_key
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.providers.base import ProviderError
+from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.tool_permissions import ToolPermissionService
@@ -47,13 +55,179 @@ def _build_owner_agent_core(
 
 
 class WorkflowReconciliationRequest(BaseModel):
-    step_number: int = Field(ge=1)
+    step_number: int | None = Field(default=None, ge=1)
+    step_id: str | None = Field(default=None, min_length=1, max_length=64, pattern="^[a-z][a-z0-9-]{0,63}$")
     outcome: Literal["succeeded", "failed"]
     output_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def require_exactly_one_step_identity(self) -> "WorkflowReconciliationRequest":
+        if (self.step_number is None) == (self.step_id is None):
+            raise ValueError("Provide exactly one of step_id or step_number")
+        return self
+
+    def resolved_step_identity(self) -> int | str:
+        if self.step_id is not None:
+            return self.step_id
+        if self.step_number is not None:
+            return self.step_number
+        raise ValueError("Workflow reconciliation step identity is missing")
 
 
 class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
+
+
+class GoalPlanningRequest(BaseModel):
+    """Bounded natural-language goal submitted for planning only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal: str = Field(min_length=1, max_length=1_000)
+
+    @field_validator("goal")
+    @classmethod
+    def normalize_goal(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("goal must not be blank")
+        return normalized
+
+
+@router.post("/work-orders/plan")
+def create_goal_work_order_plan(
+    request: GoalPlanningRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Convert a goal into a validated plan without executing tools."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    audit_logger = AuditLogger(tasks)
+
+    # Reject prohibited intent before provider selection, inference, or quota use.
+    # Persist a minimal denial event without storing the raw goal or prompt.
+    if derive_server_risk_class(request.goal, {}) is RiskClass.PROHIBITED:
+        try:
+            audit_logger.record(
+                event_type="agent.work_order_blocked",
+                outcome="denied",
+                actor_type="user",
+                actor_id=current_user.user_id,
+                subject_type="work_order",
+                metadata={
+                    "status": "blocked",
+                    "declared_risk_class": RiskClass.PROHIBITED.value,
+                    "declared_risk_is_authoritative": False,
+                },
+            )
+        except sqlite3.Error as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Audit storage is unavailable",
+            ) from exc
+        raise HTTPException(
+            status_code=422,
+            detail="The requested goal is outside the supported safety policy",
+        )
+
+    # Confirm the audit sink is writable before any provider selection or inference.
+    try:
+        audit_logger.record(
+            event_type="agent.work_order_planning_started",
+            outcome="started",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="work_order",
+            metadata={"status": "planning_started"},
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+
+    try:
+        # GPI/AWI planning is local-only in the zero-cost runtime profile.
+        # Paid providers remain available only through their dedicated, explicit endpoints.
+        model_router = build_model_router(
+            provider_mode="local",
+            include_stub=False,
+            max_timeout_seconds=60,
+        )
+        selection = model_router.select(
+            ModelRequest(requires_text=True, prefer_local=True)
+        )
+        work_order = generate_work_order(request.goal, model_router)
+        if work_order.risk_class.value == "prohibited":
+            try:
+                audit_logger.record(
+                    event_type="agent.work_order_blocked",
+                    outcome="denied",
+                    actor_type="user",
+                    actor_id=current_user.user_id,
+                    subject_type="work_order",
+                    metadata={"status": "generated_output_prohibited"},
+                )
+            except sqlite3.Error as audit_exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Audit storage is unavailable",
+                ) from audit_exc
+            raise HTTPException(
+                status_code=422,
+                detail="The requested goal is outside the supported safety policy",
+            )
+        plan = generate_execution_plan(work_order, model_router)
+    except (WorkOrderGenerationError, PlanningError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="No configured non-stub local model provider is available",
+        ) from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from exc
+
+    registry = build_tool_registry(owner_user_id=current_user.user_id)
+    try:
+        assessment = assess_work_order_capabilities(work_order, registry.catalog())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Registered tool catalog is not valid for capability assessment",
+        ) from exc
+
+    audit_logger.record(
+        event_type="agent.work_order_planned",
+        outcome="planned",
+        actor_type="user",
+        actor_id=current_user.user_id,
+        subject_type="work_order",
+        metadata={
+            "provider_mode": "local" if selection.local else "kimi",
+            "selected_provider": selection.provider,
+            "status": "planned",
+            "required_capability_count": len(assessment.required),
+            "available_capability_count": len(assessment.available),
+            "missing_capability_count": len(assessment.missing),
+            "declared_risk_class": work_order.risk_class.value,
+            "declared_risk_is_authoritative": False,
+        },
+    )
+    return {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+        "capability_assessment": {
+            **assessment.as_dict(),
+            "authorization_checked": False,
+        },
+        "risk_class_is_authoritative": False,
+        "planning_only": True,
+        "execution_ready": False,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
 
 
 @router.post("/work-orders/assess")
@@ -93,12 +267,7 @@ def assess_agent_work_order(
     return {
         "assessment_id": assessment_id,
         "work_order": request.model_dump(mode="json"),
-        "capabilities": {
-            "required": list(assessment.required),
-            "available": list(assessment.available),
-            "missing": list(assessment.missing),
-            "complete": assessment.complete,
-        },
+        "capabilities": assessment.as_dict(),
         "readiness": (
             "capabilities_present" if assessment.complete else "capability_gaps"
         ),
@@ -314,7 +483,7 @@ def execute_agent_workflow(
                 request_digest,
                 step_specs,
                 task=task,
-                definition_version=2,
+                definition_version=3,
                 owner_user_id=current_user.user_id,
                 workflow_id=workflow_id,
                 payload_envelope={
@@ -422,7 +591,7 @@ def reconcile_agent_workflow(
     try:
         checkpoint = recovery.resolve_unknown_step(
             workflow_id,
-            request.step_number,
+            request.resolved_step_identity(),
             request.outcome,
             output_digest=request.output_digest,
             owner_user_id=current_user.user_id,
@@ -452,9 +621,15 @@ def check_agent_workflow_resume(
     tasks.initialize()
     recovery = WorkflowRecoveryRepository(settings.database_path)
     try:
+        workflow = recovery.get_run(
+            workflow_id, owner_user_id=current_user.user_id
+        )
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Workflow not found")
         decision = recovery.resume_decision(
             workflow_id,
             _workflow_digest(request.request),
+            definition_version=int(workflow["definition_version"]),
             owner_user_id=current_user.user_id,
         )
     except LookupError as exc:
@@ -463,6 +638,7 @@ def check_agent_workflow_resume(
         "workflow_id": str(workflow_id),
         "decision": decision.decision,
         "next_step": decision.next_step,
+        "next_step_id": decision.next_step_id,
         "checkpoint_version": decision.checkpoint_version,
         "reason_code": decision.reason_code,
         "execution_started": False,
