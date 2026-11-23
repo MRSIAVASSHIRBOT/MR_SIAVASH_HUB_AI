@@ -137,7 +137,7 @@ class GenerateModelRequest(BaseModel):
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise TypeError("Request timeout must be a finite number")
+            raise ValueError("Request timeout must be a finite number")  # noqa: TRY004 - Pydantic converts ValueError into a client-facing validation error.
         try:
             finite = math.isfinite(float(value))
         except (OverflowError, ValueError):
@@ -162,7 +162,7 @@ class GenerateKimiVisionRequest(BaseModel):
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise TypeError("Request timeout must be a finite number")
+            raise ValueError("Request timeout must be a finite number")  # noqa: TRY004 - Pydantic converts ValueError into a client-facing validation error.
         try:
             finite = math.isfinite(float(value))
         except (OverflowError, ValueError):
