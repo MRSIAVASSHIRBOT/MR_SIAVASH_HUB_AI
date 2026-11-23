@@ -125,6 +125,26 @@ def _canonical_plan_digest(payload: dict[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+_PERSISTED_PLAN_METADATA_FIELDS = (
+    "decision_analysis",
+    "planning_assessment",
+    "model_selection",
+)
+
+
+def _extract_persisted_plan_metadata(payload: dict[str, object]) -> dict[str, object]:
+    """Validate and retain optional, server-generated planner assessment metadata."""
+    metadata: dict[str, object] = {}
+    for field in _PERSISTED_PLAN_METADATA_FIELDS:
+        if field not in payload:
+            continue
+        value = payload[field]
+        if not isinstance(value, dict):
+            raise PayloadEnvelopeError("Persisted plan assessment metadata is invalid")
+        metadata[field] = value
+    return metadata
+
+
 @router.post("/work-orders/plan")
 def create_goal_work_order_plan(
     request: GoalPlanningRequest,
@@ -248,6 +268,7 @@ def create_goal_work_order_plan(
     return {
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
+        **plan_metadata,
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
@@ -289,11 +310,13 @@ def create_persisted_goal_work_order_plan(
         current_user,
     )
     plan_id = str(uuid4())
-    payload = {
-        "work_order": planned["work_order"],
-        "plan": planned["plan"],
-    }
     try:
+        plan_metadata = _extract_persisted_plan_metadata(planned)
+        payload = {
+            "work_order": planned["work_order"],
+            "plan": planned["plan"],
+            **plan_metadata,
+        }
         envelope = encrypt_plan_payload(
             payload,
             plan_id=plan_id,
@@ -328,6 +351,7 @@ def create_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": planned["work_order"],
         "plan": planned["plan"],
+        **plan_metadata,
         "capability_assessment": planned["capability_assessment"],
         "risk_class_is_authoritative": False,
         "planning_only": True,
@@ -376,13 +400,17 @@ def get_persisted_goal_work_order_plan(
             owner_user_id=record.owner_user_id,
             key=key,
         )
-        if set(payload) != {"work_order", "plan"}:
+        required_fields = {"work_order", "plan"}
+        allowed_fields = required_fields | set(_PERSISTED_PLAN_METADATA_FIELDS)
+        if not required_fields.issubset(payload) or not set(payload).issubset(allowed_fields):
             raise PayloadEnvelopeError("Agent plan payload shape is invalid")
+        plan_metadata = _extract_persisted_plan_metadata(payload)
         work_order = WorkOrder.model_validate(payload["work_order"])
         plan = ExecutionPlan.model_validate(payload["plan"])
         canonical = {
             "work_order": work_order.model_dump(mode="json"),
             "plan": plan.model_dump(mode="json"),
+            **plan_metadata,
         }
         digest = _canonical_plan_digest(canonical)
         if not hmac.compare_digest(digest, record.plan_digest):
