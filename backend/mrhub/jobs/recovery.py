@@ -1002,6 +1002,15 @@ class WorkflowRecoveryRepository:
                     """,
                     (task_id,),
                 )
+                # Terminal retry exhaustion must erase the retained encrypted
+                # request in the same transaction as the failed state transition.
+                connection.execute(
+                    """
+                    DELETE FROM workflow_payloads
+                    WHERE workflow_id = ? AND task_id = ? AND owner_user_id = ?
+                    """,
+                    (str(workflow_id), task_id, owner_user_id),
+                )
                 self._refresh_dependency_states(connection, workflow_id)
                 attempt_limit_exceeded = True
             else:
