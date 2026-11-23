@@ -449,7 +449,7 @@ class AgentWorkflowRunner:
                             ),
                             outcome=(
                                 "unknown_outcome"
-                                if definition.external_side_effect
+                                if definition.replay_safety is not ReplaySafety.RETRY_SAFE
                                 else "failed"
                             ),
                             step_id=attempt.step_id,
