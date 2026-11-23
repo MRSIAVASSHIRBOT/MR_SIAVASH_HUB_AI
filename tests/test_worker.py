@@ -179,7 +179,12 @@ def test_worker_startup_recovery_runs_while_dispatch_is_stopped(tmp_path):
 
 
 def test_worker_recovery_repeats_while_dispatch_is_stopped(tmp_path):
-    repository, worker = make_worker(tmp_path)
+    current_time = [datetime(2026, 11, 23, 12, 0, tzinfo=UTC)]
+
+    def clock():
+        return current_time[0]
+
+    repository, worker = make_worker(tmp_path, clock=clock)
     task = TaskRecord(task_type="demo.echo", description="becomes stale after startup")
     repository.create(task)
     calls = []
@@ -195,7 +200,10 @@ def test_worker_recovery_repeats_while_dispatch_is_stopped(tmp_path):
             INSERT INTO worker_executions (task_id, attempt_count, started_at)
             VALUES (?, 1, ?)
             """,
-            (str(task.task_id), "2000-01-01T00:00:00+00:00"),
+            (
+                str(task.task_id),
+                (current_time[0] - timedelta(seconds=200)).isoformat(),
+            ),
         )
 
     worker._control.set_stopped(
@@ -204,6 +212,14 @@ def test_worker_recovery_repeats_while_dispatch_is_stopped(tmp_path):
         changed_by="test-owner",
     )
 
+    # The record is not stale yet, so recovery must leave it untouched.
+    assert worker.run_once() is None
+    pending = repository.get(task.task_id)
+    assert pending is not None and pending.status is TaskStatus.RUNNING
+
+    # Once it crosses the five-minute stale threshold, a later stopped poll
+    # reconciles it without ever dispatching its handler.
+    current_time[0] += timedelta(seconds=200)
     assert worker.run_once() is None
     recovered = repository.get(task.task_id)
     assert recovered is not None and recovered.status is TaskStatus.FAILED
