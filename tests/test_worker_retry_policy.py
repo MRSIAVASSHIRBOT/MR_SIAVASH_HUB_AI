@@ -4,7 +4,11 @@ import pytest
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.retry_policy import RetryPolicy
+from mrhub.jobs.retry_policy import (
+    MAX_RETRY_ATTEMPTS,
+    MAX_RETRY_DELAY_SECONDS,
+    RetryPolicy,
+)
 from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine, WorkerError
 
 
@@ -134,3 +138,35 @@ def test_worker_cannot_configure_automatic_retries_for_external_task_types(tmp_p
                 "video.generation": RetryPolicy(),
             },
         )
+
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "field"),
+    [
+        ({"max_attempts": MAX_RETRY_ATTEMPTS + 1}, "max_attempts"),
+        (
+            {"base_delay_seconds": MAX_RETRY_DELAY_SECONDS + 1},
+            "base_delay_seconds",
+        ),
+        (
+            {"max_delay_seconds": MAX_RETRY_DELAY_SECONDS + 1},
+            "max_delay_seconds",
+        ),
+    ],
+)
+def test_retry_policy_enforces_absolute_resource_bounds(kwargs, field):
+    with pytest.raises(ValueError, match=field):
+        RetryPolicy(**kwargs)
+
+
+def test_retry_policy_accepts_the_documented_absolute_upper_bounds():
+    policy = RetryPolicy(
+        max_attempts=MAX_RETRY_ATTEMPTS,
+        base_delay_seconds=MAX_RETRY_DELAY_SECONDS,
+        max_delay_seconds=MAX_RETRY_DELAY_SECONDS,
+    )
+
+    assert policy.delay_seconds(attempt_number=MAX_RETRY_ATTEMPTS) == (
+        MAX_RETRY_DELAY_SECONDS
+    )
