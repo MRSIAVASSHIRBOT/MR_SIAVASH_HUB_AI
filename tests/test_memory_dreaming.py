@@ -131,3 +131,27 @@ def test_memory_dream_preview_api_is_authenticated_and_audits_counts_only() -> N
     assert audit is not None
     assert "SQLite FTS5" not in audit["metadata_json"]
     assert len(repository.list_entries("local-owner")) >= 2
+
+
+def test_dreaming_preview_does_not_merge_different_memory_types(tmp_path: Path) -> None:
+    repository = MemoryRepository(tmp_path / "memory.sqlite3")
+    _create_owner(repository, "owner-a")
+    repository.create(
+        "owner-a",
+        {
+            "memory_type": "episodic",
+            "category": "engineering",
+            "content": "SQLite FTS5 provides local lexical memory retrieval",
+        },
+    )
+    repository.create(
+        "owner-a",
+        {
+            "memory_type": "semantic",
+            "category": "engineering",
+            "content": "SQLite FTS5 provides local lexical memory retrieval",
+        },
+    )
+
+    result = MemoryDreamingEngine(tmp_path / "memory.sqlite3").preview("owner-a")
+    assert result["proposal_count"] == 0
