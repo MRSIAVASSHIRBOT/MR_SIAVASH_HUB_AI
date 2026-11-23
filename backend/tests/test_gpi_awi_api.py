@@ -158,7 +158,7 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     ]
     assert result["planning_assessment"]["research"]["decision"] == "required"
     assert result["planning_assessment"]["research"]["questions"] == [
-        "Check the vendor compatibility documentation"
+        "Check compatibility with the target runtime"
     ]
     assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
     assert result["decision_analysis"]["research_required"] is True
