@@ -1,8 +1,10 @@
 """Validated retry policy primitives for safe, idempotent worker tasks."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
+
+
+MAX_RETRY_ATTEMPTS = 10
+MAX_RETRY_DELAY_SECONDS = 86_400
 
 
 def validate_retry_error_code(value: str) -> str:
@@ -38,13 +40,16 @@ class RetryPolicy:
     )
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("max_attempts", self.max_attempts),
-            ("base_delay_seconds", self.base_delay_seconds),
-            ("max_delay_seconds", self.max_delay_seconds),
-        ):
-            if type(value) is not int or value < 1:
-                raise ValueError(f"{name} must be a positive integer")
+        bounds = (
+            ("max_attempts", self.max_attempts, MAX_RETRY_ATTEMPTS),
+            ("base_delay_seconds", self.base_delay_seconds, MAX_RETRY_DELAY_SECONDS),
+            ("max_delay_seconds", self.max_delay_seconds, MAX_RETRY_DELAY_SECONDS),
+        )
+        for name, value, upper_bound in bounds:
+            if type(value) is not int or not 1 <= value <= upper_bound:
+                raise ValueError(
+                    f"{name} must be an integer between 1 and {upper_bound}"
+                )
         if self.max_delay_seconds < self.base_delay_seconds:
             raise ValueError("max_delay_seconds cannot be below base_delay_seconds")
         if not isinstance(self.retryable_error_codes, frozenset):
