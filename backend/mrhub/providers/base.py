@@ -36,7 +36,12 @@ class ProviderContractError(ProviderError):
 
 
 class ProviderRequest(BaseModel):
-    """One bounded generation request with an optional per-call timeout cap."""
+    """Bounded generation request with an optional adapter timeout ceiling.
+
+    The timeout is enforced by the provider's HTTP client as per-phase network
+    timeout behavior. It is not a wall-clock deadline for arbitrary local work,
+    model inference progress, or an external side effect.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
