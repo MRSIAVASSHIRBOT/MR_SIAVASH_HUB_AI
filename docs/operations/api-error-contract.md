@@ -23,9 +23,12 @@ messages are generic and are not intended for branching.
 ## Validation errors
 
 A request-validation response uses `error.code=request_validation_error` and
-includes bounded `error.issues` entries with field locations, error types, and
-a generic message. The legacy `detail` list is retained in a sanitized form.
-Raw `input` and Pydantic `context` values are never reflected in this response.
+includes bounded `error.issues` entries with structural locations, error types,
+and a generic message. Only the request section (`body/query/path/header/cookie`)
+and numeric array indices are preserved in locations; caller-controlled field
+names are replaced with a generic `field` token. The legacy `detail` list is
+retained in a sanitized form. Raw `input`, Pydantic `context`, and arbitrary
+JSON keys are never reflected in this response.
 
 ## Unhandled errors
 
