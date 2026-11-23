@@ -68,7 +68,7 @@ class AgentWorkflowRunner:
                 actor_type="system",
                 metadata=metadata,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Observability failure must never trigger a duplicate side effect.
             self._logger.warning(
                 "workflow_trace_event_persist_failed trace_id=%s event_type=%s",
