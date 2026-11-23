@@ -25,8 +25,8 @@ def export_review_summary(summary: Mapping[str, object]) -> dict[str, object]:
         raise ExportError("Summary must be a mapping")
 
     required = ("revision", "digest", "approved", "findings")
-    if any(key not in summary for key in required):
-        raise ExportError("Missing required fields")
+    if set(summary) != set(required):
+        raise ExportError("Summary fields do not match the export schema")
 
     revision, digest, approved, findings = (summary[key] for key in required)
 
