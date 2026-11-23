@@ -12,6 +12,7 @@ import httpx
 
 from mrhub.providers.base import (
     ProviderConfigurationError,
+    ProviderError,
     ProviderHealth,
     ProviderTimeoutError,
     ProviderUnavailableError,
@@ -53,6 +54,7 @@ class VisionRequest:
     prompt: str
     images: tuple[VisionImage, ...]
     max_output_tokens: int = 1024
+    timeout_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.prompt, str) or not 1 <= len(self.prompt) <= MAX_VISION_PROMPT_CHARS:
@@ -71,6 +73,17 @@ class VisionRequest:
             raise ValueError("Vision output token limit is outside the supported range")
         if sum(len(image.jpeg_bytes) for image in self.images) > MAX_VISION_TOTAL_BYTES:
             raise ValueError("Vision image batch exceeds the aggregate byte limit")
+        if self.timeout_seconds is not None:
+            if isinstance(self.timeout_seconds, bool) or not isinstance(
+                self.timeout_seconds, (int, float)
+            ):
+                raise ValueError("Vision timeout must be a finite number")
+            try:
+                finite_timeout = math.isfinite(float(self.timeout_seconds))
+            except (OverflowError, ValueError):
+                finite_timeout = False
+            if not finite_timeout or not 1 <= self.timeout_seconds <= 180:
+                raise ValueError("Vision timeout must be between 1 and 180 seconds")
         timestamps = [image.timestamp_seconds for image in self.images]
         if timestamps != sorted(set(timestamps)):
             raise ValueError("Vision image timestamps must be unique and ordered")
@@ -119,7 +132,16 @@ class OllamaVisionProvider:
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid local vision model name")
-        if not 1 <= timeout_seconds <= 180:
+        try:
+            valid_timeout = (
+                not isinstance(timeout_seconds, bool)
+                and isinstance(timeout_seconds, (int, float))
+                and math.isfinite(float(timeout_seconds))
+                and 1 <= timeout_seconds <= 180
+            )
+        except (OverflowError, ValueError):
+            valid_timeout = False
+        if not valid_timeout:
             raise ProviderConfigurationError("Vision timeout must be between 1 and 180 seconds")
         self.base_url = OllamaProvider._validate_loopback_url(base_url)
         self.timeout_seconds = timeout_seconds
@@ -143,7 +165,16 @@ class OllamaVisionProvider:
         )
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
-        if not 0.1 <= timeout_seconds <= 10:
+        try:
+            valid_timeout = (
+                not isinstance(timeout_seconds, bool)
+                and isinstance(timeout_seconds, (int, float))
+                and math.isfinite(float(timeout_seconds))
+                and 0.1 <= timeout_seconds <= 10
+            )
+        except (OverflowError, ValueError):
+            valid_timeout = False
+        if not valid_timeout:
             raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
@@ -162,8 +193,14 @@ class OllamaVisionProvider:
             base64.b64encode(image.jpeg_bytes).decode("ascii")
             for image in request.images
         ]
+        request_timeout = (
+            min(self.timeout_seconds, float(request.timeout_seconds))
+            if request.timeout_seconds is not None
+            else self.timeout_seconds
+        )
+        failure: ProviderError | None = None
         try:
-            with self._client() as client:
+            with self._client(request_timeout) as client:
                 with client.stream(
                     "POST",
                     "/api/generate",
@@ -184,12 +221,14 @@ class OllamaVisionProvider:
                             )
                         body.extend(chunk)
                 payload = json.loads(body)
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Local vision request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailableError("Local vision service is unavailable") from exc
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise ProviderUnavailableError("Local vision model returned an invalid response") from exc
+        except httpx.TimeoutException:
+            failure = ProviderTimeoutError("Local vision request timed out")
+        except httpx.HTTPError:
+            failure = ProviderUnavailableError("Local vision service is unavailable")
+        except (ValueError, UnicodeDecodeError):
+            failure = ProviderUnavailableError("Local vision model returned an invalid response")
+        if failure is not None:
+            raise failure
 
         output = payload.get("response") if isinstance(payload, dict) else None
         if not isinstance(output, str) or not output.strip() or len(output) > MAX_VISION_OUTPUT_CHARS:
