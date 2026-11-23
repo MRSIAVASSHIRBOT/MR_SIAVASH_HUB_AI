@@ -81,3 +81,29 @@ long-running handlers and do not simulate a hard timeout with a background
 thread: a thread timeout cannot safely terminate a side-effecting operation.
 Hard execution deadlines require a separately designed process/container
 boundary with cancellation and idempotency semantics.
+
+
+## Explicit replay-safety classification
+
+Policy risk and replay safety are different ToolDefinition properties:
+
+- `external_side_effect` describes whether an operation affects an external
+  system and therefore requires the relevant approval policy.
+- `replay_safety` describes whether the same handler can be invoked again after
+  a crash with an ambiguous in-flight outcome.
+
+The default is `reconcile_required`. A handler is classified
+`retry_safe` only through an explicit server-owned ToolDefinition declaration.
+An interrupted step with this declaration is persisted as `safe_tool` and may
+enter `retry_wait`. Other interrupted steps are persisted as
+`unknown_outcome` and require reconciliation, including local state-mutating
+handlers whose `external_side_effect` flag is false.
+
+Read-only device-registry and Cloudflare metadata operations, plus the pure
+`text.echo` handler, are explicitly marked retry-safe. The app-launch
+submission and every other mutating or unclassified handler remain
+reconciliation-required by default. Model output and API request payloads
+cannot set or override this field.
+
+This metadata is persisted into the durable step kind when a workflow is
+created. It does not change the meaning of an existing in-flight workflow.
