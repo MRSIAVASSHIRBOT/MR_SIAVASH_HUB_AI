@@ -26,6 +26,7 @@ def _validate_memory_text(value: str | None) -> str | None:
         raise ValueError(str(exc)) from exc
 
 class MemoryCreate(BaseModel):
+    memory_type: Literal["unspecified", "episodic", "semantic", "procedural"] = "unspecified"
     category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
     content: str = Field(min_length=1, max_length=2000)
     provenance: str = Field(default="user-authored", min_length=1, max_length=300)
@@ -55,12 +56,20 @@ class MemoryCreate(BaseModel):
 
 
 class MemoryUpdate(BaseModel):
+    memory_type: Literal["unspecified", "episodic", "semantic", "procedural"] | None = None
     category: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
     content: str | None = Field(default=None, min_length=1, max_length=2000)
     provenance: str | None = Field(default=None, min_length=1, max_length=300)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     verification_status: Literal["user_authored", "user_approved"] | None = None
     expires_at: datetime | None = None
+
+    @field_validator("memory_type")
+    @classmethod
+    def memory_type_must_not_be_null(cls, value: str | None):
+        if value is None:
+            raise ValueError("memory_type cannot be null")
+        return value
 
     @field_validator("content")
     @classmethod
@@ -86,6 +95,9 @@ class MemoryUpdate(BaseModel):
 class MemorySearch(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=10, ge=1, le=25)
+    memory_types: list[Literal["unspecified", "episodic", "semantic", "procedural"]] | None = Field(
+        default=None, max_length=4
+    )
 
 
 class MemoryDreamPreview(BaseModel):
@@ -143,7 +155,12 @@ def export_memory(user: Annotated[AuthenticatedUser, Depends(require_user)]) -> 
 def search_memory(
     payload: MemorySearch, user: Annotated[AuthenticatedUser, Depends(require_user)]
 ) -> dict[str, object]:
-    results = _repository().search(user.user_id, payload.query, payload.limit)
+    results = _repository().search(
+        user.user_id,
+        payload.query,
+        payload.limit,
+        memory_types=payload.memory_types,
+    )
     _audit(user, "memory.searched", None, "lexical_search")
     return {
         "method": "sqlite_fts5",
