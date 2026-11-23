@@ -87,7 +87,7 @@ class WorkflowWorkerHandler:
 
         audit = AuditLogger(self.repository)
         permissions = ToolPermissionService(self.repository, audit)
-        registry = build_tool_registry()
+        registry = build_tool_registry(owner_user_id=owner_user_id)
         approval_store = ToolInvocationApprovalStore(self.repository)
 
         def resolve_approval(
