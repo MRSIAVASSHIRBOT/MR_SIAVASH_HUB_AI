@@ -1,6 +1,6 @@
 import pytest
 
-from mrhub.agents.validation import validate_plan
+from mrhub.agents.validation import MAX_STEPS, MAX_TEXT, validate_plan
 
 
 def step(sid, deps=None, desc="task", status="pending"):
