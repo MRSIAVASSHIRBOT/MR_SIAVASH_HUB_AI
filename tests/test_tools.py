@@ -220,6 +220,18 @@ def test_registry_rejects_async_handlers_before_registration():
         registry.get("custom.contract")
 
 
+def test_registry_rejects_async_generator_handlers_before_registration():
+    async def async_generator_handler(_payload):
+        yield {"value": "not supported by the synchronous registry"}
+
+    registry = ToolRegistry()
+    with pytest.raises(ValueError, match="must be synchronous"):
+        registry.register(_tool_definition(handler=async_generator_handler))
+
+    with pytest.raises(LookupError):
+        registry.get("custom.contract")
+
+
 def test_registry_rejects_non_definition_objects():
     with pytest.raises(TypeError, match="ToolDefinition"):
         ToolRegistry().register({"name": "custom.invalid"})
@@ -250,6 +262,17 @@ def test_registry_rejects_awaitable_results_from_synchronous_handlers():
 
     with pytest.raises(ToolExecutionError, match="Tool handler failed"):
         registry.invoke("custom.contract", {"value": "safe"})
+
+def test_registry_rejects_async_generator_results_from_synchronous_handlers():
+    async def async_result():
+        yield {"value": "not supported"}
+
+    registry = ToolRegistry()
+    registry.register(_tool_definition(handler=lambda _payload: async_result()))
+
+    with pytest.raises(ToolExecutionError, match="Tool handler failed"):
+        registry.invoke("custom.contract", {"value": "safe"})
+
 
 def test_registry_cancels_awaitable_results_from_synchronous_handlers():
     class PendingAwaitable:
