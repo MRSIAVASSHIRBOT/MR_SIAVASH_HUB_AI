@@ -59,7 +59,7 @@ class WorkflowReconciliationRequest(BaseModel):
     output_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
-    def require_exactly_one_step_identity(self):
+    def require_exactly_one_step_identity(self) -> "WorkflowReconciliationRequest":
         if (self.step_number is None) == (self.step_id is None):
             raise ValueError("Provide exactly one of step_id or step_number")
         return self
