@@ -248,11 +248,11 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
     )
     monkeypatch.setattr(
         "mrhub.api.routes.agent.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
     monkeypatch.setattr(
         "mrhub.jobs.workflow_dispatch.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
 
     granted = client.put(
