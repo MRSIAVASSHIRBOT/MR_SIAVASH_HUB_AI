@@ -30,7 +30,9 @@ def _validate_memory_text(value: str | None) -> str | None:
 def _validate_finite_numeric(value: object, field_name: str) -> object:
     """Reject coercible values and return a safe sentinel for non-finite floats."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{field_name} must be a finite number")
+        # Pydantic v2 converts ValueError into a safe 422 response; TypeError escapes
+        # model validators and would turn malformed client input into a 500.
+        raise ValueError(f"{field_name} must be a finite number")  # noqa: TRY004
     try:
         finite = math.isfinite(float(value))
     except (OverflowError, TypeError, ValueError):
