@@ -28,6 +28,22 @@ def test_current_comparison_requires_research_signal() -> None:
     assert result.tool_use_required is False
 
 
+def test_instructional_questions_with_action_verbs_do_not_request_tool_execution() -> None:
+    examples = (
+        "How do I delete a database?",
+        "How to deploy a small application?",
+        "Explain how to publish a website.",
+        "مراحل حذف یک پایگاه داده چیست؟",
+    )
+
+    for goal in examples:
+        result = analyze_goal(goal)
+        assert result.tool_use_required is False
+        assert result.model_requirements.tool_catalog_needed is False
+        assert result.clarification_recommended is False
+        assert "general_information_request" in result.reason_codes
+
+
 def test_action_goal_selects_tool_catalog_but_not_authorization() -> None:
     result = analyze_goal("Build a small application and write unit tests.")
 
