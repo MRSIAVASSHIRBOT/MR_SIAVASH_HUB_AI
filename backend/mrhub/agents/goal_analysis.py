@@ -9,9 +9,8 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from mrhub.agents.work_order import WorkOrder
+from pydantic import BaseModel, ConfigDict, Field
 
 
 Complexity = Literal["low", "moderate", "high"]
