@@ -1256,3 +1256,99 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
     assert dict(checkpoint) == {"step_number": 2, "step_key": "step-2"}
     assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
+
+
+def test_v55_creates_owner_scoped_encrypted_agent_plan_records(tmp_path):
+    connection = connect(tmp_path / "agent-work-order-plans.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(agent_work_order_plans)")
+    }
+    assert {
+        "plan_id", "owner_user_id", "status", "plan_digest",
+        "envelope_version", "nonce_b64", "ciphertext_b64",
+        "created_at", "expires_at", "consumed_at", "workflow_id",
+    } <= columns
+
+    indexes = {
+        row["name"]
+        for row in connection.execute("PRAGMA index_list(agent_work_order_plans)")
+    }
+    assert {
+        "idx_agent_work_order_plans_owner_status_expiry",
+        "idx_agent_work_order_plans_workflow",
+    } <= indexes
+
+    foreign_keys = {
+        (row["table"], row["from"], row["to"], row["on_delete"])
+        for row in connection.execute("PRAGMA foreign_key_list(agent_work_order_plans)")
+    }
+    assert ("auth_users", "owner_user_id", "user_id", "CASCADE") in foreign_keys
+    assert ("workflow_runs", "workflow_id", "workflow_id", "CASCADE") in foreign_keys
+
+    applied = connection.execute(
+        "SELECT version, name FROM schema_migrations ORDER BY version DESC LIMIT 1"
+    ).fetchone()
+    assert tuple(applied) == (55, "owner_scoped_encrypted_agent_work_order_plans")
+    connection.close()
+
+
+def test_consumed_plan_record_is_deleted_with_linked_workflow(tmp_path):
+    from uuid import uuid4
+
+    connection = connect(tmp_path / "plan-workflow-cascade.sqlite3")
+    SchemaMigrator(connection).migrate()
+
+    owner_id = "plan-cascade-owner"
+    connection.execute(
+        """
+        INSERT INTO auth_users (
+            user_id, username, salt, password_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            owner_id,
+            "plan-cascade-owner@example.test",
+            "salt",
+            "hash",
+            "2026-11-22T20:00:00+00:00",
+        ),
+    )
+    workflow_id = str(uuid4())
+    plan_id = str(uuid4())
+    now = "2026-11-22T20:00:00+00:00"
+    connection.execute(
+        """
+        INSERT INTO workflow_runs (
+            workflow_id, task_id, status, request_digest,
+            definition_version, current_step, last_error_code,
+            created_at, updated_at, owner_user_id
+        ) VALUES (?, NULL, 'succeeded', ?, 1, 0, NULL, ?, ?, ?)
+        """,
+        (workflow_id, "a" * 64, now, now, owner_id),
+    )
+    connection.execute(
+        """
+        INSERT INTO agent_work_order_plans (
+            plan_id, owner_user_id, status, plan_digest,
+            envelope_version, nonce_b64, ciphertext_b64,
+            created_at, expires_at, consumed_at, workflow_id
+        ) VALUES (?, ?, 'consumed', ?, 1, 'nonce', 'ciphertext', ?, ?, ?, ?)
+        """,
+        (plan_id, owner_id, "b" * 64, now, "2026-11-22T20:15:00+00:00", now, workflow_id),
+    )
+    connection.commit()
+
+    connection.execute(
+        "DELETE FROM workflow_runs WHERE workflow_id = ?",
+        (workflow_id,),
+    )
+    connection.commit()
+
+    assert connection.execute(
+        "SELECT 1 FROM agent_work_order_plans WHERE plan_id = ?",
+        (plan_id,),
+    ).fetchone() is None
+    connection.close()
