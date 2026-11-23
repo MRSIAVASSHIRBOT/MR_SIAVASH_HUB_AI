@@ -54,7 +54,10 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     recovery = WorkflowRecoveryRepository(repository.database_path)
     stored = recovery.get_run(UUID(workflow_id), owner_user_id="local-owner")
     assert stored is not None
-    assert stored["status"] == "recovery_required"
+    # A retry-safe step is paused for a controlled resume, not quarantined
+    # as an unknown external outcome that needs manual reconciliation.
+    assert stored["status"] == "paused"
+    assert stored["last_error_code"] == "safe_step_interrupted"
     assert stored["steps"][1]["status"] == "retry_wait"
     task = repository.get(UUID(task_id))
     assert task is not None and task.status.value == "waiting_approval"
