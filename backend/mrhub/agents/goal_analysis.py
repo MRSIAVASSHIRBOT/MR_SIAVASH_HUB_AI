@@ -3,7 +3,6 @@
 This module produces advisory routing signals only. It does not authorize tools,
 select credentials, or claim that research or execution has happened.
 """
-
 from __future__ import annotations
 
 import re
