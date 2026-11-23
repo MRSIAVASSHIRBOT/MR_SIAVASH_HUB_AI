@@ -53,8 +53,11 @@ def build_router(
     return router
 
 
-def work_order_output(goal: str = "Build a validated plan") -> str:
-    return json.dumps({
+def work_order_output(
+    goal: str = "Build a validated plan",
+    **overrides: object,
+) -> str:
+    payload: dict[str, object] = {
         "intent": "Build a validated plan",
         "scope": "Planning only",
         "assumptions": [],
@@ -64,7 +67,9 @@ def work_order_output(goal: str = "Build a validated plan") -> str:
         "acceptance_criteria": ["The plan is validated"],
         "verification_steps": ["Run focused tests"],
         "goal": goal,
-    })
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
 
 
 def plan_output() -> str:
@@ -82,7 +87,16 @@ def plan_output() -> str:
 
 
 def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
-    router = build_router(work_order_output(), plan_output())
+    router = build_router(
+        work_order_output(
+            estimated_complexity="high",
+            missing_information=["The deployment target is not specified"],
+            clarification_questions=["Which deployment environment should be targeted?"],
+            research_required=True,
+            research_questions=["Check the vendor compatibility documentation"],
+        ),
+        plan_output(),
+    )
     captured = {}
 
     def fake_router(**kwargs):
@@ -130,6 +144,23 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["execution_started"] is False
     assert result["tools_executed"] is False
     assert result["permissions_changed"] is False
+    assert result["work_order"]["needs_clarification"] is True
+    assert result["work_order"]["tool_use_required"] is True
+    assert result["work_order"]["planning_readiness"] == "needs_clarification"
+    assert result["planning_assessment"]["complexity"]["model_estimate"] == "high"
+    assert result["planning_assessment"]["information"]["status"] == "needs_clarification"
+    assert result["planning_assessment"]["information"]["missing_information"] == [
+        "The deployment target is not specified"
+    ]
+    assert result["planning_assessment"]["information"]["clarification_questions"] == [
+        "Which deployment environment should be targeted?"
+    ]
+    assert result["planning_assessment"]["research"]["decision"] == "required"
+    assert result["planning_assessment"]["research"]["questions"] == [
+        "Check the vendor compatibility documentation"
+    ]
+    assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
+    assert result["planning_assessment"]["planning_only"] is True
     assert result["planning_assessment"]["complexity"]["method"] == "bounded_structural_heuristic_v1"
     assert result["planning_assessment"]["research"]["execution_started"] is False
     assert result["planning_assessment"]["tools"]["authorization_checked"] is False
