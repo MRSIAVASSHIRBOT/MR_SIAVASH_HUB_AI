@@ -5,8 +5,8 @@ It does not execute steps, invoke tools, or approve revisions.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 MAX_PLAN_STEPS = 100
 MAX_TEXT_LENGTH = 500
