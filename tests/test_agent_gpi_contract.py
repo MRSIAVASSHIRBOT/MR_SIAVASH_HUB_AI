@@ -73,3 +73,23 @@ def test_server_risk_analysis_includes_clarification_and_research_text() -> None
         "Review a project",
         {"clarification_questions": ["Does this publish to production?"]},
     ) is RiskClass.HIGH
+
+
+
+def test_work_order_serialization_round_trips_without_computed_fields() -> None:
+    order = valid_work_order(
+        required_capabilities=["research.search"],
+        research_required=True,
+        research_questions=["Check the current official API version"],
+    )
+
+    payload = order.model_dump(mode="json")
+    restored = WorkOrder.model_validate(payload)
+
+    assert restored == order
+    assert restored.tool_use_required is True
+    assert restored.needs_clarification is False
+    assert restored.planning_readiness == "needs_research"
+    assert "needs_clarification" not in payload
+    assert "tool_use_required" not in payload
+    assert "planning_readiness" not in payload
