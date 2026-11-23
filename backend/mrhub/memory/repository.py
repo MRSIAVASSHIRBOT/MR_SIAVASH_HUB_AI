@@ -224,7 +224,7 @@ class MemoryRepository:
         applied in SQL before any ranking. Scores order retrieval relevance only;
         they never establish truth, independently verify content, or grant authority.
         """
-        terms = re.findall(r"[^\\W_]+", query, flags=re.UNICODE)
+        terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         # Token extraction removes FTS operators and syntax supplied by callers.
