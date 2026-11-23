@@ -9,7 +9,7 @@ from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 from mrhub.jobs.worker import WorkerEngine
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
 def _workflow_and_task(client):
@@ -243,6 +243,7 @@ def test_resume_rechecks_the_live_owner_grant_before_requeueing(monkeypatch):
             output_model=ReadOutput,
             handler=lambda _payload: calls.append("read") or {"accepted": True},
             required_permissions=frozenset({"cloudflare.read"}),
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     monkeypatch.setattr(
