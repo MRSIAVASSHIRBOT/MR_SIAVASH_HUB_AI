@@ -204,7 +204,14 @@ class MemoryRepository:
                 WHERE memory_entries_fts MATCH ?
                   AND m.owner_user_id = ?
                   AND (m.expires_at IS NULL OR m.expires_at > ?)
-                ORDER BY bm25(memory_entries_fts) ASC, m.updated_at DESC
+                ORDER BY
+                    bm25(memory_entries_fts) ASC,
+                    CASE m.verification_status
+                        WHEN 'user_approved' THEN 0
+                        ELSE 1
+                    END ASC,
+                    m.confidence DESC,
+                    m.updated_at DESC
                 LIMIT ?
                 """,
                 (match_expression, owner_user_id, self._now(), bounded_limit),
