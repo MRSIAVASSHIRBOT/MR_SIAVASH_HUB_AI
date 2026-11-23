@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
+
 class APIErrorIssue(BaseModel):
     """One sanitized validation issue exposed by the stable API error contract."""
 
