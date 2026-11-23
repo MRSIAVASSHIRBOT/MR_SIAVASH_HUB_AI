@@ -318,7 +318,23 @@ def _pair_device(client, *, platform="windows", scopes=None):
     return device_id
 
 
-def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
+def _approve_device_launch(client, payload):
+    pending = client.post(
+        "/tools/device.app_launch.submit/approvals",
+        json={"payload": payload},
+    )
+    assert pending.status_code == 201
+    approval_id = pending.json()["approval_id"]
+    decided = client.post(
+        f"/tools/device.app_launch.submit/approvals/{approval_id}/decision",
+        json={"decision": "approved"},
+    )
+    assert decided.status_code == 200
+    assert decided.json()["status"] == "approved"
+    return approval_id
+
+
+def test_agent_device_tools_require_two_owner_grants_paired_scope_and_action_approval():
     from mrhub.devices.tasks import DeviceTaskRepository
 
     client = authenticated_client()
@@ -344,15 +360,29 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     assert denied_launch.status_code == 403
 
     assert client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600}).status_code == 200
-    monkeypatch_result = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
-    assert monkeypatch_result.status_code == 200
-    result = monkeypatch_result.json()["result"]
+    requires_approval = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert requires_approval.status_code == 409
+    assert requires_approval.json()["detail"]["decision"] == "require_approval"
+
+    approval_id = _approve_device_launch(client, payload)
+    invoked = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": payload, "approval_id": approval_id},
+    )
+    assert invoked.status_code == 200
+    result = invoked.json()["result"]
     assert result["task"]["status"] == "queued"
     assert result["task"]["action"] == "app.launch"
     assert result["task"]["app"] == "notepad"
     assert result["idempotent_replay"] is False
+    assert invoked.json()["approval_consumed"] is True
 
-    replay = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    # A separate confirmation is required even when the device-task idempotency key replays.
+    replay_approval_id = _approve_device_launch(client, payload)
+    replay = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": payload, "approval_id": replay_approval_id},
+    )
     assert replay.status_code == 200
     assert replay.json()["result"]["task"]["task_id"] == result["task"]["task_id"]
     assert replay.json()["result"]["idempotent_replay"] is True
