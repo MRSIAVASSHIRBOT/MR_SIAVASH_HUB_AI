@@ -83,7 +83,7 @@ class ToolInvocationApprovalStore:
     def _record_audit(
         repository: TaskRepository,
         connection,
-        audit_event: dict[str, object] | None,
+        audit_event: dict[str, object],
         *,
         event_type: str | None = None,
         outcome: str | None = None,
@@ -92,8 +92,6 @@ class ToolInvocationApprovalStore:
         reason_code: str | None = None,
     ) -> None:
         """Insert a pre-built allow-listed audit event in the receipt transaction."""
-        if audit_event is None:
-            return
         if not isinstance(audit_event, dict):
             raise ToolApprovalError("Approval audit event is invalid")
         event = dict(audit_event)
@@ -148,7 +146,7 @@ class ToolInvocationApprovalStore:
         payload_digest: str,
         tool_fingerprint: str,
         ttl_seconds: int = 300,
-        audit_event: dict[str, object] | None = None,
+        audit_event: dict[str, object],
     ) -> dict[str, object]:
         """Create a pending receipt for one owner, tool definition and exact payload."""
         normalized_id = self._validate_identifiers(approval_id, owner_user_id, tool_name)
@@ -230,7 +228,7 @@ class ToolInvocationApprovalStore:
         tool_name: str,
         tool_fingerprint: str,
         decision: str,
-        audit_event: dict[str, object] | None = None,
+        audit_event: dict[str, object],
     ) -> dict[str, object] | None:
         """Approve or reject a still-pending receipt only while its definition is current."""
         normalized_id = self._validate_identifiers(approval_id, owner_user_id, tool_name)
@@ -359,7 +357,7 @@ class ToolInvocationApprovalStore:
         tool_name: str,
         payload_digest: str,
         tool_fingerprint: str,
-        audit_event: dict[str, object] | None = None,
+        audit_event: dict[str, object],
     ) -> bool:
         """Atomically consume one approved receipt and its audit event before handler invocation."""
 
