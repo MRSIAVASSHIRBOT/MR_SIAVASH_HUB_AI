@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+MAX_RETRY_ATTEMPTS = 10
+MAX_RETRY_DELAY_SECONDS = 86_400
+
 
 def validate_retry_error_code(value: str) -> str:
     """Validate a bounded, non-sensitive identifier used for retry classification."""
     valid = (
         isinstance(value, str)
         and 1 <= len(value) <= 80
-        and value[0].islower()
-        and value[0].isascii()
-        and all(char.islower() or char.isdigit() or char == "_" for char in value)
+        and "a" <= value[0] <= "z"
+        and all(
+            "a" <= char <= "z" or "0" <= char <= "9" or char == "_"
+            for char in value
+        )
     )
     if not valid:
         raise ValueError("Retry error code must be a lowercase ASCII identifier")
@@ -36,13 +41,16 @@ class RetryPolicy:
     )
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("max_attempts", self.max_attempts),
-            ("base_delay_seconds", self.base_delay_seconds),
-            ("max_delay_seconds", self.max_delay_seconds),
-        ):
-            if type(value) is not int or value < 1:
-                raise ValueError(f"{name} must be a positive integer")
+        bounds = (
+            ("max_attempts", self.max_attempts, MAX_RETRY_ATTEMPTS),
+            ("base_delay_seconds", self.base_delay_seconds, MAX_RETRY_DELAY_SECONDS),
+            ("max_delay_seconds", self.max_delay_seconds, MAX_RETRY_DELAY_SECONDS),
+        )
+        for name, value, upper_bound in bounds:
+            if type(value) is not int or not 1 <= value <= upper_bound:
+                raise ValueError(
+                    f"{name} must be an integer between 1 and {upper_bound}"
+                )
         if self.max_delay_seconds < self.base_delay_seconds:
             raise ValueError("max_delay_seconds cannot be below base_delay_seconds")
         if not isinstance(self.retryable_error_codes, frozenset):

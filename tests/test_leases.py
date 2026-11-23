@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.leases import LeaseManager
+from mrhub.jobs.leases import LeaseError, LeaseManager
 
 
 def make_running_task(tmp_path):
@@ -129,3 +131,11 @@ def test_lease_is_not_granted_for_non_running_tasks(tmp_path):
 
     manager = LeaseManager(repository.database_path)
     assert manager.acquire(str(task.task_id), "worker-a") is None
+
+
+@pytest.mark.parametrize("lease_seconds", [0, -1, True, 1.5])
+def test_lease_manager_rejects_invalid_lease_durations(tmp_path, lease_seconds):
+    repository = TaskRepository(tmp_path / "invalid-lease-duration.sqlite3")
+
+    with pytest.raises(LeaseError, match="positive integer"):
+        LeaseManager(repository.database_path, lease_seconds=lease_seconds)
