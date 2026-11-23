@@ -1,4 +1,5 @@
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -347,6 +348,78 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         ).fetchone()
     assert tuple(stored) == ("consumed", "a" * 64, "b" * 64)
     assert "revalidate after deploy" not in str(stored)
+
+
+def test_concurrent_tool_approval_consumption_is_single_use_and_audited_once():
+    authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    store = ToolInvocationApprovalStore(repository)
+    approval_id = "52345678-1234-5678-1234-567812345678"
+
+    store.create(
+        approval_id=approval_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        payload_digest="a" * 64,
+        tool_fingerprint="b" * 64,
+        audit_event=_approval_audit_event(
+            repository,
+            approval_id,
+            event_type="tool.approval_requested",
+            outcome="pending",
+            status="pending",
+        ),
+    )
+    store.decide(
+        approval_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        tool_fingerprint="b" * 64,
+        decision="approved",
+        audit_event=_approval_audit_event(
+            repository,
+            approval_id,
+            event_type="tool.approval_decided",
+            outcome="approved",
+            status="approved",
+            decision="approved",
+        ),
+    )
+
+    def consume_receipt():
+        return store.consume(
+            approval_id,
+            owner_user_id="local-owner",
+            tool_name="content.publish",
+            payload_digest="a" * 64,
+            tool_fingerprint="b" * 64,
+            audit_event=_approval_audit_event(
+                repository,
+                approval_id,
+                event_type="tool.approval_consumed",
+                outcome="consumed",
+                status="consumed",
+                decision="consumed",
+            ),
+        )
+
+    # Separate repository connections race for the same approved receipt.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(lambda _index: consume_receipt(), range(2)))
+
+    assert sorted(outcomes) == [False, True]
+    consumed = store.get(approval_id, owner_user_id="local-owner")
+    assert consumed is not None
+    assert consumed["status"] == "consumed"
+
+    with repository._connection() as connection:
+        audit_count = connection.execute(
+            "SELECT COUNT(*) FROM audit_events "
+            "WHERE event_type = 'tool.approval_consumed' AND subject_id = ?",
+            (approval_id,),
+        ).fetchone()[0]
+    assert audit_count == 1
 
 
 def test_tool_fingerprint_binds_server_owned_replay_safety():
