@@ -44,7 +44,7 @@ def _validation_issues(exc: RequestValidationError) -> list[dict[str, Any]]:
     sanitized: list[dict[str, Any]] = []
     for error in exc.errors()[:100]:
         location = [
-            item if isinstance(item, (str, int)) else str(item)
+            (item if isinstance(item, str) else str(item))[:80]
             for item in error.get("loc", ())[:8]
         ]
         error_type = error.get("type")
