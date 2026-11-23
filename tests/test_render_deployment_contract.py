@@ -69,4 +69,3 @@ def test_render_deployment_docs_require_blueprint_auto_sync_to_remain_disabled()
 
     assert "Blueprint **Auto Sync** is a separate workspace setting" in docs
     assert "must also remain disabled" in docs
-    assert "must also remain disabled" in docs
