@@ -176,14 +176,21 @@ def test_ollama_request_timeout_cannot_raise_adapter_timeout():
 
 @pytest.mark.parametrize(
     "timeout_seconds",
-    [True, False, "5", 0, 301, float("nan"), float("inf")],
+    [True, False, "5", 0, 301, float("nan"), float("inf"), 10**1000],
 )
 def test_ollama_rejects_invalid_adapter_timeout_configuration(timeout_seconds):
     with pytest.raises(ProviderConfigurationError):
         OllamaProvider("tiny-model", timeout_seconds=timeout_seconds)
 
 
-def test_ollama_rejects_boolean_health_timeout():
+def test_ollama_rejects_invalid_health_timeout(timeout_seconds):
     provider = OllamaProvider("tiny-model")
     with pytest.raises(ProviderConfigurationError):
-        provider.health(timeout_seconds=True)
+        provider.health(timeout_seconds=timeout_seconds)
+
+
+@pytest.mark.parametrize("timeout_seconds", [True, False, "5", float("nan"), float("inf"), 10**1000])
+def test_ollama_rejects_boolean_health_timeout(timeout_seconds):
+    provider = OllamaProvider("tiny-model")
+    with pytest.raises(ProviderConfigurationError):
+        provider.health(timeout_seconds=timeout_seconds)
