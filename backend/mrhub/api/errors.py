@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
@@ -87,6 +88,43 @@ _POLICY_DECISION_MESSAGES = {
     "require_approval": "Explicit owner approval is required.",
 }
 
+_SAFE_DETAIL_CODE_MESSAGES = {
+    "provider_unavailable": "A configured video generation provider is unavailable.",
+    "provider_capability_mismatch": "The provider does not support the requested generation configuration.",
+    "remote_consent_required": "Explicit consent is required before remote processing.",
+    "remote_cost_unknown": "The cost of remote processing could not be verified.",
+    "remote_budget_exceeded": "The estimated remote cost exceeds the approved budget.",
+    "repository_not_found": "Public repository not found.",
+    "generation_cancellation_conflict": "Active or ambiguous provider work cannot be cancelled through this endpoint.",
+    "reconciliation_cooldown": "Generation reconciliation is temporarily rate limited.",
+    "kimi_rate_limited": "Kimi requests are temporarily rate limited.",
+    "renderer_timeline_not_saved": "A saved renderer timeline is required before submitting a render.",
+    "analysis_not_completed": "Video analysis must complete before prompt composition.",
+    "analysis_result_unavailable": "Video analysis result is unavailable.",
+    "analysis_result_invalid": "Video analysis result is invalid.",
+    "semantic_analysis_unavailable": "Validated semantic visual analysis is required to compose this prompt.",
+    "timeline_draft_invalid": "The selected storyboard draft is invalid.",
+    "timeline_draft_unavailable": "The selected storyboard draft is unavailable.",
+    "timeline_draft_version_conflict": "The selected storyboard draft has changed; reload it before composing.",
+    "edit_specification_unavailable": "A validated edit specification is required to prepare the render timeline.",
+    "telegram_video_render_not_completed": "Telegram video render is not completed.",
+    "telegram_video_render_too_large": "Telegram video render exceeds the supported size limit.",
+}
+
+_SAFE_DETAIL_CODES_WITH_NOT_STARTED = frozenset({
+    "provider_unavailable",
+    "remote_consent_required",
+    "remote_cost_unknown",
+    "remote_budget_exceeded",
+})
+
+_SAFE_DETAIL_REASON_CODES = frozenset({
+    "authorization_scope_denied",
+    "review_input_rejected",
+})
+
+_SAFE_PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
+
 
 def _request_id(request: Request) -> str:
     value = getattr(request.state, "request_id", None)
@@ -101,29 +139,80 @@ def _status_error(status_code: int) -> tuple[str, str]:
 
 
 def _safe_http_detail(status_code: int, detail: object) -> object:
-    """Preserve only exact reviewed public literals; never reflect dynamic values."""
+    """Preserve only reviewed public fields and replace all dynamic text."""
     if isinstance(detail, str) and detail in SAFE_PUBLIC_ERROR_DETAILS:
         return detail
-    if isinstance(detail, dict):
-        if any(detail == allowed for allowed in _SAFE_LEGACY_DETAIL_OBJECTS):
-            return detail
-        decision = detail.get("decision")
-        if isinstance(decision, str) and decision in _POLICY_DECISION_MESSAGES:
-            safe_detail: dict[str, str] = {
-                "decision": decision,
-                "reason": _POLICY_DECISION_MESSAGES[decision],
-            }
-            correlation_id = detail.get("correlation_id")
-            if isinstance(correlation_id, str):
-                try:
-                    parsed_correlation_id = UUID(correlation_id)
-                except (TypeError, ValueError, AttributeError):
-                    pass
-                else:
-                    if str(parsed_correlation_id) == correlation_id:
-                        safe_detail["correlation_id"] = correlation_id
-            return safe_detail
-    # This also removes provider codes, exception messages, policy reasons,
+    if not isinstance(detail, dict):
+        return _status_error(status_code)[1]
+
+    if any(detail == allowed for allowed in _SAFE_LEGACY_DETAIL_OBJECTS):
+        return detail
+
+    decision = detail.get("decision")
+    if isinstance(decision, str) and decision in _POLICY_DECISION_MESSAGES:
+        safe_detail: dict[str, str] = {
+            "decision": decision,
+            "reason": _POLICY_DECISION_MESSAGES[decision],
+        }
+        correlation_id = detail.get("correlation_id")
+        if isinstance(correlation_id, str):
+            try:
+                parsed_correlation_id = UUID(correlation_id)
+            except (TypeError, ValueError, AttributeError):
+                pass
+            else:
+                if str(parsed_correlation_id) == correlation_id:
+                    safe_detail["correlation_id"] = correlation_id
+        return safe_detail
+
+    reason_code = detail.get("reason_code")
+    if isinstance(reason_code, str) and reason_code in _SAFE_DETAIL_REASON_CODES:
+        return {"reason_code": reason_code}
+
+    code = detail.get("code")
+    if isinstance(code, str) and code in _SAFE_DETAIL_CODE_MESSAGES:
+        safe_detail: dict[str, str | int] = {
+            "code": code,
+            "message": _SAFE_DETAIL_CODE_MESSAGES[code],
+        }
+        if (
+            code in _SAFE_DETAIL_CODES_WITH_NOT_STARTED
+            and detail.get("execution") == "not_started"
+        ):
+            safe_detail["execution"] = "not_started"
+        retry_after = detail.get("retry_after_seconds")
+        if (
+            code in {"kimi_rate_limited", "reconciliation_cooldown"}
+            and isinstance(retry_after, int)
+            and not isinstance(retry_after, bool)
+            and 1 <= retry_after <= 86_400
+        ):
+            safe_detail["retry_after_seconds"] = retry_after
+        max_bytes = detail.get("max_bytes")
+        if (
+            code == "telegram_video_render_too_large"
+            and isinstance(max_bytes, int)
+            and not isinstance(max_bytes, bool)
+            and 1 <= max_bytes <= 1_073_741_824
+        ):
+            safe_detail["max_bytes"] = max_bytes
+        return safe_detail
+
+    if detail.get("message") == "Unknown model profile ID(s)":
+        raw_ids = detail.get("profile_ids")
+        if isinstance(raw_ids, list) and 1 <= len(raw_ids) <= 20:
+            safe_ids = [
+                item for item in raw_ids
+                if isinstance(item, str) and _SAFE_PROFILE_ID.fullmatch(item)
+            ]
+            if safe_ids:
+                return {
+                    "message": "Unknown model profile ID(s)",
+                    "profile_ids": safe_ids,
+                }
+        return {"message": "Unknown model profile ID(s)"}
+
+    # This removes provider codes, exception messages, policy reasons,
     # arbitrary identifiers, and nested request-controlled values.
     return _status_error(status_code)[1]
 

@@ -168,3 +168,64 @@ def test_policy_decision_detail_preserves_only_reviewed_fields():
         "reason": "Explicit owner approval is required.",
     }
     assert "owner approval for action payload" not in approval_response.text
+
+
+def test_reviewed_structured_error_details_are_sanitized_without_losing_contract_fields():
+    from mrhub.api.errors import _safe_http_detail
+
+    assert _safe_http_detail(
+        409,
+        {
+            "code": "renderer_timeline_not_saved",
+            "message": "Prepare and save the renderer timeline in the Hub dashboard first",
+            "private": "must-not-leak",
+        },
+    ) == {
+        "code": "renderer_timeline_not_saved",
+        "message": "A saved renderer timeline is required before submitting a render.",
+    }
+
+    assert _safe_http_detail(
+        409,
+        {
+            "code": "generation_cancellation_conflict",
+            "message": "provider internal state and request data",
+        },
+    ) == {
+        "code": "generation_cancellation_conflict",
+        "message": "Active or ambiguous provider work cannot be cancelled through this endpoint.",
+    }
+
+    assert _safe_http_detail(
+        429,
+        {
+            "code": "kimi_rate_limited",
+            "message": "caller-controlled message",
+            "retry_after_seconds": 37,
+            "api_key": "must-not-leak",
+        },
+    ) == {
+        "code": "kimi_rate_limited",
+        "message": "Kimi requests are temporarily rate limited.",
+        "retry_after_seconds": 37,
+    }
+
+    assert _safe_http_detail(
+        403, {"reason_code": "authorization_scope_denied", "asset": "private-asset"}
+    ) == {"reason_code": "authorization_scope_denied"}
+
+    assert _safe_http_detail(
+        404,
+        {
+            "message": "Unknown model profile ID(s)",
+            "profile_ids": ["unknown-profile", "ghp_secret-token-like-value"],
+        },
+    ) == {
+        "message": "Unknown model profile ID(s)",
+        "profile_ids": ["unknown-profile"],
+    }
+
+    assert _safe_http_detail(
+        409,
+        {"code": "unrecognized_code", "message": "untrusted dynamic detail"},
+    ) == "The requested operation conflicts with the current state."
