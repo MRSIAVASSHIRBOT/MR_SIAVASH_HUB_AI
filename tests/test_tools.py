@@ -527,6 +527,11 @@ def test_registry_preserves_handler_policy_decision_without_exposing_reason():
 
     assert error.value.decision is PolicyDecision.REQUIRE_APPROVAL
     assert str(error.value) == "Tool handler policy denied execution"
-    assert events[-1].stage is ToolLifecycleStage.UNKNOWN_OUTCOME
+    assert [event.stage for event in events] == [
+        ToolLifecycleStage.INPUT_VALIDATED,
+        ToolLifecycleStage.AUTHORIZATION_GRANTED,
+        ToolLifecycleStage.HANDLER_STARTED,
+        ToolLifecycleStage.AUTHORIZATION_DENIED,
+    ]
     assert events[-1].reason_code == "approval_required"
     assert "private policy diagnostic" not in repr(events)
