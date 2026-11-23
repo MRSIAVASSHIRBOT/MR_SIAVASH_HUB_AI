@@ -104,17 +104,23 @@ def analyze_goal_request(
     tasks = TaskRepository(get_settings().database_path)
     tasks.initialize()
     analysis = analyze_goal(request.goal)
-    AuditLogger(tasks).record(
-        event_type="agent.goal_analyzed",
-        outcome="success",
-        actor_type="user",
-        actor_id=current_user.user_id,
-        subject_type="goal",
-        metadata={
-            "status": "analyzed",
-            "reason_code": "deterministic_goal_preflight",
-        },
-    )
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.goal_analyzed",
+            outcome="success",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="goal",
+            metadata={
+                "status": "analyzed",
+                "reason_code": "deterministic_goal_preflight",
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
     return {
         "analysis": analysis.model_dump(mode="json"),
         "planning_only": True,
