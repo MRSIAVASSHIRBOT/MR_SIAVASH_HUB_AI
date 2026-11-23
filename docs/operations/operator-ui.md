@@ -47,3 +47,13 @@ The API binds to loopback by default. Do not expose it directly to a public netw
 - Completed output is downloaded through the authenticated media route; the bearer token is never placed in a URL.
 - Render output is silent and hard-cut-only. The UI does not claim audio, captions, graphics, transitions, effects or AI-generated video.
 - Status refresh is user-initiated; the page does not start background polling. The pull Worker must be running separately for queued jobs to execute.
+
+
+## Workflow step trace details
+
+The workflow detail expander shows the stable step ID, step kind, dependency
+state and prerequisites, attempt count, sanitized error code, start/finish
+timestamps, and short prefixes of persisted input/output SHA-256 digests.
+The UI does not display raw prompts, tool payloads, provider responses, or
+step outputs. The digests are correlation evidence only; they are not a
+signature or proof that the output is correct.
