@@ -66,9 +66,15 @@ class AgentWorkflowRunner:
         if len(ordered_tools) != len(request.tools):
             raise ValueError("Validated workflow graph does not cover every requested tool")
 
+        definitions = {
+            step.step_id: step
+            for step in request.workflow_steps()
+        }
         step_specs: list[dict[str, object]] = [
             {
                 "step_number": 1,
+                "step_key": "step-1",
+                "depends_on": [],
                 "kind": "provider_selection",
                 "name": "provider_selection",
                 "input_digest": None,
@@ -80,6 +86,12 @@ class AgentWorkflowRunner:
             step_specs.append(
                 {
                     "step_number": runtime_step_number,
+                    "step_key": request.tool_step_id(request_step_number, requested_tool),
+                    "depends_on": list(
+                        definitions[
+                            request.tool_step_id(request_step_number, requested_tool)
+                        ].depends_on
+                    ),
                     "kind": (
                         "external_tool"
                         if definition.external_side_effect
@@ -87,7 +99,9 @@ class AgentWorkflowRunner:
                     ),
                     "name": requested_tool.name,
                     "input_digest": core.workflow_step_input_digest(
-                        request_step_number, requested_tool
+                        request_step_number,
+                        requested_tool,
+                        step_id=request.tool_step_id(request_step_number, requested_tool),
                     ),
                 }
             )
@@ -116,12 +130,13 @@ class AgentWorkflowRunner:
             workflow_id, owner_user_id=owner_user_id
         )
         stored_steps = {
-            int(step["step_number"]): step
+            str(step["step_key"]): step
             for step in (workflow or {}).get("steps", [])
         }
         criteria = []
-        for runtime_number, _request_number, requested_tool in ordered_tools:
-            step = stored_steps.get(runtime_number, {})
+        for runtime_number, request_number, requested_tool in ordered_tools:
+            step_key = request.tool_step_id(request_number, requested_tool)
+            step = stored_steps.get(step_key, {})
             status = step.get("status")
             if status == "succeeded":
                 outcome = CriterionStatus.PASSED
@@ -133,7 +148,7 @@ class AgentWorkflowRunner:
                 evidence_digest = self._digest(
                     {
                         "workflow_id": str(workflow_id),
-                        "step_number": runtime_number,
+                        "step_id": step_key,
                         "status": status,
                         "error_code": step.get("error_code") or "tool_execution_failed",
                         "attempt_count": step.get("attempt_count"),
@@ -148,7 +163,7 @@ class AgentWorkflowRunner:
                 evidence_digest = None
             criteria.append(
                 EvaluationCriterion(
-                    criterion_id=f"tool-step-{runtime_number}",
+                    criterion_id=f"tool-step-{step_key}",
                     description=f"Tool execution completed: {requested_tool.name}",
                     status=outcome,
                     evidence_digest=evidence_digest,
@@ -240,7 +255,7 @@ class AgentWorkflowRunner:
                 request_digest,
                 step_specs,
                 task=task,
-                definition_version=2,
+                definition_version=3,
                 owner_user_id=owner_user_id,
             )
             AuditLogger(self.repository).record(
@@ -267,13 +282,19 @@ class AgentWorkflowRunner:
             )
             heartbeat.start()
         attempts: dict[int, StepAttempt] = {}
+        runtime_step_ids = {
+            runtime_number: request.tool_step_id(request_number, requested_tool)
+            for runtime_number, request_number, requested_tool in self.core.ordered_tool_steps(
+                request, plan
+            )
+        }
 
         try:
             self._record_execution_start(
                 lease, increment_attempt=not worker_owned_lease
             )
             self.recovery.start_run(workflow_id, lease=lease)
-            provider_attempt = self.recovery.start_step(workflow_id, 1, lease=lease)
+            provider_attempt = self.recovery.start_step(workflow_id, "step-1", lease=lease)
             provider_digest = self._digest(plan.get("selected_provider", {}))
             self.recovery.complete_step(
                 workflow_id, provider_attempt, provider_digest, lease=lease
@@ -283,8 +304,9 @@ class AgentWorkflowRunner:
                 if lease_lost.is_set():
                     raise RuntimeError("Workflow worker lease was lost")
                 if status == "running":
+                    step_key = runtime_step_ids[number]
                     attempts[number] = self.recovery.start_step(
-                        workflow_id, number, lease=lease
+                        workflow_id, step_key, lease=lease
                     )
                 elif status == "failed":
                     attempt = attempts.get(number)
