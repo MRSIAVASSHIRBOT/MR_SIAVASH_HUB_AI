@@ -51,6 +51,8 @@ def test_retry_after_is_honored_but_cannot_exceed_policy_cap():
         {"base_delay_seconds": 10, "max_delay_seconds": 5},
         {"retryable_error_codes": frozenset()},
         {"retryable_error_codes": frozenset({"UPSTREAM_TIMEOUT"})},
+        {"retryable_error_codes": frozenset({"upstream_timéout"})},
+        {"retryable_error_codes": frozenset({"rate_limited١"})},
     ],
 )
 def test_retry_policy_rejects_invalid_configuration(kwargs):
