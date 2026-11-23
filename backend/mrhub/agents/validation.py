@@ -1,7 +1,7 @@
 """Read-only consistency checks for AWI revision integration previews."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass
+from collections.abc import Mapping
 
 
 MAX_STEPS = 100
