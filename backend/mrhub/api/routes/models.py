@@ -137,7 +137,7 @@ class GenerateModelRequest(BaseModel):
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError("Request timeout must be a finite number")
+            raise TypeError("Request timeout must be a finite number")
         try:
             finite = math.isfinite(float(value))
         except (OverflowError, ValueError):
