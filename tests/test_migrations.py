@@ -1263,8 +1263,15 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
 
     connection = connect(tmp_path / "typed-memory-v56.sqlite3")
     all_migrations = migrations_module.MIGRATIONS
-    # Apply every prior migration, including V55 plan storage when present.
-    previous_migrations = all_migrations[:-1]
+    # Apply every migration before V56, including V55 plan storage when present.
+    previous_migrations = tuple(
+        migration for migration in all_migrations if migration.version < 56
+    )
+    typed_memory_migration = tuple(
+        migration for migration in all_migrations if migration.version == 56
+    )
+    assert len(typed_memory_migration) == 1
+    migration_chain = previous_migrations + typed_memory_migration
     monkeypatch.setattr(migrations_module, "MIGRATIONS", previous_migrations)
     assert SchemaMigrator(connection).migrate() == [
         migration.version for migration in previous_migrations
@@ -1291,7 +1298,7 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
     )
     connection.commit()
 
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", migration_chain)
     assert SchemaMigrator(connection).migrate() == [56]
 
     entry = connection.execute(
