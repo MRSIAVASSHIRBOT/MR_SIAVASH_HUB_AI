@@ -486,6 +486,17 @@ def get_persisted_goal_work_order_plan(
             detail="Registered tool catalog is not valid for capability assessment",
         ) from exc
 
+    try:
+        decision_analysis = analyze_goal(work_order.goal, work_order=work_order)
+        planning_assessment = assess_work_order_intelligence(
+            work_order, plan, assessment
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan assessment could not be recomputed safely",
+        ) from exc
+
     return {
         "plan_id": record.plan_id,
         "status": record.status,
@@ -494,7 +505,9 @@ def get_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
-        **plan_metadata,
+        **{key: value for key, value in plan_metadata.items() if key == "model_selection"},
+        "decision_analysis": decision_analysis.model_dump(mode="json"),
+        "planning_assessment": planning_assessment.as_dict(),
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
