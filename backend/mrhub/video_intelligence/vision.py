@@ -74,6 +74,7 @@ def analyze_sampled_frames(
                 for frame in frames
             ),
             max_output_tokens=1200,
+            timeout_seconds=timeout_seconds,
         )
         response = provider.generate(request)
     except ProviderError as exc:
