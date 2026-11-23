@@ -51,3 +51,20 @@ When the isolated gateway is fully configured, the authenticated tool catalog re
 Every operation requires the owner's active `cloudflare.read` grant. The grant is never inferred from model output or the invocation payload. It defaults to one hour and can be bounded from 60 seconds to 24 hours. Revocation or expiry causes subsequent invocations to be denied. Gateway credentials remain in server-side settings and never enter tool schemas, results, audit metadata, or frontend assets.
 
 The integration remains disabled by default. Enabling it requires a dedicated HTTPS `*.workers.dev` gateway URL and a separate gateway token; the Cloudflare provider token must remain exclusively in the gateway Worker. Only fixed GET operations are exposed. No deployments, route mutations, secrets, D1 rows, source downloads, deletions, or billing operations are registered.
+
+
+## Policy evaluation API
+
+The authenticated `POST /policy/evaluate` endpoint accepts only a registered
+action name. It resolves the matching `ToolDefinition` on the server and
+derives risk class, required permissions, and external-side-effect status from
+that trusted definition. Active permission grants are loaded from the
+authenticated owner's persisted grant records. Caller-supplied permission,
+risk, side-effect, or approval claims are rejected.
+
+The response may report a policy decision such as `allow`, but the endpoint is
+inspection-only. Every response explicitly includes
+`evaluation_only=true`, `execution_authorized=false`, and
+`action_executed=false`. A caller must still use the separate authenticated
+tool invocation endpoint, which rebuilds the registered definition and checks
+current grants and approval before any handler is invoked.
