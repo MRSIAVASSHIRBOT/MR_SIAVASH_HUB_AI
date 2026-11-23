@@ -5,7 +5,6 @@ or authorize tools, dispatch work, or change permissions.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 
