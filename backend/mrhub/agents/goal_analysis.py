@@ -74,6 +74,11 @@ _AUDIO_TERMS = (
     "audio", "speech", "voice recording", "transcribe", "transcription",
     "صدا", "گفتار", "ضبط صوت", "رونویسی", "تبدیل گفتار",
 )
+_INFORMATION_TERMS = (
+    "what is", "what are", "how does", "how do", "why does", "explain",
+    "define", "meaning of", "چیست", "چه هست", "چطور", "چگونه", "چرا",
+    "توضیح بده", "تعریف کن", "معنی",
+)
 _UNCERTAINTY_TERMS = (
     "unknown", "unspecified", "not specified", "unclear", "to be determined",
     "نامشخص", "تعیین نشده", "مشخص نیست", "هنوز معلوم نیست", "نیاز به تعیین",
@@ -161,15 +166,24 @@ def analyze_goal(
     research_required = _contains_any(combined, _RESEARCH_TERMS)
     vision_required = _contains_any(normalized, _VISION_TERMS)
     audio_required = _contains_any(normalized, _AUDIO_TERMS)
+    information_request = _contains_any(normalized, _INFORMATION_TERMS)
     tool_use_required = action_required or capability_count > 0
     high_impact = _contains_any(combined, _HIGH_IMPACT_TERMS)
 
     information_gaps: list[str] = []
     reason_codes: list[str] = []
 
-    if not action_required and not research_required and not vision_required and not audio_required:
+    if (
+        not action_required
+        and not research_required
+        and not vision_required
+        and not audio_required
+        and not information_request
+    ):
         information_gaps.append("requested_outcome")
         reason_codes.append("goal_has_no_detected_action_or_research_signal")
+    elif information_request:
+        reason_codes.append("general_information_request")
 
     if work_order is not None and tool_use_required and not scope:
         information_gaps.append("target_scope")
@@ -198,7 +212,8 @@ def analyze_goal(
     # burden increase the score; this is not a learned estimate or SLA prediction.
     score = 5
     score += min(20, len(normalized_goal) // 40)
-    score += min(20, len(re.findall(r"\b(and|then|also|plus)\b|و|سپس|همچنین", normalized)) * 5)
+    conjunction_count = len(re.findall(r"\b(and|then|also|plus)\b|(?<!\w)و(?!\w)|سپس|همچنین", normalized))
+    score += min(20, conjunction_count * 5)
     score += min(15, len(dependencies) * 4)
     score += min(15, capability_count * 5)
     score += min(10, len(constraints) * 2)
