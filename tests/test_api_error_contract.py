@@ -58,3 +58,6 @@ def test_unhandled_exception_never_exposes_exception_text():
     assert body["error"]["code"] == "internal_error"
     assert private_detail not in response.text
     assert body["error"]["request_id"] == response.headers["X-Request-ID"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Cache-Control"] == "no-store"
