@@ -59,6 +59,14 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     task = repository.get(UUID(task_id))
     assert task is not None and task.status.value == "waiting_approval"
 
+    checked = client.post(
+        f"/agent/workflows/{workflow_id}/resume-check",
+        json={"request": request},
+    )
+    assert checked.status_code == 200
+    assert checked.json()["decision"] == "resume"
+    assert checked.json()["next_step_id"] == "step-2"
+
     resumed = client.post(
         f"/agent/workflows/{workflow_id}/resume",
         json={"request": request},
