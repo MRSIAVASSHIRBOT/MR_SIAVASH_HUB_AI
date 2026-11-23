@@ -14,6 +14,7 @@ from mrhub.agents.gpi import (
     derive_server_risk_class,
     generate_work_order,
 )
+from mrhub.agents.goal_analysis import analyze_goal
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
@@ -95,6 +96,41 @@ class GoalPlanningRequest(BaseModel):
         return normalized
 
 
+@router.post("/work-orders/analyze")
+def analyze_goal_request(
+    request: GoalPlanningRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Analyze goal complexity and routing signals without model or tool execution."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    analysis = analyze_goal(request.goal)
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.goal_analyzed",
+            outcome="success",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="goal",
+            metadata={
+                "status": "analyzed",
+                "reason_code": "deterministic_goal_preflight",
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+    return {
+        "analysis": analysis.model_dump(mode="json"),
+        "planning_only": True,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
+
+
 @router.post("/work-orders/plan")
 def create_goal_work_order_plan(
     request: GoalPlanningRequest,
@@ -159,6 +195,7 @@ def create_goal_work_order_plan(
             ModelRequest(requires_text=True, prefer_local=True)
         )
         work_order = generate_work_order(request.goal, model_router)
+        decision_analysis = analyze_goal(request.goal, work_order=work_order)
         if work_order.risk_class.value == "prohibited":
             try:
                 audit_logger.record(
@@ -227,6 +264,7 @@ def create_goal_work_order_plan(
     )
     return {
         "work_order": work_order.model_dump(mode="json"),
+        "decision_analysis": decision_analysis.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
         "planning_assessment": planning_assessment.as_dict(),
         "model_selection": {
