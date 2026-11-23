@@ -54,6 +54,7 @@ def test_research_requirement_must_include_research_questions() -> None:
         research_questions=["Which supported API version is current?"],
     )
     assert order.research_required is True
+    assert order.planning_readiness == "needs_research"
     assert order.model_dump()["research_questions"] == [
         "Which supported API version is current?"
     ]
