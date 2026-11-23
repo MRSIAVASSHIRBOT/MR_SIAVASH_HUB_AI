@@ -48,7 +48,7 @@ class MemoryRepository:
     def _validate_confidence(value: object) -> float:
         """Validate owner-supplied confidence at the persistence boundary."""
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError("Confidence must be a finite number between 0 and 1")
+            raise TypeError("Confidence must be a numeric value")
         try:
             numeric = float(value)
         except (OverflowError, TypeError, ValueError) as exc:
