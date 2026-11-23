@@ -142,6 +142,47 @@ def test_stale_running_task_is_recovered_as_failed_not_replayed(tmp_path):
     assert result["recovered_at"] is not None
 
 
+def test_worker_startup_recovery_runs_while_dispatch_is_stopped(tmp_path):
+    repository, worker = make_worker(tmp_path)
+    task = TaskRecord(task_type="demo.echo", description="stale before restart")
+    repository.create(task)
+    calls = []
+    worker.handlers["demo.echo"] = lambda current: calls.append(current.task_id) or {}
+
+    with repository._connection() as connection:
+        connection.execute(
+            "UPDATE tasks SET status = ? WHERE task_id = ?",
+            (TaskStatus.RUNNING.value, str(task.task_id)),
+        )
+        connection.execute(
+            """
+            INSERT INTO worker_executions (task_id, attempt_count, started_at)
+            VALUES (?, 1, ?)
+            """,
+            (str(task.task_id), "2000-01-01T00:00:00+00:00"),
+        )
+
+    worker._control.set_stopped(
+        True,
+        reason="startup recovery test",
+        changed_by="test-owner",
+    )
+
+    # The dispatch gate prevents run_once from claiming work or running recovery.
+    assert worker.run_once() is None
+    still_running = repository.get(task.task_id)
+    assert still_running is not None and still_running.status is TaskStatus.RUNNING
+
+    # Startup recovery is deliberately independent of the dispatch gate.
+    worker.recover_interrupted()
+    recovered = repository.get(task.task_id)
+    assert recovered is not None and recovered.status is TaskStatus.FAILED
+    result = worker.get_result(task.task_id)
+    assert result is not None and result["error_code"] == "worker_interrupted"
+    assert calls == []
+    assert worker.run_once() is None
+
+
 def test_worker_does_not_overwrite_cancellation_after_handler_returns(tmp_path):
     repository, worker = make_worker(tmp_path)
     task = TaskRecord(task_type="demo.echo", description="cancel during handler")
