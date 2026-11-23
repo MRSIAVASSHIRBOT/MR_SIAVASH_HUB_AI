@@ -66,11 +66,12 @@ def _build_owner_agent_core(
     owner_user_id: str,
     repository: TaskRepository | None = None,
 ) -> AgentCore:
-    """Build an owner-scoped AgentCore with one-time action-bound approval receipts."""
+    """Build an owner-scoped AgentCore with action-bound approval receipts."""
     tasks = repository or TaskRepository(get_settings().database_path)
     tasks.initialize()
-    permissions = ToolPermissionService(tasks, AuditLogger(tasks))
-    registry = build_tool_registry(owner_user_id=owner_user_id)
+    audit = AuditLogger(tasks)
+    permissions = ToolPermissionService(tasks, audit)
+    registry = build_tool_registry()
     approval_store = ToolInvocationApprovalStore(tasks)
 
     def resolve_approval(
@@ -81,13 +82,43 @@ def _build_owner_agent_core(
         *,
         consume: bool,
     ) -> bool:
-        """Validate or consume an owner receipt against the exact current action."""
+        """Validate or consume only a receipt for this exact currently-authorized action."""
         try:
             tool = registry.get(tool_name)
+            # The caller reaches this helper only when policy evaluation identified
+            # an approval-required tool. Rechecking required grants here prevents
+            # consuming a receipt after a concurrent permission revocation.
+            if not (tool.risk_class.value == "high" or tool.external_side_effect):
+                return False
+            if not tool.required_permissions.issubset(granted_permissions):
+                return False
             _normalized, payload_digest = canonical_tool_payload(tool, payload)
             fingerprint = tool_definition_fingerprint(tool)
-            method = approval_store.consume if consume else approval_store.validate
-            return method(
+            if consume:
+                audit_event = audit.build_event(
+                    event_type="tool.approval_consumed",
+                    outcome="consumed",
+                    subject_id=approval_id,
+                    subject_type="tool_approval",
+                    actor_type="user",
+                    actor_id=owner_user_id,
+                    metadata={
+                        "tool_name": tool_name,
+                        "approval_id": approval_id,
+                        "status": "consumed",
+                        "decision": "consumed",
+                        "reason_code": "single_use_receipt_consumed",
+                    },
+                ).model_dump(mode="json")
+                return approval_store.consume(
+                    approval_id,
+                    owner_user_id=owner_user_id,
+                    tool_name=tool_name,
+                    payload_digest=payload_digest,
+                    tool_fingerprint=fingerprint,
+                    audit_event=audit_event,
+                )
+            return approval_store.validate(
                 approval_id,
                 owner_user_id=owner_user_id,
                 tool_name=tool_name,
@@ -110,7 +141,6 @@ def _build_owner_agent_core(
             approval_id, tool_name, payload, grants, consume=True
         ),
     )
-
 
 class WorkflowReconciliationRequest(BaseModel):
     step_number: int | None = Field(default=None, ge=1)
