@@ -1,6 +1,6 @@
 import sqlite3
-from datetime import UTC, datetime, timedelta
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
