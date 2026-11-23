@@ -1,6 +1,5 @@
-# Single-instance deployment: API and pull worker share one persistent SQLite volume.
-# This intentionally uses a paid Starter instance because Render free services do not
-# provide the persistent disk required by the current SQLite-first architecture.
+# Hub API + SQLite worker and an isolated EL_AI background worker.
+# The EL_AI worker has its own runtime, environment, and persistent disk.
 services:
   - type: web
     name: mr-siavash-hub-ai
@@ -28,10 +27,60 @@ services:
         value: /var/data/mrhub.sqlite3
       - key: MRH_REQUIRE_WORKER_FOR_READINESS
         value: "true"
-      # Supply these two values through Render's secret environment-variable UI.
-      # MRH_WORKFLOW_PAYLOAD_KEY must be URL-safe Base64 for exactly 32 random bytes.
+      # Hub-only secrets. They are not copied to the EL_AI worker.
       - key: MRH_WORKFLOW_PAYLOAD_KEY
         sync: false
-      # One-time remote owner bootstrap credential; remove after the owner is initialized.
       - key: MRH_OWNER_SETUP_TOKEN
         sync: false
+
+  - type: worker
+    name: mr-siavash-el-ai-bridge
+    runtime: python
+    repo: https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git
+    branch: main
+    plan: starter
+    region: frankfurt
+    buildCommand: >-
+      pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@fc97ee7e03e5d9ad26fb7bff7f86232896559e53"
+    startCommand: python -m el_ai
+    autoDeployTrigger: "off"
+    disk:
+      name: el-ai-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.18
+      - key: EL_AI_ENVIRONMENT
+        value: production
+      - key: EL_AI_STATE_DIR
+        value: /var/data
+      - key: EL_AI_CREDENTIAL_STORE
+        value: encrypted_file
+      - key: EL_AI_CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: TELEGRAM_TRANSPORT
+        value: cloudflare_bridge
+      - key: TELEGRAM_BRIDGE_URL
+        value: https://mr-siavash-el-ir-bot.mrsiavashirbot.workers.dev
+      - key: TELEGRAM_BRIDGE_SHARED_SECRET
+        sync: false
+      - key: TELEGRAM_BRIDGE_TIMEOUT_SECONDS
+        value: "8"
+      - key: TELEGRAM_OWNER_IDS
+        sync: false
+      - key: TELEGRAM_PUBLIC_ENABLED
+        value: "false"
+      - key: HUB_INTEGRATION_ENABLED
+        value: "true"
+      # Render injects the Hub private host:port; EL_AI accepts this bare
+      # host:port only with HUB_ALLOW_RENDER_PRIVATE_NETWORK=true.
+      - key: HUB_API_BASE_URL
+        fromService:
+          name: mr-siavash-hub-ai
+          type: web
+          property: hostport
+      - key: HUB_ALLOW_REMOTE
+        value: "false"
+      - key: HUB_ALLOW_RENDER_PRIVATE_NETWORK
+        value: "true"
