@@ -8,7 +8,6 @@ from mrhub.agents.lessons import (
     build_lesson_proposal,
 )
 
-
 WORKFLOW_ID = UUID("12345678-1234-5678-1234-567812345678")
 OUTPUT_DIGEST = "a" * 64
 LESSON = "Keep dependency validation ahead of all side-effecting workflow steps."
