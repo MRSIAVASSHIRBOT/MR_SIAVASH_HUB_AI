@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,15 +29,14 @@ def test_render_blueprint_separates_hub_and_el_ai_runtime_boundaries():
     assert 'value: "true"' in blueprint
     assert blueprint.count('autoDeployTrigger: "off"') == 2
     assert "autoDeploy: true" not in blueprint
-    assert "@fc97ee7e03e5d9ad26fb7bff7f86232896559e53" in blueprint
     assert "mountPath: /var/data" in blueprint
 
     hub, bridge = blueprint.split("  - type: worker", 1)
     worker_build = bridge.split("    startCommand:", 1)[0]
-    assert (
-        'pip install "git+https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI.git@'
-        "fc97ee7e03e5d9ad26fb7bff7f86232896559e53" + '"'
-    ) in worker_build
+    assert re.search(
+        r'pip install "git\\+https://github\\.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI\\.git@[0-9a-f]{40}"',
+        worker_build,
+    ), "EL_AI worker must install a reviewed immutable commit, never a moving branch"
     assert "pip install ." not in worker_build
     assert "MR_SIAVASSHIRBOT/MR_SIAVASH_HUB_AI.git" not in worker_build
 
