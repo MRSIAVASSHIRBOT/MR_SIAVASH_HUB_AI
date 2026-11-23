@@ -856,8 +856,9 @@ class WorkflowRecoveryRepository:
                     """
                     UPDATE workflow_steps
                     SET status = 'cancelled', error_code = 'cancelled',
-                        finished_at = ?, updated_at = ?
-                    WHERE workflow_id = ? AND status = 'running'
+                        finished_at = COALESCE(finished_at, ?), updated_at = ?
+                    WHERE workflow_id = ?
+                      AND status IN ('running', 'pending', 'retry_wait')
                     """,
                     (now, now, str(workflow_id)),
                 )
@@ -1162,6 +1163,16 @@ class WorkflowRecoveryRepository:
                 )
                 if run_cursor.rowcount != 1:
                     raise WorkflowRecoveryError("Workflow state changed during cancellation")
+                connection.execute(
+                    """
+                    UPDATE workflow_steps
+                    SET status = 'cancelled', error_code = 'cancelled',
+                        finished_at = COALESCE(finished_at, ?), updated_at = ?
+                    WHERE workflow_id = ? AND status IN ('pending', 'retry_wait')
+                    """,
+                    (now, now, str(workflow_id)),
+                )
+                self._refresh_dependency_states(connection, workflow_id)
                 connection.execute(
                     "DELETE FROM workflow_payloads WHERE workflow_id = ?",
                     (str(workflow_id),),
