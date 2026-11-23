@@ -26,6 +26,17 @@ def test_validation_error_has_correlation_contract_without_echoing_input():
     assert body["error"]["request_id"] == response.headers["X-Request-ID"]
     assert body["error"]["issues"][0]["message"] == "Invalid request value"
 
+    # Unknown JSON keys can themselves contain credentials. They must not be
+    # reflected in the Pydantic location path.
+    secret_key = "ghp_abcdefghijklmnopqrstuvwx123456"
+    key_response = client.post(
+        "/tools/text.echo/invoke",
+        json={"payload": {"text": "safe"}, secret_key: "untrusted"},
+    )
+    assert key_response.status_code == 422
+    assert secret_key not in key_response.text
+    assert "abcdefghijklmnopqrstuvwx" not in key_response.text
+
 
 def test_http_exception_keeps_legacy_detail_and_adds_stable_error_code():
     app = create_app()
