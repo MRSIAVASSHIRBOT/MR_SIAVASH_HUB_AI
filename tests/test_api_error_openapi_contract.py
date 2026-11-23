@@ -31,7 +31,7 @@ def test_error_response_models_preserve_legacy_detail_and_type_validation_issues
         error=APIErrorEnvelope(
             code="request_validation_error",
             message="The request contains invalid fields.",
-            request_id="12345678-1234-5678-1234-567812345678",
+            request_id="12345678-1234-5678-8234-567812345678",
             issues=[
                 APIErrorIssue(
                     location=["body", "name"],
