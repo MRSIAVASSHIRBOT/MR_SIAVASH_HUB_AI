@@ -257,11 +257,11 @@ def test_memory_search_ranks_owner_approved_matches_with_trust_signals() -> None
     assert response.status_code == 200
     payload = response.json()
     assert payload["method"] == "sqlite_fts5"
-    assert payload["ranking"]["scheme"] == "hybrid_fts5_trust_freshness_v1"
+    assert payload["ranking"]["scheme"] == "hybrid_fts5_owner_attestation_freshness_v1"
     assert payload["ranking"]["weights"] == {
         "lexical": 0.70,
         "confidence": 0.15,
-        "owner_verified": 0.10,
+        "owner_approved": 0.10,
         "freshness": 0.05,
     }
 
@@ -272,8 +272,8 @@ def test_memory_search_ranks_owner_approved_matches_with_trust_signals() -> None
     ]
     signals = results[0]["retrieval"]["signals"]
     assert signals["lexical"] == 1.0
-    assert signals["owner_verified"] == 1.0
-    assert results[0]["retrieval"]["scheme"] == "hybrid_fts5_trust_freshness_v1"
+    assert signals["owner_approved"] == 1.0
+    assert results[0]["retrieval"]["scheme"] == "hybrid_fts5_owner_attestation_freshness_v1"
     assert results[0]["retrieval"]["score"] > results[1]["retrieval"]["score"]
 
 
