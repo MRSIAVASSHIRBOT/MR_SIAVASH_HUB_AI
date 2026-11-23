@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from dataclasses import replace
 
 import pytest
@@ -11,6 +12,7 @@ from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.tool_approvals import (
+    ToolApprovalError,
     ToolInvocationApprovalStore,
     tool_definition_fingerprint,
 )
@@ -486,3 +488,121 @@ def test_decision_and_consumption_roll_back_when_audit_insert_fails(monkeypatch)
     approved = store.get(approval_id, owner_user_id="local-owner")
     assert approved is not None and approved["status"] == "approved"
 
+
+
+
+def test_tool_approval_ttl_expires_pending_and_approved_receipts():
+    authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    current = [datetime(2026, 11, 23, tzinfo=UTC)]
+    store = ToolInvocationApprovalStore(repository, clock=lambda: current[0])
+
+    pending_id = "32345678-1234-5678-1234-567812345678"
+    store.create(
+        approval_id=pending_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        payload_digest="a" * 64,
+        tool_fingerprint="b" * 64,
+        ttl_seconds=60,
+        audit_event=_approval_audit_event(
+            repository, pending_id,
+            event_type="tool.approval_requested",
+            outcome="pending",
+            status="pending",
+        ),
+    )
+    current[0] += timedelta(seconds=61)
+    expired_pending = store.decide(
+        pending_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        tool_fingerprint="b" * 64,
+        decision="approved",
+        audit_event=_approval_audit_event(
+            repository, pending_id,
+            event_type="tool.approval_decided",
+            outcome="approved",
+            status="approved",
+            decision="approved",
+        ),
+    )
+    assert expired_pending is not None
+    assert expired_pending["status"] == "expired"
+
+    approved_id = "42345678-1234-5678-1234-567812345678"
+    store.create(
+        approval_id=approved_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        payload_digest="c" * 64,
+        tool_fingerprint="d" * 64,
+        ttl_seconds=60,
+        audit_event=_approval_audit_event(
+            repository, approved_id,
+            event_type="tool.approval_requested",
+            outcome="pending",
+            status="pending",
+        ),
+    )
+    store.decide(
+        approved_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        tool_fingerprint="d" * 64,
+        decision="approved",
+        audit_event=_approval_audit_event(
+            repository, approved_id,
+            event_type="tool.approval_decided",
+            outcome="approved",
+            status="approved",
+            decision="approved",
+        ),
+    )
+    current[0] += timedelta(seconds=61)
+    consumed = store.consume(
+        approved_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        payload_digest="c" * 64,
+        tool_fingerprint="d" * 64,
+        audit_event=_approval_audit_event(
+            repository, approved_id,
+            event_type="tool.approval_consumed",
+            outcome="consumed",
+            status="consumed",
+            decision="consumed",
+        ),
+    )
+    assert consumed is False
+    expired_approved = store.get(approved_id, owner_user_id="local-owner")
+    assert expired_approved is not None
+    assert expired_approved["status"] == "expired"
+
+
+@pytest.mark.parametrize(
+    "ttl_seconds",
+    [True, 59, 901],
+)
+def test_tool_approval_ttl_rejects_boolean_and_out_of_range_values(ttl_seconds):
+    authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    store = ToolInvocationApprovalStore(repository)
+    with pytest.raises(ToolApprovalError, match="expiry"):
+        store.create(
+            approval_id="52345678-1234-5678-1234-567812345678",
+            owner_user_id="local-owner",
+            tool_name="content.publish",
+            payload_digest="a" * 64,
+            tool_fingerprint="b" * 64,
+            ttl_seconds=ttl_seconds,
+            audit_event=_approval_audit_event(
+                repository,
+                "52345678-1234-5678-1234-567812345678",
+                event_type="tool.approval_requested",
+                outcome="pending",
+                status="pending",
+            ),
+        )
