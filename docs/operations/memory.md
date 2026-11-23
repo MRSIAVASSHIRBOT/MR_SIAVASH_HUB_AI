@@ -72,3 +72,19 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+## Typed memory taxonomy and filtered retrieval
+
+Memory entries support four explicit classifications: `unspecified`, `episodic`, `semantic`, and `procedural`. Existing records are preserved by migration V56 and receive the neutral `unspecified` default; classification is not inferred retroactively.
+
+The authenticated `POST /memory/search` and `POST /agent/context/assemble` endpoints accept an optional `memory_types` filter. Filtering is applied inside the owner-scoped SQL retrieval path before ranking and context assembly. The filter is a bounded list of known taxonomy values; unknown values and null type updates are rejected.
+
+Memory dreaming and contradiction preview do not compare records across different memory types. Numeric confidence, similarity thresholds, and result limits use strict finite-value validation so booleans, numeric strings, NaN, Infinity, and out-of-range values cannot silently change ranking or validation behavior.
+
+Classification is descriptive metadata, not proof of truth, owner approval, safety, or authorization. Retrieved memory remains untrusted evidence and cannot override system policy or grant tool access.
+
+
+
+## Numeric input boundaries
+
+Memory confidence is restricted to finite numeric values in the inclusive range 0–1. Boolean values, numeric strings, non-finite floats and out-of-range values are rejected both at the API model boundary and again in the persistence repository. Search and preview limits require strict integers; booleans and numeric strings are not accepted as limits. Similarity thresholds must be finite numeric values within each endpoint's documented range. Invalid non-standard JSON NaN/Infinity inputs return a JSON-safe 422 response and never persist.
