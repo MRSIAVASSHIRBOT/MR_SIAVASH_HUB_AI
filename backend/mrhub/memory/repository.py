@@ -1,6 +1,7 @@
 """Owner-scoped memory persistence and FTS5 retrieval."""
 from __future__ import annotations
 
+import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -197,7 +198,7 @@ class MemoryRepository:
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             return 0.0
         age_seconds = max(0.0, (now - parsed.astimezone(UTC)).total_seconds())
-        return __import__("math").exp(-age_seconds / (90 * 24 * 60 * 60))
+        return math.exp(-age_seconds / (90 * 24 * 60 * 60))
 
     def search(
         self, owner_user_id: str, query: str, limit: int = 10
@@ -209,7 +210,7 @@ class MemoryRepository:
         verification (10%), and freshness (5%). These weights measure retrieval
         relevance only; they do not establish truth or grant authority.
         """
-        terms = re.findall(r"[^\\W_]+", query, flags=re.UNICODE)
+        terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         # Token extraction removes FTS operators and syntax supplied by callers.
@@ -242,7 +243,7 @@ class MemoryRepository:
         worst_rank = max(lexical_ranks)
         rank_span = worst_rank - best_rank
 
-        ranked: list[tuple[float, float, float, float, str, dict[str, object]]] = []
+        ranked: list[tuple[float, float, float, float, float, str, dict[str, object]]] = []
         for row in rows:
             lexical_rank = float(row["lexical_rank"])
             lexical_score = (
@@ -278,13 +279,23 @@ class MemoryRepository:
                     "freshness": round(freshness_score, 6),
                 },
             }
+            try:
+                updated = datetime.fromisoformat(str(row["updated_at"]))
+                updated_timestamp = (
+                    updated.astimezone(UTC).timestamp()
+                    if updated.tzinfo is not None and updated.utcoffset() is not None
+                    else 0.0
+                )
+            except ValueError:
+                updated_timestamp = 0.0
             ranked.append(
                 (
                     total_score,
                     lexical_score,
                     confidence_score,
                     verification_score,
-                    str(row["updated_at"]),
+                    updated_timestamp,
+                    str(row["memory_id"]),
                     record,
                 )
             )
@@ -295,11 +306,11 @@ class MemoryRepository:
                 -item[1],
                 -item[2],
                 -item[3],
-                item[4],
-                str(item[5]["memory_id"]),
+                -item[4],
+                item[5],
             )
         )
-        return [item[5] for item in ranked[:bounded_limit]]
+        return [item[6] for item in ranked[:bounded_limit]]
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         """Export all owned entries, including expired records, for user-controlled cleanup."""
