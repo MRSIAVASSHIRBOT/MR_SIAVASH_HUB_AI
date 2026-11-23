@@ -421,13 +421,16 @@ def test_agent_device_tool_denies_if_owner_grant_is_revoked_before_atomic_enqueu
         return original_create(device_repository, **kwargs)
 
     monkeypatch.setattr(DeviceTaskRepository, "create", revoke_before_enqueue)
-    response = client.post("/tools/device.app_launch.submit/invoke", json={
-        "payload": {
-            "device_id": device_id,
-            "app": "notepad",
-            "idempotency_key": "9bce5f6c-0b42-4c41-9d18-4c9aef8a3210",
-        }
-    })
+    payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "9bce5f6c-0b42-4c41-9d18-4c9aef8a3210",
+    }
+    approval_id = _approve_device_launch(client, payload)
+    response = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": payload, "approval_id": approval_id},
+    )
     assert response.status_code == 403
     assert response.json()["detail"]["decision"] == "deny"
 
@@ -443,13 +446,16 @@ def test_agent_device_tool_rejects_device_without_app_launch_scope():
     client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
     client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
 
-    response = client.post("/tools/device.app_launch.submit/invoke", json={
-        "payload": {
-            "device_id": device_id,
-            "app": "notepad",
-            "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
-        }
-    })
+    unsupported_payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
+    }
+    unsupported_approval = _approve_device_launch(client, unsupported_payload)
+    response = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": unsupported_payload, "approval_id": unsupported_approval},
+    )
     assert response.status_code == 403
     assert response.json()["detail"]["decision"] == "deny"
 
@@ -466,22 +472,28 @@ def test_agent_device_tool_enforces_platform_specific_app_aliases():
     client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
     client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
 
-    unsupported = client.post("/tools/device.app_launch.submit/invoke", json={
-        "payload": {
-            "device_id": device_id,
-            "app": "notepad",
-            "idempotency_key": "a4e4a0cf-fbbd-4d82-b870-8d752f519304",
-        }
-    })
+    unsupported_payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "a4e4a0cf-fbbd-4d82-b870-8d752f519304",
+    }
+    unsupported_approval = _approve_device_launch(client, unsupported_payload)
+    unsupported = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": unsupported_payload, "approval_id": unsupported_approval},
+    )
     assert unsupported.status_code == 403
     assert unsupported.json()["detail"]["decision"] == "deny"
 
-    supported = client.post("/tools/device.app_launch.submit/invoke", json={
-        "payload": {
-            "device_id": device_id,
-            "app": "chatgpt",
-            "idempotency_key": "f5d63d78-fde6-4e9f-9136-7d0634ddc3d2",
-        }
-    })
+    supported_payload = {
+        "device_id": device_id,
+        "app": "chatgpt",
+        "idempotency_key": "f5d63d78-fde6-4e9f-9136-7d0634ddc3d2",
+    }
+    supported_approval = _approve_device_launch(client, supported_payload)
+    supported = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": supported_payload, "approval_id": supported_approval},
+    )
     assert supported.status_code == 200
     assert supported.json()["result"]["task"]["app"] == "chatgpt"
