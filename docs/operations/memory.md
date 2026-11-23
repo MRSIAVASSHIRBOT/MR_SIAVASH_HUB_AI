@@ -54,7 +54,7 @@ This is the memory-entry slice only. Markdown/plain-text document ingestion, sou
 
 ## Dreaming preview — first safe implementation
 
-`POST /memory/dream/preview` runs a deterministic, owner-scoped review over at most 100 active memory entries. It proposes possible duplicates only when entries share a category and their normalized token Jaccard similarity meets the configured threshold (default 0.82; allowed range 0.75–1.0).
+`POST /memory/dream/preview` runs a deterministic, owner-scoped review over at most 100 active memory entries. It proposes possible duplicates only when entries share a category and their normalized token Jaccard similarity meets the configured threshold (default 0.82; allowed range 0.75–1.0). The service accepts only a real integer limit from 1 to 100 and a finite numeric threshold; booleans, fractional limits, NaN, and infinity are rejected.
 
 The endpoint is read-only with respect to memory content. It returns candidate IDs, short excerpts, heuristic similarity, and an explicit owner-review requirement. It does not merge, rewrite, downgrade, or delete entries. The audit event records counts only, never memory content.
 
@@ -79,7 +79,7 @@ The response includes `state_changed: false` and a limitations list. Treat every
 - records not explicitly approved by the owner or carrying confidence below 0.8;
 - possible polarity conflicts when same-category notes have highly similar wording but different explicit negation markers.
 
-The default lexical similarity threshold is 0.72 (allowed range 0.65–1.0). These are triage hints, not factual judgments. The engine does not query external sources, infer truth, promote notes, or modify/delete any record. Every item requires owner review. Audit metadata contains aggregate counts only, never note content.
+The default lexical similarity threshold is 0.72 (allowed range 0.65–1.0). The service accepts only a real integer limit from 1 to 100 and a finite numeric threshold; booleans, fractional limits, NaN, and infinity are rejected. These are triage hints, not factual judgments. The engine does not query external sources, infer truth, promote notes, or modify/delete any record. Every item requires owner review. Audit metadata contains aggregate counts only, never note content.
 
 The paired Telegram endpoint `POST /integrations/telegram/memory/validate/preview` requires the existing `memory:search` scope and resolves the owner from the paired credential.
 
