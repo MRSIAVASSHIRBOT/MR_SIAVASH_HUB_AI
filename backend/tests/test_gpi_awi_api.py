@@ -786,6 +786,15 @@ def test_persisted_plan_revoke_is_owner_scoped_and_returns_no_store_headers(monk
             revoke_calls.append((requested_id, owner_user_id))
             return SimpleNamespace(plan_id=requested_id, status="revoked")
 
+    audit_events = []
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
     monkeypatch.setattr(
         agent_routes,
         "get_settings",
@@ -793,6 +802,7 @@ def test_persisted_plan_revoke_is_owner_scoped_and_returns_no_store_headers(monk
     )
     monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
     monkeypatch.setattr(agent_routes, "AgentWorkOrderPlanRepository", FakePlanRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FakeAuditLogger)
 
     response = Response()
     result = agent_routes.revoke_persisted_goal_work_order_plan(
@@ -802,6 +812,15 @@ def test_persisted_plan_revoke_is_owner_scoped_and_returns_no_store_headers(monk
     )
 
     assert revoke_calls == [(str(plan_id), "owner-revoke")]
+    assert audit_events == [{
+        "event_type": "agent.work_order_plan_revocation_requested",
+        "outcome": "requested",
+        "actor_type": "user",
+        "actor_id": "owner-revoke",
+        "subject_type": "agent_work_order_plan",
+        "subject_id": str(plan_id),
+        "metadata": {"operation": "revoke", "owner_scope": "authenticated_user"},
+    }]
     assert result == {
         "plan_id": str(plan_id),
         "status": "revoked",
