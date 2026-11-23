@@ -56,7 +56,6 @@ def test_enforces_serialized_utf8_byte_limit():
         export_review_summary(summary(findings=findings))
 
 
-def test_ignores_unrecognized_input_fields():
-    expected = export_review_summary(summary())
-    actual = export_review_summary(summary(untrusted_extra="ignored"))
-    assert actual == expected
+def test_rejects_unrecognized_input_fields():
+    with pytest.raises(ExportError):
+        export_review_summary(summary(untrusted_extra="not-in-schema"))
