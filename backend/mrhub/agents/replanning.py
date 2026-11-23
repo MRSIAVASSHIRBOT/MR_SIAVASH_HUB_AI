@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Mapping
+from collections.abc import Mapping
 
 MAX_GAPS = 100
 MAX_TEXT_LENGTH = 500
