@@ -45,6 +45,7 @@ def test_retry_after_is_honored_but_cannot_exceed_policy_cap():
 @pytest.mark.parametrize(
     "kwargs",
     [
+        {"retryable_error_codes": {"rate_limited"}},
         {"max_attempts": 0},
         {"base_delay_seconds": 0},
         {"base_delay_seconds": 10, "max_delay_seconds": 5},
@@ -53,7 +54,7 @@ def test_retry_after_is_honored_but_cannot_exceed_policy_cap():
     ],
 )
 def test_retry_policy_rejects_invalid_configuration(kwargs):
-    with pytest.raises(ValueError):
+    with pytest.raises((TypeError, ValueError)):
         RetryPolicy(**kwargs)
 
 
