@@ -1,6 +1,7 @@
 """Conservative, read-only memory validation and contradiction hints."""
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from datetime import UTC, datetime
@@ -86,10 +87,16 @@ class MemoryValidationEngine:
         limit: int = _MAX_ENTRIES,
         threshold: float = _DEFAULT_THRESHOLD,
     ) -> dict[str, Any]:
-        if not 1 <= limit <= _MAX_ENTRIES:
-            raise ValueError("Validation limit must be between 1 and 100")
-        if not 0.65 <= threshold <= 1.0:
-            raise ValueError("Contradiction threshold must be between 0.65 and 1.0")
+        if type(limit) is not int or not 1 <= limit <= _MAX_ENTRIES:
+            raise ValueError("Validation limit must be an integer between 1 and 100")
+        if (
+            type(threshold) not in (int, float)
+            or not 0.65 <= threshold <= 1.0
+            or not math.isfinite(threshold)
+        ):
+            raise ValueError(
+                "Contradiction threshold must be a finite number between 0.65 and 1.0"
+            )
 
         entries = self.repository.list_entries(
             owner_user_id, limit=limit, include_expired=True
