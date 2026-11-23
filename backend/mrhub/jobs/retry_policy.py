@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 MAX_RETRY_ATTEMPTS = 10
 MAX_RETRY_DELAY_SECONDS = 86_400
 
