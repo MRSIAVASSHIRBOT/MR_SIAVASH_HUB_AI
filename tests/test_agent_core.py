@@ -1403,8 +1403,6 @@ def test_approval_receipt_is_part_of_durable_request_identity():
 
 
 def test_agent_core_refreshes_owner_grants_after_receipt_consumption():
-    from mrhub.security.policy import PolicyDecision
-
     calls = []
     consumed = []
     permissions = {"current": frozenset({"publish.external"})}
