@@ -1,10 +1,10 @@
 """Plan revision diff and explicit review decision records (proposal-only)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from typing import Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 MAX_STEPS = 100
 MAX_TEXT = 500
