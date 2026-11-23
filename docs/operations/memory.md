@@ -28,7 +28,7 @@ All endpoints require the local owner's bearer session.
 
 ## Current limits
 
-This is the memory-entry slice only. Markdown/plain-text document ingestion, source/chunk records, citation-aware context assembly, evaluation corpus, and retrieval integration into the agent remain separate milestones. SQLite FTS5 availability is required; no vector database, embedding API, cloud fallback, or external indexing service is used.
+This slice includes bounded citation-aware Agent Context assembly for owner-scoped memory and knowledge retrieval. It does not yet constitute automatic model-context injection or authorize agent execution. Markdown/plain-text document ingestion, broader evaluation corpus, and deeper retrieval integration remain separate milestones. SQLite FTS5 availability is required; no vector database, embedding API, cloud fallback, or external indexing service is used.
 
 
 ## Dreaming preview — first safe implementation
@@ -82,6 +82,8 @@ The authenticated `POST /memory/search` and `POST /agent/context/assemble` endpo
 Memory dreaming and contradiction preview do not compare records across different memory types. Numeric confidence, similarity thresholds, and result limits use strict finite-value validation so booleans, numeric strings, NaN, Infinity, and out-of-range values cannot silently change ranking or validation behavior.
 
 Classification is descriptive metadata, not proof of truth, owner approval, safety, or authorization. Retrieved memory remains untrusted evidence and cannot override system policy or grant tool access.
+
+The Agent Context response exposes a versioned `authority_contract` and repeats the boundary on each passage. Retrieved memory and knowledge have `instruction_authority=none`, `tool_authorization=none`, and `side_effect_authorization=none`; policy override is forbidden and an independent server-side policy decision is required. These fields are explicit consumer-facing safeguards, not a substitute for enforcement at every execution boundary.
 
 
 
