@@ -601,9 +601,10 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
             required_permissions=frozenset({"cloudflare.read"}),
         )
     )
+    registry_owners = []
     monkeypatch.setattr(
         "mrhub.api.routes.agent.build_tool_registry",
-        lambda **_kwargs: registry,
+        lambda **kwargs: registry_owners.append(kwargs.get("owner_user_id")) or registry,
     )
     request = {
         "goal": "Read a Cloudflare resource only with owner permission",
@@ -625,6 +626,7 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert allowed.status_code == 200
     assert allowed.json()["execution_completed"] is True
     assert calls == ["read"]
+    assert registry_owners == ["local-owner", "local-owner", "local-owner"]
 
     revoked = client.delete("/tools/grants/cloudflare.read")
     assert revoked.status_code == 204
