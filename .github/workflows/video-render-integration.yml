@@ -49,10 +49,10 @@ jobs:
           import re
 
           candidates = [
-    Path("/etc/apt/apt-mirrors.txt"),
-    Path("/etc/apt/sources.list"),
-    *Path("/etc/apt/sources.list.d").glob("*"),
-]
+              Path("/etc/apt/apt-mirrors.txt"),
+              Path("/etc/apt/sources.list"),
+              *Path("/etc/apt/sources.list.d").glob("*"),
+          ]
           for source in candidates:
               if not source.is_file():
                   continue
