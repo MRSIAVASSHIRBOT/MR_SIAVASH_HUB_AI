@@ -45,7 +45,7 @@ GPI and AWI each make one local model-generation request. The dedicated Kimi end
 
 A successful response includes:
 
-- `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, acceptance criteria, verification steps, and advisory risk class.
+- `work_order`: the validated structured goal, scope, assumptions, constraints, dependencies, capabilities, model-estimated complexity, explicit missing information, clarification questions, research requirement/questions, acceptance criteria, verification steps, computed readiness indicators, and advisory risk class.
 - `plan`: the validated dependency graph and rationale.
 - `capability_assessment`: required, available, and missing capability names.
 - `planning_assessment`: deterministic complexity factors, potential information gaps, research signals, capability-based tool-readiness, and a validated topological plan order.
@@ -81,11 +81,11 @@ Focused tests cover work-order validation, server-derived risk classification, d
 
 The planning response includes a read-only assessment alongside the generated WorkOrder and AWI plan:
 
-- Complexity is scored with a bounded structural heuristic using plan size, dependency depth, dependency edges, declared capabilities, and unverified assumptions. It is a planning aid, not a performance estimate.
-- Information-gap codes flag an unspecified scope, assumptions requiring confirmation, declared dependencies requiring validation, and missing registered capabilities. An empty gap list means only that these checks detected none; it is not proof that the request contains every detail needed.
-- Research is marked required when freshness-oriented phrases are present, recommended when explicit research/source/documentation phrases are present, and otherwise not indicated. This is a bounded keyword heuristic, not a semantic guarantee and not an automatic web request.
+- Complexity exposes two clearly separated signals: the model's bounded low/moderate/high estimate and a deterministic structural score using plan size, dependency depth, dependency edges, declared capabilities, and unverified assumptions. Neither is a performance estimate or an execution budget.
+- Information-gap codes flag an unspecified scope, assumptions requiring confirmation, declared dependencies requiring validation, explicit missing user information, and missing registered capabilities. The validated WorkOrder separately carries the exact missing-information items and clarification questions. An empty gap list means only that these checks detected none; it is not proof that the request contains every detail needed.
+- An explicit GPI research requirement and its bounded questions take precedence. When GPI does not request research, freshness-oriented phrases can still flag a required check and explicit source/documentation phrases can recommend research. This keyword fallback is a bounded heuristic, not a semantic guarantee and not an automatic web request.
 - Tool readiness distinguishes no declared capability, missing registered capabilities, and capability presence where authorization still remains a separate check.
 - Plan steps are returned in deterministic topological order using the shared workflow DAG planner.
-- The response exposes the registered provider/model selected for the text-planning request.
+- The response exposes the registered provider/model selected for the text-planning request. Planning readiness distinguishes clarification, required research, and ready-for-review states; none grants execution permission.
 
 All fields are advisory. The endpoint remains planning-only: it does not prompt the owner automatically, perform research, select or invoke tools, grant permissions, or execute the plan. A capability being registered does not imply that its invocation is authorized.
