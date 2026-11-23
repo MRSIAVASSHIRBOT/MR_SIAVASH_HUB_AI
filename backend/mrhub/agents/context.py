@@ -169,6 +169,7 @@ class AgentContextAssembler:
                     "kind": "memory",
                     "reference": f"memory://entries/{item['memory_id']}",
                     "trust_classification": "owner_authored_unverified",
+                    "memory_type": item.get("memory_type", "unspecified"),
                     "verification_status": item.get("verification_status", "user_authored"),
                     "provenance": item.get("provenance", "unknown"),
                     "content": str(item["content"])[:MAX_MEMORY_ITEM_CHARS],
