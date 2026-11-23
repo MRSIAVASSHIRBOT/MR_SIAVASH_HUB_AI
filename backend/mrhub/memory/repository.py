@@ -185,31 +185,121 @@ class MemoryRepository:
             )
         return cursor.rowcount
 
+    @staticmethod
+    def _freshness_score(updated_at: object, now: datetime) -> float:
+        """Return a bounded 90-day exponential freshness signal."""
+        if not isinstance(updated_at, str) or not updated_at:
+            return 0.0
+        try:
+            parsed = datetime.fromisoformat(updated_at)
+        except ValueError:
+            return 0.0
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return 0.0
+        age_seconds = max(0.0, (now - parsed.astimezone(UTC)).total_seconds())
+        return __import__("math").exp(-age_seconds / (90 * 24 * 60 * 60))
+
     def search(
         self, owner_user_id: str, query: str, limit: int = 10
     ) -> list[dict[str, object]]:
-        """Run bounded AND-style lexical search with owner/expiry filtering in SQL."""
-        terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
+        """Search lexically, then rerank a bounded candidate set using trust signals.
+
+        The FTS5 candidate set is owner- and expiry-filtered in SQL. Ranking is
+        deterministic and combines lexical rank (70%), confidence (15%), owner
+        verification (10%), and freshness (5%). These weights measure retrieval
+        relevance only; they do not establish truth or grant authority.
+        """
+        terms = re.findall(r"[^\\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         # Token extraction removes FTS operators and syntax supplied by callers.
-        match_expression = " AND ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12])
+        match_expression = " AND ".join(
+            f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12]
+        )
         bounded_limit = max(1, min(limit, 25))
+        candidate_limit = 100
+        now = datetime.now(UTC)
         with self.tasks._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT m.*
+                SELECT m.*, bm25(memory_entries_fts) AS lexical_rank
                 FROM memory_entries_fts
                 JOIN memory_entries AS m ON m.memory_id = memory_entries_fts.memory_id
                 WHERE memory_entries_fts MATCH ?
                   AND m.owner_user_id = ?
                   AND (m.expires_at IS NULL OR m.expires_at > ?)
-                ORDER BY bm25(memory_entries_fts) ASC, m.updated_at DESC
+                ORDER BY lexical_rank ASC, m.updated_at DESC, m.memory_id ASC
                 LIMIT ?
                 """,
-                (match_expression, owner_user_id, self._now(), bounded_limit),
+                (match_expression, owner_user_id, now.isoformat(), candidate_limit),
             ).fetchall()
-        return [self._record(row) for row in rows]
+
+        if not rows:
+            return []
+
+        lexical_ranks = [float(row["lexical_rank"]) for row in rows]
+        best_rank = min(lexical_ranks)
+        worst_rank = max(lexical_ranks)
+        rank_span = worst_rank - best_rank
+
+        ranked: list[tuple[float, float, float, float, str, dict[str, object]]] = []
+        for row in rows:
+            lexical_rank = float(row["lexical_rank"])
+            lexical_score = (
+                1.0
+                if rank_span <= 1e-12
+                else (worst_rank - lexical_rank) / rank_span
+            )
+            confidence_value = row["confidence"]
+            confidence_score = (
+                min(1.0, max(0.0, float(confidence_value)))
+                if isinstance(confidence_value, (int, float))
+                and not isinstance(confidence_value, bool)
+                else 0.0
+            )
+            verification_score = (
+                1.0 if row["verification_status"] == "user_approved" else 0.0
+            )
+            freshness_score = self._freshness_score(row["updated_at"], now)
+            total_score = (
+                0.70 * lexical_score
+                + 0.15 * confidence_score
+                + 0.10 * verification_score
+                + 0.05 * freshness_score
+            )
+            record = self._record(row)
+            record["retrieval"] = {
+                "scheme": "hybrid_fts5_trust_freshness_v1",
+                "score": round(total_score, 6),
+                "signals": {
+                    "lexical": round(lexical_score, 6),
+                    "confidence": round(confidence_score, 6),
+                    "owner_verified": round(verification_score, 6),
+                    "freshness": round(freshness_score, 6),
+                },
+            }
+            ranked.append(
+                (
+                    total_score,
+                    lexical_score,
+                    confidence_score,
+                    verification_score,
+                    str(row["updated_at"]),
+                    record,
+                )
+            )
+
+        ranked.sort(
+            key=lambda item: (
+                -item[0],
+                -item[1],
+                -item[2],
+                -item[3],
+                item[4],
+                str(item[5]["memory_id"]),
+            )
+        )
+        return [item[5] for item in ranked[:bounded_limit]]
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         """Export all owned entries, including expired records, for user-controlled cleanup."""
