@@ -85,7 +85,8 @@ _AUDIO_TERMS = (
 )
 _INFORMATION_TERMS = (
     "what is", "what are", "how does", "how do", "why does", "explain",
-    "define", "meaning of", "چیست", "چه هست", "چطور", "چگونه", "چرا",
+    "define", "meaning of", "how to", "steps to", "ways to", "what happens if",
+    "چیست", "چه هست", "چطور", "چگونه", "چرا", "نحوه", "روش", "مراحل",
     "توضیح بده", "تعریف کن", "معنی",
 )
 _UNCERTAINTY_TERMS = (
@@ -176,7 +177,10 @@ def analyze_goal(
     vision_required = _contains_any(normalized, _VISION_TERMS)
     audio_required = _contains_any(normalized, _AUDIO_TERMS)
     information_request = _contains_any(normalized, _INFORMATION_TERMS)
-    tool_use_required = _contains_any(normalized, _TOOL_ACTION_TERMS) or capability_count > 0
+    tool_action_signal = _contains_any(normalized, _TOOL_ACTION_TERMS)
+    # An instructional question can mention action verbs without requesting the
+    # Agent to perform the action. Explicit WorkOrder capabilities still count.
+    tool_use_required = capability_count > 0 or (tool_action_signal and not information_request)
     high_impact = _contains_any(combined, _HIGH_IMPACT_TERMS)
 
     information_gaps: list[str] = []
@@ -202,7 +206,7 @@ def analyze_goal(
         information_gaps.append("unresolved_assumption_or_constraint")
         reason_codes.append("work_order_contains_unresolved_information")
 
-    if high_impact and (work_order is None or not scope):
+    if high_impact and tool_use_required and (work_order is None or not scope):
         information_gaps.append("high_impact_action_scope")
         reason_codes.append("high_impact_scope_requires_review")
 
@@ -228,7 +232,7 @@ def analyze_goal(
     score += min(10, len(constraints) * 2)
     score += min(10, criterion_count * 2)
     score += min(5, verification_count)
-    if high_impact:
+    if high_impact and tool_use_required:
         score += 10
     score = min(100, score)
 
