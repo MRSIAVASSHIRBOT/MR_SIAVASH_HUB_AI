@@ -981,7 +981,7 @@ class WorkflowRecoveryRepository:
                     """
                     UPDATE worker_executions
                     SET error_code = 'step_retry_limit_exceeded', finished_at = ?,
-                        next_attempt_at = NULL
+                        next_attempt_at = NULL, result_json = NULL
                     WHERE task_id = ?
                     """,
                     (now, task_id),
