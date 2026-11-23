@@ -102,6 +102,7 @@ class WorkOrderIntelligenceAssessment:
     research_decision: ResearchDecision
     research_signals: tuple[str, ...]
     research_questions: tuple[str, ...]
+    declared_work_order_readiness: str
     planning_readiness: str
     tool_decision: ToolDecision
     ordered_step_ids: tuple[str, ...]
@@ -151,6 +152,7 @@ class WorkOrderIntelligenceAssessment:
                 "ordering": "validated_topological",
                 "execution_started": False,
             },
+            "declared_work_order_readiness": self.declared_work_order_readiness,
             "planning_readiness": self.planning_readiness,
             "planning_only": True,
             "authorization_checked": False,
@@ -287,6 +289,7 @@ def assess_work_order_intelligence(
         research_decision=research_decision,
         research_signals=research_signals,
         research_questions=tuple(work_order.research_questions),
+        declared_work_order_readiness=work_order.planning_readiness,
         planning_readiness=planning_readiness,
         tool_decision=tool_decision,
         ordered_step_ids=ordered_step_ids,
