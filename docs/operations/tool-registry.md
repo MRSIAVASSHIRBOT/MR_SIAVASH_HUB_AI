@@ -59,7 +59,7 @@ The authenticated `POST /policy/evaluate` endpoint accepts only a registered act
 
 The response is inspection-only. It explicitly includes `evaluation_only=true`, `execution_authorized=false`, and `action_executed=false`. A caller must still use the separate authenticated tool invocation endpoint, which rebuilds the registered definition and checks current grants before any handler is invoked.
 
-The current direct tool-invocation API does not accept a server-issued, action-bound approval receipt. Therefore, high-impact and external-effect tools remain fail-closed with `require_approval`; a caller-supplied approval flag is not accepted. Task-level approvals are not substitutes for tool-invocation approvals because they are not bound to the exact tool definition and canonical payload digest. A future approval flow must issue an owner-scoped, expiring, one-time receipt bound to that exact action before enabling those invocations.
+Direct tool invocation and durable Agent workflows accept owner-scoped, expiring, one-time approval receipts bound to the exact registered tool, normalized payload digest, and current ToolDefinition fingerprint. A receipt is created pending, explicitly approved or rejected by its owner, validated during planning, and atomically consumed immediately before handler invocation. Receipt IDs are part of durable request identity. Invalid, expired, replayed, cross-owner, payload-mismatched or definition-mismatched receipts fail closed. Caller-supplied boolean approval flags remain unsupported.
 
 ## Registration-time contract validation
 
@@ -121,3 +121,10 @@ server-generated definition no longer matches the persisted step metadata,
 resume validation fails closed rather than silently reclassifying or replaying
 the old step. Operators must reconcile such a workflow before continuing.
 
+
+
+## Action-bound tool approval receipts
+
+Approval receipts are not general permission grants. They are owner-scoped, one-time and expire after a bounded interval. Each receipt binds the exact tool name, canonical validated payload digest, and current server-owned ToolDefinition fingerprint, including risk, required permissions, external-side-effect classification and replay safety. The database stores only digests and lifecycle metadata, not the tool payload.
+
+The owner must explicitly approve or reject the pending request. Planning validates a receipt without consuming it; execution revalidates current owner grants and policy, then atomically consumes the matching receipt immediately before invocation. A receipt cannot be reused, transferred to another owner, or applied to a changed payload or tool definition. Device app launch continues to enforce the exact owner and device scopes at execution.

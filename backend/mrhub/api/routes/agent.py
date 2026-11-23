@@ -50,6 +50,7 @@ from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.tool_approvals import ToolApprovalError, ToolInvocationApprovalStore, canonical_tool_payload, tool_definition_fingerprint
 from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
@@ -60,14 +61,49 @@ def _build_owner_agent_core(
     owner_user_id: str,
     repository: TaskRepository | None = None,
 ) -> AgentCore:
-    """Build an AgentCore whose grants come only from the authenticated owner store."""
+    """Build an owner-scoped AgentCore with one-time action-bound approval receipts."""
     tasks = repository or TaskRepository(get_settings().database_path)
     tasks.initialize()
     permissions = ToolPermissionService(tasks, AuditLogger(tasks))
+    registry = build_tool_registry(owner_user_id=owner_user_id)
+    approval_store = ToolInvocationApprovalStore(tasks)
+
+    def resolve_approval(
+        approval_id: str,
+        tool_name: str,
+        payload: dict[str, object],
+        granted_permissions: frozenset[str],
+        *,
+        consume: bool,
+    ) -> bool:
+        """Validate or consume an owner receipt against the exact current action."""
+        try:
+            tool = registry.get(tool_name)
+            _normalized, payload_digest = canonical_tool_payload(tool, payload)
+            fingerprint = tool_definition_fingerprint(tool)
+            method = approval_store.consume if consume else approval_store.validate
+            return method(
+                approval_id,
+                owner_user_id=owner_user_id,
+                tool_name=tool_name,
+                payload_digest=payload_digest,
+                tool_fingerprint=fingerprint,
+            )
+        except (LookupError, ToolApprovalError, TypeError, ValueError):
+            return False
+        except Exception:  # noqa: BLE001 - receipt checks fail closed
+            return False
+
     return AgentCore(
         build_model_router(),
-        build_tool_registry(),
+        registry,
         permission_provider=lambda: permissions.active_permissions(owner_user_id),
+        approval_validator=lambda approval_id, tool_name, payload, grants: resolve_approval(
+            approval_id, tool_name, payload, grants, consume=False
+        ),
+        approval_consumer=lambda approval_id, tool_name, payload, grants: resolve_approval(
+            approval_id, tool_name, payload, grants, consume=True
+        ),
     )
 
 

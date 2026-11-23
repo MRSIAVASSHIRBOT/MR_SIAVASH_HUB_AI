@@ -42,6 +42,7 @@ class AuditLogger:
         "tool_calls",
         "context_passage_count",
         "tool_name",
+        "approval_id",
         "permission",
         "correlation_id",
         "client_id",
