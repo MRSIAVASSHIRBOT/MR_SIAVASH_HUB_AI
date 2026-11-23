@@ -455,3 +455,45 @@ def test_agent_device_tool_enforces_platform_specific_app_aliases():
     })
     assert supported.status_code == 200
     assert supported.json()["result"]["task"]["app"] == "chatgpt"
+
+def test_tool_invoke_keeps_high_impact_actions_fail_closed_without_bound_approval(
+    monkeypatch,
+):
+    client = authenticated_client()
+    calls = []
+
+    class ApprovalInput(BaseModel):
+        value: str
+
+    class ApprovalOutput(BaseModel):
+        accepted: bool
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="content.publish",
+            description="Publish one approved content item to an external destination.",
+            input_model=ApprovalInput,
+            output_model=ApprovalOutput,
+            handler=lambda _payload: calls.append("executed") or ApprovalOutput(accepted=True),
+            risk_class=RiskClass.HIGH,
+            external_side_effect=True,
+        )
+    )
+    monkeypatch.setattr(tools_api, "build_tool_registry", lambda **_kwargs: registry)
+
+    blocked = client.post(
+        "/tools/content.publish/invoke",
+        json={"payload": {"value": "example"}},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["detail"]["decision"] == "require_approval"
+    assert calls == []
+
+    # A caller-supplied approval flag is not part of the request contract.
+    spoofed = client.post(
+        "/tools/content.publish/invoke",
+        json={"payload": {"value": "example"}, "user_approved": True},
+    )
+    assert spoofed.status_code == 422
+    assert calls == []
