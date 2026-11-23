@@ -603,7 +603,7 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     )
     monkeypatch.setattr(
         "mrhub.api.routes.agent.build_tool_registry",
-        lambda: registry,
+        lambda **_kwargs: registry,
     )
     request = {
         "goal": "Read a Cloudflare resource only with owner permission",
