@@ -1563,7 +1563,7 @@ MIGRATIONS = (
                 "ON memory_entries(owner_user_id, memory_type, updated_at)"
             ),
         ),
-    ),,
+    ),
     Migration.build(
         57,
         "owner_scoped_action_bound_tool_approvals",
