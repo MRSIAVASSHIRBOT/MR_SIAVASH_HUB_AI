@@ -47,7 +47,10 @@ def test_lesson_preview_uses_persisted_success_digest_and_never_writes_memory():
     assert proposal["automatic_memory_write"] is False
     assert proposal["execution_authorized"] is False
     assert proposal["memory_entry_preview"]["content"] == lesson_text
-    assert proposal["memory_entry_preview"]["memory_type"] == "procedural"
+    assert proposal["proposed_memory_classification"] == "procedural_candidate"
+    assert set(proposal["memory_entry_preview"]) == {
+        "category", "content", "provenance", "confidence", "verification_status"
+    }
 
     after = memory.list_entries("local-owner", limit=100)
     assert after == before
