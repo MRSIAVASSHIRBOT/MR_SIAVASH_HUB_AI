@@ -233,7 +233,7 @@ PR #276 is merged. The Release & Update Manager records its merge and exact-head
 
 ## Superseding release-manager checkpoint — 2026-11-23
 
-**Observed main commit:** `e8e82326958c528e9f0aca1ef67246973456e266`  
+**Observed main commit:** `0fe5de583b2d1ac60fb20b15e2cc7f55b506a7e4`  
 **Package metadata:** `0.1.0` in `pyproject.toml`; development metadata only.  
 **Release decision:** **NOT RELEASE-READY**.
 
@@ -248,13 +248,14 @@ PR #276 is merged. The Release & Update Manager records its merge and exact-head
 
 ### Exact-main CI evidence
 
-At this checkpoint, the push workflows associated with the exact main commit had not completed successfully as a complete required-check set:
+The main branch advanced by three commits from the earlier `e8e82326958c528e9f0aca1ef67246973456e266` checkpoint (zero commits behind). The exact `0fe5de583b2d1ac60fb20b15e2cc7f55b506a7e4` commit currently has 30 GitHub check-run records in the observed API snapshot:
 
-- Backend CI run `45152243361` was queued.
-- A newer CI, Video Render Integration, and Defensive Python Scan attempt was cancelled.
-- Earlier push attempts were also cancelled or queued.
+- 15 records are queued.
+- 15 records are completed: 1 success, 14 cancelled, and 0 failures.
+- The sole completed success is `Real FFmpeg MP4 integration`; the Python 3.11/3.12 tests, Windows wheel/device checks, security scan, supply-chain review, and other required jobs are not a completed passing matrix.
+- The aggregate commit status is `pending`.
 
-Cancelled and queued runs are not passing evidence. Re-run and verify the full required matrix on the exact release candidate before tagging.
+Queued and cancelled jobs are not passing evidence. These records include multiple workflow attempts; they must not be interpreted as 30 distinct successful gates. Re-run and verify the complete required matrix on the exact release candidate before tagging.
 
 ### Current release gates
 
