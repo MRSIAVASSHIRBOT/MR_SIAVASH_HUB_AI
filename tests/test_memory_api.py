@@ -226,3 +226,40 @@ def test_memory_repository_rejects_non_text_values(field: str) -> None:
             UUID(created.json()["memory_id"]),
             {field: ["not", "text"]},
         )
+
+def test_memory_type_is_persisted_filtered_and_updated():
+    client = authenticated_client()
+    created = {}
+    for memory_type in ("episodic", "semantic", "procedural"):
+        response = client.post(
+            "/memory",
+            json={
+                "memory_type": memory_type,
+                "category": "apollo",
+                "content": "memorytaxonomyfilteronlytoken Apollo mission classification marker",
+            },
+        )
+        assert response.status_code == 201
+        created[memory_type] = response.json()["memory_id"]
+        assert response.json()["memory_type"] == memory_type
+
+    episodic = client.post(
+        "/memory/search",
+        json={"query": "memorytaxonomyfilteronlytoken", "memory_types": ["episodic"]},
+    )
+    assert episodic.status_code == 200
+    assert [item["memory_id"] for item in episodic.json()["results"]] == [created["episodic"]]
+
+    updated = client.patch(
+        f"/memory/{created['episodic']}",
+        json={"memory_type": "procedural"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["memory_type"] == "procedural"
+
+    invalid_update = client.patch(
+        f"/memory/{created['semantic']}",
+        json={"memory_type": None},
+    )
+    assert invalid_update.status_code == 422
+
