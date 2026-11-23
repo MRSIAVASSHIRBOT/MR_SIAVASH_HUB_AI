@@ -819,7 +819,7 @@ def test_persisted_plan_revoke_is_owner_scoped_and_returns_no_store_headers(monk
         "actor_id": "owner-revoke",
         "subject_type": "agent_work_order_plan",
         "subject_id": str(plan_id),
-        "metadata": {"operation": "revoke", "owner_scope": "authenticated_user"},
+        "metadata": {"status": "revocation_requested", "decision": "revoke"},
     }]
     assert result == {
         "plan_id": str(plan_id),
