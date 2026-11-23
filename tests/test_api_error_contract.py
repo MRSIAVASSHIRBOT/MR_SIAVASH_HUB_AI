@@ -38,7 +38,7 @@ def test_validation_error_has_correlation_contract_without_echoing_input():
     assert "abcdefghijklmnopqrstuvwx" not in key_response.text
 
 
-def test_http_exception_keeps_legacy_detail_and_adds_stable_error_code():
+def test_http_exception_keeps_reviewed_legacy_detail_and_adds_stable_error_code():
     app = create_app()
 
     def conflict():
@@ -51,6 +51,75 @@ def test_http_exception_keeps_legacy_detail_and_adds_stable_error_code():
     assert response.json()["detail"] == {"reason": "stale_revision"}
     assert response.json()["error"]["code"] == "state_conflict"
     assert response.json()["error"]["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_http_exception_redacts_unreviewed_values_and_attacker_controlled_fields():
+    app = create_app()
+    sentinel = "api_key=private-test-value"
+
+    def conflict():
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "state_conflict",
+                "reason": "stale_revision",
+                "message": sentinel,
+                "profile_ids": [sentinel],
+                "debug": sentinel,
+            },
+        )
+
+    app.add_api_route("/_test/private-conflict", conflict, methods=["GET"])
+    response = TestClient(app).get("/_test/private-conflict")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "state_conflict",
+        "reason": "stale_revision",
+    }
+    assert sentinel not in response.text
+
+
+def test_http_exception_uses_status_fallback_for_unreviewed_provider_text():
+    app = create_app()
+    private_detail = "provider response exposed api_key=not-a-real-secret"
+
+    def fail():
+        raise HTTPException(status_code=503, detail=private_detail)
+
+    app.add_api_route("/_test/provider-failure", fail, methods=["GET"])
+    response = TestClient(app).get("/_test/provider-failure")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "The service is temporarily unavailable."
+    assert private_detail not in response.text
+    assert response.json()["error"]["code"] == "service_unavailable"
+    assert response.json()["error"]["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_http_exception_preserves_only_bounded_structured_metadata():
+    app = create_app()
+
+    def rate_limited():
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "kimi_rate_limited",
+                "message": "Kimi requests are temporarily rate limited",
+                "retry_after_seconds": 30,
+                "profile_ids": ["caller-controlled"],
+            },
+        )
+
+    app.add_api_route("/_test/rate-limited", rate_limited, methods=["GET"])
+    response = TestClient(app).get("/_test/rate-limited")
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == {
+        "code": "kimi_rate_limited",
+        "message": "Kimi requests are temporarily rate limited",
+        "retry_after_seconds": 30,
+    }
 
 
 def test_unhandled_exception_never_exposes_exception_text():
