@@ -36,3 +36,6 @@ The score is a transparent routing heuristic, not a learned prediction, guarante
 ## Validation
 
 Unit tests cover information-only requests, current-source research cues, tool-use cues, image/audio inputs, underspecified goals, unresolved WorkOrder assumptions, scope gaps and input bounds. API tests verify authentication and prove that the preflight endpoint does not select or invoke an inference provider.
+
+
+When a validated WorkOrder is supplied, its explicit `research_required`, `research_questions`, `missing_information` and `clarification_questions` fields are authoritative inputs to the analysis. A keyword-only fallback must not contradict a validated WorkOrder decision.
