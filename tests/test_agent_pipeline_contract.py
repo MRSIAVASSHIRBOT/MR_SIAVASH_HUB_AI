@@ -1,4 +1,6 @@
 """Cross-module contract tests for the AWI proposal/review pipeline."""
+import pytest
+
 from mrhub.agents.plan_revision import revise_plan
 from mrhub.agents.review_export import export_review_summary
 from mrhub.agents.revision_integration import preview_integration
