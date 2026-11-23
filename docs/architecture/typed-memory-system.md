@@ -21,7 +21,7 @@ Context assembly carries `memory_type` into the model context while continuing t
 
 ## Migration
 
-Schema migration 55 adds a constrained `memory_type` column and an owner/type/update index. The migration preserves content, provenance, verification state and existing FTS index entries. The column check permits only `unspecified`, `episodic`, `semantic` and `procedural`.
+Schema migration 56 adds a constrained `memory_type` column and an owner/type/update index. The migration preserves content, provenance, verification state and existing FTS index entries. The column check permits only `unspecified`, `episodic`, `semantic` and `procedural`.
 
 ## Security and limitations
 
