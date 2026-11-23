@@ -129,4 +129,12 @@ async def unhandled_exception_handler(
                 "request_id": request_id,
             },
         },
+        headers={
+            "X-Request-ID": request_id,
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Referrer-Policy": "no-referrer",
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+            "Cache-Control": "no-store",
+        },
     )
