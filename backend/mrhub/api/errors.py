@@ -43,10 +43,17 @@ def _validation_issues(exc: RequestValidationError) -> list[dict[str, Any]]:
     """Keep bounded field locations and error types; never echo input/context."""
     sanitized: list[dict[str, Any]] = []
     for error in exc.errors()[:100]:
-        location = [
-            (item if isinstance(item, str) else str(item))[:80]
-            for item in error.get("loc", ())[:8]
-        ]
+        raw_location = error.get("loc", ())[:8]
+        location: list[str | int] = []
+        for index, item in enumerate(raw_location):
+            if index == 0 and item in {"body", "query", "path", "header", "cookie"}:
+                location.append(item)
+            elif isinstance(item, int) and not isinstance(item, bool):
+                location.append(item)
+            else:
+                # Field names can be attacker-controlled (for example, extra
+                # JSON keys or arbitrary mapping keys); never reflect them.
+                location.append("field")
         error_type = error.get("type")
         code = (
             error_type[:80]
