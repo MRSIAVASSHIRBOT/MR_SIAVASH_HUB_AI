@@ -72,3 +72,13 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+
+## Retrieval ranking tie-breakers
+
+Memory search keeps SQLite FTS5 BM25 relevance as the primary ordering key.
+When lexical relevance ties, results are ordered by owner verification status
+(`user_approved` before `user_authored`), then higher confidence, then
+newer update time. This affects only tied lexical matches: confidence or an
+owner review label cannot outrank a stronger text match. These fields are
+owner assertions and are not independent truth verification.
