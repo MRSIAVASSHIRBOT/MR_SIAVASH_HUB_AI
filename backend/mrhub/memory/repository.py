@@ -74,6 +74,9 @@ class MemoryRepository:
     def create(self, owner_user_id: str, values: dict[str, object]) -> dict[str, object]:
         self.validate_memory_text(values.get("content"))
         self.validate_memory_text(values.get("provenance"))
+        memory_type = values.get("memory_type", "unspecified")
+        if not isinstance(memory_type, str) or memory_type not in self.MEMORY_TYPES:
+            raise ValueError("Unsupported memory type")
         memory_id = str(uuid4())
         now = self._now()
         expires_at = self._serialize_expiry(values.get("expires_at"))  # type: ignore[arg-type]
@@ -88,7 +91,7 @@ class MemoryRepository:
                 (
                     memory_id,
                     owner_user_id,
-                    values.get("memory_type", "unspecified"),
+                    memory_type,
                     values["category"],
                     values["content"],
                     values.get("provenance", "user-authored"),
@@ -209,6 +212,8 @@ class MemoryRepository:
         bounded_limit = max(1, min(limit, 25))
         selected_types: tuple[str, ...] | None = None
         if memory_types is not None:
+            if any(not isinstance(memory_type, str) for memory_type in memory_types):
+                raise ValueError("Unsupported memory type")
             selected_types = tuple(sorted(set(memory_types)))
             if not selected_types:
                 return []
