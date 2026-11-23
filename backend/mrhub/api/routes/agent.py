@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
@@ -55,9 +55,23 @@ def _build_owner_agent_core(
 
 
 class WorkflowReconciliationRequest(BaseModel):
-    step_number: int = Field(ge=1)
+    step_number: int | None = Field(default=None, ge=1)
+    step_id: str | None = Field(default=None, min_length=1, max_length=64, pattern="^[a-z][a-z0-9-]{0,63}$")
     outcome: Literal["succeeded", "failed"]
     output_digest: str | None = Field(default=None, pattern="^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def require_exactly_one_step_identity(self) -> "WorkflowReconciliationRequest":
+        if (self.step_number is None) == (self.step_id is None):
+            raise ValueError("Provide exactly one of step_id or step_number")
+        return self
+
+    def resolved_step_identity(self) -> int | str:
+        if self.step_id is not None:
+            return self.step_id
+        if self.step_number is not None:
+            return self.step_number
+        raise ValueError("Workflow reconciliation step identity is missing")
 
 
 class WorkflowResumeCheckRequest(BaseModel):
@@ -469,7 +483,7 @@ def execute_agent_workflow(
                 request_digest,
                 step_specs,
                 task=task,
-                definition_version=2,
+                definition_version=3,
                 owner_user_id=current_user.user_id,
                 workflow_id=workflow_id,
                 payload_envelope={
@@ -577,7 +591,7 @@ def reconcile_agent_workflow(
     try:
         checkpoint = recovery.resolve_unknown_step(
             workflow_id,
-            request.step_number,
+            request.resolved_step_identity(),
             request.outcome,
             output_digest=request.output_digest,
             owner_user_id=current_user.user_id,
@@ -624,6 +638,7 @@ def check_agent_workflow_resume(
         "workflow_id": str(workflow_id),
         "decision": decision.decision,
         "next_step": decision.next_step,
+        "next_step_id": decision.next_step_id,
         "checkpoint_version": decision.checkpoint_version,
         "reason_code": decision.reason_code,
         "execution_started": False,
