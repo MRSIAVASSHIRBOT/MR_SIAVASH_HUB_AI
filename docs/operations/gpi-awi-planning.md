@@ -62,6 +62,55 @@ The risk classification is not an authorization decision. Actual execution, if a
 
 Provider output is untrusted input. Validation errors are returned without accepting malformed work orders or plans. Do not put credentials, private keys, or sensitive personal data into goals.
 
+## Optional encrypted plan persistence
+
+The separate authenticated \`POST /agent/work-orders/plans\` endpoint performs the same GPI/AWI planning operation and then persists the validated plan as a short-lived owner-scoped record.
+
+\`\`\`http
+POST /agent/work-orders/plans
+Authorization: Bearer <session-token>
+Content-Type: application/json
+\`\`\`
+
+\`\`\`json
+{
+  "goal": "Prepare a reviewed implementation plan",
+  "expires_in_seconds": 900
+}
+\`\`\`
+
+- \`expires_in_seconds\` defaults to 900 and is bounded to 60–86,400 seconds.
+- The endpoint requires \`MRH_WORKFLOW_PAYLOAD_KEY\` (or the equivalent protected application setting) to decode to exactly 32 bytes. There is no plaintext fallback or generated default key.
+- WorkOrder and plan JSON are encrypted with AES-GCM. Associated data binds the ciphertext to the plan resource type, plan UUID, and authenticated owner. The database stores ciphertext, a canonical SHA-256 digest, owner/status metadata, and timestamps—not plaintext goal, WorkOrder, or plan text.
+- The response includes the plan ID, digest, expiry, and the newly generated plan, while retaining all planning-only flags.
+
+Retrieve an active plan using the same authenticated owner:
+
+\`\`\`http
+GET /agent/work-orders/plans/{plan_id}
+Authorization: Bearer <session-token>
+\`\`\`
+
+The read endpoint verifies the owner binding, envelope authentication, strict WorkOrder/ExecutionPlan schemas, and canonical digest before returning the decrypted content. It recalculates the capability-presence report against the current owner tool catalog. It does not authorize or execute any tool.
+
+Expired records are marked expired and their ciphertext fields are erased when accessed. New plan creation also runs a bounded expiry sweep (up to 100 due records); this is opportunistic cleanup, not a background scheduler.
+
+An owner may revoke an active plan:
+
+```http
+DELETE /agent/work-orders/plans/{plan_id}
+Authorization: Bearer <session-token>
+```
+
+Revocation uses an owner-scoped atomic transition. The ciphertext and nonce fields are overwritten with non-secret terminal markers; repeated DELETE requests are idempotent. A foreign owner's plan is reported as not found. Expired plans remain expired, and consumed plans cannot be revoked. The `consumed` state remains reserved for a future reviewed plan-to-workflow integration; no plan-to-execution endpoint is exposed by this change.
+
+| Status | Meaning |
+| --- | --- |
+| \`404\` | Plan identifier does not exist or is not owned by the authenticated user. |
+| \`409\` | Plan is not active or failed envelope/schema/digest validation. |
+| \`410\` | Plan has expired; its ciphertext has been erased. |
+| \`503\` | Encryption key is missing/invalid, or encrypted plan storage is unavailable. |
+
 ## Current limitations
 
 - The risk classifier is a bounded heuristic, not a semantic safety proof.
