@@ -6,9 +6,9 @@ import pytest
 
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.payload_envelope import encrypt_payload
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import LeaseManager
+from mrhub.jobs.payload_envelope import encrypt_payload
 from mrhub.jobs.recovery import (
     WorkflowRecoveryError,
     WorkflowRecoveryRepository,
@@ -139,6 +139,7 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
     assert execution["result_json"] is None
 
     lease_manager.release(lease)
+
 
 def test_safe_step_cannot_bypass_attempt_limit_with_direct_start(tmp_path) -> None:
     tasks = TaskRepository(tmp_path / "direct-step-retry-limit.sqlite3")
