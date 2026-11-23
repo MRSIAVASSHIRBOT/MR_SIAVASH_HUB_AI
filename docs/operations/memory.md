@@ -23,7 +23,7 @@ Each entry carries one bounded type:
 - `procedural`: a reusable method or operating procedure;
 - `unspecified`: the compatibility default for older and unclassified notes.
 
-The API supports type filtering during retrieval. A type is classification metadata, not a truth or verification label. Transient working context remains ephemeral in the Agent context assembler rather than being persisted as a permanent note. Dreaming and validation previews do not merge or compare entries across different memory types.
+The API supports type filtering during retrieval. A type is classification metadata, not a truth or verification label. Transient working context remains ephemeral in the Agent context assembler rather than being persisted as a permanent note. The assembler accepts an optional bounded `memory_types` filter and carries the selected type into untrusted evidence passages; it is an explicit assembly component, not an automatic prompt-injection path. Dreaming and validation previews do not merge or compare entries across different memory types.
 
 ## Retrieval ranking
 
@@ -44,7 +44,7 @@ Each result includes its memory type plus the score and component signals under 
 - Expired entries are excluded from list, read, and search. They remain available in the owner's export until explicitly purged.
 - Create/update audit events include operation metadata only; memory text and search queries are not copied into audit logs.
 - The API rejects several common credential/token patterns. This is a defense-in-depth heuristic, not a complete secret detector: never submit credentials, API keys, private keys, or authentication tokens as memory content.
-- Retrieved text is untrusted evidence, not instructions or authorization. The initial slice does not connect memory search to model context or tool execution.
+- Retrieved text is untrusted evidence, not instructions or authorization. Context assembly is bounded and explicitly callable; this PR does not automatically inject memory into every agent request or use memory as tool authorization.
 - Exporting or deleting a live record does not erase older copies in backups. Backup retention must be managed separately.
 
 ## Current limits
