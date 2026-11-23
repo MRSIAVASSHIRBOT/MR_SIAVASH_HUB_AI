@@ -9,8 +9,57 @@ from uuid import uuid4
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
+
+
+class APIErrorIssue(BaseModel):
+    """One sanitized validation issue exposed by the stable API error contract."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    location: list[str | int] = Field(max_length=8)
+    code: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=160)
+
+
+class APIErrorEnvelope(BaseModel):
+    """Stable machine-readable error metadata shared by every API route."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=200)
+    request_id: str = Field(
+        min_length=36,
+        max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
+    issues: list[APIErrorIssue] | None = None
+
+
+class APIErrorResponse(BaseModel):
+    """Backward-compatible response body with legacy detail plus typed error."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    detail: Any
+    error: APIErrorEnvelope
+
+
+API_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status: {
+        "model": APIErrorResponse,
+        "description": "Sanitized API error envelope; branch on error.code.",
+    }
+    for status in (400, 401, 403, 404, 409, 413, 422, 429, 500, 502, 503)
+}
+API_ERROR_RESPONSES["default"] = {
+    "model": APIErrorResponse,
+    "description": "Sanitized API error envelope for other HTTP error statuses.",
+}
+
 
 _ERROR_CODES = {
     400: ("bad_request", "The request could not be processed."),
@@ -70,18 +119,19 @@ async def http_exception_handler(
     request: Request,
     exc: StarletteHTTPException,
 ) -> JSONResponse:
-    """Add a stable error envelope while preserving the legacy detail field."""
+    """Add a typed stable envelope while preserving the legacy detail field."""
     code, message = _status_error(exc.status_code)
+    payload = APIErrorResponse(
+        detail=jsonable_encoder(exc.detail),
+        error=APIErrorEnvelope(
+            code=code,
+            message=message,
+            request_id=_request_id(request),
+        ),
+    )
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "detail": jsonable_encoder(exc.detail),
-            "error": {
-                "code": code,
-                "message": message,
-                "request_id": _request_id(request),
-            },
-        },
+        content=payload.model_dump(mode="json", exclude_none=True),
         headers=exc.headers,
     )
 
@@ -90,26 +140,27 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
-    """Return safe validation metadata without reflecting caller-supplied values."""
+    """Return safe typed validation metadata without reflecting caller values."""
     issues = _validation_issues(exc)
+    payload = APIErrorResponse(
+        detail=issues,
+        error=APIErrorEnvelope(
+            code="request_validation_error",
+            message="The request contains invalid fields.",
+            request_id=_request_id(request),
+            issues=[
+                APIErrorIssue(
+                    location=item["loc"],
+                    code=item["type"],
+                    message=item["msg"],
+                )
+                for item in issues
+            ],
+        ),
+    )
     return JSONResponse(
         status_code=422,
-        content={
-            "detail": issues,
-            "error": {
-                "code": "request_validation_error",
-                "message": "The request contains invalid fields.",
-                "request_id": _request_id(request),
-                "issues": [
-                    {
-                        "location": item["loc"],
-                        "code": item["type"],
-                        "message": item["msg"],
-                    }
-                    for item in issues
-                ],
-            },
-        },
+        content=payload.model_dump(mode="json", exclude_none=True),
     )
 
 
@@ -124,16 +175,17 @@ async def unhandled_exception_handler(
         request_id,
         type(exc).__name__,
     )
+    payload = APIErrorResponse(
+        detail="Internal server error",
+        error=APIErrorEnvelope(
+            code="internal_error",
+            message="An internal error occurred.",
+            request_id=request_id,
+        ),
+    )
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": "Internal server error",
-            "error": {
-                "code": "internal_error",
-                "message": "An internal error occurred.",
-                "request_id": request_id,
-            },
-        },
+        content=payload.model_dump(mode="json", exclude_none=True),
         headers={
             "X-Request-ID": request_id,
             "X-Content-Type-Options": "nosniff",

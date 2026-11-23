@@ -1,6 +1,7 @@
 """Conservative, deterministic memory review proposals (no automatic mutation)."""
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from pathlib import Path
@@ -45,10 +46,16 @@ class MemoryDreamingEngine:
         limit: int = _MAX_REVIEW_ENTRIES,
         threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
     ) -> dict[str, Any]:
-        if not 1 <= limit <= _MAX_REVIEW_ENTRIES:
-            raise ValueError("Review limit must be between 1 and 100")
-        if not 0.75 <= threshold <= 1.0:
-            raise ValueError("Similarity threshold must be between 0.75 and 1.0")
+        if type(limit) is not int or not 1 <= limit <= _MAX_REVIEW_ENTRIES:
+            raise ValueError("Review limit must be an integer between 1 and 100")
+        if (
+            type(threshold) not in (int, float)
+            or not 0.75 <= threshold <= 1.0
+            or not math.isfinite(threshold)
+        ):
+            raise ValueError(
+                "Similarity threshold must be a finite number between 0.75 and 1.0"
+            )
 
         entries = self.repository.list_entries(owner_user_id, limit=limit)
         prepared: list[tuple[dict[str, object], set[str]]] = []
@@ -62,7 +69,11 @@ class MemoryDreamingEngine:
         proposals: list[dict[str, Any]] = []
         for index, (left, left_tokens) in enumerate(prepared):
             for right, right_tokens in prepared[index + 1 :]:
-                if left.get("category") != right.get("category"):
+                if (
+                    left.get("category") != right.get("category")
+                    or left.get("memory_type", "unspecified")
+                    != right.get("memory_type", "unspecified")
+                ):
                     continue
                 similarity = self._similarity(left_tokens, right_tokens)
                 if similarity < threshold:
@@ -77,6 +88,7 @@ class MemoryDreamingEngine:
                         "canonical_memory_id": canonical["memory_id"],
                         "candidate_memory_id": redundant["memory_id"],
                         "category": canonical["category"],
+                        "memory_type": canonical.get("memory_type", "unspecified"),
                         "similarity": round(similarity, 4),
                         "confidence": "heuristic",
                         "canonical_excerpt": str(canonical["content"])[:500],

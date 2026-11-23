@@ -14,7 +14,14 @@ class FakeMemory:
     def __init__(self, content: str) -> None:
         self.content = content
 
-    def search(self, owner_user_id: str, query: str, limit: int):
+    def search(
+        self,
+        owner_user_id: str,
+        query: str,
+        limit: int,
+        *,
+        memory_types=None,
+    ):
         assert owner_user_id == "owner-a"
         assert query == "needle"
         assert limit == 4

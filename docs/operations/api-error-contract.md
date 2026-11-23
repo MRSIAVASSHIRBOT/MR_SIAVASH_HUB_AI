@@ -54,3 +54,10 @@ classify every third-party provider error. Legacy `detail` values from
 application-raised HTTP exceptions remain intact for compatibility, so route
 implementations must continue to avoid placing secrets or raw request bodies in
 those details.
+
+
+## OpenAPI response schemas
+
+Every mounted API router documents the shared `APIErrorResponse` shape for common HTTP error statuses and a default error response. The schema preserves the legacy `detail` value while exposing a typed `error` object with stable `code`, generic `message`, `request_id`, and optional sanitized validation `issues`. Clients can generate typed error handlers from OpenAPI instead of guessing response structures.
+
+Runtime handlers validate their envelopes with the same Pydantic models used by the OpenAPI components. This keeps documented and emitted structures aligned.
