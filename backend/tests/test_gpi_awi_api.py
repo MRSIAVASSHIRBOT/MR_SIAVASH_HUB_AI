@@ -913,3 +913,50 @@ def test_persisted_plan_revoke_returns_gone_for_expired_records(monkeypatch):
 
     assert error.value.status_code == 410
 
+def test_persisted_plan_revoke_fails_closed_when_audit_storage_is_unavailable(monkeypatch):
+    from uuid import uuid4
+
+    class FakeTaskRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def initialize(self):
+            return None
+
+    class FailingAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **_kwargs):
+            raise sqlite3.OperationalError("audit storage unavailable")
+
+    class MustNotRevokeRepository:
+        def __init__(self, database_path):
+            self.database_path = database_path
+
+        def revoke(self, *_args, **_kwargs):
+            pytest.fail("plan mutation must not run when the audit write fails")
+
+    monkeypatch.setattr(
+        agent_routes,
+        "get_settings",
+        lambda: SimpleNamespace(database_path="test.db"),
+    )
+    monkeypatch.setattr(agent_routes, "TaskRepository", FakeTaskRepository)
+    monkeypatch.setattr(agent_routes, "AuditLogger", FailingAuditLogger)
+    monkeypatch.setattr(
+        agent_routes,
+        "AgentWorkOrderPlanRepository",
+        MustNotRevokeRepository,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent_routes.revoke_persisted_goal_work_order_plan(
+            uuid4(),
+            SimpleNamespace(user_id="owner-audit-failure"),
+            Response(),
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Audit storage is unavailable"
+
