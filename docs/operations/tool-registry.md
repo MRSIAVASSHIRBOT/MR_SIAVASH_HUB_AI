@@ -80,3 +80,23 @@ long-running handlers and do not simulate a hard timeout with a background
 thread: a thread timeout cannot safely terminate a side-effecting operation.
 Hard execution deadlines require a separately designed process/container
 boundary with cancellation and idempotency semantics.
+
+
+## Per-invocation lifecycle observation
+
+The registry now supports an optional metadata-only lifecycle observer. Events
+identify the registered tool, transition stage, canonical input/output digests,
+and a bounded reason code; raw payloads, results, exception messages, and
+credentials are never included.
+
+The stages distinguish input rejection, input validation, authorization allow
+or denial, handler start/return/failure, output validation/rejection, success,
+and unknown outcome. A handler or output-validation failure after a declared
+external side effect is classified as `unknown_outcome`, because the effect may
+have occurred even when a valid result was not received.
+
+Observer failures are deliberately non-blocking: callback exceptions are
+sanitized to a warning and do not alter authorization, handler execution,
+result validation, or the final tool outcome. The `AgentCore.execute` method
+exposes this hook as `on_tool_lifecycle` so a caller can correlate each event
+with its durable workflow step/attempt identifier.
