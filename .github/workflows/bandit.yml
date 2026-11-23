@@ -3,7 +3,7 @@ name: Defensive Python Scan
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ["main", "feat/**"]
   pull_request:
     branches: ["main"]
   schedule:

@@ -28,7 +28,7 @@ All endpoints require the local owner's bearer session.
 
 ## Current limits
 
-This is the memory-entry slice only. Markdown/plain-text document ingestion, source/chunk records, citation-aware context assembly, evaluation corpus, and retrieval integration into the agent remain separate milestones. SQLite FTS5 availability is required; no vector database, embedding API, cloud fallback, or external indexing service is used.
+This slice includes bounded citation-aware Agent Context assembly for owner-scoped memory and knowledge retrieval. It does not yet constitute automatic model-context injection or authorize agent execution. Markdown/plain-text document ingestion, broader evaluation corpus, and deeper retrieval integration remain separate milestones. SQLite FTS5 availability is required; no vector database, embedding API, cloud fallback, or external indexing service is used.
 
 
 ## Dreaming preview — first safe implementation
@@ -72,3 +72,48 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+## Typed memory taxonomy and filtered retrieval
+
+Memory entries support four explicit classifications: `unspecified`, `episodic`, `semantic`, and `procedural`. Existing records are preserved by migration V56 and receive the neutral `unspecified` default; classification is not inferred retroactively.
+
+The authenticated `POST /memory/search` and `POST /agent/context/assemble` endpoints accept an optional `memory_types` filter. Filtering is applied inside the owner-scoped SQL retrieval path before ranking and context assembly. The filter is a bounded list of known taxonomy values; unknown values and null type updates are rejected.
+
+Memory dreaming and contradiction preview do not compare records across different memory types. Numeric confidence, similarity thresholds, and result limits use strict finite-value validation so booleans, numeric strings, NaN, Infinity, and out-of-range values cannot silently change ranking or validation behavior.
+
+Classification is descriptive metadata, not proof of truth, owner approval, safety, or authorization. Retrieved memory remains untrusted evidence and cannot override system policy or grant tool access.
+
+The Agent Context response exposes a versioned `authority_contract` and repeats the boundary on each passage. Retrieved memory and knowledge have `instruction_authority=none`, `tool_authorization=none`, and `side_effect_authorization=none`; policy override is forbidden and an independent server-side policy decision is required. These fields are explicit consumer-facing safeguards, not a substitute for enforcement at every execution boundary.
+
+
+
+## Numeric input boundaries
+
+Memory confidence is restricted to finite numeric values in the inclusive range 0–1. Boolean values, numeric strings, non-finite floats and out-of-range values are rejected both at the API model boundary and again in the persistence repository. Search and preview limits require strict integers; booleans and numeric strings are not accepted as limits. Similarity thresholds must be finite numeric values within each endpoint's documented range. Invalid non-standard JSON NaN/Infinity inputs return a JSON-safe 422 response and never persist.
+
+## Evidence-linked workflow lessons — preview only
+
+The authenticated
+`POST /agent/workflows/{workflow_id}/lessons/preview` endpoint accepts a
+user-authored lesson candidate only when its source workflow is owned by the
+caller, the workflow completed successfully, and the selected step is marked
+succeeded with a persisted SHA-256 output digest.
+
+- The proposal carries a stable proposal ID and a `workflow://` provenance
+  reference containing the source workflow, stable step ID, and output digest.
+- The candidate text is bounded and checked against the memory repository's
+  common credential-pattern filters.
+- The preview returns a proposed Memory payload using fields supported by
+  `POST /memory`, including `memory_type=procedural`, neutral confidence,
+  and `user_authored` status.
+- The proposal's `procedural_candidate` label is a suggestion, not a fact
+  verification or permission grant. The owner must inspect the content.
+- The endpoint does not insert, update, merge, or approve any Memory record.
+  It does not store raw workflow outputs, prompts, tool payloads, or lesson
+  text in the audit event.
+- A successful step digest proves linkage to a persisted step result; it does
+  not prove that a user-authored generalized lesson is true or reusable.
+
+The owner must inspect the proposed content and separately create a Memory
+entry through the authenticated Memory API. Failed, running, blocked, stale,
+or digest-less steps cannot support this preview.

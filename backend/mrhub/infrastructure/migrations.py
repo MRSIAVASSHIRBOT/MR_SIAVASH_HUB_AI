@@ -1549,6 +1549,21 @@ MIGRATIONS = (
             "CREATE INDEX idx_agent_work_order_plans_workflow ON agent_work_order_plans(workflow_id) WHERE workflow_id IS NOT NULL",
         ),
     ),
+    Migration.build(
+        56,
+        "typed_memory_classification",
+        (
+            """ALTER TABLE memory_entries
+               ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'unspecified'
+               CHECK (memory_type IN (
+                   'unspecified', 'episodic', 'semantic', 'procedural'
+               ))""",
+            (
+                "CREATE INDEX idx_memory_owner_type_updated "
+                "ON memory_entries(owner_user_id, memory_type, updated_at)"
+            ),
+        ),
+    ),
 )
 
 

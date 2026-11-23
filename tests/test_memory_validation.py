@@ -2,6 +2,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from mrhub.memory.repository import MemoryRepository
 from mrhub.memory.validation import MemoryValidationEngine
 
@@ -13,6 +15,14 @@ def _owner(repository: MemoryRepository, owner_id: str) -> None:
             "VALUES (?, ?, ?, ?, ?)",
             (owner_id, owner_id, "00", "00", datetime.now(UTC).isoformat()),
         )
+
+
+def test_memory_repository_rejects_coerced_confidence_types():
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence("0.8")
+
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence(True)
 
 
 def test_validation_flags_polarity_conflicts_without_mutating_memory(tmp_path: Path) -> None:
@@ -190,3 +200,27 @@ def test_validation_does_not_treat_not_only_as_negation(tmp_path: Path) -> None:
 
     result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
     assert result["contradiction_count"] == 0
+
+def test_validation_does_not_compare_conflicting_facts_across_memory_types(tmp_path: Path):
+    repository = MemoryRepository(tmp_path / "validation.sqlite3")
+    _owner(repository, "owner-a")
+    repository.create(
+        "owner-a",
+        {
+            "memory_type": "semantic",
+            "category": "preferences",
+            "content": "Tea is preferred by user every morning",
+        },
+    )
+    repository.create(
+        "owner-a",
+        {
+            "memory_type": "episodic",
+            "category": "preferences",
+            "content": "Tea is not preferred by user every morning",
+        },
+    )
+
+    result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
+    assert result["contradiction_count"] == 0
+

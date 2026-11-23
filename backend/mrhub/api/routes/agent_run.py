@@ -77,7 +77,11 @@ def run_agent(
     except LookupError as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"Requested {payload.provider_mode} inference provider is disabled or unavailable",
+            detail=(
+                "Requested remote inference provider is disabled or unavailable"
+                if payload.provider_mode == "remote"
+                else "Requested local inference provider is disabled or unavailable"
+            ),
         ) from exc
 
     query = (payload.context_query or payload.goal)[:200]

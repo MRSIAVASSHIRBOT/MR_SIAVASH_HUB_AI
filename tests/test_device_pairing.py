@@ -267,7 +267,10 @@ def test_pairing_challenge_registry_is_bounded_and_prunes_expired_rows(tmp_path,
     }
     overflow = client.post("/devices/pairing-challenges", json=overflow_payload)
     assert overflow.status_code == 422
-    assert "too many pending" in overflow.json()["detail"].lower()
+    overflow_body = overflow.json()
+    assert overflow_body["detail"] == "Owner has too many pending device pairing challenges"
+    assert overflow_body["error"]["code"] == "request_rejected"
+    assert overflow_body["error"]["request_id"] == overflow.headers["X-Request-ID"]
 
     expired_device_id = pending[0][0]["device_id"]
     with sqlite3.connect(database_path) as db:
@@ -303,7 +306,10 @@ def test_pairing_requires_heartbeat_scope(tmp_path, monkeypatch):
         "scopes": ["app.launch"],
     })
     assert challenge.status_code == 422
-    assert "device.heartbeat" in challenge.json()["detail"]
+    challenge_body = challenge.json()
+    assert challenge_body["detail"] == "Every paired device must include device.heartbeat"
+    assert challenge_body["error"]["code"] == "request_rejected"
+    assert challenge_body["error"]["request_id"] == challenge.headers["X-Request-ID"]
     get_settings.cache_clear()
 
 

@@ -13,11 +13,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
 from mrhub.agents.core import AgentCore, AgentPlanRequest
+from mrhub.agents.goal_analysis import analyze_goal
 from mrhub.agents.gpi import (
     WorkOrderGenerationError,
     derive_server_risk_class,
     generate_work_order,
 )
+from mrhub.agents.lessons import LessonEvidence, LessonProposalError, build_lesson_proposal
 from mrhub.agents.plan_repository import (
     AgentWorkOrderPlanError,
     AgentWorkOrderPlanRepository,
@@ -25,6 +27,7 @@ from mrhub.agents.plan_repository import (
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
+from mrhub.agents.work_order_intelligence import assess_work_order_intelligence
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
@@ -92,6 +95,29 @@ class WorkflowResumeCheckRequest(BaseModel):
     request: AgentPlanRequest
 
 
+class WorkflowLessonPreviewRequest(BaseModel):
+    """A user-authored lesson candidate linked to one persisted successful step."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern="^[a-z][a-z0-9-]{0,63}$",
+        strict=True,
+    )
+    category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$", strict=True)
+    lesson_text: str = Field(min_length=20, max_length=500, strict=True)
+
+    @field_validator("category", "lesson_text")
+    @classmethod
+    def normalize_lesson_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Lesson fields must not be blank")
+        return normalized
+
+
 class GoalPlanningRequest(BaseModel):
     """Bounded natural-language goal submitted for planning only."""
 
@@ -144,6 +170,41 @@ def _extract_persisted_plan_metadata(payload: dict[str, object]) -> dict[str, ob
             raise PayloadEnvelopeError("Persisted plan assessment metadata is invalid")
         metadata[field] = value
     return metadata
+
+
+@router.post("/work-orders/analyze")
+def analyze_goal_request(
+    request: GoalPlanningRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Analyze goal complexity and routing signals without model or tool execution."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    analysis = analyze_goal(request.goal)
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.goal_analyzed",
+            outcome="success",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="goal",
+            metadata={
+                "status": "analyzed",
+                "reason_code": "deterministic_goal_preflight",
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+    return {
+        "analysis": analysis.model_dump(mode="json"),
+        "planning_only": True,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
 
 
 @router.post("/work-orders/plan")
@@ -210,6 +271,7 @@ def create_goal_work_order_plan(
             ModelRequest(requires_text=True, prefer_local=True)
         )
         work_order = generate_work_order(request.goal, model_router)
+        decision_analysis = analyze_goal(request.goal, work_order=work_order)
         if work_order.risk_class.value == "prohibited":
             try:
                 audit_logger.record(
@@ -249,6 +311,16 @@ def create_goal_work_order_plan(
             detail="Registered tool catalog is not valid for capability assessment",
         ) from exc
 
+    try:
+        planning_assessment = assess_work_order_intelligence(
+            work_order, plan, assessment
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Validated plan could not be assessed consistently",
+        ) from exc
+
     audit_logger.record(
         event_type="agent.work_order_planned",
         outcome="planned",
@@ -268,7 +340,15 @@ def create_goal_work_order_plan(
     )
     return {
         "work_order": work_order.model_dump(mode="json"),
+        "decision_analysis": decision_analysis.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
+        "planning_assessment": planning_assessment.as_dict(),
+        "model_selection": {
+            "provider": selection.provider,
+            "model": selection.model,
+            "local": selection.local,
+            "rationale": selection.rationale,
+        },
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
@@ -430,6 +510,17 @@ def get_persisted_goal_work_order_plan(
             detail="Registered tool catalog is not valid for capability assessment",
         ) from exc
 
+    try:
+        decision_analysis = analyze_goal(work_order.goal, work_order=work_order)
+        planning_assessment = assess_work_order_intelligence(
+            work_order, plan, assessment
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan assessment could not be recomputed safely",
+        ) from exc
+
     return {
         "plan_id": record.plan_id,
         "status": record.status,
@@ -438,7 +529,9 @@ def get_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
-        **plan_metadata,
+        **{key: value for key, value in plan_metadata.items() if key == "model_selection"},
+        "decision_analysis": decision_analysis.model_dump(mode="json"),
+        "planning_assessment": planning_assessment.as_dict(),
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
@@ -909,6 +1002,95 @@ def get_agent_workflow(
     if workflow is None:
         raise HTTPException(status_code=404, detail="Agent workflow not found")
     return workflow
+
+
+@router.post("/workflows/{workflow_id}/lessons/preview")
+def preview_workflow_lesson(
+    workflow_id: UUID,
+    payload: WorkflowLessonPreviewRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Preview a user-authored lesson linked to one persisted successful step.
+
+    This endpoint never writes Memory. The owner must separately review and
+    submit an explicit Memory create request if the proposal should be retained.
+    """
+    settings = get_settings()
+    repository = WorkflowRecoveryRepository(settings.database_path)
+    workflow = repository.get_run(
+        workflow_id,
+        owner_user_id=current_user.user_id,
+    )
+    if workflow is None:
+        raise HTTPException(status_code=404, detail="Agent workflow not found")
+    if workflow.get("status") != "succeeded":
+        raise HTTPException(
+            status_code=409,
+            detail="Lessons require a successfully completed workflow",
+        )
+
+    steps = workflow.get("steps")
+    if not isinstance(steps, list):
+        raise HTTPException(status_code=409, detail="Workflow step evidence is unavailable")
+    step = next(
+        (
+            item for item in steps
+            if isinstance(item, dict) and item.get("step_key") == payload.step_id
+        ),
+        None,
+    )
+    if step is None:
+        raise HTTPException(status_code=404, detail="Workflow step not found")
+
+    try:
+        proposal = build_lesson_proposal(
+            LessonEvidence(
+                workflow_id=workflow_id,
+                workflow_status=str(workflow.get("status")),
+                step_id=payload.step_id,
+                step_status=str(step.get("status")),
+                output_digest=step.get("output_digest")
+                if isinstance(step.get("output_digest"), str)
+                else None,
+                error_code=step.get("error_code")
+                if isinstance(step.get("error_code"), str)
+                else None,
+            ),
+            category=payload.category,
+            lesson_text=payload.lesson_text,
+        )
+    except LessonProposalError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Lesson proposal requires a completed evidence-backed workflow step and safe content",
+        ) from exc
+
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.lesson_previewed",
+            outcome="owner_review_required",
+            subject_type="lesson_proposal",
+            subject_id=proposal.proposal_id,
+            actor_type="user",
+            actor_id=current_user.user_id,
+            metadata={
+                "status": "preview_only",
+                "reason_code": "evidence_linked_lesson_preview",
+                "proposal_count": 1,
+                "state_changed": False,
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Lesson proposal audit storage is unavailable",
+        ) from exc
+    return {
+        "workflow_id": str(workflow_id),
+        "proposal": proposal.as_dict(),
+    }
 
 
 @router.post("/workflows/{workflow_id}/cancel")
