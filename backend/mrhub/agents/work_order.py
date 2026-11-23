@@ -11,7 +11,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    computed_field,
     field_validator,
     model_validator,
 )
@@ -102,19 +101,16 @@ class WorkOrder(BaseModel):
             raise ValueError("Research questions require research_required=true")
         return self
 
-    @computed_field
     @property
     def needs_clarification(self) -> bool:
         """Whether the goal needs additional user input before reliable planning."""
         return bool(self.missing_information or self.clarification_questions)
 
-    @computed_field
     @property
     def tool_use_required(self) -> bool:
         """Derive tool need from validated capability requirements, not model prose."""
         return bool(self.required_capabilities)
 
-    @computed_field
     @property
     def planning_readiness(
         self,
