@@ -386,3 +386,44 @@ def test_provider_health_endpoint_fails_closed_on_invalid_health_contract(
     assert body["results"][0]["reason_code"] == "provider_contract_violation"
     assert body["inference_started"] is False
     get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("timeout", [True, False, "5", 0, 301, float("nan"), float("inf")])
+def test_generate_model_request_rejects_invalid_per_request_timeout(timeout):
+    from pydantic import ValidationError
+    from mrhub.api.routes.models import GenerateModelRequest
+
+    with pytest.raises(ValidationError):
+        GenerateModelRequest(input_text="hello", timeout_seconds=timeout)
+
+
+@pytest.mark.parametrize("timeout", [True, "5", 0, 301, float("nan"), float("inf")])
+def test_generate_kimi_vision_request_rejects_invalid_per_request_timeout(timeout):
+    from pydantic import ValidationError
+    from mrhub.api.routes.models import GenerateKimiVisionRequest
+
+    with pytest.raises(ValidationError):
+        GenerateKimiVisionRequest(
+            prompt="Describe image",
+            image_data_url="data:image/png;base64,placeholder",
+            timeout_seconds=timeout,
+        )
+
+
+def test_generate_model_request_accepts_bounded_numeric_timeout():
+    from mrhub.api.routes.models import GenerateModelRequest
+
+    assert GenerateModelRequest(
+        input_text="hello", timeout_seconds=3
+    ).timeout_seconds == 3.0
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [True, False, "5", 0, 301, float("nan"), float("inf"), 10**1000],
+)
+def test_build_model_router_rejects_invalid_global_timeout_caps(timeout):
+    from mrhub.api.routes.models import build_model_router
+
+    with pytest.raises(ValueError, match="Provider timeout cap"):
+        build_model_router(max_timeout_seconds=timeout)
