@@ -229,6 +229,15 @@ def test_runner_resume_after_reordering_does_not_replay_succeeded_identity(
     core = make_core()
     runner = AgentWorkflowRunner(task_repository, core)
     owner = "identity-resume-test-owner"
+    with task_repository._connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO auth_users (
+                user_id, username, salt, password_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (owner, owner, "00", "00", "2026-11-23T00:00:00+00:00"),
+        )
     original_request = AgentPlanRequest(
         goal="Resume by stable identity after harmless reordering",
         tools=[
