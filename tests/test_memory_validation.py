@@ -202,7 +202,7 @@ def test_validation_preview_rejects_non_integer_limits(tmp_path: Path, limit):
         engine.preview("owner-a", limit=limit)
 
 
-@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), "0.8"])
+@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), "0.8", 10**1000])
 def test_validation_preview_rejects_non_finite_or_non_numeric_thresholds(
     tmp_path: Path, threshold
 ):
