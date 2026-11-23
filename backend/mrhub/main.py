@@ -7,8 +7,15 @@ from pathlib import Path
 from uuid import RFC_4122, UUID, uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from mrhub.api.errors import (
+    http_exception_handler,
+    unhandled_exception_handler,
+    validation_exception_handler,
+)
 from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.agent_context import router as agent_context_router
 from mrhub.api.routes.agent_model_runs import router as agent_model_runs_router
@@ -64,6 +71,11 @@ def create_app() -> FastAPI:
     )
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
+
+    # Preserve legacy 'detail' fields while exposing a stable error envelope.
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
