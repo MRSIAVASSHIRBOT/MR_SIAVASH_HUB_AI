@@ -57,8 +57,11 @@ def build_router(
     return router
 
 
-def work_order_output(goal: str = "Build a validated plan") -> str:
-    return json.dumps({
+def work_order_output(
+    goal: str = "Build a validated plan",
+    **overrides: object,
+) -> str:
+    payload: dict[str, object] = {
         "intent": "Build a validated plan",
         "scope": "Planning only",
         "assumptions": [],
@@ -68,8 +71,9 @@ def work_order_output(goal: str = "Build a validated plan") -> str:
         "acceptance_criteria": ["The plan is validated"],
         "verification_steps": ["Run focused tests"],
         "goal": goal,
-    })
-
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
 
 def plan_output() -> str:
     return json.dumps({
@@ -86,7 +90,16 @@ def plan_output() -> str:
 
 
 def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
-    router = build_router(work_order_output(), plan_output())
+    router = build_router(
+        work_order_output(
+            estimated_complexity="high",
+            missing_information=["The deployment target is not specified"],
+            clarification_questions=["Which deployment environment should be targeted?"],
+            research_required=True,
+            research_questions=["Check compatibility with the target runtime"],
+        ),
+        plan_output(),
+    )
     captured = {}
 
     def fake_router(**kwargs):
@@ -134,6 +147,32 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["execution_started"] is False
     assert result["tools_executed"] is False
     assert result["permissions_changed"] is False
+    assert "needs_clarification" not in result["work_order"]
+    assert "tool_use_required" not in result["work_order"]
+    assert "planning_readiness" not in result["work_order"]
+    assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
+    assert result["planning_assessment"]["complexity"]["model_estimate"] == "high"
+    assert result["planning_assessment"]["information"]["status"] == "needs_clarification"
+    assert result["planning_assessment"]["information"]["missing_information"] == [
+        "The deployment target is not specified"
+    ]
+    assert result["planning_assessment"]["information"]["clarification_questions"] == [
+        "Which deployment environment should be targeted?"
+    ]
+    assert result["planning_assessment"]["research"]["decision"] == "required"
+    assert result["planning_assessment"]["research"]["questions"] == [
+        "Check compatibility with the target runtime"
+    ]
+    assert result["decision_analysis"]["research_required"] is True
+    assert result["decision_analysis"]["tool_use_required"] is True
+    assert result["decision_analysis"]["authorization_checked"] is False
+    assert result["decision_analysis"]["execution_started"] is False
+    assert result["planning_assessment"]["planning_only"] is True
+    assert result["planning_assessment"]["tools"]["authorization_checked"] is False
+    assert result["planning_assessment"]["execution_order"]["step_ids"] == ["validate"]
+    assert result["model_selection"]["provider"] == "test"
+    assert result["model_selection"]["model"] == "queue-v1"
+    assert result["model_selection"]["local"] is True
     assert [event["event_type"] for event in audit_events] == [
         "agent.work_order_planning_started",
         "agent.work_order_planned",
