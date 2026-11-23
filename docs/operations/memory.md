@@ -72,3 +72,28 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+
+## Evidence-linked workflow lessons — preview only
+
+The authenticated
+`POST /agent/workflows/{workflow_id}/lessons/preview` endpoint accepts a
+user-authored lesson candidate only when its source workflow is owned by the
+caller, the workflow completed successfully, and the selected step is marked
+succeeded with a persisted SHA-256 output digest.
+
+- The proposal carries a stable proposal ID and a `workflow://` provenance
+  reference containing the source workflow, stable step ID, and output digest.
+- The candidate text is bounded and checked against the memory repository's
+  common credential-pattern filters.
+- The preview returns a suggested `user_authored` Memory record with neutral
+  confidence and an explicit owner-review requirement.
+- The endpoint does not insert, update, merge, or approve any Memory record.
+  It does not store raw workflow outputs, prompts, tool payloads, or lesson
+  text in the audit event.
+- A successful step digest proves linkage to a persisted step result; it does
+  not prove that a user-authored generalized lesson is true or reusable.
+
+The owner must inspect the proposed content and separately create a Memory
+entry through the authenticated Memory API. Failed, running, blocked, stale,
+or digest-less steps cannot support this preview.
