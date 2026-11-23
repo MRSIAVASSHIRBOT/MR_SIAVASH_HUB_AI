@@ -278,7 +278,7 @@ renderer_timeline_not_saved
 stale_revision
 """.splitlines()
     if value.strip()
-)
+) | frozenset(code for code, _message in _ERROR_CODES.values())
 
 _SAFE_DETAIL_KEYS = frozenset(
     {
