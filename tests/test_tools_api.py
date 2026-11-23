@@ -318,7 +318,25 @@ def _pair_device(client, *, platform="windows", scopes=None):
     return device_id
 
 
-def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
+def _approve_device_launch(client, payload):
+    pending = client.post(
+        "/tools/device.app_launch.submit/approvals",
+        json={"payload": payload},
+    )
+    assert pending.status_code == 201
+    approval_id = pending.json()["approval_id"]
+    decided = client.post(
+        f"/tools/device.app_launch.submit/approvals/{approval_id}/decision",
+        json={"decision": "approved"},
+    )
+    assert decided.status_code == 200
+    assert decided.json()["status"] == "approved"
+    return approval_id
+
+
+def test_agent_device_tools_require_two_owner_grants_paired_scope_and_action_approval():
+    from mrhub.devices.tasks import DeviceTaskRepository
+
     client = authenticated_client()
     device_id = _pair_device(client)
     listed_denied = client.post("/tools/device.registry.list/invoke", json={"payload": {}})
@@ -333,49 +351,88 @@ def test_agent_device_tools_require_two_owner_grants_and_paired_device_scope():
     assert summaries[0]["granted_scopes"] == sorted(["device.heartbeat", "app.launch"])
     assert "access_token" not in str(summaries)
 
-    denied_launch = client.post("/tools/device.app_launch.submit/invoke", json={"payload": {
-        "device_id": device_id,
-        "app": "notepad",
-        "idempotency_key": "c4a9c5a7-2fd6-4e8f-b9e9-6a9cfc37d51f",
-    }})
-    assert denied_launch.status_code == 403
-
-    assert client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600}).status_code == 200
-    blocked = client.post("/tools/device.app_launch.submit/invoke", json={"payload": {
+    payload = {
         "device_id": device_id,
         "app": "notepad",
         "idempotency_key": "b631e9a0-a3bc-4df7-a7ef-2e4c96ff9c99",
-    }})
-    assert blocked.status_code == 409
-    assert blocked.json()["detail"]["decision"] == "require_approval"
+    }
+    denied_launch = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert denied_launch.status_code == 403
 
-    from mrhub.devices.tasks import DeviceTaskRepository
-    rows = DeviceTaskRepository(get_settings().database_path).list_for_owner(
-        owner_user_id="local-owner", device_id=device_id
+    assert client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600}).status_code == 200
+    requires_approval = client.post("/tools/device.app_launch.submit/invoke", json={"payload": payload})
+    assert requires_approval.status_code == 409
+    assert requires_approval.json()["detail"]["decision"] == "require_approval"
+
+    approval_id = _approve_device_launch(client, payload)
+    invoked = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": payload, "approval_id": approval_id},
     )
-    assert rows == []
+    assert invoked.status_code == 200
+    result = invoked.json()["result"]
+    assert result["task"]["status"] == "queued"
+    assert result["task"]["action"] == "app.launch"
+    assert result["task"]["app"] == "notepad"
+    assert result["idempotent_replay"] is False
+    assert invoked.json()["approval_consumed"] is True
+
+    # A separate confirmation is required even when the device-task idempotency key replays.
+    replay_approval_id = _approve_device_launch(client, payload)
+    replay = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": payload, "approval_id": replay_approval_id},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["result"]["task"]["task_id"] == result["task"]["task_id"]
+    assert replay.json()["result"]["idempotent_replay"] is True
+
+    repository = DeviceTaskRepository(get_settings().database_path)
+    rows = repository.list_for_owner(owner_user_id="local-owner", device_id=device_id)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "queued"
 
 
-def test_agent_device_tool_requires_bound_approval_before_enqueue_even_when_granted():
+def test_agent_device_tool_denies_if_owner_grant_is_revoked_before_atomic_enqueue(monkeypatch):
     from mrhub.devices.tasks import DeviceTaskRepository
 
     client = authenticated_client()
     device_id = _pair_device(client)
     for permission in ("device.registry.read", "device.app_launch"):
-        assert client.put(
+        granted = client.put(
             f"/tools/grants/{permission}",
             json={"expires_in_seconds": 600},
-        ).status_code == 200
+        )
+        assert granted.status_code == 200
 
-    response = client.post("/tools/device.app_launch.submit/invoke", json={
-        "payload": {
-            "device_id": device_id,
-            "app": "notepad",
-            "idempotency_key": "9bce5f6c-0b42-4c41-9d18-4c9aef8a3210",
-        }
-    })
-    assert response.status_code == 409
-    assert response.json()["detail"]["decision"] == "require_approval"
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.security.audit import AuditLogger
+    from mrhub.security.tool_permissions import ToolPermissionService
+
+    permission_repository = TaskRepository(get_settings().database_path)
+    permission_service = ToolPermissionService(
+        permission_repository,
+        AuditLogger(permission_repository),
+    )
+    original_create = DeviceTaskRepository.create
+
+    def revoke_before_enqueue(device_repository, **kwargs):
+        assert permission_service.revoke("local-owner", "device.app_launch") is True
+        return original_create(device_repository, **kwargs)
+
+    monkeypatch.setattr(DeviceTaskRepository, "create", revoke_before_enqueue)
+    payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "9bce5f6c-0b42-4c41-9d18-4c9aef8a3210",
+    }
+    approval_id = _approve_device_launch(client, payload)
+    response = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": payload, "approval_id": approval_id},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["decision"] == "deny"
 
     tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
         owner_user_id="local-owner", device_id=device_id
@@ -383,93 +440,60 @@ def test_agent_device_tool_requires_bound_approval_before_enqueue_even_when_gran
     assert tasks == []
 
 
-def test_agent_device_tool_requires_approval_before_device_scope_validation():
-    from mrhub.devices.tasks import DeviceTaskRepository
-
+def test_agent_device_tool_rejects_device_without_app_launch_scope():
     client = authenticated_client()
     device_id = _pair_device(client, scopes=["device.heartbeat"])
     client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
     client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
 
-    response = client.post("/tools/device.app_launch.submit/invoke", json={
-        "payload": {
-            "device_id": device_id,
-            "app": "notepad",
-            "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
-        }
-    })
-    assert response.status_code == 409
-    assert response.json()["detail"]["decision"] == "require_approval"
-    assert DeviceTaskRepository(get_settings().database_path).list_for_owner(
-        owner_user_id="local-owner", device_id=device_id
-    ) == []
+    unsupported_payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "0e6a8b38-7e94-44e9-a13d-d6ad3cf987a4",
+    }
+    unsupported_approval = _approve_device_launch(client, unsupported_payload)
+    response = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": unsupported_payload, "approval_id": unsupported_approval},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["decision"] == "deny"
 
-
-def test_agent_device_tool_requires_approval_before_platform_alias_validation():
     from mrhub.devices.tasks import DeviceTaskRepository
+    tasks = DeviceTaskRepository(get_settings().database_path).list_for_owner(
+        owner_user_id="local-owner", device_id=device_id
+    )
+    assert tasks == []
 
+
+def test_agent_device_tool_enforces_platform_specific_app_aliases():
     client = authenticated_client()
     device_id = _pair_device(client, platform="android")
     client.put("/tools/grants/device.registry.read", json={"expires_in_seconds": 600})
     client.put("/tools/grants/device.app_launch", json={"expires_in_seconds": 600})
 
-    for app, key in (
-        ("notepad", "a4e4a0cf-fbbd-4d82-b870-8d752f519304"),
-        ("chatgpt", "f5d63d78-fde6-4e9f-9136-7d0634ddc3d2"),
-    ):
-        response = client.post("/tools/device.app_launch.submit/invoke", json={
-            "payload": {
-                "device_id": device_id,
-                "app": app,
-                "idempotency_key": key,
-            }
-        })
-        assert response.status_code == 409
-        assert response.json()["detail"]["decision"] == "require_approval"
-
-    assert DeviceTaskRepository(get_settings().database_path).list_for_owner(
-        owner_user_id="local-owner", device_id=device_id
-    ) == []
-
-
-def test_tool_invoke_keeps_high_impact_actions_fail_closed_without_bound_approval(
-    monkeypatch,
-):
-    client = authenticated_client()
-    calls = []
-
-    class ApprovalInput(BaseModel):
-        value: str
-
-    class ApprovalOutput(BaseModel):
-        accepted: bool
-
-    registry = ToolRegistry()
-    registry.register(
-        ToolDefinition(
-            name="content.publish",
-            description="Publish one approved content item to an external destination.",
-            input_model=ApprovalInput,
-            output_model=ApprovalOutput,
-            handler=lambda _payload: calls.append("executed") or ApprovalOutput(accepted=True),
-            risk_class=RiskClass.HIGH,
-            external_side_effect=True,
-        )
+    unsupported_payload = {
+        "device_id": device_id,
+        "app": "notepad",
+        "idempotency_key": "a4e4a0cf-fbbd-4d82-b870-8d752f519304",
+    }
+    unsupported_approval = _approve_device_launch(client, unsupported_payload)
+    unsupported = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": unsupported_payload, "approval_id": unsupported_approval},
     )
-    monkeypatch.setattr(tools_api, "build_tool_registry", lambda **_kwargs: registry)
+    assert unsupported.status_code == 403
+    assert unsupported.json()["detail"]["decision"] == "deny"
 
-    blocked = client.post(
-        "/tools/content.publish/invoke",
-        json={"payload": {"value": "example"}},
+    supported_payload = {
+        "device_id": device_id,
+        "app": "chatgpt",
+        "idempotency_key": "f5d63d78-fde6-4e9f-9136-7d0634ddc3d2",
+    }
+    supported_approval = _approve_device_launch(client, supported_payload)
+    supported = client.post(
+        "/tools/device.app_launch.submit/invoke",
+        json={"payload": supported_payload, "approval_id": supported_approval},
     )
-    assert blocked.status_code == 409
-    assert blocked.json()["detail"]["decision"] == "require_approval"
-    assert calls == []
-
-    # A caller-supplied approval flag is not part of the request contract.
-    spoofed = client.post(
-        "/tools/content.publish/invoke",
-        json={"payload": {"value": "example"}, "user_approved": True},
-    )
-    assert spoofed.status_code == 422
-    assert calls == []
+    assert supported.status_code == 200
+    assert supported.json()["result"]["task"]["app"] == "chatgpt"

@@ -59,65 +59,12 @@ The authenticated `POST /policy/evaluate` endpoint accepts only a registered act
 
 The response is inspection-only. It explicitly includes `evaluation_only=true`, `execution_authorized=false`, and `action_executed=false`. A caller must still use the separate authenticated tool invocation endpoint, which rebuilds the registered definition and checks current grants before any handler is invoked.
 
-The current direct tool-invocation API does not accept a server-issued, action-bound approval receipt. Therefore, high-impact and external-effect tools remain fail-closed with `require_approval`; a caller-supplied approval flag is not accepted. Task-level approvals are not substitutes for tool-invocation approvals because they are not bound to the exact tool definition and canonical payload digest. A future approval flow must issue an owner-scoped, expiring, one-time receipt bound to that exact action before enabling those invocations.
+High-impact and external-side-effect tools require a separate owner confirmation through an action-bound approval receipt. The flow is:
 
-## Registration-time contract validation
+1. `POST /tools/{tool_name}/approvals` validates the input schema, confirms the authenticated owner's current permission grants, and creates a short-lived pending request. It stores only a canonical payload digest, a fingerprint of the tool contract/handler, owner identity, and lifecycle timestamps; the payload itself is never persisted.
+2. `POST /tools/{tool_name}/approvals/{approval_id}/decision` records an explicit `approved` or `rejected` decision from that same authenticated owner. A changed/expired tool definition invalidates the pending approval.
+3. `POST /tools/{tool_name}/invoke` accepts the `approval_id` alongside the payload. The server revalidates current grants, recomputes the canonical payload digest and tool fingerprint, and atomically consumes the approved receipt immediately before handler invocation.
 
-A tool is accepted into the registry only after all definition fields pass
-server-side validation:
+Receipts are owner-scoped, action-bound, expiring (60–900 seconds), and single-use. They cannot be replayed for another payload, tool, owner, or changed handler definition. Permission grants remain independently required; an approval receipt never creates or extends a permission grant. The server never accepts a client-supplied `user_approved` boolean. Because a receipt is consumed before calling the handler, a handler failure or ambiguous external outcome does not make the receipt replayable; the owner must review the outcome before requesting a new approval. Task-level approvals remain a separate mechanism and are not interchangeable with tool-invocation receipts.
 
-- Tool names and descriptions are bounded and canonical.
-- Input and output schemas must be actual Pydantic `BaseModel` subclasses.
-- The handler must be callable and synchronous; coroutine/async-generator functions
-  and awaitable/async-generator handler results are rejected because the current
-  invocation boundary is synchronous.
-- Risk classification must be a `RiskClass` value, not a client/model string.
-- The external-side-effect flag must be an actual boolean.
-- Required permissions must be an immutable `frozenset` of at most 32 bounded,
-  canonical permission identifiers.
-
-The registry inserts a definition only after every check succeeds. Invalid
-definitions are rejected at startup/registration rather than failing later
-during tool invocation.
-
-## Execution isolation limitation
-
-Registration validation does not provide process isolation or a hard runtime
-timeout for arbitrary Python handlers. The current registry invokes trusted,
-server-registered synchronous handlers in-process. Do not add untrusted or
-long-running handlers and do not simulate a hard timeout with a background
-thread: a thread timeout cannot safely terminate a side-effecting operation.
-Hard execution deadlines require a separately designed process/container
-boundary with cancellation and idempotency semantics.
-
-
-## Explicit replay-safety classification
-
-Policy risk and replay safety are different ToolDefinition properties:
-
-- `external_side_effect` describes whether an operation affects an external
-  system and therefore requires the relevant approval policy.
-- `replay_safety` describes whether the same handler can be invoked again after
-  a crash with an ambiguous in-flight outcome.
-
-The default is `reconcile_required`. A handler is classified
-`retry_safe` only through an explicit server-owned ToolDefinition declaration.
-An interrupted step with this declaration is persisted as `safe_tool` and may
-enter `retry_wait`. Other interrupted steps are persisted as
-`unknown_outcome` and require reconciliation, including local state-mutating
-handlers whose `external_side_effect` flag is false.
-
-Read-only device-registry and Cloudflare metadata operations, plus the pure
-`text.echo` handler, are explicitly marked retry-safe. The app-launch
-submission and every other mutating or unclassified handler remain
-reconciliation-required by default. Model output and API request payloads
-cannot set or override this field.
-
-This metadata is persisted into the durable step kind when a workflow is
-created. It does not change the meaning of an existing in-flight workflow.
-Legacy workflow rows are not rewritten automatically: a pre-existing
-`safe_tool` step retains its original persisted classification. If the current
-server-generated definition no longer matches the persisted step metadata,
-resume validation fails closed rather than silently reclassifying or replaying
-the old step. Operators must reconcile such a workflow before continuing.
-
+The same owner-bound receipt can be attached to the matching tool step in a durable `POST /agent/workflows` request using its `approval_id`. The authenticated planning path performs a non-consuming validation against the current owner grants, canonical tool input, and current tool-definition fingerprint. The worker independently rebuilds the registry and repeats that validation after decrypting the owner-scoped workflow request. Immediately before invoking the handler, it atomically consumes the receipt again. A revoked permission, changed tool implementation, changed payload, expired/rejected/consumed receipt, or missing receipt keeps the workflow fail-closed. The approval ID is part of the durable request/step digest so it cannot be silently substituted during resume. Migration V57 creates the owner-scoped approval receipt store.
