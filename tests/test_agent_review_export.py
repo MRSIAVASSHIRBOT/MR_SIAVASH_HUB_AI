@@ -59,3 +59,8 @@ def test_enforces_serialized_utf8_byte_limit():
 def test_rejects_unrecognized_input_fields():
     with pytest.raises(ExportError):
         export_review_summary(summary(untrusted_extra="not-in-schema"))
+
+
+def test_rejects_invalid_unicode_encoding():
+    with pytest.raises(ExportError, match="UTF-8 JSON"):
+        export_review_summary(summary(findings=["\\ud800"]))
