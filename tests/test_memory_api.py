@@ -211,9 +211,9 @@ def test_memory_type_is_persisted_filtered_and_updated() -> None:
         json={"query": "Apollo mission", "memory_types": ["procedural"]},
     )
     assert new_type.status_code == 200
-    assert [item["memory_id"] for item in new_type.json()["results"]] == [
-        created["episodic"]
-    ]
+    assert {
+        item["memory_id"] for item in new_type.json()["results"]
+    } == {created["episodic"], created["procedural"]}
 
 
 def test_memory_type_validation_rejects_unknown_values_and_null_updates() -> None:
@@ -426,3 +426,142 @@ def test_memory_repository_rejects_non_string_memory_type_updates() -> None:
             UUID(created.json()["memory_id"]),
             {"memory_type": []},
         )
+
+
+@pytest.mark.parametrize("confidence", [True, False, "0.7", -0.1, 1.1])
+def test_memory_create_rejects_coercible_or_out_of_range_confidence(confidence):
+    client = authenticated_client()
+    response = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Confidence input validation fixture",
+            "confidence": confidence,
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("raw_number", ["NaN", "Infinity", "-Infinity"])
+def test_memory_create_rejects_non_finite_confidence_without_invalid_error_json(raw_number):
+    client = authenticated_client()
+    response = client.post(
+        "/memory",
+        content=(
+            '{"category":"confidence-validation",'
+            '"content":"Non-finite confidence fixture",'
+            f'"confidence":{raw_number}' + "}"
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]
+
+
+@pytest.mark.parametrize("confidence", [True, "0.5", -0.1, 1.1])
+def test_memory_update_rejects_coercible_or_out_of_range_confidence(confidence):
+    client = authenticated_client()
+    created = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Confidence update validation fixture",
+        },
+    )
+    assert created.status_code == 201
+    response = client.patch(
+        f"/memory/{created.json()['memory_id']}",
+        json={"confidence": confidence},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("raw_number", ["NaN", "Infinity", "-Infinity"])
+def test_memory_update_rejects_non_finite_confidence_without_invalid_error_json(raw_number):
+    client = authenticated_client()
+    created = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Confidence update validation fixture",
+        },
+    )
+    assert created.status_code == 201
+    response = client.patch(
+        f"/memory/{created.json()['memory_id']}",
+        content=f'{{"confidence":{raw_number}' + "}",
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]
+
+
+def test_memory_preview_and_search_numeric_controls_are_strict():
+    client = authenticated_client()
+    requests = [
+        client.post("/memory/search", json={"query": "numeric boundary", "limit": True}),
+        client.post("/memory/dream/preview", json={"limit": True}),
+        client.post("/memory/validate/preview", json={"limit": True}),
+        client.post("/memory/dream/preview", json={"similarity_threshold": True}),
+        client.post("/memory/validate/preview", json={"similarity_threshold": "0.72"}),
+    ]
+    assert [response.status_code for response in requests] == [422] * len(requests)
+
+
+@pytest.mark.parametrize("raw_number", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("/memory/dream/preview", "similarity_threshold"),
+        ("/memory/validate/preview", "similarity_threshold"),
+    ],
+)
+def test_memory_preview_rejects_non_finite_thresholds(raw_number, path, field):
+    client = authenticated_client()
+    response = client.post(
+        path,
+        content=f'{{"{field}":{raw_number}' + "}",
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "confidence",
+    [True, "0.7", float("nan"), float("inf"), float("-inf"), -0.1, 1.1, 10**1000],
+)
+def test_memory_repository_rejects_invalid_confidence_on_create_and_update(confidence):
+    client = authenticated_client()
+    created = client.post(
+        "/memory",
+        json={
+            "category": "confidence-validation",
+            "content": "Repository confidence boundary fixture",
+        },
+    )
+    assert created.status_code == 201
+    repository = MemoryRepository(get_settings().database_path)
+
+    with pytest.raises(ValueError, match="Confidence must be a finite number"):
+        repository.create(
+            "local-owner",
+            {
+                "category": "confidence-validation",
+                "content": "Invalid confidence must not persist",
+                "confidence": confidence,
+            },
+        )
+
+    with pytest.raises(ValueError, match="Confidence must be a finite number"):
+        repository.update(
+            "local-owner",
+            UUID(created.json()["memory_id"]),
+            {"confidence": confidence},
+        )
+
+
+def test_memory_repository_rejects_boolean_search_limits():
+    repository = MemoryRepository(get_settings().database_path)
+    with pytest.raises(ValueError, match="positive integer"):
+        repository.search("local-owner", "numeric boundary", limit=True)
