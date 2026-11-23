@@ -754,6 +754,16 @@ class WorkerEngine:
             connection.commit()
             return task.model_copy(update={"status": TaskStatus.RUNNING, "updated_at": now})
 
+    def recover_interrupted(self) -> None:
+        """Reconcile stale executions without claiming or dispatching new work.
+
+        This operation is intentionally independent from the emergency-stop
+        dispatch gate. A worker process can classify work left by a dead process
+        at startup while the stop switch remains latched; no task handler runs.
+        """
+        with self._run_lock:
+            self._recover_interrupted()
+
     def run_once(self) -> TaskRecord | None:
         """Execute at most one eligible task; serialize calls through this worker instance."""
         with self._run_lock:
