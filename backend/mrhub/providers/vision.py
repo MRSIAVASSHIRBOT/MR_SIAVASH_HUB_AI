@@ -53,6 +53,7 @@ class VisionRequest:
     prompt: str
     images: tuple[VisionImage, ...]
     max_output_tokens: int = 1024
+    timeout_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.prompt, str) or not 1 <= len(self.prompt) <= MAX_VISION_PROMPT_CHARS:
@@ -71,6 +72,17 @@ class VisionRequest:
             raise ValueError("Vision output token limit is outside the supported range")
         if sum(len(image.jpeg_bytes) for image in self.images) > MAX_VISION_TOTAL_BYTES:
             raise ValueError("Vision image batch exceeds the aggregate byte limit")
+        if self.timeout_seconds is not None:
+            if isinstance(self.timeout_seconds, bool) or not isinstance(
+                self.timeout_seconds, (int, float)
+            ):
+                raise ValueError("Vision timeout must be a finite number")
+            try:
+                finite_timeout = math.isfinite(float(self.timeout_seconds))
+            except (OverflowError, ValueError):
+                finite_timeout = False
+            if not finite_timeout or not 1 <= self.timeout_seconds <= 180:
+                raise ValueError("Vision timeout must be between 1 and 180 seconds")
         timestamps = [image.timestamp_seconds for image in self.images]
         if timestamps != sorted(set(timestamps)):
             raise ValueError("Vision image timestamps must be unique and ordered")
@@ -162,8 +174,13 @@ class OllamaVisionProvider:
             base64.b64encode(image.jpeg_bytes).decode("ascii")
             for image in request.images
         ]
+        request_timeout = (
+            min(self.timeout_seconds, float(request.timeout_seconds))
+            if request.timeout_seconds is not None
+            else self.timeout_seconds
+        )
         try:
-            with self._client() as client:
+            with self._client(request_timeout) as client:
                 with client.stream(
                     "POST",
                     "/api/generate",
