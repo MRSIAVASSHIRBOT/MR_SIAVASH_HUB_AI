@@ -7,7 +7,10 @@ ROADMAP = Path(__file__).resolve().parents[1] / "docs" / "roadmap" / "ECOSYSTEM_
 def test_ecosystem_baseline_lists_each_phase_exactly_once() -> None:
     """Prevent phase identifiers from drifting or being silently dropped."""
     content = ROADMAP.read_text(encoding="utf-8")
-    actual = re.findall(r"^\| `([A-Z]\d{1,2})` \|", content, re.MULTILINE)
+    inventory = content.split("## 2. Phase inventory", 1)[1].split(
+        "## 3. Parallelization policy", 1
+    )[0]
+    actual = re.findall(r"^\| `([A-Z]\d{1,2})` \|", inventory, re.MULTILINE)
     expected = {
         *(f"H{index}" for index in range(21)),
         *(f"E{index}" for index in range(15)),
