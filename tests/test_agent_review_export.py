@@ -1,5 +1,7 @@
 import pytest
-from mrhub.agents.review_export import ExportError,export_review_summary
+
+from mrhub.agents.review_export import ExportError, export_review_summary
+
 
 def data(**kw):
     d={"revision":1,"digest":"a"*64,"approved":False,"findings":["needs review"]}
@@ -15,3 +17,13 @@ def test_rejects_malformed(change):
 
 def test_bounds_findings():
     with pytest.raises(ExportError):export_review_summary(data(findings=["x"]*501))
+
+
+def test_digest_requires_lowercase_hex():
+    with pytest.raises(ExportError):
+        export_review_summary(data(digest="g" * 64))
+
+
+def test_utf8_payload_byte_limit_is_enforced():
+    with pytest.raises(ExportError):
+        export_review_summary(data(findings=["é" * 500] * 500))
