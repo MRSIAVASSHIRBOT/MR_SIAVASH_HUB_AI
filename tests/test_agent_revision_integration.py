@@ -1,7 +1,7 @@
 import pytest
 
-from mrhub.agents.revision_review import compare_revisions, record_review
 from mrhub.agents.revision_integration import IntegrationInputError, preview_integration
+from mrhub.agents.revision_review import compare_revisions, record_review
 
 
 def plan(*steps):
