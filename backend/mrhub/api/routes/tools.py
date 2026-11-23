@@ -1,7 +1,7 @@
 """Authenticated tool catalog, owner permission grants, and invocation API."""
 
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -11,6 +11,12 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.policy import PolicyDecision
+from mrhub.security.tool_approvals import (
+    ToolApprovalError,
+    ToolInvocationApprovalStore,
+    canonical_tool_payload,
+    tool_definition_fingerprint,
+)
 from mrhub.security.tool_permissions import (
     DEFAULT_GRANT_SECONDS,
     MAX_GRANT_SECONDS,
@@ -30,6 +36,20 @@ class ToolInvokeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     payload: dict[str, object] = Field(default_factory=dict)
+    approval_id: UUID | None = None
+
+
+class ToolApprovalCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    payload: dict[str, object] = Field(default_factory=dict)
+    expires_in_seconds: int = Field(default=300, ge=60, le=900)
+
+
+class ToolApprovalDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    decision: str = Field(pattern="^(approved|rejected)$")
 
 
 class ToolPermissionGrantRequest(BaseModel):
@@ -44,6 +64,10 @@ class ToolPermissionGrantRequest(BaseModel):
 
 def _permission_service(repository: TaskRepository) -> ToolPermissionService:
     return ToolPermissionService(repository, AuditLogger(repository))
+
+
+def _approval_store(repository: TaskRepository) -> ToolInvocationApprovalStore:
+    return ToolInvocationApprovalStore(repository)
 
 
 @router.get("")
@@ -95,6 +119,140 @@ def revoke_tool_permission(
         raise HTTPException(status_code=404, detail="Permission grant was not found", headers={"Cache-Control": "no-store"})
     response.headers["Cache-Control"] = "no-store"
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+
+
+@router.post("/{tool_name}/approvals", status_code=201)
+def request_tool_approval(
+    tool_name: str,
+    request: ToolApprovalCreateRequest,
+    response: Response,
+    user: CurrentUser,
+    repository: PermissionRepository,
+) -> dict[str, object]:
+    """Create a pending approval for one normalized payload and current tool definition."""
+    response.headers["Cache-Control"] = "no-store"
+    registry = build_tool_registry(owner_user_id=user.user_id)
+    audit = AuditLogger(repository)
+    permissions = _permission_service(repository).active_permissions(user.user_id)
+    try:
+        tool = registry.get(tool_name)
+        _normalized_payload, payload_digest = canonical_tool_payload(tool, request.payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Tool is not registered") from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Tool input validation failed") from exc
+    except ToolApprovalError as exc:
+        raise HTTPException(status_code=422, detail="Tool action could not be fingerprinted") from exc
+
+    decision = registry.evaluate_policy(tool_name, granted_permissions=permissions)
+    if decision.decision is PolicyDecision.DENY:
+        raise HTTPException(
+            status_code=403,
+            detail="The action is prohibited or required owner permissions are missing",
+        )
+    if decision.decision is not PolicyDecision.REQUIRE_APPROVAL:
+        raise HTTPException(status_code=409, detail="This tool action does not require approval")
+
+    fingerprint = tool_definition_fingerprint(tool)
+    try:
+        record = _approval_store(repository).create(
+            approval_id=str(uuid4()),
+            owner_user_id=user.user_id,
+            tool_name=tool_name,
+            payload_digest=payload_digest,
+            tool_fingerprint=fingerprint,
+            ttl_seconds=request.expires_in_seconds,
+        )
+    except ToolApprovalError as exc:
+        raise HTTPException(status_code=422, detail="Tool approval request is invalid") from exc
+
+    audit.record(
+        event_type="tool.approval_requested",
+        outcome="pending",
+        subject_id=record["approval_id"],
+        subject_type="tool_approval",
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={
+            "tool_name": tool_name,
+            "approval_id": record["approval_id"],
+            "status": "pending",
+            "reason_code": "owner_requested_approval",
+        },
+    )
+    return {
+        "approval_id": record["approval_id"],
+        "tool_name": tool_name,
+        "status": "pending",
+        "payload_digest": payload_digest,
+        "tool_fingerprint": fingerprint,
+        "created_at": record["created_at"],
+        "expires_at": record["expires_at"],
+        "owner_review_required": True,
+        "execution_started": False,
+        "tools_executed": False,
+    }
+
+
+@router.post("/{tool_name}/approvals/{approval_id}/decision")
+def decide_tool_approval(
+    tool_name: str,
+    approval_id: UUID,
+    request: ToolApprovalDecisionRequest,
+    response: Response,
+    user: CurrentUser,
+    repository: PermissionRepository,
+) -> dict[str, object]:
+    """Record an explicit owner decision while the exact registered definition is current."""
+    response.headers["Cache-Control"] = "no-store"
+    registry = build_tool_registry(owner_user_id=user.user_id)
+    try:
+        tool = registry.get(tool_name)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Tool is not registered") from exc
+
+    fingerprint = tool_definition_fingerprint(tool)
+    try:
+        record = _approval_store(repository).decide(
+            str(approval_id),
+            owner_user_id=user.user_id,
+            tool_name=tool_name,
+            tool_fingerprint=fingerprint,
+            decision=request.decision,
+        )
+    except ToolApprovalError as exc:
+        raise HTTPException(status_code=409, detail="Tool approval is no longer valid") from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail="Tool approval not found")
+    if record["status"] == "expired":
+        raise HTTPException(status_code=409, detail="Tool approval expired or its definition changed")
+
+    AuditLogger(repository).record(
+        event_type="tool.approval_decided",
+        outcome=request.decision,
+        subject_id=str(approval_id),
+        subject_type="tool_approval",
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={
+            "tool_name": tool_name,
+            "approval_id": str(approval_id),
+            "status": request.decision,
+            "decision": request.decision,
+            "reason_code": "owner_decision",
+        },
+    )
+    return {
+        "approval_id": str(approval_id),
+        "tool_name": tool_name,
+        "status": record["status"],
+        "payload_digest": record["payload_digest"],
+        "expires_at": record["expires_at"],
+        "execution_started": False,
+        "tools_executed": False,
+    }
 
 
 @router.post("/{tool_name}/invoke")
