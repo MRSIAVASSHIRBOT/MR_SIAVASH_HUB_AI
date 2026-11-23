@@ -1,9 +1,12 @@
 """Read-only consistency checks for AWI revision integration previews."""
 from __future__ import annotations
+
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
+
 
 MAX_STEPS = 100
+
 
 @dataclass(frozen=True)
 class ValidationReport:
