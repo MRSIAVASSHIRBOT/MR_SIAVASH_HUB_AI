@@ -1,6 +1,7 @@
 """Owner-scoped memory persistence and FTS5 retrieval."""
 from __future__ import annotations
 
+import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -195,6 +196,20 @@ class MemoryRepository:
             )
         return cursor.rowcount
 
+    @staticmethod
+    def _freshness_score(updated_at: object, now: datetime) -> float:
+        """Return a bounded 90-day exponential freshness signal."""
+        if not isinstance(updated_at, str) or not updated_at:
+            return 0.0
+        try:
+            parsed = datetime.fromisoformat(updated_at)
+        except ValueError:
+            return 0.0
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return 0.0
+        age_seconds = max(0.0, (now - parsed.astimezone(UTC)).total_seconds())
+        return math.exp(-age_seconds / (90 * 24 * 60 * 60))
+
     def search(
         self,
         owner_user_id: str,
@@ -203,13 +218,21 @@ class MemoryRepository:
         *,
         memory_types: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> list[dict[str, object]]:
-        """Run bounded lexical retrieval with owner, expiry and optional type filtering."""
-        terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
+        """Rerank owner-scoped lexical candidates with typed filtering and trust signals.
+
+        Owner and expiry restrictions, plus optional memory-type filters, are
+        applied in SQL before any ranking. Scores order retrieval relevance only;
+        they never establish truth, independently verify content, or grant authority.
+        """
+        terms = re.findall(r"[^\\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         # Token extraction removes FTS operators and syntax supplied by callers.
-        match_expression = " AND ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12])
+        match_expression = " AND ".join(
+            f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12]
+        )
         bounded_limit = max(1, min(limit, 25))
+        candidate_limit = 100
         selected_types: tuple[str, ...] | None = None
         if memory_types is not None:
             if any(not isinstance(memory_type, str) for memory_type in memory_types):
@@ -221,29 +244,109 @@ class MemoryRepository:
                 raise ValueError("Unsupported memory type")
 
         type_clause = ""
+        now = datetime.now(UTC)
         query_params: tuple[object, ...] = (
-            match_expression, owner_user_id, self._now()
+            match_expression,
+            owner_user_id,
+            now.isoformat(),
         )
         if selected_types is not None:
             placeholders = ", ".join("?" for _ in selected_types)
             type_clause = f" AND m.memory_type IN ({placeholders})"
             query_params += selected_types
-        query_params += (bounded_limit,)
+        query_params += (candidate_limit,)
 
         with self.tasks._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT m.*
+                SELECT m.*, bm25(memory_entries_fts) AS lexical_rank
                 FROM memory_entries_fts
                 JOIN memory_entries AS m ON m.memory_id = memory_entries_fts.memory_id
                 WHERE memory_entries_fts MATCH ?
                   AND m.owner_user_id = ?
                   AND (m.expires_at IS NULL OR m.expires_at > ?)"""
                 + type_clause
-                + " ORDER BY bm25(memory_entries_fts) ASC, m.updated_at DESC LIMIT ?",
+                + " ORDER BY lexical_rank ASC, m.updated_at DESC, m.memory_id ASC LIMIT ?",
                 query_params,
             ).fetchall()
-        return [self._record(row) for row in rows]
+
+        if not rows:
+            return []
+
+        lexical_ranks = [float(row["lexical_rank"]) for row in rows]
+        best_rank = min(lexical_ranks)
+        worst_rank = max(lexical_ranks)
+        rank_span = worst_rank - best_rank
+        ranked: list[
+            tuple[float, float, float, float, float, str, dict[str, object]]
+        ] = []
+        for row in rows:
+            lexical_rank = float(row["lexical_rank"])
+            lexical_score = (
+                1.0
+                if rank_span <= 1e-12
+                else (worst_rank - lexical_rank) / rank_span
+            )
+            confidence_value = row["confidence"]
+            confidence_score = (
+                min(1.0, max(0.0, float(confidence_value)))
+                if isinstance(confidence_value, (int, float))
+                and not isinstance(confidence_value, bool)
+                else 0.0
+            )
+            owner_approval_score = (
+                1.0 if row["verification_status"] == "user_approved" else 0.0
+            )
+            freshness_score = self._freshness_score(row["updated_at"], now)
+            total_score = (
+                0.70 * lexical_score
+                + 0.15 * confidence_score
+                + 0.10 * owner_approval_score
+                + 0.05 * freshness_score
+            )
+            record = self._record(row)
+            record["retrieval"] = {
+                "scheme": "hybrid_fts5_owner_attestation_freshness_v1",
+                "score": round(total_score, 6),
+                "signals": {
+                    "lexical": round(lexical_score, 6),
+                    "confidence": round(confidence_score, 6),
+                    "owner_approved": round(owner_approval_score, 6),
+                    "freshness": round(freshness_score, 6),
+                },
+            }
+            try:
+                updated = datetime.fromisoformat(str(row["updated_at"]))
+                updated_timestamp = (
+                    updated.astimezone(UTC).timestamp()
+                    if updated.tzinfo is not None and updated.utcoffset() is not None
+                    else 0.0
+                )
+            except ValueError:
+                updated_timestamp = 0.0
+            ranked.append(
+                (
+                    total_score,
+                    lexical_score,
+                    confidence_score,
+                    owner_approval_score,
+                    updated_timestamp,
+                    str(row["memory_id"]),
+                    record,
+                )
+            )
+
+        ranked.sort(
+            key=lambda item: (
+                -item[0],
+                -item[1],
+                -item[2],
+                -item[3],
+                -item[4],
+                item[5],
+            )
+        )
+        return [item[6] for item in ranked[:bounded_limit]]
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         """Export all owned entries, including expired records, for user-controlled cleanup."""
