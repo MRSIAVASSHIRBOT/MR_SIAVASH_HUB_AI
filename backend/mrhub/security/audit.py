@@ -60,8 +60,6 @@ class AuditLogger:
         "missing_capability_count",
         "declared_risk_class",
         "declared_risk_is_authoritative",
-        "required_permission_count",
-        "granted_permission_count",
     })
 
     def __init__(self, repository: TaskRepository) -> None:
