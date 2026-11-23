@@ -62,7 +62,6 @@ class AuditLogger:
         "workflow_id",
         "step_id",
         "attempt_id",
-        "tool_name",
         "step_number",
         "attempt_number",
         "duration_ms",
