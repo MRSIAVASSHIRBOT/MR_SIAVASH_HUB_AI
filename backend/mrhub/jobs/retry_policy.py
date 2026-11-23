@@ -46,7 +46,7 @@ class RetryPolicy:
         if self.max_delay_seconds < self.base_delay_seconds:
             raise ValueError("max_delay_seconds cannot be below base_delay_seconds")
         if not isinstance(self.retryable_error_codes, frozenset):
-            raise ValueError("retryable_error_codes must be an immutable frozenset")
+            raise TypeError("retryable_error_codes must be an immutable frozenset")
         if not self.retryable_error_codes:
             raise ValueError("At least one retryable error code must be declared")
         for error_code in self.retryable_error_codes:
