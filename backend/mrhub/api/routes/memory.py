@@ -1,6 +1,7 @@
 """Explicit owner-scoped memory CRUD, export, and lexical search."""
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
@@ -25,12 +26,33 @@ def _validate_memory_text(value: str | None) -> str | None:
     except TypeError as exc:
         raise ValueError(str(exc)) from exc
 
+
+def _validate_finite_numeric(value: object, field_name: str) -> object:
+    """Reject coercible values and return a safe sentinel for non-finite floats."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} must be a finite number")
+    try:
+        finite = math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        finite = False
+    if not finite:
+        # Keep non-standard JSON NaN/Infinity out of FastAPI's validation response.
+        # Pydantic will reject this non-numeric sentinel with a JSON-safe error input.
+        return "__non_finite_number__"
+    return value
+
 class MemoryCreate(BaseModel):
     memory_type: Literal["unspecified", "episodic", "semantic", "procedural"] = "unspecified"
     category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
     content: str = Field(min_length=1, max_length=2000)
     provenance: str = Field(default="user-authored", min_length=1, max_length=300)
     confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def confidence_must_be_a_real_number(cls, value: object) -> object:
+        return _validate_finite_numeric(value, "Confidence")
+
     verification_status: Literal["user_authored", "user_approved"] = "user_authored"
     expires_at: datetime | None = None
 
@@ -61,6 +83,12 @@ class MemoryUpdate(BaseModel):
     content: str | None = Field(default=None, min_length=1, max_length=2000)
     provenance: str | None = Field(default=None, min_length=1, max_length=300)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def confidence_must_be_a_real_number(cls, value: object) -> object:
+        return _validate_finite_numeric(value, "Confidence")
+
     verification_status: Literal["user_authored", "user_approved"] | None = None
     expires_at: datetime | None = None
 
@@ -94,20 +122,30 @@ class MemoryUpdate(BaseModel):
 
 class MemorySearch(BaseModel):
     query: str = Field(min_length=1, max_length=200)
-    limit: int = Field(default=10, ge=1, le=25)
+    limit: int = Field(default=10, ge=1, le=25, strict=True)
     memory_types: list[Literal["unspecified", "episodic", "semantic", "procedural"]] | None = Field(
         default=None, max_length=4
     )
 
 
 class MemoryDreamPreview(BaseModel):
-    limit: int = Field(default=100, ge=1, le=100)
+    limit: int = Field(default=100, ge=1, le=100, strict=True)
     similarity_threshold: float = Field(default=0.82, ge=0.75, le=1.0)
+
+    @field_validator("similarity_threshold", mode="before")
+    @classmethod
+    def threshold_must_be_a_real_number(cls, value: object) -> object:
+        return _validate_finite_numeric(value, "Similarity threshold")
 
 
 class MemoryValidationPreview(BaseModel):
     limit: int = Field(default=100, ge=1, le=100)
     similarity_threshold: float = Field(default=0.72, ge=0.65, le=1.0)
+
+    @field_validator("similarity_threshold", mode="before")
+    @classmethod
+    def threshold_must_be_a_real_number(cls, value: object) -> object:
+        return _validate_finite_numeric(value, "Similarity threshold")
 
 
 def _repository() -> MemoryRepository:
