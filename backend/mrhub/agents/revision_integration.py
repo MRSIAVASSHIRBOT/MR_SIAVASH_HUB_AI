@@ -5,11 +5,11 @@ execute steps, authorize tools, or treat caller-supplied review identity as auth
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
-from mrhub.agents.revision_review import ReviewDecision, ReviewInputError, compare_revisions
-from mrhub.agents.plan_revision import PlanRevisionInputError, _validate_dag, PlanStep
+from mrhub.agents.plan_revision import PlanRevisionInputError, PlanStep, _validate_dag
+from mrhub.agents.revision_review import ReviewDecision, compare_revisions
 
 MAX_STEPS = 100
 
