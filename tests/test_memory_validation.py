@@ -190,3 +190,27 @@ def test_validation_does_not_treat_not_only_as_negation(tmp_path: Path) -> None:
 
     result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
     assert result["contradiction_count"] == 0
+
+def test_validation_does_not_compare_conflicting_facts_across_memory_types(tmp_path: Path):
+    repository = MemoryRepository(tmp_path / "validation.sqlite3")
+    _owner(repository, "owner-a")
+    repository.create(
+        "owner-a",
+        {
+            "memory_type": "semantic",
+            "category": "preferences",
+            "content": "Tea is preferred by user every morning",
+        },
+    )
+    repository.create(
+        "owner-a",
+        {
+            "memory_type": "episodic",
+            "category": "preferences",
+            "content": "Tea is not preferred by user every morning",
+        },
+    )
+
+    result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
+    assert result["contradiction_count"] == 0
+
