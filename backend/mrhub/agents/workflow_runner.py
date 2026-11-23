@@ -115,6 +115,53 @@ class AgentWorkflowRunner:
         return AgentWorkflowRunner._digest(request.canonical_payload())
 
     @staticmethod
+    def completed_approval_checkpoint_matches(
+        recovery: WorkflowRecoveryRepository,
+        workflow_id: UUID,
+        owner_user_id: str,
+        request: AgentPlanRequest,
+        approval_id: str,
+        tool_name: str,
+        payload: dict[str, object],
+    ) -> bool:
+        """Allow planning to skip only an exact, already-succeeded approved step."""
+        workflow = recovery.get_run(workflow_id, owner_user_id=owner_user_id)
+        if (
+            workflow is None
+            or workflow.get("status") != "paused"
+            or workflow.get("request_digest")
+            != AgentWorkflowRunner.request_digest(request)
+        ):
+            return False
+
+        for request_step_number, requested_tool in enumerate(request.tools, start=2):
+            if (
+                str(requested_tool.approval_id or "") != approval_id
+                or requested_tool.name != tool_name
+                or requested_tool.payload != payload
+            ):
+                continue
+            step_key = request.tool_step_id(request_step_number, requested_tool)
+            expected_input_digest = AgentCore.workflow_step_input_digest(
+                request_step_number,
+                requested_tool,
+                step_id=step_key,
+            )
+            stored_step = next(
+                (
+                    step for step in workflow.get("steps", [])
+                    if str(step.get("step_key")) == step_key
+                ),
+                None,
+            )
+            return bool(
+                stored_step is not None
+                and stored_step.get("status") == "succeeded"
+                and stored_step.get("input_digest") == expected_input_digest
+            )
+        return False
+
+    @staticmethod
     def build_durable_step_metadata(
         core: AgentCore,
         request: AgentPlanRequest,
