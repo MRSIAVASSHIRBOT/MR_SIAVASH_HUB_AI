@@ -149,6 +149,10 @@ def analyze_goal(
     criterion_count = 0
     verification_count = 0
     scope = ""
+    explicit_research_required = False
+    explicit_missing_information: list[str] = []
+    explicit_clarification_questions: list[str] = []
+    explicit_research_questions: list[str] = []
 
     if work_order is not None:
         if _normalize(work_order.goal) != normalized:
@@ -160,6 +164,10 @@ def analyze_goal(
         capability_count = len(work_order.required_capabilities)
         criterion_count = len(work_order.acceptance_criteria)
         verification_count = len(work_order.verification_steps)
+        explicit_research_required = work_order.research_required
+        explicit_missing_information = list(work_order.missing_information)
+        explicit_clarification_questions = list(work_order.clarification_questions)
+        explicit_research_questions = list(work_order.research_questions)
         work_order_text = [
             work_order.intent,
             work_order.scope,
@@ -169,11 +177,14 @@ def analyze_goal(
             *work_order.required_capabilities,
             *work_order.acceptance_criteria,
             *work_order.verification_steps,
+            *explicit_missing_information,
+            *explicit_clarification_questions,
+            *explicit_research_questions,
         ]
 
     combined = _normalize(" ".join([normalized_goal, *work_order_text]))
     action_required = _contains_any(normalized, _ACTION_TERMS)
-    research_required = _contains_any(combined, _RESEARCH_TERMS)
+    research_required = explicit_research_required or _contains_any(combined, _RESEARCH_TERMS)
     vision_required = _contains_any(normalized, _VISION_TERMS)
     audio_required = _contains_any(normalized, _AUDIO_TERMS)
     information_request = _contains_any(normalized, _INFORMATION_TERMS)
@@ -185,6 +196,16 @@ def analyze_goal(
 
     information_gaps: list[str] = []
     reason_codes: list[str] = []
+    if explicit_missing_information:
+        information_gaps.append("user_information_missing")
+        reason_codes.append("work_order_reports_missing_information")
+    if explicit_clarification_questions:
+        information_gaps.append("clarification_questions_present")
+        reason_codes.append("work_order_contains_clarification_questions")
+    if explicit_research_required:
+        reason_codes.append("work_order_requires_research")
+    if explicit_research_questions:
+        reason_codes.append("work_order_contains_research_questions")
 
     if (
         not action_required
