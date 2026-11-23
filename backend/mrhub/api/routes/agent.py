@@ -718,11 +718,13 @@ def assess_agent_work_order(
 
 
 @router.get("/capabilities")
-def discover_agent_capabilities() -> dict[str, object]:
-    """Return a read-only inventory of configured models, tools, and reviewed sources."""
+def discover_agent_capabilities(
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return the authenticated owner's read-only inventory of configured tools and sources."""
     settings = get_settings()
     models = build_model_router().catalog()
-    tool_registry = build_tool_registry()
+    tool_registry = build_tool_registry(owner_user_id=current_user.user_id)
     tools = tool_registry.catalog()
     agents = build_default_agent_registry(tool_registry).catalog()
     approved_sources = CapabilityRegistry(settings.database_path).list_candidates(
