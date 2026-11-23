@@ -20,7 +20,8 @@ The companion H2 change introduces a validated immutable `RetryPolicy` per allow
 - Retry classification uses bounded, lower-case error identifiers rather than exception text.
 - Retry-After is accepted only as an integer in the range 0–86,400 seconds.
 - Exponential backoff is capped by the policy's maximum delay.
-- The retry limit is policy-specific.
+- The retry limit is policy-specific and is absolutely bounded to at most 10 total attempts (including the initial attempt).
+- Base and maximum backoff delays are each limited to 1–86,400 seconds; the effective delay cannot exceed the configured policy maximum.
 - A retry policy can be configured only for task types in the worker's explicit idempotent allow-list. The current allow-list remains `demo.echo`.
 - An error code not present in the task type's allow-list is terminal and is not retried.
 - External-publishing, video-generation, and other side-effecting task types do not gain automatic retry permission.
@@ -47,3 +48,21 @@ Therefore:
 8. Focused and full CI must pass on the exact candidate commit.
 
 **Validation note:** This document describes code-observed guarantees and the H2 retry-policy delta. It does not claim that a generic hard task timeout or production process supervisor has been implemented.
+
+
+## Worker startup recovery
+
+The worker process runs the stale-execution recovery pass once during startup,
+before entering its polling loop. This pass is deliberately independent from
+the emergency-stop dispatch gate: work that is already stale and has an expired
+lease is classified even while the stop switch remains latched. While the stop
+switch remains latched, ordinary polls return before claiming work or running
+the normal poll-time recovery path. After an authenticated operator clears the
+stop switch, the next normal poll performs recovery before claiming new work.
+Recovery applies fenced durable-state transitions and may also remove narrowly
+scoped orphaned render files after stale-threshold and lease-expiry checks. It
+does not claim tasks, invoke handlers, or dispatch new work.
+
+Regression tests verify that startup recovery reconciles stale work while
+dispatch is stopped, that the handler is never invoked, and that polling remains
+blocked afterwards.
