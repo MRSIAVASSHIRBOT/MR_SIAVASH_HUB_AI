@@ -72,3 +72,14 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+## Typed memory taxonomy and filtered retrieval
+
+Memory entries support four explicit classifications: `unspecified`, `episodic`, `semantic`, and `procedural`. Existing records are preserved by migration V56 and receive the neutral `unspecified` default; classification is not inferred retroactively.
+
+The authenticated `POST /memory/search` and `POST /agent/context/assemble` endpoints accept an optional `memory_types` filter. Filtering is applied inside the owner-scoped SQL retrieval path before ranking and context assembly. The filter is a bounded list of known taxonomy values; unknown values and null type updates are rejected.
+
+Memory dreaming and contradiction preview do not compare records across different memory types. Numeric confidence, similarity thresholds, and result limits use strict finite-value validation so booleans, numeric strings, NaN, Infinity, and out-of-range values cannot silently change ranking or validation behavior.
+
+Classification is descriptive metadata, not proof of truth, owner approval, safety, or authorization. Retrieved memory remains untrusted evidence and cannot override system policy or grant tool access.
+
