@@ -45,7 +45,6 @@ def test_lesson_proposal_is_stable_and_links_to_persisted_step_evidence():
     assert set(payload["memory_entry_preview"]) == {
         "memory_type", "category", "content", "provenance", "confidence", "verification_status"
     }
-    # The current Memory API has no typed memory_type field; do not invent one.
 
 
 @pytest.mark.parametrize(
