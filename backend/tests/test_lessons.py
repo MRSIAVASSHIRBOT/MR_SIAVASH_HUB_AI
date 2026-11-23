@@ -1,6 +1,5 @@
-from uuid import UUID
-
 import pytest
+from uuid import UUID
 
 from mrhub.agents.lessons import (
     LessonEvidence,
