@@ -65,6 +65,9 @@ router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(requir
 def _build_owner_agent_core(
     owner_user_id: str,
     repository: TaskRepository | None = None,
+    *,
+    resume_workflow_id: UUID | None = None,
+    resume_request: AgentPlanRequest | None = None,
 ) -> AgentCore:
     """Build an owner-scoped AgentCore with action-bound approval receipts."""
     tasks = repository or TaskRepository(get_settings().database_path)
@@ -118,13 +121,25 @@ def _build_owner_agent_core(
                     tool_fingerprint=fingerprint,
                     audit_event=audit_event,
                 )
-            return approval_store.validate(
+            if approval_store.validate(
                 approval_id,
                 owner_user_id=owner_user_id,
                 tool_name=tool_name,
                 payload_digest=payload_digest,
                 tool_fingerprint=fingerprint,
-            )
+            ):
+                return True
+            if resume_workflow_id is not None and resume_request is not None:
+                return AgentWorkflowRunner.completed_approval_checkpoint_matches(
+                    WorkflowRecoveryRepository(tasks.database_path),
+                    resume_workflow_id,
+                    owner_user_id,
+                    resume_request,
+                    approval_id,
+                    tool_name,
+                    payload,
+                )
+            return False
         except (LookupError, ToolApprovalError, TypeError, ValueError):
             return False
         except Exception:  # noqa: BLE001 - receipt checks fail closed
@@ -1268,7 +1283,12 @@ def resume_agent_workflow(
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
-    core = _build_owner_agent_core(current_user.user_id, tasks)
+    core = _build_owner_agent_core(
+        current_user.user_id,
+        tasks,
+        resume_workflow_id=workflow_id,
+        resume_request=request.request,
+    )
     try:
         plan = core.plan(request.request)
         return AgentWorkflowRunner(tasks, core).queue_resume(
