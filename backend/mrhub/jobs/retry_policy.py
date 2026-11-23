@@ -1,5 +1,4 @@
 """Validated retry policy primitives for safe, idempotent worker tasks."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
