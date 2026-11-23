@@ -145,6 +145,20 @@ def create_goal_work_order_plan(
         )
         work_order = generate_work_order(request.goal, model_router)
         if work_order.risk_class.value == "prohibited":
+            try:
+                audit_logger.record(
+                    event_type="agent.work_order_blocked",
+                    outcome="denied",
+                    actor_type="user",
+                    actor_id=current_user.user_id,
+                    subject_type="work_order",
+                    metadata={"status": "generated_output_prohibited"},
+                )
+            except sqlite3.Error as audit_exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Audit storage is unavailable",
+                ) from audit_exc
             raise HTTPException(
                 status_code=422,
                 detail="The requested goal is outside the supported safety policy",
