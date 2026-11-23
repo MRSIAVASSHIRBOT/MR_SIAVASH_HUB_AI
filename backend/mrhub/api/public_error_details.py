@@ -5,6 +5,19 @@ must never be added here; unknown values are replaced by the status fallback.
 """
 
 SAFE_PUBLIC_ERROR_DETAILS = frozenset({
+    "Tool is not registered",
+    "Tool input validation failed",
+    "Tool approval request is invalid",
+    "Tool approval not found",
+    "Tool approval is no longer valid",
+    "Tool approval expired or its definition changed",
+    "Tool action could not be fingerprinted",
+    "This tool action does not require approval",
+    "The action is prohibited or required owner permissions are missing",
+    "Permission grant was not found",
+    "Permission grant request is invalid",
+    "Approval storage is unavailable",
+    "Approval or permission storage is unavailable",
     "A brand with this name already exists",
     "A decision already exists for this task",
     "Active Telegram client not found",
