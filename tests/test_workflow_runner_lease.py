@@ -5,7 +5,7 @@ import pytest
 from pydantic import BaseModel
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
-from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.agents.workflow_runner import AgentWorkflowRunner, _failure_trace_for_tool
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, WorkerLease
@@ -173,3 +173,21 @@ def test_local_state_mutating_tool_defaults_to_non_replayable_durable_step():
     step_specs, _ = runner._durable_step_metadata(request, plan)
 
     assert step_specs[1]["kind"] == "non_replayable_tool"
+
+
+
+@pytest.mark.parametrize(
+    ("replay_safety", "expected"),
+    [
+        (
+            ReplaySafety.RETRY_SAFE,
+            ("agent.workflow.step.failed", "failed"),
+        ),
+        (
+            ReplaySafety.RECONCILE_REQUIRED,
+            ("agent.workflow.step.unknown_outcome", "unknown_outcome"),
+        ),
+    ],
+)
+def test_failure_trace_event_and_outcome_follow_replay_safety(replay_safety, expected):
+    assert _failure_trace_for_tool(replay_safety) == expected
