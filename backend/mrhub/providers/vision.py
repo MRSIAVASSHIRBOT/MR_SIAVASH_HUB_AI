@@ -12,6 +12,7 @@ import httpx
 
 from mrhub.providers.base import (
     ProviderConfigurationError,
+    ProviderError,
     ProviderHealth,
     ProviderTimeoutError,
     ProviderUnavailableError,
@@ -197,6 +198,7 @@ class OllamaVisionProvider:
             if request.timeout_seconds is not None
             else self.timeout_seconds
         )
+        failure: ProviderError | None = None
         try:
             with self._client(request_timeout) as client:
                 with client.stream(
@@ -220,11 +222,13 @@ class OllamaVisionProvider:
                         body.extend(chunk)
                 payload = json.loads(body)
         except httpx.TimeoutException:
-            raise ProviderTimeoutError("Local vision request timed out") from None
+            failure = ProviderTimeoutError("Local vision request timed out")
         except httpx.HTTPError:
-            raise ProviderUnavailableError("Local vision service is unavailable") from None
+            failure = ProviderUnavailableError("Local vision service is unavailable")
         except (ValueError, UnicodeDecodeError):
-            raise ProviderUnavailableError("Local vision model returned an invalid response") from None
+            failure = ProviderUnavailableError("Local vision model returned an invalid response")
+        if failure is not None:
+            raise failure
 
         output = payload.get("response") if isinstance(payload, dict) else None
         if not isinstance(output, str) or not output.strip() or len(output) > MAX_VISION_OUTPUT_CHARS:
