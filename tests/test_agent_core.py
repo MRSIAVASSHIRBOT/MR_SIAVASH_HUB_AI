@@ -1400,3 +1400,62 @@ def test_approval_receipt_is_part_of_durable_request_identity():
         AgentWorkflowRunner.request_digest(without_receipt)
     )
 
+
+
+def test_agent_core_refreshes_owner_grants_after_receipt_consumption():
+    from mrhub.security.policy import PolicyDecision
+
+    calls = []
+    consumed = []
+    permissions = {"current": frozenset({"publish.external"})}
+    approval_id = "32345678-1234-5678-1234-567812345678"
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="custom.external",
+            description="One externally visible action with a dedicated grant.",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: calls.append("executed") or {"accepted": True},
+            risk_class=RiskClass.LOW,
+            required_permissions=frozenset({"publish.external"}),
+            external_side_effect=True,
+        )
+    )
+
+    def validate(*_args):
+        return True
+
+    def consume(*_args):
+        consumed.append(approval_id)
+        # Simulate the owner revoking the grant while the receipt is consumed.
+        permissions["current"] = frozenset()
+        return True
+
+    core = AgentCore(
+        router,
+        registry,
+        permission_provider=lambda: permissions["current"],
+        approval_validator=validate,
+        approval_consumer=consume,
+    )
+    request = AgentPlanRequest(
+        goal="Deny execution if the owner grant is revoked after receipt lookup",
+        tools=[
+            {
+                "name": "custom.external",
+                "payload": {},
+                "approval_id": approval_id,
+            }
+        ],
+    )
+
+    result = core.execute(request)
+
+    assert result["execution_completed"] is False
+    assert result["blocked"] is True
+    assert result["error_code"] == "policy_denied"
+    assert consumed == [approval_id]
+    assert calls == []
