@@ -70,6 +70,8 @@ def revise_plan(plan: Mapping[str, object], gaps: list[Mapping[str, object]], *,
     """Return a deterministic, additive revision proposal; never execute it."""
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
         raise PlanRevisionInputError("revision must be a positive integer")
+    if not isinstance(plan, Mapping):
+        raise PlanRevisionInputError("Plan must be a mapping")
     raw_steps = plan.get("steps")
     if not isinstance(raw_steps, list) or len(raw_steps) > MAX_PLAN_STEPS:
         raise PlanRevisionInputError("Plan steps must be a bounded list")
@@ -101,18 +103,24 @@ def revise_plan(plan: Mapping[str, object], gaps: list[Mapping[str, object]], *,
         if not isinstance(gap, Mapping):
             raise PlanRevisionInputError("Gap entries must be mappings")
         criterion_id, kind = gap.get("criterion_id"), gap.get("kind")
-        if not isinstance(criterion_id, str) or not criterion_id.strip() or len(criterion_id) > MAX_TEXT_LENGTH:
+        if (
+            not isinstance(criterion_id, str)
+            or not criterion_id.strip()
+            or criterion_id != criterion_id.strip()
+        ):
             raise PlanRevisionInputError("Invalid gap criterion identifier")
         if kind not in ("failed", "unverified"):
             raise PlanRevisionInputError("Unsupported gap kind")
         new_id = f"review-{revision}-{criterion_id}"
-        if new_id in existing:
-            continue
         description = (
             f"Human review of evidence for criterion {criterion_id}."
             if kind == "failed"
             else f"Collect and verify evidence for criterion {criterion_id}."
         )
+        if len(new_id) > MAX_TEXT_LENGTH or len(description) > MAX_TEXT_LENGTH:
+            raise PlanRevisionInputError("Generated review step exceeds supported text length")
+        if new_id in existing:
+            continue
         steps.append(PlanStep(new_id, description, (), "pending"))
         existing.add(new_id)
         added.append(new_id)
