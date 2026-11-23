@@ -45,6 +45,7 @@ class LessonProposal:
             "source_reference": self.source_reference,
             "evidence_digest": self.evidence_digest,
             "memory_entry_preview": {
+                "memory_type": "procedural",
                 "category": self.category,
                 "content": self.lesson_text,
                 "provenance": self.source_reference,
