@@ -44,6 +44,15 @@ def test_visual_and_audio_inputs_are_reported_as_modalities() -> None:
 
     assert "vision" in vision.model_requirements.modalities
     assert "audio" in audio.model_requirements.modalities
+    assert vision.tool_use_required is False
+    assert audio.tool_use_required is False
+
+
+def test_content_generation_request_does_not_require_external_tools() -> None:
+    result = analyze_goal("Write a short poem about the night sky.")
+
+    assert result.tool_use_required is False
+    assert result.model_requirements.tool_catalog_needed is False
 
 
 def test_vague_goal_and_unresolved_assumptions_recommend_clarification() -> None:
