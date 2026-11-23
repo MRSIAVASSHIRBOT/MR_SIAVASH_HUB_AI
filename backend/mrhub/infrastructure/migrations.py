@@ -1518,6 +1518,37 @@ MIGRATIONS = (
                )""",
         ),
     ),
+    Migration.build(
+        55,
+        "owner_scoped_encrypted_agent_work_order_plans",
+        (
+            """CREATE TABLE agent_work_order_plans (
+                plan_id TEXT PRIMARY KEY CHECK (length(plan_id) = 36),
+                owner_user_id TEXT NOT NULL REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'active' CHECK (
+                    status IN ('active', 'consumed', 'expired', 'revoked')
+                ),
+                plan_digest TEXT NOT NULL CHECK (
+                    length(plan_digest) = 64 AND plan_digest NOT GLOB '*[^a-f0-9]*'
+                ),
+                envelope_version INTEGER NOT NULL CHECK (envelope_version > 0),
+                nonce_b64 TEXT NOT NULL CHECK (length(nonce_b64) BETWEEN 1 AND 64),
+                ciphertext_b64 TEXT NOT NULL CHECK (length(ciphertext_b64) BETWEEN 1 AND 1500000),
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                consumed_at TEXT,
+                workflow_id TEXT REFERENCES workflow_runs(workflow_id) ON DELETE CASCADE,
+                CHECK (expires_at > created_at),
+                CHECK (
+                    (status = 'consumed' AND consumed_at IS NOT NULL AND workflow_id IS NOT NULL)
+                    OR
+                    (status <> 'consumed' AND consumed_at IS NULL AND workflow_id IS NULL)
+                )
+            )""",
+            "CREATE INDEX idx_agent_work_order_plans_owner_status_expiry ON agent_work_order_plans(owner_user_id, status, expires_at)",
+            "CREATE INDEX idx_agent_work_order_plans_workflow ON agent_work_order_plans(workflow_id) WHERE workflow_id IS NOT NULL",
+        ),
+    ),
 )
 
 
