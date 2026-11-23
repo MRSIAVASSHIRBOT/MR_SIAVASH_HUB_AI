@@ -56,3 +56,17 @@ def test_cross_edge_to_finished_node_has_no_false_cycle():
 def test_long_cycle_detected_iteratively():
     steps = [step(str(i), [str((i + 1) % 100)]) for i in range(100)]
     assert "dependency_cycle" in validate_plan({"steps": steps}).findings
+
+
+def test_rejects_unbounded_or_invalid_dependency_entries():
+    too_many = [f"step-{index}" for index in range(MAX_STEPS + 1)]
+    oversized = ["x" * (MAX_TEXT + 1)]
+    blank = ["  "]
+    for dependencies in (too_many, oversized, blank):
+        report = validate_plan({
+            "steps": [
+                {"step_id": "root", "description": "Root", "dependencies": dependencies}
+            ]
+        })
+        assert not report.valid
+        assert "invalid_dependencies" in report.findings
