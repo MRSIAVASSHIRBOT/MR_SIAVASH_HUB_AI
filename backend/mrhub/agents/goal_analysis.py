@@ -148,6 +148,10 @@ def analyze_goal(
     capability_count = 0
     criterion_count = 0
     verification_count = 0
+    missing_information: list[str] = []
+    clarification_questions: list[str] = []
+    research_questions: list[str] = []
+    explicit_research_required = False
     scope = ""
 
     if work_order is not None:
@@ -160,6 +164,10 @@ def analyze_goal(
         capability_count = len(work_order.required_capabilities)
         criterion_count = len(work_order.acceptance_criteria)
         verification_count = len(work_order.verification_steps)
+        missing_information = list(work_order.missing_information)
+        clarification_questions = list(work_order.clarification_questions)
+        research_questions = list(work_order.research_questions)
+        explicit_research_required = work_order.research_required
         work_order_text = [
             work_order.intent,
             work_order.scope,
@@ -169,11 +177,14 @@ def analyze_goal(
             *work_order.required_capabilities,
             *work_order.acceptance_criteria,
             *work_order.verification_steps,
+            *missing_information,
+            *clarification_questions,
+            *research_questions,
         ]
 
     combined = _normalize(" ".join([normalized_goal, *work_order_text]))
     action_required = _contains_any(normalized, _ACTION_TERMS)
-    research_required = _contains_any(combined, _RESEARCH_TERMS)
+    research_required = explicit_research_required or _contains_any(combined, _RESEARCH_TERMS)
     vision_required = _contains_any(normalized, _VISION_TERMS)
     audio_required = _contains_any(normalized, _AUDIO_TERMS)
     information_request = _contains_any(normalized, _INFORMATION_TERMS)
@@ -202,6 +213,13 @@ def analyze_goal(
         information_gaps.append("target_scope")
         reason_codes.append("action_scope_not_specified")
 
+    if missing_information:
+        information_gaps.append("user_information_missing")
+        reason_codes.append("work_order_missing_information")
+    if clarification_questions:
+        information_gaps.append("clarification_required")
+        reason_codes.append("work_order_clarification_required")
+
     if any(
         _contains_any(_normalize(item), _UNCERTAINTY_TERMS)
         for item in assumptions + constraints
@@ -213,7 +231,9 @@ def analyze_goal(
         information_gaps.append("high_impact_action_scope")
         reason_codes.append("high_impact_scope_requires_review")
 
-    if research_required:
+    if explicit_research_required:
+        reason_codes.append("work_order_explicit_research_requirement")
+    elif research_required:
         reason_codes.append("freshness_or_external_evidence_signal")
     if tool_use_required:
         reason_codes.append("action_or_capability_signal")
