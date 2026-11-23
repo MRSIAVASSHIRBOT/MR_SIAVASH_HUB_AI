@@ -5,13 +5,13 @@ import pytest
 from pydantic import BaseModel
 
 from mrhub.agents.core import AgentCore, AgentPlanRequest
-from mrhub.agents.workflow_runner import AgentWorkflowRunner
+from mrhub.agents.workflow_runner import AgentWorkflowRunner, _failure_trace_for_tool
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, WorkerLease
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
 @pytest.mark.parametrize(
@@ -72,6 +72,7 @@ def test_durable_step_metadata_tracks_topological_order_and_external_tool_identi
             input_model=EmptyInput,
             output_model=EmptyOutput,
             handler=lambda _payload: {"accepted": True},
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     router = ModelRouter()
@@ -134,3 +135,59 @@ def test_durable_step_metadata_tracks_topological_order_and_external_tool_identi
     assert tools_by_execution_step[2].external_side_effect is False
     assert tools_by_execution_step[3].name == "publish.external"
     assert tools_by_execution_step[3].external_side_effect is True
+
+
+
+def test_local_state_mutating_tool_defaults_to_non_replayable_durable_step():
+    class EmptyInput(BaseModel):
+        pass
+
+    class EmptyOutput(BaseModel):
+        accepted: bool
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="local.state.mutate",
+            description="Mutate one local state value",
+            input_model=EmptyInput,
+            output_model=EmptyOutput,
+            handler=lambda _payload: {"accepted": True},
+            risk_class=RiskClass.LOW,
+            external_side_effect=False,
+        )
+    )
+    assert registry.get("local.state.mutate").replay_safety is ReplaySafety.RECONCILE_REQUIRED
+
+    router = ModelRouter()
+    router.register_provider(StubProvider())
+    core = AgentCore(router, registry)
+    request = AgentPlanRequest(
+        goal="Mutate a local state value",
+        tools=[{"name": "local.state.mutate", "payload": {}}],
+    )
+    plan = core.plan(request)
+    runner = object.__new__(AgentWorkflowRunner)
+    runner.core = core
+
+    step_specs, _ = runner._durable_step_metadata(request, plan)
+
+    assert step_specs[1]["kind"] == "non_replayable_tool"
+
+
+
+@pytest.mark.parametrize(
+    ("replay_safety", "expected"),
+    [
+        (
+            ReplaySafety.RETRY_SAFE,
+            ("agent.workflow.step.failed", "failed"),
+        ),
+        (
+            ReplaySafety.RECONCILE_REQUIRED,
+            ("agent.workflow.step.unknown_outcome", "unknown_outcome"),
+        ),
+    ],
+)
+def test_failure_trace_event_and_outcome_follow_replay_safety(replay_safety, expected):
+    assert _failure_trace_for_tool(replay_safety) == expected

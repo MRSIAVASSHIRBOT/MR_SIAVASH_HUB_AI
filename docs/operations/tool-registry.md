@@ -60,3 +60,64 @@ The authenticated `POST /policy/evaluate` endpoint accepts only a registered act
 The response is inspection-only. It explicitly includes `evaluation_only=true`, `execution_authorized=false`, and `action_executed=false`. A caller must still use the separate authenticated tool invocation endpoint, which rebuilds the registered definition and checks current grants before any handler is invoked.
 
 The current direct tool-invocation API does not accept a server-issued, action-bound approval receipt. Therefore, high-impact and external-effect tools remain fail-closed with `require_approval`; a caller-supplied approval flag is not accepted. Task-level approvals are not substitutes for tool-invocation approvals because they are not bound to the exact tool definition and canonical payload digest. A future approval flow must issue an owner-scoped, expiring, one-time receipt bound to that exact action before enabling those invocations.
+
+## Registration-time contract validation
+
+A tool is accepted into the registry only after all definition fields pass
+server-side validation:
+
+- Tool names and descriptions are bounded and canonical.
+- Input and output schemas must be actual Pydantic `BaseModel` subclasses.
+- The handler must be callable and synchronous; coroutine/async-generator functions
+  and awaitable/async-generator handler results are rejected because the current
+  invocation boundary is synchronous.
+- Risk classification must be a `RiskClass` value, not a client/model string.
+- The external-side-effect flag must be an actual boolean.
+- Required permissions must be an immutable `frozenset` of at most 32 bounded,
+  canonical permission identifiers.
+
+The registry inserts a definition only after every check succeeds. Invalid
+definitions are rejected at startup/registration rather than failing later
+during tool invocation.
+
+## Execution isolation limitation
+
+Registration validation does not provide process isolation or a hard runtime
+timeout for arbitrary Python handlers. The current registry invokes trusted,
+server-registered synchronous handlers in-process. Do not add untrusted or
+long-running handlers and do not simulate a hard timeout with a background
+thread: a thread timeout cannot safely terminate a side-effecting operation.
+Hard execution deadlines require a separately designed process/container
+boundary with cancellation and idempotency semantics.
+
+
+## Explicit replay-safety classification
+
+Policy risk and replay safety are different ToolDefinition properties:
+
+- `external_side_effect` describes whether an operation affects an external
+  system and therefore requires the relevant approval policy.
+- `replay_safety` describes whether the same handler can be invoked again after
+  a crash with an ambiguous in-flight outcome.
+
+The default is `reconcile_required`. A handler is classified
+`retry_safe` only through an explicit server-owned ToolDefinition declaration.
+An interrupted step with this declaration is persisted as `safe_tool` and may
+enter `retry_wait`. Other interrupted steps are persisted as
+`unknown_outcome` and require reconciliation, including local state-mutating
+handlers whose `external_side_effect` flag is false.
+
+Read-only device-registry and Cloudflare metadata operations, plus the pure
+`text.echo` handler, are explicitly marked retry-safe. The app-launch
+submission and every other mutating or unclassified handler remain
+reconciliation-required by default. Model output and API request payloads
+cannot set or override this field.
+
+This metadata is persisted into the durable step kind when a workflow is
+created. It does not change the meaning of an existing in-flight workflow.
+Legacy workflow rows are not rewritten automatically: a pre-existing
+`safe_tool` step retains its original persisted classification. If the current
+server-generated definition no longer matches the persisted step metadata,
+resume validation fails closed rather than silently reclassifying or replaying
+the old step. Operators must reconcile such a workflow before continuing.
+

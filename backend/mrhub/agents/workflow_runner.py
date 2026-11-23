@@ -23,6 +23,14 @@ from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.recovery import ResumeDecision, StepAttempt, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
+from mrhub.tools.registry import ReplaySafety
+
+
+def _failure_trace_for_tool(replay_safety: ReplaySafety) -> tuple[str, str]:
+    """Keep event type and outcome aligned with the server-owned replay contract."""
+    if replay_safety is ReplaySafety.RETRY_SAFE:
+        return "agent.workflow.step.failed", "failed"
+    return "agent.workflow.step.unknown_outcome", "unknown_outcome"
 
 
 class AgentWorkflowRunner:
@@ -144,9 +152,11 @@ class AgentWorkflowRunner:
                         ].depends_on
                     ),
                     "kind": (
-                        "external_tool"
+                        "safe_tool"
+                        if definition.replay_safety is ReplaySafety.RETRY_SAFE
+                        else "external_tool"
                         if definition.external_side_effect
-                        else "safe_tool"
+                        else "non_replayable_tool"
                     ),
                     "name": requested_tool.name,
                     "input_digest": core.workflow_step_input_digest(
@@ -432,23 +442,18 @@ class AgentWorkflowRunner:
                             workflow_id,
                             attempt,
                             failure_code,
-                            unknown_outcome=definition.external_side_effect,
+                            unknown_outcome=definition.replay_safety is not ReplaySafety.RETRY_SAFE,
                             lease=lease,
+                        )
+                        failure_event_type, failure_outcome = _failure_trace_for_tool(
+                            definition.replay_safety
                         )
                         self._record_trace_event(
                             task_id=str(task.task_id),
                             workflow_id=workflow_id,
                             trace_id=trace_id,
-                            event_type=(
-                                "agent.workflow.step.unknown_outcome"
-                                if definition.external_side_effect
-                                else "agent.workflow.step.failed"
-                            ),
-                            outcome=(
-                                "unknown_outcome"
-                                if definition.external_side_effect
-                                else "failed"
-                            ),
+                            event_type=failure_event_type,
+                            outcome=failure_outcome,
                             step_id=attempt.step_id,
                             attempt_id=attempt.attempt_id,
                             attempt_number=attempt.attempt_number,
@@ -900,7 +905,7 @@ class AgentWorkflowRunner:
                                 workflow_id,
                                 attempt,
                                 error_code or "tool_execution_failed",
-                                unknown_outcome=definition.external_side_effect,
+                                unknown_outcome=definition.replay_safety is not ReplaySafety.RETRY_SAFE,
                                 lease=lease,
                             )
 
