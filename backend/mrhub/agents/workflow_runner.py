@@ -26,6 +26,13 @@ from mrhub.security.audit import AuditLogger
 from mrhub.tools.registry import ReplaySafety
 
 
+def _failure_trace_for_tool(replay_safety: ReplaySafety) -> tuple[str, str]:
+    """Keep event type and outcome aligned with the server-owned replay contract."""
+    if replay_safety is ReplaySafety.RETRY_SAFE:
+        return "agent.workflow.step.failed", "failed"
+    return "agent.workflow.step.unknown_outcome", "unknown_outcome"
+
+
 class AgentWorkflowRunner:
     """Run supplied inputs in memory while fencing every durable workflow transition."""
 
@@ -438,20 +445,15 @@ class AgentWorkflowRunner:
                             unknown_outcome=definition.replay_safety is not ReplaySafety.RETRY_SAFE,
                             lease=lease,
                         )
+                        failure_event_type, failure_outcome = _failure_trace_for_tool(
+                            definition.replay_safety
+                        )
                         self._record_trace_event(
                             task_id=str(task.task_id),
                             workflow_id=workflow_id,
                             trace_id=trace_id,
-                            event_type=(
-                                "agent.workflow.step.unknown_outcome"
-                                if definition.replay_safety is not ReplaySafety.RETRY_SAFE
-                                else "agent.workflow.step.failed"
-                            ),
-                            outcome=(
-                                "unknown_outcome"
-                                if definition.replay_safety is not ReplaySafety.RETRY_SAFE
-                                else "failed"
-                            ),
+                            event_type=failure_event_type,
+                            outcome=failure_outcome,
                             step_id=attempt.step_id,
                             attempt_id=attempt.attempt_id,
                             attempt_number=attempt.attempt_number,
