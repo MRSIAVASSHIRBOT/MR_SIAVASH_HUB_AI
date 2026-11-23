@@ -57,6 +57,15 @@ _ACTION_TERMS = (
     "اتصال", "خودکار", "تولید", "تبدیل", "طراحی", "تحلیل", "پردازش",
     "بارگذاری", "دانلود",
 )
+_TOOL_ACTION_TERMS = (
+    "build", "create", "implement", "edit", "modify", "update", "fix",
+    "debug", "run", "execute", "deploy", "publish", "send", "delete",
+    "install", "configure", "connect", "automate", "upload", "download",
+    "بساز", "ساخت", "ایجاد", "پیاده سازی", "پیاده‌سازی", "ویرایش",
+    "تغییر", "به روزرسانی", "به‌روزرسانی", "اصلاح", "رفع", "اجرا",
+    "استقرار", "منتشر", "ارسال", "حذف", "نصب", "پیکربندی", "اتصال",
+    "خودکار", "بارگذاری", "دانلود",
+)
 _RESEARCH_TERMS = (
     "latest", "current", "recent", "today", "yesterday", "this week",
     "compare", "comparison", "benchmark", "research", "investigate",
@@ -167,7 +176,7 @@ def analyze_goal(
     vision_required = _contains_any(normalized, _VISION_TERMS)
     audio_required = _contains_any(normalized, _AUDIO_TERMS)
     information_request = _contains_any(normalized, _INFORMATION_TERMS)
-    tool_use_required = action_required or capability_count > 0
+    tool_use_required = _contains_any(normalized, _TOOL_ACTION_TERMS) or capability_count > 0
     high_impact = _contains_any(combined, _HIGH_IMPACT_TERMS)
 
     information_gaps: list[str] = []
