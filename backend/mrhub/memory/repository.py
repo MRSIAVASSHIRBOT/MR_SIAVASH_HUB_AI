@@ -227,6 +227,13 @@ class MemoryRepository:
         applied in SQL before any ranking. Scores order retrieval relevance only;
         they never establish truth, independently verify content, or grant authority.
         """
+        if not isinstance(owner_user_id, str) or not owner_user_id.strip() or len(owner_user_id) > 200:
+            raise ValueError("Owner identifier is invalid")
+        if not isinstance(query, str) or not query.strip() or len(query) > 200:
+            raise ValueError("Search query must contain 1 to 200 characters")
+        if type(limit) is not int or not 1 <= limit <= 25:
+            raise ValueError("Search limit must be an integer between 1 and 25")
+
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
@@ -234,17 +241,23 @@ class MemoryRepository:
         match_expression = " AND ".join(
             f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12]
         )
-        bounded_limit = max(1, min(limit, 25))
+        bounded_limit = limit
         candidate_limit = 100
         selected_types: tuple[str, ...] | None = None
         if memory_types is not None:
-            if any(not isinstance(memory_type, str) for memory_type in memory_types):
+            if type(memory_types) not in (list, tuple, set, frozenset):
+                raise ValueError("Memory type filters must be a bounded collection")
+            if len(memory_types) > 4:
+                raise ValueError("At most four memory type filters are allowed")
+            if any(
+                not isinstance(memory_type, str)
+                or memory_type not in self.MEMORY_TYPES
+                for memory_type in memory_types
+            ):
                 raise ValueError("Unsupported memory type")
             selected_types = tuple(sorted(set(memory_types)))
             if not selected_types:
                 return []
-            if any(memory_type not in self.MEMORY_TYPES for memory_type in selected_types):
-                raise ValueError("Unsupported memory type")
 
         type_filter_json = (
             json.dumps(selected_types, separators=(",", ":"))
@@ -331,7 +344,7 @@ class MemoryRepository:
                     if updated.tzinfo is not None and updated.utcoffset() is not None
                     else 0.0
                 )
-            except ValueError:
+            except (ValueError, OverflowError, OSError):
                 updated_timestamp = 0.0
             ranked.append(
                 (
