@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+import secrets
 import inspect
 import json
 import logging
@@ -19,6 +21,8 @@ from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine, P
 
 InputModel = TypeVar("InputModel", bound=BaseModel)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
+
+_LIFECYCLE_FINGERPRINT_KEY = secrets.token_bytes(32)
 
 
 class ReplaySafety(StrEnum):
@@ -209,7 +213,7 @@ class ToolRegistry:
 
     @staticmethod
     def _payload_digest(value: object) -> str | None:
-        """Return a canonical SHA-256 digest without making telemetry a gate."""
+        """Return a process-keyed fingerprint without exposing low-entropy payload hashes."""
         try:
             encoded = json.dumps(
                 value,
@@ -220,7 +224,11 @@ class ToolRegistry:
             ).encode("utf-8")
         except (TypeError, ValueError, UnicodeEncodeError):
             return None
-        return hashlib.sha256(encoded).hexdigest()
+        return hmac.new(
+            _LIFECYCLE_FINGERPRINT_KEY,
+            encoded,
+            hashlib.sha256,
+        ).hexdigest()
 
     @staticmethod
     def _emit_lifecycle(

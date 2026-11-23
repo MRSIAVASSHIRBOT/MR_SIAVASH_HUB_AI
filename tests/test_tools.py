@@ -355,6 +355,26 @@ def test_registry_emits_ordered_metadata_only_lifecycle_events_for_success():
     assert all(not hasattr(event, "result") for event in events)
 
 
+
+def test_lifecycle_fingerprints_are_keyed_and_stable_within_process():
+    payload = {"value": "low-entropy-sentinel"}
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+    first = ToolRegistry._payload_digest(payload)
+    second = ToolRegistry._payload_digest(payload)
+
+    assert first is not None
+    assert len(first) == 64
+    assert first == second
+    assert first != hashlib.sha256(encoded).hexdigest()
+
+
 def test_registry_reports_input_rejection_without_running_handler():
     called = []
     events: list[ToolLifecycleEvent] = []
