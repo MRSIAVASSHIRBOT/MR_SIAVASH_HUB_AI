@@ -30,8 +30,8 @@ class LeaseManager:
         lease_seconds: int = 60,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        if lease_seconds < 1:
-            raise LeaseError("Lease duration must be positive")
+        if type(lease_seconds) is not int or lease_seconds < 1:
+            raise LeaseError("Lease duration must be a positive integer")
         self.database_path = database_path
         self.lease_seconds = lease_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
