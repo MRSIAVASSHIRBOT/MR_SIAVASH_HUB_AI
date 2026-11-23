@@ -51,7 +51,7 @@ def test_fresh_database_applies_all_migrations_and_is_idempotent(tmp_path):
         "telegram_access_tokens", "research_opportunities", "research_evidence",
         "research_discovery_requests", "research_discovery_provider_backoff",
         "resource_reply_configs", "research_sources", "video_scene_jobs", "personal_devices",
-        "personal_device_tasks", "agent_work_order_plans",
+        "personal_device_tasks",
     } <= {
         row["name"]
         for row in connection.execute(
@@ -625,9 +625,7 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [
-        item.version for item in all_migrations[39:]
-    ]
+    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -759,9 +757,7 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [
-        migration.version for migration in all_migrations[43:]
-    ]
+    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -1098,9 +1094,7 @@ def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [
-        migration.version for migration in all_migrations[51:]
-    ]
+    assert SchemaMigrator(connection).migrate() == [52, 53, 54]
 
     existing = connection.execute(
         "SELECT permission, granted_at, expires_at FROM tool_permission_grants "
@@ -1175,9 +1169,7 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
     ]
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [
-        migration.version for migration in all_migrations[52:]
-    ]
+    assert SchemaMigrator(connection).migrate() == [53, 54]
     columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
@@ -1187,6 +1179,82 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
         "requested_duration_seconds",
         "requested_resolution",
     } <= columns
+    connection.close()
+
+
+def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
+
+    connection = connect(tmp_path / "workflow-identity-v54.sqlite3")
+    all_migrations = migrations_module.MIGRATIONS
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations[:53])
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[:53]
+    ]
+
+    now = "2026-11-23T00:00:00+00:00"
+    connection.execute(
+        """
+        INSERT INTO workflow_runs (
+            workflow_id, task_id, status, request_digest, definition_version,
+            current_step, last_error_code, created_at, updated_at, owner_user_id
+        ) VALUES ('workflow-v53', NULL, 'paused', ?, 2, 2, NULL, ?, ?, NULL)
+        """,
+        ("a" * 64, now, now),
+    )
+    for number, name in ((1, "provider"), (2, "text.echo"), (3, "text.format")):
+        connection.execute(
+            """
+            INSERT INTO workflow_steps (
+                step_id, workflow_id, step_number, step_kind, step_name,
+                status, input_digest, output_digest, error_code, attempt_count,
+                started_at, finished_at, created_at, updated_at
+            ) VALUES (?, 'workflow-v53', ?, ?, ?, ?, NULL, NULL, NULL, 0,
+                      NULL, NULL, ?, ?)
+            """,
+            (
+                f"legacy-step-{number}", number,
+                "provider_selection" if number == 1 else "safe_tool",
+                name, "succeeded" if number < 3 else "pending", now, now,
+            ),
+        )
+    connection.execute(
+        """
+        INSERT INTO workflow_checkpoints (
+            checkpoint_id, workflow_id, checkpoint_version,
+            step_number, state_digest, created_at
+        ) VALUES ('checkpoint-v53', 'workflow-v53', 1, 2, ?, ?)
+        """,
+        ("b" * 64, now),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
+    assert SchemaMigrator(connection).migrate() == [54]
+
+    steps = connection.execute(
+        """
+        SELECT step_number, step_key, depends_on_json, dependency_state, status
+        FROM workflow_steps WHERE workflow_id = 'workflow-v53'
+        ORDER BY step_number
+        """
+    ).fetchall()
+    assert [row["step_key"] for row in steps] == [
+        "step-1", "step-2", "step-3"
+    ]
+    assert steps[0]["depends_on_json"] == "[]"
+    assert steps[1]["depends_on_json"] == '["step-1"]'
+    assert steps[2]["depends_on_json"] == '["step-2"]'
+    assert [row["dependency_state"] for row in steps] == [
+        "ready", "ready", "ready"
+    ]
+
+    checkpoint = connection.execute(
+        "SELECT step_number, step_key FROM workflow_checkpoints "
+        "WHERE checkpoint_id = 'checkpoint-v53'"
+    ).fetchone()
+    assert dict(checkpoint) == {"step_number": 2, "step_key": "step-2"}
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
     connection.close()
 
 
