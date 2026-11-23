@@ -87,14 +87,17 @@ class WorkOrder(BaseModel):
             raise ValueError("list entries must not be blank")
         return normalized
 
-
     @model_validator(mode="after")
     def validate_clarification_and_research(self) -> "WorkOrder":
         """Require actionable questions whenever information or research is missing."""
         if self.missing_information and not self.clarification_questions:
-            raise ValueError("Missing information must include at least one clarification question")
+            raise ValueError(
+                "Missing information must include at least one clarification question"
+            )
         if self.research_required and not self.research_questions:
-            raise ValueError("Research-required work orders must include research questions")
+            raise ValueError(
+                "Research-required work orders must include research questions"
+            )
         if not self.research_required and self.research_questions:
             raise ValueError("Research questions require research_required=true")
         return self
