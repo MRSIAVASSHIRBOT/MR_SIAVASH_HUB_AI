@@ -331,12 +331,11 @@ class ToolRegistry:
             handler_failed = True
 
         if handler_policy_decision is not None:
+            # ToolPolicyError is an explicit domain-authorization denial. A handler
+            # that has begun an ambiguous side effect must raise ToolExecutionError
+            # instead, which is classified through ReplaySafety below.
             emit(
-                (
-                    ToolLifecycleStage.UNKNOWN_OUTCOME
-                    if tool.replay_safety is ReplaySafety.RECONCILE_REQUIRED
-                    else ToolLifecycleStage.AUTHORIZATION_DENIED
-                ),
+                ToolLifecycleStage.AUTHORIZATION_DENIED,
                 input_digest=input_digest,
                 reason_code=(
                     "approval_required"
