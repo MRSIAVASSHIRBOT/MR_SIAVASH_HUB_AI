@@ -1,10 +1,10 @@
 """Authenticated model catalog and explicitly enabled local inference endpoint."""
 
+import math
 from time import perf_counter
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-import math
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from mrhub.api.dependencies import require_user
