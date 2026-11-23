@@ -814,6 +814,10 @@ def test_agent_execute_resumes_by_topological_position_not_request_index(monkeyp
         "plan",
         lambda _request: {
             "execution_ready": True,
+            "steps": [
+                {"step": 2, "kind": "tool", "approval_required": False},
+                {"step": 3, "kind": "tool", "approval_required": False},
+            ],
             "dependency_plan": {
                 "ordered_steps": [
                     {
