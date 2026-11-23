@@ -45,6 +45,19 @@ class MemoryRepository:
         return value
 
     @staticmethod
+    def _validate_confidence(value: object) -> float:
+        """Validate owner-supplied confidence at the persistence boundary."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("Confidence must be a finite number between 0 and 1")
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError("Confidence must be a finite number between 0 and 1") from exc
+        if not math.isfinite(numeric) or not 0.0 <= numeric <= 1.0:
+            raise ValueError("Confidence must be a finite number between 0 and 1")
+        return numeric
+
+    @staticmethod
     def _now() -> str:
         return datetime.now(UTC).isoformat()
 
@@ -79,6 +92,7 @@ class MemoryRepository:
         memory_type = values.get("memory_type", "unspecified")
         if not isinstance(memory_type, str) or memory_type not in self.MEMORY_TYPES:
             raise ValueError("Unsupported memory type")
+        confidence = self._validate_confidence(values.get("confidence", 0.7))
         memory_id = str(uuid4())
         now = self._now()
         expires_at = self._serialize_expiry(values.get("expires_at"))  # type: ignore[arg-type]
@@ -97,7 +111,7 @@ class MemoryRepository:
                     values["category"],
                     values["content"],
                     values.get("provenance", "user-authored"),
-                    values.get("confidence", 0.7),
+                    confidence,
                     values.get("verification_status", "user_authored"),
                     now,
                     now,
@@ -159,6 +173,8 @@ class MemoryRepository:
                 not isinstance(value, str) or value not in self.MEMORY_TYPES
             ):
                 raise ValueError("Unsupported memory type")
+            if key == "confidence":
+                value = self._validate_confidence(value)
             if key == "expires_at":
                 value = self._serialize_expiry(value)  # type: ignore[arg-type]
             assignments.append(f"{key} = ?")
@@ -227,6 +243,8 @@ class MemoryRepository:
         applied in SQL before any ranking. Scores order retrieval relevance only;
         they never establish truth, independently verify content, or grant authority.
         """
+        if type(limit) is not int or limit < 1:
+            raise ValueError("Memory search limit must be a positive integer")
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
