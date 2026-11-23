@@ -11,7 +11,7 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, WorkerLease
 from mrhub.providers.router import ModelRouter
 from mrhub.providers.stub import StubProvider
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
 @pytest.mark.parametrize(
@@ -72,6 +72,7 @@ def test_durable_step_metadata_tracks_topological_order_and_external_tool_identi
             input_model=EmptyInput,
             output_model=EmptyOutput,
             handler=lambda _payload: {"accepted": True},
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     router = ModelRouter()
