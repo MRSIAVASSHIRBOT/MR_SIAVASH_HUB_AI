@@ -60,8 +60,9 @@ server-side validation:
 
 - Tool names and descriptions are bounded and canonical.
 - Input and output schemas must be actual Pydantic `BaseModel` subclasses.
-- The handler must be callable and synchronous; coroutine functions and awaitable
-  handler results are rejected because the current invocation boundary is synchronous.
+- The handler must be callable and synchronous; coroutine/async-generator functions
+  and awaitable/async-generator handler results are rejected because the current
+  invocation boundary is synchronous.
 - Risk classification must be a `RiskClass` value, not a client/model string.
 - The external-side-effect flag must be an actual boolean.
 - Required permissions must be an immutable `frozenset` of at most 32 bounded,
