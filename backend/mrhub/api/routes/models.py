@@ -137,7 +137,8 @@ class GenerateModelRequest(BaseModel):
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError("Request timeout must be a finite number")  # noqa: TRY004 - Pydantic converts ValueError into a client-facing validation error.
+            # Pydantic wraps ValueError into a 422; TypeError would escape the request validator.
+            raise ValueError("Request timeout must be a finite number")  # noqa: TRY004
         try:
             finite = math.isfinite(float(value))
         except (OverflowError, ValueError):
