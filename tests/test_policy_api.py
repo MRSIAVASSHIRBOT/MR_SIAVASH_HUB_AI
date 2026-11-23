@@ -154,10 +154,10 @@ def test_policy_api_uses_registered_metadata_and_only_owner_active_grants(
         if item["event_type"] == "policy.evaluated"
     ]
     assert len(events) == 2
-    assert events[-1]["actor_id"] == "local-owner"
-    assert events[-1]["metadata"]["risk_class"] == "low"
-    assert events[-1]["metadata"]["granted_permission_count"] == 1
-    assert events[-1]["metadata"]["required_permission_count"] == 1
+    assert events[0]["actor_id"] == "local-owner"
+    assert events[0]["metadata"]["risk_class"] == "low"
+    assert events[0]["metadata"]["granted_permission_count"] == 1
+    assert events[0]["metadata"]["required_permission_count"] == 1
 
     # High-risk and external-effect classification comes from server metadata.
     review_required = client.post(
