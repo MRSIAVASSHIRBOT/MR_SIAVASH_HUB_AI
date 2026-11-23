@@ -1,6 +1,7 @@
 """Owner-scoped memory persistence and FTS5 retrieval."""
 from __future__ import annotations
 
+import json
 import math
 import re
 from datetime import UTC, datetime
@@ -245,18 +246,20 @@ class MemoryRepository:
             if any(memory_type not in self.MEMORY_TYPES for memory_type in selected_types):
                 raise ValueError("Unsupported memory type")
 
-        type_clause = ""
+        type_filter_json = (
+            json.dumps(selected_types, separators=(",", ":"))
+            if selected_types is not None
+            else None
+        )
         now = datetime.now(UTC)
         query_params: tuple[object, ...] = (
             match_expression,
             owner_user_id,
             now.isoformat(),
+            type_filter_json,
+            type_filter_json,
+            candidate_limit,
         )
-        if selected_types is not None:
-            placeholders = ", ".join("?" for _ in selected_types)
-            type_clause = f" AND m.memory_type IN ({placeholders})"
-            query_params += selected_types
-        query_params += (candidate_limit,)
 
         with self.tasks._connection() as connection:
             rows = connection.execute(
@@ -266,9 +269,13 @@ class MemoryRepository:
                 JOIN memory_entries AS m ON m.memory_id = memory_entries_fts.memory_id
                 WHERE memory_entries_fts MATCH ?
                   AND m.owner_user_id = ?
-                  AND (m.expires_at IS NULL OR m.expires_at > ?)"""
-                + type_clause
-                + " ORDER BY lexical_rank ASC, m.updated_at DESC, m.memory_id ASC LIMIT ?",
+                  AND (m.expires_at IS NULL OR m.expires_at > ?)
+                  AND (
+                      ? IS NULL
+                      OR m.memory_type IN (SELECT value FROM json_each(?))
+                  )
+                ORDER BY lexical_rank ASC, m.updated_at DESC, m.memory_id ASC LIMIT ?
+                """,
                 query_params,
             ).fetchall()
 
