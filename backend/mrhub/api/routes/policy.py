@@ -57,7 +57,21 @@ def evaluate_policy(
 
     try:
         registry = build_tool_registry(owner_user_id=user.user_id)
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Server action registry is unavailable",
+        ) from exc
+
+    try:
         granted_permissions = permission_service.active_permissions(user.user_id)
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Permission grant storage is unavailable",
+        ) from exc
+
+    try:
         tool = registry.get(payload.action)
     except LookupError:
         # An unregistered action has no trusted risk/permission definition.
@@ -68,11 +82,6 @@ def evaluate_policy(
         )
         risk_class = "unknown"
         required_permission_count = 0
-    except (TypeError, ValueError, RuntimeError) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Server action registry is unavailable",
-        ) from exc
     else:
         decision = engine.evaluate(
             ActionRequest(
