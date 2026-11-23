@@ -64,8 +64,17 @@ def build_model_router(
     max_timeout_seconds: float | None = None,
 ) -> ModelRouter:
     """Build an explicit provider set; constrained modes never silently fall back."""
-    if max_timeout_seconds is not None and not 1 <= max_timeout_seconds <= 300:
-        raise ValueError("Provider timeout cap must be between 1 and 300 seconds")
+    if max_timeout_seconds is not None:
+        if isinstance(max_timeout_seconds, bool) or not isinstance(
+            max_timeout_seconds, (int, float)
+        ):
+            raise ValueError("Provider timeout cap must be a finite number")
+        try:
+            finite_timeout = math.isfinite(float(max_timeout_seconds))
+        except (OverflowError, ValueError):
+            finite_timeout = False
+        if not finite_timeout or not 1 <= max_timeout_seconds <= 300:
+            raise ValueError("Provider timeout cap must be between 1 and 300 seconds")
     settings = get_settings()
     model_router = ModelRouter()
     if include_stub and provider_mode == "all":
