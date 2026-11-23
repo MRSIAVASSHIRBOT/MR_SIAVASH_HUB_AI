@@ -203,6 +203,7 @@ class KimiProvider:
         timeout_seconds: float | None = None,
     ) -> ProviderResponse:
         """Analyze one bounded inline image; arbitrary remote URLs are never fetched."""
+        effective_timeout = self._effective_request_timeout(timeout_seconds)
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 8_000:
             raise ProviderConfigurationError("Vision prompt must contain 1 to 8000 characters")
         if not isinstance(image_data_url, str) or len(image_data_url) > 5_600_000:
@@ -255,7 +256,7 @@ class KimiProvider:
                 "reasoning_effort": self.reasoning_effort,
                 "stream": False,
             },
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=effective_timeout,
         )
 
         choices = payload.get("choices")
