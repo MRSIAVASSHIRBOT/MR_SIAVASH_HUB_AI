@@ -13,6 +13,7 @@ from mrhub.agents.core import AgentCore, AgentPlanRequest
 from mrhub.agents.evaluation import (
     CriterionStatus,
     EvaluationCriterion,
+    build_correction_plan,
     evaluate_criteria,
 )
 from mrhub.domain.tasks import TaskRecord, TaskStatus
@@ -181,7 +182,11 @@ class AgentWorkflowRunner:
                     evidence_digest=evidence_digest,
                 )
             )
-        return evaluate_criteria(criteria).as_dict()
+        report = evaluate_criteria(criteria)
+        return {
+            **report.as_dict(),
+            "correction_plan": build_correction_plan(report),
+        }
 
     def _heartbeat_loop(self, lease: WorkerLease, stop: Event, lost: Event) -> None:
         interval = max(0.1, self.lease_seconds / 3)
