@@ -168,8 +168,8 @@ def test_worker_startup_recovery_runs_while_dispatch_is_stopped(tmp_path):
         changed_by="test-owner",
     )
 
-    # Recovery runs before the dispatch gate; no handler is invoked while stopped.
-    assert worker.run_once() is None
+    # Startup recovery is independent of the dispatch gate and never invokes a handler.
+    worker.recover_interrupted()
     recovered = repository.get(task.task_id)
     assert recovered is not None and recovered.status is TaskStatus.FAILED
     result = worker.get_result(task.task_id)
