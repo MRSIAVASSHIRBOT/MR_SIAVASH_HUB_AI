@@ -110,8 +110,31 @@ class WorkflowWorkerHandler:
                     return False
                 _normalized, payload_digest = canonical_tool_payload(tool, tool_payload)
                 fingerprint = tool_definition_fingerprint(tool)
-                method = approval_store.consume if consume else approval_store.validate
-                return method(
+                if consume:
+                    audit_event = audit.build_event(
+                        event_type="tool.approval_consumed",
+                        outcome="consumed",
+                        subject_id=approval_id,
+                        subject_type="tool_approval",
+                        actor_type="user",
+                        actor_id=owner_user_id,
+                        metadata={
+                            "tool_name": tool_name,
+                            "approval_id": approval_id,
+                            "status": "consumed",
+                            "decision": "consumed",
+                            "reason_code": "single_use_receipt_consumed",
+                        },
+                    ).model_dump(mode="json")
+                    return approval_store.consume(
+                        approval_id,
+                        owner_user_id=owner_user_id,
+                        tool_name=tool_name,
+                        payload_digest=payload_digest,
+                        tool_fingerprint=fingerprint,
+                        audit_event=audit_event,
+                    )
+                return approval_store.validate(
                     approval_id,
                     owner_user_id=owner_user_id,
                     tool_name=tool_name,
