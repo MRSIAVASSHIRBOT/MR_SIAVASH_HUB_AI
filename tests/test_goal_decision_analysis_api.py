@@ -39,3 +39,34 @@ def test_goal_analysis_endpoint_requires_authentication():
         json={"goal": "Explain what a database is."},
     )
     assert response.status_code == 401
+
+def test_goal_analysis_endpoint_fails_closed_when_audit_storage_is_unavailable(monkeypatch):
+    import sqlite3
+
+    import mrhub.api.routes.agent as agent_routes
+
+    class FailingAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            raise sqlite3.OperationalError("audit storage unavailable")
+
+    monkeypatch.setattr(agent_routes, "AuditLogger", FailingAuditLogger)
+    monkeypatch.setattr(
+        agent_routes,
+        "build_model_router",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Preflight analysis must not select a provider")
+        ),
+    )
+
+    client = authenticated_client()
+    response = client.post(
+        "/agent/work-orders/analyze",
+        json={"goal": "Explain how to delete a database safely."},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Audit storage is unavailable"
+
