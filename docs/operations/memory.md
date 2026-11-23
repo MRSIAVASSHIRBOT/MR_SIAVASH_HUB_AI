@@ -93,3 +93,9 @@ The paired Telegram endpoint `POST /integrations/telegram/memory/validate/previe
 ```
 
 A successful response includes `state_changed: false`, counts, bounded excerpts for owner review, and explicit heuristic limitations.
+
+Memory confidence is additionally restricted to finite numeric values in the inclusive
+range 0–1. Boolean values, numeric strings and non-finite floats are rejected both
+at the API model boundary and again in the persistence repository. Non-standard JSON
+NaN/Infinity inputs return a JSON-safe 422 validation response; they do not trigger
+an internal serialization error.
