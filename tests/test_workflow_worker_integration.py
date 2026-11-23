@@ -9,7 +9,7 @@ from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
 def test_workflow_is_queued_then_executed_by_worker_and_payload_is_deleted() -> None:
@@ -347,6 +347,7 @@ def test_worker_crash_after_reordered_external_side_effect_requires_reconciliati
             output_model=ToolOutput,
             handler=lambda _payload: {"accepted": True},
             external_side_effect=False,
+            replay_safety=ReplaySafety.RETRY_SAFE,
         )
     )
     monkeypatch.setattr(
