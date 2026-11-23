@@ -124,6 +124,16 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert result["capability_assessment"]["available"] == ["tool.alpha"]
     assert result["capability_assessment"]["missing"] == ["tool.missing"]
     assert result["capability_assessment"]["authorization_checked"] is False
+    decisions = result["decision_assessment"]
+    assert decisions["complexity"]["band"] == "low"
+    assert decisions["research"]["required"] is False
+    assert decisions["clarification"]["required"] is False
+    assert decisions["tools"]["matched_registered_tools"] == ["tool.alpha"]
+    assert decisions["tools"]["missing_capabilities"] == ["tool.missing"]
+    assert decisions["execution_order"]["ordered_step_ids"] == ["validate"]
+    assert decisions["model"]["provider"] == "test"
+    assert decisions["authorization_checked"] is False
+    assert decisions["tools_executed"] is False
     assert result["risk_class_is_authoritative"] is False
     assert result["planning_only"] is True
     assert result["execution_ready"] is False
