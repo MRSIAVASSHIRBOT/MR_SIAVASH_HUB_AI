@@ -107,3 +107,8 @@ cannot set or override this field.
 
 This metadata is persisted into the durable step kind when a workflow is
 created. It does not change the meaning of an existing in-flight workflow.
+Legacy workflow rows are not rewritten automatically: a pre-existing
+`safe_tool` step retains its original persisted classification. If the current
+server-generated definition no longer matches the persisted step metadata,
+resume validation fails closed rather than silently reclassifying or replaying
+the old step. Operators must reconcile such a workflow before continuing.
