@@ -99,6 +99,7 @@ def test_lesson_preview_rejects_sensitive_text_and_invalid_step():
 
 def test_lesson_preview_requires_authentication(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
+
     from mrhub.main import create_app
 
     monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "lesson-auth.sqlite3"))
