@@ -93,7 +93,7 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
             missing_information=["The deployment target is not specified"],
             clarification_questions=["Which deployment environment should be targeted?"],
             research_required=True,
-            research_questions=["Check the vendor compatibility documentation"],
+            research_questions=["Check compatibility with the target runtime"],
         ),
         plan_output(),
     )
@@ -162,6 +162,10 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     ]
     assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
     assert result["decision_analysis"]["research_required"] is True
+    assert (
+        "work_order_explicit_research_requirement"
+        in result["decision_analysis"]["reason_codes"]
+    )
     assert result["decision_analysis"]["tool_use_required"] is True
     assert result["decision_analysis"]["authorization_checked"] is False
     assert result["decision_analysis"]["execution_started"] is False
