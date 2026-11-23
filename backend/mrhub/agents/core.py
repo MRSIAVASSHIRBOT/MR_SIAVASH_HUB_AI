@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Callable
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -36,6 +37,8 @@ class AgentToolRequest(BaseModel):
     # None preserves legacy sequential request order. An explicit list declares
     # dependencies on other request steps; provider selection is always implicit.
     depends_on: list[WorkflowDependencyId] | None = Field(default=None, max_length=5)
+    # Optional owner-issued receipt, bound to this exact tool payload and definition.
+    approval_id: UUID | None = None
 
     @field_validator("name")
     @classmethod
@@ -169,6 +172,8 @@ class AgentCore:
         policy: PolicyEngine | None = None,
         *,
         permission_provider: Callable[[], frozenset[str]] | None = None,
+        approval_validator: Callable[[str, str, dict[str, object], frozenset[str]], bool] | None = None,
+        approval_consumer: Callable[[str, str, dict[str, object], frozenset[str]], bool] | None = None,
     ) -> None:
         self.model_router = model_router
         self.tool_registry = tool_registry
@@ -178,6 +183,8 @@ class AgentCore:
             )
         self.policy = tool_registry.policy
         self.permission_provider = permission_provider
+        self.approval_validator = approval_validator
+        self.approval_consumer = approval_consumer
 
     def _current_permissions(self) -> frozenset[str]:
         """Resolve owner grants at the policy boundary; lookup failures deny access."""
@@ -208,6 +215,8 @@ class AgentCore:
                 else None
             ),
         }
+        if requested_tool.approval_id is not None:
+            definition["approval_id"] = str(requested_tool.approval_id)
         encoded = json.dumps(
             definition, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode()
@@ -311,10 +320,62 @@ class AgentCore:
             if on_step is not None:
                 on_step(runtime_step_number, "running", None)
             try:
+                current_permissions = self._current_permissions()
+                step_assessments = plan.get("steps", [])
+                step_assessment = next(
+                    (
+                        item for item in step_assessments
+                        if isinstance(item, dict)
+                        and item.get("kind") == "tool"
+                        and item.get("step") == request_step_number
+                    ),
+                    None,
+                )
+                if step_assessment is None:
+                    raise ToolPolicyError(
+                        PolicyDecision.DENY,
+                        "The current plan has no matching tool assessment",
+                    )
+
+                user_approved = False
+                approval_required = step_assessment.get("approval_required") is True
+                if approval_required:
+                    tool = self.tool_registry.get(requested_tool.name)
+                    # Avoid consuming a valid receipt after its owner grant has
+                    # already been revoked. ToolRegistry performs the final
+                    # server-side policy check again immediately before handler.
+                    if not tool.required_permissions.issubset(current_permissions):
+                        raise ToolPolicyError(
+                            PolicyDecision.DENY,
+                            "Required owner permissions are no longer active",
+                        )
+                    if (
+                        step_assessment.get("approval_receipt_verified") is not True
+                        or requested_tool.approval_id is None
+                        or self.approval_consumer is None
+                        or not self.approval_consumer(
+                            str(requested_tool.approval_id),
+                            requested_tool.name,
+                            requested_tool.payload,
+                            current_permissions,
+                        )
+                    ):
+                        raise ToolPolicyError(
+                            PolicyDecision.REQUIRE_APPROVAL,
+                            "A valid owner approval receipt is required for this exact workflow step",
+                        )
+                    user_approved = True
+                elif requested_tool.approval_id is not None:
+                    raise ToolPolicyError(
+                        PolicyDecision.DENY,
+                        "Approval receipt does not match an action requiring approval",
+                    )
+
                 result = self.tool_registry.invoke(
                     requested_tool.name,
                     requested_tool.payload,
-                    granted_permissions=self._current_permissions(),
+                    granted_permissions=current_permissions,
+                    user_approved=user_approved,
                 )
             except ToolPolicyError as exc:
                 error_code = (
@@ -434,23 +495,49 @@ class AgentCore:
                 )
                 continue
 
+            current_permissions = self._current_permissions()
             decision = self.tool_registry.evaluate_policy(
                 tool.name,
-                granted_permissions=self._current_permissions(),
+                granted_permissions=current_permissions,
             )
             status = {
                 PolicyDecision.ALLOW: "ready",
                 PolicyDecision.REQUIRE_APPROVAL: "approval_required",
                 PolicyDecision.DENY: "blocked",
             }[decision.decision]
+            receipt_verified = False
+            reason = decision.reason
+            if (
+                decision.decision is PolicyDecision.REQUIRE_APPROVAL
+                and requested_tool.approval_id is not None
+                and self.approval_validator is not None
+            ):
+                try:
+                    receipt_verified = self.approval_validator(
+                        str(requested_tool.approval_id),
+                        requested_tool.name,
+                        requested_tool.payload,
+                        current_permissions,
+                    )
+                except Exception:  # noqa: BLE001 - invalid approval state must fail closed
+                    receipt_verified = False
+                if receipt_verified:
+                    status = "approval_verified"
+                    reason = "Owner approval receipt matches this exact tool input and current definition"
             steps.append(
                 {
                     "step": index,
                     "kind": "tool",
                     "name": tool.name,
                     "status": status,
-                    "decision": decision.decision.value,
-                    "reason": decision.reason,
+                    "decision": (
+                        PolicyDecision.ALLOW.value
+                        if receipt_verified
+                        else decision.decision.value
+                    ),
+                    "approval_required": decision.decision is PolicyDecision.REQUIRE_APPROVAL,
+                    "approval_receipt_verified": receipt_verified,
+                    "reason": reason,
                 }
             )
 
@@ -467,7 +554,7 @@ class AgentCore:
             catalog,
         )
         executable = all(
-            step["status"] == "ready"
+            step["status"] in {"ready", "approval_verified"}
             for step in steps
             if step["kind"] == "tool"
         ) and capability_gaps.complete
