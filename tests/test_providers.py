@@ -232,3 +232,17 @@ def test_router_rejects_non_provider_response_values():
 
     with pytest.raises(ProviderContractError, match="invalid response contract"):
         router.generate(ModelRequest(prefer_local=True), ProviderRequest(input_text="test"))
+
+
+@pytest.mark.parametrize("timeout", [True, False, "5", 0, 301, float("nan"), float("inf")])
+def test_provider_request_rejects_invalid_timeout_budgets(timeout):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ProviderRequest(input_text="bounded request", timeout_seconds=timeout)
+
+
+@pytest.mark.parametrize("timeout", [1, 3, 60, 300])
+def test_provider_request_accepts_bounded_timeout_budget(timeout):
+    request = ProviderRequest(input_text="bounded request", timeout_seconds=timeout)
+    assert request.timeout_seconds == float(timeout)
