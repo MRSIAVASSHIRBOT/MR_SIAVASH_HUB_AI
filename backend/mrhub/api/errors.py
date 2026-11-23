@@ -9,9 +9,9 @@ from uuid import uuid4
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
 
 
 class APIErrorIssue(BaseModel):
@@ -31,7 +31,11 @@ class APIErrorEnvelope(BaseModel):
 
     code: str = Field(min_length=1, max_length=80)
     message: str = Field(min_length=1, max_length=200)
-    request_id: str = Field(min_length=36, max_length=36)
+    request_id: str = Field(
+        min_length=36,
+        max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
     issues: list[APIErrorIssue] | None = None
 
 
