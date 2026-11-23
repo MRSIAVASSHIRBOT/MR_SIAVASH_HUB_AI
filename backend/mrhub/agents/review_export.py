@@ -58,6 +58,10 @@ def export_review_summary(summary: Mapping[str, object]) -> dict[str, object]:
         "findings": list(findings),
     }
     try:
+        # Reject lone UTF-16 surrogates rather than letting JSON escape them
+        # into a payload that is not a valid UTF-8 representation of the text.
+        for finding in findings:
+            finding.encode("utf-8")
         payload = json.dumps(
             envelope,
             sort_keys=True,
