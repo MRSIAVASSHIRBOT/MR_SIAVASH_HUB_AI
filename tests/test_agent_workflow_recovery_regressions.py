@@ -331,7 +331,20 @@ def test_resume_uses_stable_step_identity_after_request_reordering(monkeypatch):
 
     stored = client.get(f"/agent/workflows/{workflow_id}").json()
     assert stored["status"] == "paused"
+    task_repository = TaskRepository(get_settings().database_path)
+    linked_task = task_repository.get(UUID(stored["task_id"]))
+    assert linked_task is not None and linked_task.status.value == "waiting_approval", (
+        linked_task.status.value if linked_task is not None else "missing_task"
+    )
     stored_steps = {step["step_key"]: step for step in stored["steps"]}
+    recovery_repository = WorkflowRecoveryRepository(task_repository.database_path)
+    persisted = recovery_repository.get_run(UUID(workflow_id))
+    assert persisted is not None
+    assert all(
+        step["status"] not in {"failed", "unknown_outcome", "cancelled", "running"}
+        and step["dependency_state"] != "blocked"
+        for step in persisted["steps"]
+    )
     assert stored_steps["alpha"]["status"] == "succeeded"
     assert stored_steps["beta"]["status"] == "pending"
 
