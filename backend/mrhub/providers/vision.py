@@ -131,7 +131,12 @@ class OllamaVisionProvider:
     ) -> None:
         if not model.strip() or len(model) > 200:
             raise ProviderConfigurationError("Invalid local vision model name")
-        if not 1 <= timeout_seconds <= 180:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(float(timeout_seconds))
+            or not 1 <= timeout_seconds <= 180
+        ):
             raise ProviderConfigurationError("Vision timeout must be between 1 and 180 seconds")
         self.base_url = OllamaProvider._validate_loopback_url(base_url)
         self.timeout_seconds = timeout_seconds
@@ -155,7 +160,12 @@ class OllamaVisionProvider:
         )
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
-        if not 0.1 <= timeout_seconds <= 10:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(float(timeout_seconds))
+            or not 0.1 <= timeout_seconds <= 10
+        ):
             raise ProviderConfigurationError("Health probe timeout must be between 0.1 and 10 seconds")
         try:
             with self._client(min(timeout_seconds, self.timeout_seconds)) as client:
@@ -201,12 +211,12 @@ class OllamaVisionProvider:
                             )
                         body.extend(chunk)
                 payload = json.loads(body)
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Local vision request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailableError("Local vision service is unavailable") from exc
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise ProviderUnavailableError("Local vision model returned an invalid response") from exc
+        except httpx.TimeoutException:
+            raise ProviderTimeoutError("Local vision request timed out") from None
+        except httpx.HTTPError:
+            raise ProviderUnavailableError("Local vision service is unavailable") from None
+        except (ValueError, UnicodeDecodeError):
+            raise ProviderUnavailableError("Local vision model returned an invalid response") from None
 
         output = payload.get("response") if isinstance(payload, dict) else None
         if not isinstance(output, str) or not output.strip() or len(output) > MAX_VISION_OUTPUT_CHARS:
