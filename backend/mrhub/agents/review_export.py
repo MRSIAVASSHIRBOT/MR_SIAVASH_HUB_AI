@@ -57,13 +57,17 @@ def export_review_summary(summary: Mapping[str, object]) -> dict[str, object]:
         "approved": approved,
         "findings": list(findings),
     }
-    payload = json.dumps(
-        envelope,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    encoded = payload.encode("utf-8")
+    try:
+        payload = json.dumps(
+            envelope,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        encoded = payload.encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ExportError("Summary cannot be encoded as UTF-8 JSON") from exc
     if len(encoded) > MAX_BYTES:
         raise ExportError("Summary too large")
 
