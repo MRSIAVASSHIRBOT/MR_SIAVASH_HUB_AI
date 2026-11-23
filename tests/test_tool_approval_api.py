@@ -1,3 +1,7 @@
+import sqlite3
+from dataclasses import replace
+
+import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
 from client_helpers import authenticated_client
@@ -6,9 +10,12 @@ from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.security.audit import AuditLogger
-from mrhub.security.tool_approvals import ToolInvocationApprovalStore
+from mrhub.security.tool_approvals import (
+    ToolInvocationApprovalStore,
+    tool_definition_fingerprint,
+)
 from mrhub.security.tool_permissions import ToolPermissionService
-from mrhub.tools.registry import ToolDefinition, ToolRegistry
+from mrhub.tools.registry import ReplaySafety, ToolDefinition, ToolRegistry
 
 
 class PublishInput(BaseModel):
@@ -133,13 +140,16 @@ def test_external_tool_requires_exact_owner_approval_once(monkeypatch):
 
     repository = TaskRepository(get_settings().database_path)
     events = repository.list_audit()
-    approval_events = [
-        item for item in events
-        if item["event_type"] in {"tool.approval_requested", "tool.approval_decided"}
-    ]
+    approval_events = sorted(
+        [
+            item for item in events
+            if item["event_type"] in {"tool.approval_requested", "tool.approval_decided"}
+        ],
+        key=lambda item: (item["created_at"], item["event_id"]),
+    )
     assert [item["event_type"] for item in approval_events] == [
-        "tool.approval_decided",
         "tool.approval_requested",
+        "tool.approval_decided",
     ]
     assert all(item["actor_id"] == "local-owner" for item in approval_events)
     assert "approved copy" not in str(approval_events)
@@ -277,3 +287,129 @@ def test_tool_approval_store_is_owner_scoped_and_single_use():
         ).fetchone()
     assert tuple(stored) == ("consumed", "a" * 64, "b" * 64)
     assert "revalidate after deploy" not in str(stored)
+
+
+def test_tool_fingerprint_binds_server_owned_replay_safety():
+    tool = _registry(lambda payload: {"accepted": True}).get("content.publish")
+    retry_safe = replace(tool, replay_safety=ReplaySafety.RETRY_SAFE)
+    reconcile = replace(tool, replay_safety=ReplaySafety.RECONCILE_REQUIRED)
+
+    assert tool_definition_fingerprint(retry_safe) != tool_definition_fingerprint(reconcile)
+
+
+def test_create_rolls_back_receipt_when_atomic_audit_insert_fails(monkeypatch):
+    authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    store = ToolInvocationApprovalStore(repository)
+    audit_event = AuditLogger(repository).build_event(
+        event_type="tool.approval_requested",
+        outcome="pending",
+        subject_id="12345678-1234-5678-1234-567812345678",
+        subject_type="tool_approval",
+        actor_type="user",
+        actor_id="local-owner",
+        metadata={
+            "tool_name": "content.publish",
+            "approval_id": "12345678-1234-5678-1234-567812345678",
+            "status": "pending",
+        },
+    ).model_dump(mode="json")
+
+    def fail_audit(*_args):
+        raise sqlite3.IntegrityError("simulated audit write failure")
+
+    monkeypatch.setattr(TaskRepository, "_insert_audit_event", staticmethod(fail_audit))
+    with pytest.raises(sqlite3.IntegrityError):
+        store.create(
+            approval_id="12345678-1234-5678-1234-567812345678",
+            owner_user_id="local-owner",
+            tool_name="content.publish",
+            payload_digest="a" * 64,
+            tool_fingerprint="b" * 64,
+            audit_event=audit_event,
+        )
+
+    assert store.get(
+        "12345678-1234-5678-1234-567812345678",
+        owner_user_id="local-owner",
+    ) is None
+
+
+def test_decision_and_consumption_roll_back_when_audit_insert_fails(monkeypatch):
+    authenticated_client()
+    repository = TaskRepository(get_settings().database_path)
+    repository.initialize()
+    store = ToolInvocationApprovalStore(repository)
+    approval_id = "22345678-1234-5678-1234-567812345678"
+    store.create(
+        approval_id=approval_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        payload_digest="a" * 64,
+        tool_fingerprint="b" * 64,
+    )
+
+    audit_event = AuditLogger(repository).build_event(
+        event_type="tool.approval_decided",
+        outcome="approved",
+        subject_id=approval_id,
+        subject_type="tool_approval",
+        actor_type="user",
+        actor_id="local-owner",
+        metadata={
+            "tool_name": "content.publish",
+            "approval_id": approval_id,
+            "status": "approved",
+            "decision": "approved",
+        },
+    ).model_dump(mode="json")
+
+    def fail_audit(*_args):
+        raise sqlite3.IntegrityError("simulated audit write failure")
+
+    monkeypatch.setattr(TaskRepository, "_insert_audit_event", staticmethod(fail_audit))
+    with pytest.raises(sqlite3.IntegrityError):
+        store.decide(
+            approval_id,
+            owner_user_id="local-owner",
+            tool_name="content.publish",
+            tool_fingerprint="b" * 64,
+            decision="approved",
+            audit_event=audit_event,
+        )
+
+    pending = store.get(approval_id, owner_user_id="local-owner")
+    assert pending is not None and pending["status"] == "pending"
+
+    monkeypatch.undo()
+    store.decide(
+        approval_id,
+        owner_user_id="local-owner",
+        tool_name="content.publish",
+        tool_fingerprint="b" * 64,
+        decision="approved",
+    )
+    consumed_event = AuditLogger(repository).build_event(
+        event_type="tool.approval_consumed",
+        outcome="consumed",
+        subject_id=approval_id,
+        subject_type="tool_approval",
+        actor_type="user",
+        actor_id="local-owner",
+        metadata={"tool_name": "content.publish", "approval_id": approval_id},
+    ).model_dump(mode="json")
+    monkeypatch.setattr(TaskRepository, "_insert_audit_event", staticmethod(fail_audit))
+    with pytest.raises(sqlite3.IntegrityError):
+        store.consume(
+            approval_id,
+            owner_user_id="local-owner",
+            tool_name="content.publish",
+            payload_digest="a" * 64,
+            tool_fingerprint="b" * 64,
+            audit_event=consumed_event,
+        )
+
+    approved = store.get(approval_id, owner_user_id="local-owner")
+    assert approved is not None and approved["status"] == "approved"
+
