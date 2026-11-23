@@ -1492,6 +1492,22 @@ MIGRATIONS = (
             """ALTER TABLE workflow_steps
                ADD COLUMN dependency_state TEXT NOT NULL DEFAULT 'pending'
                CHECK (dependency_state IN ('pending', 'ready', 'blocked'))""",
+            """UPDATE workflow_steps
+               SET dependency_state = CASE
+                   WHEN EXISTS (
+                       SELECT 1 FROM workflow_steps AS previous
+                       WHERE previous.workflow_id = workflow_steps.workflow_id
+                         AND previous.step_number < workflow_steps.step_number
+                         AND previous.status IN ('failed', 'unknown_outcome', 'cancelled')
+                   ) THEN 'blocked'
+                   WHEN NOT EXISTS (
+                       SELECT 1 FROM workflow_steps AS previous
+                       WHERE previous.workflow_id = workflow_steps.workflow_id
+                         AND previous.step_number < workflow_steps.step_number
+                         AND previous.status != 'succeeded'
+                   ) THEN 'ready'
+                   ELSE 'pending'
+               END""",
             "CREATE UNIQUE INDEX idx_workflow_steps_workflow_key ON workflow_steps(workflow_id, step_key)",
             "ALTER TABLE workflow_checkpoints ADD COLUMN step_key TEXT",
             """UPDATE workflow_checkpoints
