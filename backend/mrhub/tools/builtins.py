@@ -326,6 +326,7 @@ def _register_device_tools(
             handler=submit_app_launch,
             risk_class=RiskClass.LOW,
             required_permissions=frozenset({"device.registry.read", "device.app_launch"}),
+            external_side_effect=True,
         )
     )
 
