@@ -66,6 +66,12 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
     # Worker recovery moves the durable task to its owner-review state.
     jobs.transition(task.task_id, TaskStatus.WAITING_APPROVAL, lease=lease)
 
+    with tasks._connection() as connection:
+        connection.execute(
+            "UPDATE worker_executions SET result_json = ? WHERE task_id = ?",
+            ('{"stale":"result"}', str(task.task_id)),
+        )
+
     with pytest.raises(WorkflowRecoveryError, match="retry limit exceeded"):
         recovery.queue_resume(
             workflow_id,
@@ -90,7 +96,7 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
         ).fetchone()
         execution = connection.execute(
             """
-            SELECT error_code, next_attempt_at
+            SELECT error_code, next_attempt_at, result_json
             FROM worker_executions WHERE task_id = ?
             """,
             (str(task.task_id),),
@@ -103,6 +109,7 @@ def test_safe_workflow_step_cannot_be_resumed_after_attempt_limit(tmp_path) -> N
     assert execution is not None
     assert execution["error_code"] == "step_retry_limit_exceeded"
     assert execution["next_attempt_at"] is None
+    assert execution["result_json"] is None
 
     lease_manager.release(lease)
 
