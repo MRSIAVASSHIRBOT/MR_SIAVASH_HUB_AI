@@ -1,54 +1,42 @@
-"""Authenticated policy inspection using server-authoritative permission grants."""
+"""Authenticated policy inspection using server-authoritative action metadata."""
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
-from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
-from mrhub.security.policy import ActionRequest, PolicyEngine, PolicyResult
+from mrhub.security.policy import (
+    ActionRequest,
+    PolicyDecision,
+    PolicyEngine,
+    PolicyResult,
+)
 from mrhub.security.tool_permissions import ToolPermissionService
+from mrhub.tools.builtins import build_tool_registry
 
 router = APIRouter(prefix="/policy", tags=["policy"], dependencies=[Depends(require_user)])
 engine = PolicyEngine()
 
-_PERMISSION_PATTERN = r"^[a-z][a-z0-9_.:-]{0,79}$"
-
 
 class EvaluatePolicyRequest(BaseModel):
-    """Only describe the proposed action; grants and approval are server-owned."""
+    """An untrusted action name only; all policy facts are server-owned."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
-    action: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.:-]+$")
-    risk_class: RiskClass
-    required_permissions: list[str] = Field(default_factory=list, max_length=32)
-    external_side_effect: bool = Field(default=False, strict=True)
-
-    @field_validator("required_permissions")
-    @classmethod
-    def validate_required_permissions(cls, permissions: list[str]) -> list[str]:
-        for permission in permissions:
-            if (
-                not isinstance(permission, str)
-                or not permission
-                or len(permission) > 80
-                or not permission.isascii()
-                or not re.fullmatch(_PERMISSION_PATTERN, permission)
-            ):
-                raise ValueError("Permission names must be bounded canonical identifiers")
-        if len(permissions) != len(set(permissions)):
-            raise ValueError("Required permissions must be unique")
-        return permissions
+    action: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z][a-z0-9_.-]{0,79}$",
+        strict=True,
+    )
 
 
 @router.post("/evaluate", response_model=PolicyResult)
@@ -56,41 +44,64 @@ def evaluate_policy(
     payload: EvaluatePolicyRequest,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
 ) -> PolicyResult:
-    """Evaluate a proposed action against the authenticated owner's active grants.
+    """Inspect registered action metadata against the authenticated owner's grants.
 
-    Caller-supplied permission claims and approval decisions are rejected by the
-    request schema. The endpoint is an inspection operation and never executes
-    the described action.
+    The request cannot supply risk, side-effect, permission, or approval facts.
+    Registered tool metadata is authoritative; an unknown action fails closed
+    to review-required. This endpoint never invokes a tool or executes an action.
     """
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     audit = AuditLogger(repository)
     permission_service = ToolPermissionService(repository, audit)
-    granted_permissions = permission_service.active_permissions(user.user_id)
 
-    decision = engine.evaluate(
-        ActionRequest(
-            action=payload.action,
-            risk_class=payload.risk_class,
-            granted_permissions=granted_permissions,
-            required_permissions=frozenset(payload.required_permissions),
-            external_side_effect=payload.external_side_effect,
-            user_approved=False,
+    try:
+        registry = build_tool_registry(owner_user_id=user.user_id)
+        granted_permissions = permission_service.active_permissions(user.user_id)
+        tool = registry.get(payload.action)
+    except LookupError:
+        # An unregistered action has no trusted risk/permission definition.
+        # It must never be represented as allowed based on caller-supplied facts.
+        decision = PolicyResult(
+            decision=PolicyDecision.REQUIRE_APPROVAL,
+            reason="Unregistered action requires explicit review",
         )
-    )
+        risk_class = "unknown"
+        required_permission_count = 0
+    except (TypeError, ValueError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Server action registry is unavailable",
+        ) from exc
+    else:
+        decision = engine.evaluate(
+            ActionRequest(
+                action=f"tool.invoke:{tool.name}",
+                risk_class=tool.risk_class,
+                granted_permissions=granted_permissions,
+                required_permissions=tool.required_permissions,
+                external_side_effect=tool.external_side_effect,
+                user_approved=False,
+            )
+        )
+        risk_class = tool.risk_class.value
+        required_permission_count = len(tool.required_permissions)
+
     try:
         audit.record(
             event_type="policy.evaluated",
             outcome=decision.decision.value,
             subject_type="policy_action",
-            subject_id=payload.action[:80],
+            subject_id=payload.action,
             actor_type="user",
             actor_id=user.user_id,
             metadata={
                 "decision": decision.decision.value,
-                "risk_class": payload.risk_class.value,
-                "required_permission_count": len(payload.required_permissions),
-                "granted_permission_count": len(granted_permissions),
+                "risk_class": risk_class,
+                "required_permission_count": required_permission_count,
+                "granted_permission_count": (
+                    len(granted_permissions) if "granted_permissions" in locals() else 0
+                ),
             },
         )
     except sqlite3.Error as exc:
