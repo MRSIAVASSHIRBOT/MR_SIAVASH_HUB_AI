@@ -250,3 +250,25 @@ def test_registry_rejects_awaitable_results_from_synchronous_handlers():
 
     with pytest.raises(ToolExecutionError, match="Tool handler failed"):
         registry.invoke("custom.contract", {"value": "safe"})
+
+def test_registry_cancels_awaitable_results_from_synchronous_handlers():
+    class PendingAwaitable:
+        def __init__(self):
+            self.cancelled = False
+
+        def __await__(self):
+            yield
+
+        def cancel(self):
+            self.cancelled = True
+
+    pending = PendingAwaitable()
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(handler=lambda _payload: pending)
+    )
+
+    with pytest.raises(ToolExecutionError, match="Tool handler failed"):
+        registry.invoke("custom.contract", {"value": "safe"})
+
+    assert pending.cancelled is True
