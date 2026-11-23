@@ -570,10 +570,14 @@ def execute_agent_workflow(
                         UUID(record.workflow_id), owner_user_id=current_user.user_id
                     )
                     if existing is not None:
+                        replay_task_id = existing.get("task_id")
+                        if isinstance(replay_task_id, str):
+                            response.headers["X-Trace-ID"] = replay_task_id
                         return {
                             "workflow": existing,
                             "execution": None,
                             "idempotent_replay": True,
+                            "trace_id": replay_task_id,
                         }
             raise HTTPException(
                 status_code=409,
