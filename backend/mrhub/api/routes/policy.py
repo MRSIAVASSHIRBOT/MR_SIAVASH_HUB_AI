@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Annotated
 
@@ -42,7 +43,7 @@ class EvaluatePolicyRequest(BaseModel):
                 or not permission
                 or len(permission) > 80
                 or not permission.isascii()
-                or not __import__("re").fullmatch(_PERMISSION_PATTERN, permission)
+                or not re.fullmatch(_PERMISSION_PATTERN, permission)
             ):
                 raise ValueError("Permission names must be bounded canonical identifiers")
         if len(permissions) != len(set(permissions)):
@@ -82,7 +83,7 @@ def evaluate_policy(
             event_type="policy.evaluated",
             outcome=decision.decision.value,
             subject_type="policy_action",
-            subject_id=payload.action,
+            subject_id=payload.action[:80],
             actor_type="user",
             actor_id=user.user_id,
             metadata={
