@@ -96,8 +96,21 @@ class AgentContextAssembler:
         knowledge_freshness_policy: str = "include_all",
         memory_types: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> dict[str, Any]:
+        if not isinstance(owner_user_id, str) or not owner_user_id.strip() or len(owner_user_id) > 200:
+            raise ValueError("Context owner identifier is invalid")
+        if not isinstance(query, str):
+            raise ValueError("Context query must be text")
         if type(include_memory) is not bool or type(include_knowledge) is not bool:
             raise ValueError("Context source flags must be booleans")
+        if memory_types is not None:
+            if type(memory_types) not in (list, tuple, set, frozenset) or len(memory_types) > 4:
+                raise ValueError("Memory type filters must be a collection of at most four values")
+            if any(
+                not isinstance(memory_type, str)
+                or memory_type not in self.memory.MEMORY_TYPES
+                for memory_type in memory_types
+            ):
+                raise ValueError("Unsupported memory type filter")
         if knowledge_freshness_policy not in {
             "include_all",
             "owner_reviewed_current_only",
