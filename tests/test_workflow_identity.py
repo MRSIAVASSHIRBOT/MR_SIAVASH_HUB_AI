@@ -397,8 +397,17 @@ def test_reconciliation_api_rejects_missing_or_ambiguous_identity(payload):
 
 
 def test_queued_workflow_cancellation_terminalizes_all_pending_steps(tmp_path):
-    _tasks, recovery = make_recovery(tmp_path)
+    tasks, recovery = make_recovery(tmp_path)
     owner = "queued-cancellation-owner"
+    with tasks._connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO auth_users (
+                user_id, username, salt, password_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (owner, owner, "00", "00", "2026-11-23T00:00:00+00:00"),
+        )
     workflow_id = recovery.create_run(
         "7" * 64,
         [
