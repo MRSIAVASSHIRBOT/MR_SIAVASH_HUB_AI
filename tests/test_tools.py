@@ -236,3 +236,17 @@ def test_registry_accepts_only_validated_immutable_tool_contracts():
 
     assert registry.get("custom.contract").required_permissions == frozenset({"cloudflare.read"})
     assert registry.catalog()[0]["required_permissions"] == ["cloudflare.read"]
+
+
+
+def test_registry_rejects_awaitable_results_from_synchronous_handlers():
+    async def async_result():
+        return {"value": "not supported"}
+
+    registry = ToolRegistry()
+    registry.register(
+        _tool_definition(handler=lambda _payload: async_result())
+    )
+
+    with pytest.raises(ToolExecutionError, match="Tool handler failed"):
+        registry.invoke("custom.contract", {"value": "safe"})
