@@ -2,6 +2,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from mrhub.memory.repository import MemoryRepository
 from mrhub.memory.validation import MemoryValidationEngine
 
@@ -214,3 +216,10 @@ def test_validation_does_not_compare_conflicting_facts_across_memory_types(tmp_p
     result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
     assert result["contradiction_count"] == 0
 
+
+def test_memory_repository_rejects_coerced_confidence_types():
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence("0.8")
+
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence(True)
