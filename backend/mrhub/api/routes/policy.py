@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
@@ -26,6 +27,14 @@ router = APIRouter(prefix="/policy", tags=["policy"], dependencies=[Depends(requ
 engine = PolicyEngine()
 
 
+class PolicyInspectionResult(PolicyResult):
+    """An evaluation result; never an execution authorization or action receipt."""
+
+    evaluation_only: Literal[True] = True
+    execution_authorized: Literal[False] = False
+    action_executed: Literal[False] = False
+
+
 class EvaluatePolicyRequest(BaseModel):
     """An untrusted action name only; all policy facts are server-owned."""
 
@@ -39,11 +48,11 @@ class EvaluatePolicyRequest(BaseModel):
     )
 
 
-@router.post("/evaluate", response_model=PolicyResult)
+@router.post("/evaluate", response_model=PolicyInspectionResult)
 def evaluate_policy(
     payload: EvaluatePolicyRequest,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
-) -> PolicyResult:
+) -> PolicyInspectionResult:
     """Inspect registered action metadata against the authenticated owner's grants.
 
     The request cannot supply risk, side-effect, permission, or approval facts.
@@ -118,4 +127,4 @@ def evaluate_policy(
             status_code=503,
             detail="Policy audit storage is unavailable",
         ) from exc
-    return decision
+    return PolicyInspectionResult(**decision.model_dump())
