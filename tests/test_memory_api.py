@@ -10,6 +10,14 @@ from mrhub.main import create_app
 from mrhub.memory.repository import MemoryRepository
 
 
+def test_memory_repository_rejects_coerced_confidence_types() -> None:
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence("0.8")
+
+    with pytest.raises(TypeError, match="Confidence must be a numeric value"):
+        MemoryRepository._validate_confidence(True)
+
+
 def test_memory_crud_search_update_and_delete_keep_fts_index_consistent() -> None:
     client = authenticated_client()
     created = client.post(
