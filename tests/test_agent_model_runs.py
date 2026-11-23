@@ -432,7 +432,7 @@ def test_durable_model_run_uses_server_defined_specialist_registry(monkeypatch):
     )
     assert completed.status_code == 200
     execution = completed.json()["result"]["execution"]
-    assert execution["status"] == "approval_required"
+    assert execution["status"] == "completed"
     assert execution["answer"] == "Specialist review completed."
     assert any(
         item["type"] == "delegation_observation"
@@ -761,7 +761,7 @@ def test_durable_agent_run_uses_owner_grants_to_queue_device_app_launch(monkeypa
     assert finished.status_code == 200
     assert finished.json()["status"] == "succeeded"
     execution = finished.json()["result"]["execution"]
-    assert execution["status"] == "completed"
+    assert execution["status"] == "approval_required"
     assert execution["tool_calls"] == 0
     assert execution["error_code"] == "approval_required"
     assert execution["tools_executed"] is False
