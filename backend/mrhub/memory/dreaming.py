@@ -1,6 +1,7 @@
 """Conservative, deterministic memory review proposals (no automatic mutation)."""
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from pathlib import Path
@@ -45,10 +46,16 @@ class MemoryDreamingEngine:
         limit: int = _MAX_REVIEW_ENTRIES,
         threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
     ) -> dict[str, Any]:
-        if not 1 <= limit <= _MAX_REVIEW_ENTRIES:
-            raise ValueError("Review limit must be between 1 and 100")
-        if not 0.75 <= threshold <= 1.0:
-            raise ValueError("Similarity threshold must be between 0.75 and 1.0")
+        if type(limit) is not int or not 1 <= limit <= _MAX_REVIEW_ENTRIES:
+            raise ValueError("Review limit must be an integer between 1 and 100")
+        if (
+            type(threshold) not in (int, float)
+            or not 0.75 <= threshold <= 1.0
+            or not math.isfinite(threshold)
+        ):
+            raise ValueError(
+                "Similarity threshold must be a finite number between 0.75 and 1.0"
+            )
 
         entries = self.repository.list_entries(owner_user_id, limit=limit)
         prepared: list[tuple[dict[str, object], set[str]]] = []
