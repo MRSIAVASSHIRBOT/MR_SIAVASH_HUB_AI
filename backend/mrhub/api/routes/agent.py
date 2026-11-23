@@ -452,9 +452,15 @@ def check_agent_workflow_resume(
     tasks.initialize()
     recovery = WorkflowRecoveryRepository(settings.database_path)
     try:
+        workflow = recovery.get_run(
+            workflow_id, owner_user_id=current_user.user_id
+        )
+        if workflow is None:
+            raise LookupError("Workflow not found")
         decision = recovery.resume_decision(
             workflow_id,
             _workflow_digest(request.request),
+            definition_version=int(workflow["definition_version"]),
             owner_user_id=current_user.user_id,
         )
     except LookupError as exc:
@@ -463,6 +469,7 @@ def check_agent_workflow_resume(
         "workflow_id": str(workflow_id),
         "decision": decision.decision,
         "next_step": decision.next_step,
+        "next_step_id": decision.next_step_id,
         "checkpoint_version": decision.checkpoint_version,
         "reason_code": decision.reason_code,
         "execution_started": False,
