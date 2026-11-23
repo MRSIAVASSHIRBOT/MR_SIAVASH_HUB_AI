@@ -12,6 +12,8 @@ from mrhub.infrastructure.database import TaskRepository
 class MemoryRepository:
     """Store explicit memory records and search only the authenticated owner's data."""
 
+    MEMORY_TYPES = frozenset({"unspecified", "episodic", "semantic", "procedural"})
+
     _SECRET_PATTERNS = (
         re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
         re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
@@ -58,6 +60,7 @@ class MemoryRepository:
             "memory_id": row["memory_id"],
             "owner_user_id": row["owner_user_id"],
             "scope": row["scope"],
+            "memory_type": row["memory_type"],
             "category": row["category"],
             "content": row["content"],
             "provenance": row["provenance"],
@@ -78,13 +81,14 @@ class MemoryRepository:
             connection.execute(
                 """
                 INSERT INTO memory_entries (
-                    memory_id, owner_user_id, scope, category, content, provenance,
+                    memory_id, owner_user_id, scope, memory_type, category, content, provenance,
                     confidence, verification_status, created_at, updated_at, expires_at
-                ) VALUES (?, ?, 'private', ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, 'private', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     memory_id,
                     owner_user_id,
+                    values.get("memory_type", "unspecified"),
                     values["category"],
                     values["content"],
                     values.get("provenance", "user-authored"),
@@ -133,6 +137,7 @@ class MemoryRepository:
         self.validate_memory_text(changes.get("content"))
         self.validate_memory_text(changes.get("provenance"))
         allowed = {
+            "memory_type",
             "category",
             "content",
             "provenance",
@@ -145,6 +150,8 @@ class MemoryRepository:
         for key, value in changes.items():
             if key not in allowed:
                 raise ValueError("Unsupported memory field")
+            if key == "memory_type" and value not in self.MEMORY_TYPES:
+                raise ValueError("Unsupported memory type")
             if key == "expires_at":
                 value = self._serialize_expiry(value)  # type: ignore[arg-type]
             assignments.append(f"{key} = ?")
@@ -186,15 +193,38 @@ class MemoryRepository:
         return cursor.rowcount
 
     def search(
-        self, owner_user_id: str, query: str, limit: int = 10
+        self,
+        owner_user_id: str,
+        query: str,
+        limit: int = 10,
+        *,
+        memory_types: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> list[dict[str, object]]:
-        """Run bounded AND-style lexical search with owner/expiry filtering in SQL."""
+        """Run bounded lexical retrieval with owner, expiry and optional type filtering."""
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         # Token extraction removes FTS operators and syntax supplied by callers.
         match_expression = " AND ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms[:12])
         bounded_limit = max(1, min(limit, 25))
+        selected_types: tuple[str, ...] | None = None
+        if memory_types is not None:
+            selected_types = tuple(sorted(set(memory_types)))
+            if not selected_types:
+                return []
+            if any(memory_type not in self.MEMORY_TYPES for memory_type in selected_types):
+                raise ValueError("Unsupported memory type")
+
+        type_clause = ""
+        query_params: tuple[object, ...] = (
+            match_expression, owner_user_id, self._now()
+        )
+        if selected_types is not None:
+            placeholders = ", ".join("?" for _ in selected_types)
+            type_clause = f" AND m.memory_type IN ({placeholders})"
+            query_params += selected_types
+        query_params += (bounded_limit,)
+
         with self.tasks._connection() as connection:
             rows = connection.execute(
                 """
@@ -203,11 +233,10 @@ class MemoryRepository:
                 JOIN memory_entries AS m ON m.memory_id = memory_entries_fts.memory_id
                 WHERE memory_entries_fts MATCH ?
                   AND m.owner_user_id = ?
-                  AND (m.expires_at IS NULL OR m.expires_at > ?)
-                ORDER BY bm25(memory_entries_fts) ASC, m.updated_at DESC
-                LIMIT ?
-                """,
-                (match_expression, owner_user_id, self._now(), bounded_limit),
+                  AND (m.expires_at IS NULL OR m.expires_at > ?)"""
+                + type_clause
+                + " ORDER BY bm25(memory_entries_fts) ASC, m.updated_at DESC LIMIT ?",
+                query_params,
             ).fetchall()
         return [self._record(row) for row in rows]
 
