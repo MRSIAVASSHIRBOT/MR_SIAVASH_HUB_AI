@@ -2,9 +2,9 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from mrhub.memory.repository import MemoryRepository
 import pytest
 
+from mrhub.memory.repository import MemoryRepository
 from mrhub.memory.validation import MemoryValidationEngine
 
 
