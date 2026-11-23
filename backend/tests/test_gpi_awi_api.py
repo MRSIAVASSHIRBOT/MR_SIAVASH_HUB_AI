@@ -850,7 +850,6 @@ def test_persisted_plan_revoke_hides_records_owned_by_another_user(monkeypatch):
 
         def revoke(self, _plan_id, *, owner_user_id):
             assert owner_user_id == "owner-foreign"
-            return None
 
     monkeypatch.setattr(
         agent_routes,
