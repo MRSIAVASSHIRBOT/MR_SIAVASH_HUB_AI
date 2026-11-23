@@ -229,3 +229,49 @@ PR #276 is merged. The Release & Update Manager records its merge and exact-head
 - GShop production credential/CORS remediation remains owner-dependent; no live Cloudflare resources were changed in this update.
 
 **Current release decision: NOT RELEASE-READY.** No tag, GitHub Release, package publication, or production deployment is created by this evidence update.
+
+
+## Superseding release-manager checkpoint — 2026-11-23
+
+**Observed main commit:** `e8e82326958c528e9f0aca1ef67246973456e266`  
+**Package metadata:** `0.1.0` in `pyproject.toml`; development metadata only.  
+**Release decision:** **NOT RELEASE-READY**.
+
+### Source-backed package and publication facts
+
+- Git tag refs query returned an empty list.
+- GitHub Releases API returned an empty list.
+- No root `LICENSE` or `COPYING` file was present in the main tree.
+- No canonical `uv.lock`, `poetry.lock`, `pdm.lock`, or requirements lock file was present.
+- `requires-python` remains `>=3.11`; direct dependencies use bounded version ranges. A reproducible deployment install is not established without a generated canonical lock and a clean locked installation.
+- The project root still has no selected distribution license. Do not create a placeholder license or publish a package before the owner makes the license decision.
+
+### Exact-main CI evidence
+
+At this checkpoint, the push workflows associated with the exact main commit had not completed successfully as a complete required-check set:
+
+- Backend CI run `45152243361` was queued.
+- A newer CI, Video Render Integration, and Defensive Python Scan attempt was cancelled.
+- Earlier push attempts were also cancelled or queued.
+
+Cancelled and queued runs are not passing evidence. Re-run and verify the full required matrix on the exact release candidate before tagging.
+
+### Current release gates
+
+The following remain hard release gates:
+
+- Complete exact-candidate CI, including Python 3.11/3.12, Backend CI, Defensive Python Scan, applicable Workflow Security Audit, Windows Launcher Validation, and Video Render Integration.
+- Generate and approve a canonical dependency lock; install from that lock in a clean environment.
+- Resolve and record the project distribution license.
+- Complete the real Windows-device installation and representative-media acceptance checklist.
+- Perform a coordinated backup/restore drill covering SQLite data, media assets, and the matching workflow encryption key; verify restore on a separate path.
+- Complete clean installation, database upgrade, and restore-based rollback acceptance.
+- Verify branch protection and repository permissions. The current integration received HTTP 403 when reading branch protection; this means protection status is **unverified**, not enabled or disabled.
+- Complete browser/operator acceptance and any explicitly configured provider/social-account tests.
+- Obtain the owner's explicit release authorization.
+
+### Development work not equivalent to release evidence
+
+The main branch includes the H4/H5 and H6/H7 source-inspection audit checkpoints dated 2026-11-23. Those documents identify existing foundations and open gaps; they do not certify the corresponding phases as complete. Open implementation PRs and their pending checks do not count as merged release content.
+
+No release tag, GitHub Release, package publication, production deployment, or live external-provider operation was created by this checkpoint.
