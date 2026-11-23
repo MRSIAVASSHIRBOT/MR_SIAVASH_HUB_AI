@@ -2,6 +2,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from mrhub.memory.repository import MemoryRepository
 from mrhub.memory.validation import MemoryValidationEngine
 
@@ -214,3 +216,21 @@ def test_validation_does_not_compare_conflicting_facts_across_memory_types(tmp_p
 
     result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
     assert result["contradiction_count"] == 0
+
+
+@pytest.mark.parametrize("limit", [True, 1.5])
+def test_validation_preview_rejects_non_integer_limits(tmp_path: Path, limit):
+    engine = MemoryValidationEngine(tmp_path / "validation.sqlite3")
+
+    with pytest.raises(ValueError, match="integer between 1 and 100"):
+        engine.preview("owner-a", limit=limit)
+
+
+@pytest.mark.parametrize("threshold", [True, float("nan"), float("inf"), "0.8", 10**1000])
+def test_validation_preview_rejects_non_finite_or_non_numeric_thresholds(
+    tmp_path: Path, threshold
+):
+    engine = MemoryValidationEngine(tmp_path / "validation.sqlite3")
+
+    with pytest.raises(ValueError, match="finite number"):
+        engine.preview("owner-a", threshold=threshold)
