@@ -1,5 +1,6 @@
 """Authenticated tool catalog, owner permission grants, and invocation API."""
 
+import sqlite3
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -183,6 +184,12 @@ def request_tool_approval(
         )
     except ToolApprovalError as exc:
         raise HTTPException(status_code=422, detail="Tool approval request is invalid") from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Approval storage is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
 
     return {
         "approval_id": record["approval_id"],
@@ -242,6 +249,12 @@ def decide_tool_approval(
         )
     except ToolApprovalError as exc:
         raise HTTPException(status_code=409, detail="Tool approval is no longer valid") from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Approval storage is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Tool approval not found")
     if record["status"] == "expired":
@@ -364,6 +377,12 @@ def invoke_tool(
             },
         )
         raise HTTPException(status_code=422, detail="Tool input validation failed", headers={"Cache-Control": "no-store"}) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Approval or permission storage is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     except ToolApprovalError as exc:
         audit.record(
             event_type="tool.invocation",
