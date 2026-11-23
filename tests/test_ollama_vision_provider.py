@@ -115,6 +115,8 @@ def test_ollama_vision_maps_timeout_to_sanitized_error():
     with pytest.raises(ProviderTimeoutError) as error:
         provider.generate(_request())
     assert str(error.value) == "Local vision request timed out"
+    assert error.value.__cause__ is None
+    assert error.value.__context__ is None
 
 
 def test_ollama_vision_rejects_invalid_output_shape():
@@ -203,3 +205,18 @@ def test_vision_request_rejects_invalid_per_request_timeout(timeout):
 def test_vision_request_accepts_bounded_per_request_timeout():
     request = _request(timeout_seconds=5)
     assert request.timeout_seconds == 5
+
+
+@pytest.mark.parametrize(
+    "timeout_seconds",
+    [True, False, "5", 0, 181, float("nan"), float("inf")],
+)
+def test_ollama_vision_rejects_invalid_adapter_timeout_configuration(timeout_seconds):
+    with pytest.raises(ProviderConfigurationError):
+        OllamaVisionProvider("llava-local", timeout_seconds=timeout_seconds)
+
+
+def test_ollama_vision_rejects_boolean_health_timeout():
+    provider = OllamaVisionProvider("llava-local")
+    with pytest.raises(ProviderConfigurationError):
+        provider.health(timeout_seconds=True)
