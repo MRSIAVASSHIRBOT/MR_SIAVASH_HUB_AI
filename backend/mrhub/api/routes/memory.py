@@ -141,7 +141,7 @@ class MemoryDreamPreview(BaseModel):
 
 
 class MemoryValidationPreview(BaseModel):
-    limit: int = Field(default=100, ge=1, le=100)
+    limit: int = Field(default=100, ge=1, le=100, strict=True)
     similarity_threshold: float = Field(default=0.72, ge=0.65, le=1.0)
 
     @field_validator("similarity_threshold", mode="before")
