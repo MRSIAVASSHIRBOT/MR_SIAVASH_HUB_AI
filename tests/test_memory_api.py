@@ -176,7 +176,7 @@ def test_memory_type_is_persisted_filtered_and_updated() -> None:
             json={
                 "memory_type": memory_type,
                 "category": "apollo",
-                "content": "Apollo mission memory classification marker",
+                "content": "memorytaxonomyfilteronlytoken Apollo mission memory classification marker",
             },
         )
         assert response.status_code == 201
@@ -185,7 +185,7 @@ def test_memory_type_is_persisted_filtered_and_updated() -> None:
 
     episodic = client.post(
         "/memory/search",
-        json={"query": "Apollo mission", "memory_types": ["episodic"]},
+        json={"query": "memorytaxonomyfilteronlytoken", "memory_types": ["episodic"]},
     )
     assert episodic.status_code == 200
     assert [item["memory_id"] for item in episodic.json()["results"]] == [
@@ -201,14 +201,14 @@ def test_memory_type_is_persisted_filtered_and_updated() -> None:
 
     old_type = client.post(
         "/memory/search",
-        json={"query": "Apollo mission", "memory_types": ["episodic"]},
+        json={"query": "memorytaxonomyfilteronlytoken", "memory_types": ["episodic"]},
     )
     assert old_type.status_code == 200
     assert old_type.json()["results"] == []
 
     new_type = client.post(
         "/memory/search",
-        json={"query": "Apollo mission", "memory_types": ["procedural"]},
+        json={"query": "memorytaxonomyfilteronlytoken", "memory_types": ["procedural"]},
     )
     assert new_type.status_code == 200
     assert [item["memory_id"] for item in new_type.json()["results"]] == [
