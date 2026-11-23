@@ -1353,14 +1353,12 @@ def test_consumed_plan_record_is_deleted_with_linked_workflow(tmp_path):
     ).fetchone() is None
     connection.close()
 
-def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path):
-    connection = connect(tmp_path / "typed-memory.sqlite3")
-    SchemaMigrator(connection).migrate()
+def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, monkeypatch):
+    from mrhub.infrastructure import migrations as migrations_module
 
-    columns = {
-        row["name"] for row in connection.execute("PRAGMA table_info(memory_entries)")
-    }
-    assert "memory_type" in columns
+    connection = connect(tmp_path / "typed-memory.sqlite3")
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS[:-1])
+    assert SchemaMigrator(connection).migrate()[-1] == 55
 
     owner_id = "typed-memory-legacy-owner"
     connection.execute(
@@ -1398,6 +1396,13 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path):
     )
     connection.commit()
 
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS)
+    assert SchemaMigrator(connection).migrate() == [56]
+
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(memory_entries)")
+    }
+    assert "memory_type" in columns
     memory = connection.execute(
         "SELECT memory_type, content FROM memory_entries WHERE memory_id = ?",
         ("legacy-memory-entry",),
@@ -1409,4 +1414,3 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path):
     }
     assert "idx_memory_owner_type_updated" in index_names
     connection.close()
-
