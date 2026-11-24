@@ -612,9 +612,41 @@ def test_request_id_is_available_on_request_state_and_logged_privacy_safely(capl
     assert record.method == "GET"
     assert record.route_template == "/__request_id_probe/{probe_id}"
     assert record.status_code == 200
+    assert isinstance(record.duration_ms, (int, float))
+    assert record.duration_ms >= 0
+    assert record.outcome == "success"
     assert "private-value" not in caplog.text
     assert "private_query" not in caplog.text
     assert "must-not-be-logged" not in caplog.text
+
+
+def test_request_observability_records_http_errors_without_sensitive_details(caplog) -> None:
+    from fastapi import HTTPException
+
+    app = create_app()
+
+    @app.get("/__request_failure_probe")
+    async def request_failure_probe():
+        raise HTTPException(status_code=503, detail="private failure detail must not be logged")
+
+    supplied = str(uuid4())
+    with caplog.at_level("INFO", logger="mrhub.request"):
+        response = TestClient(app).get(
+            "/__request_failure_probe?private_query=never-log",
+            headers={"X-Request-ID": supplied},
+        )
+
+    assert response.status_code == 503
+    record = next(record for record in caplog.records if record.name == "mrhub.request")
+    assert record.request_id == supplied
+    assert record.status_code == 503
+    assert isinstance(record.duration_ms, (int, float))
+    assert record.duration_ms >= 0
+    assert record.outcome == "http_error"
+    assert "private failure detail" not in caplog.text
+    assert "private_query" not in caplog.text
+    assert "never-log" not in caplog.text
+
 
 def test_task_list_filters_internal_scene_jobs_before_applying_limit(tmp_path, monkeypatch) -> None:
     from datetime import UTC, datetime
