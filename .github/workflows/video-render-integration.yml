@@ -106,44 +106,59 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Install FFmpeg and FFprobe
-        timeout-minutes: 8
+      - name: Install pinned FFmpeg and FFprobe
+        timeout-minutes: 10
         shell: pwsh
         run: |
-          # Chocolatey Community Feed can intermittently return HTTP 503/504.
-          # Validate the actual executables on every attempt: Chocolatey may
-          # report a successful process exit even when the package was not fetched.
-          $PSNativeCommandUseErrorActionPreference = $false
-          $chocolateyBin = Join-Path $env:ProgramData "chocolatey\bin"
-          if (Test-Path $chocolateyBin) {
-            $env:Path = "$chocolateyBin;$env:Path"
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+
+          # FFmpeg's Windows download page lists gyan.dev builds. Pin the
+          # versioned GitHub release and verify GitHub's published SHA-256
+          # digest before extracting or executing any downloaded binary.
+          $archiveName = "ffmpeg-9.1-essentials_build.zip"
+          $archiveUrl = "https://github.com/GyanD/codexffmpeg/releases/download/9.1/$archiveName"
+          $expectedSha256 = "b9bbbb3acece000cbeec994f856649354e52c773807841e78908374b24d658fd"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+          $extractPath = Join-Path $env:RUNNER_TEMP "ffmpeg-9.1-essentials"
+
+          Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -TimeoutSec 300
+          $actualSha256 = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "FFmpeg archive SHA-256 mismatch: expected $expectedSha256, received $actualSha256"
           }
 
-          $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
-          $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
-          $installed = ($null -ne $ffmpeg -and $null -ne $ffprobe)
-          $lastExitCode = 0
-
-          for ($attempt = 1; -not $installed -and $attempt -le 3; $attempt++) {
-            choco install ffmpeg --no-progress -y
-            $lastExitCode = $LASTEXITCODE
-
-            # A zero exit code alone is insufficient; require both binaries.
-            $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
-            $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
-            $installed = ($null -ne $ffmpeg -and $null -ne $ffprobe)
-
-            if (-not $installed -and $attempt -lt 3) {
-              Write-Warning "FFmpeg/FFprobe are still unavailable after Chocolatey attempt $attempt (exit code $lastExitCode)."
-              Start-Sleep -Seconds (15 * $attempt)
-            }
+          Expand-Archive -Path $archivePath -DestinationPath $extractPath -Force
+          $ffmpeg = Get-ChildItem -Path $extractPath -Filter "ffmpeg.exe" -Recurse -File | Select-Object -First 1
+          $ffprobe = Get-ChildItem -Path $extractPath -Filter "ffprobe.exe" -Recurse -File | Select-Object -First 1
+          if ($null -eq $ffmpeg -or $null -eq $ffprobe) {
+            throw "The verified FFmpeg archive did not contain both ffmpeg.exe and ffprobe.exe"
           }
 
-          if (-not $installed) {
-            throw "FFmpeg and FFprobe were not available after three Chocolatey attempts (last exit code: $lastExitCode)"
+          $binPath = $ffmpeg.Directory.FullName
+          if ($ffprobe.Directory.FullName -ne $binPath) {
+            throw "FFmpeg and FFprobe were extracted into different directories"
           }
-          ffmpeg -version | Select-Object -First 1
-          ffprobe -version | Select-Object -First 1
+
+          Add-Content -Path $env:GITHUB_PATH -Value $binPath
+          $env:PATH = "$binPath;$env:PATH"
+
+          $ffmpegVersion = (& $ffmpeg.FullName -version | Select-Object -First 1)
+          if ($LASTEXITCODE -ne 0 -or $ffmpegVersion -notmatch "^ffmpeg version 9\.1") {
+            throw "Pinned FFmpeg 9.1 executable failed its version check"
+          }
+          $ffprobeVersion = (& $ffprobe.FullName -version | Select-Object -First 1)
+          if ($LASTEXITCODE -ne 0 -or $ffprobeVersion -notmatch "^ffprobe version 9\.1") {
+            throw "Pinned FFprobe 9.1 executable failed its version check"
+          }
+
+          $encoders = (& $ffmpeg.FullName -hide_banner -encoders 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0 -or $encoders -notmatch "(?m)^\s*V[^\r\n]*\blibx264\b") {
+            throw "Pinned FFmpeg build does not expose the required libx264 video encoder"
+          }
+
+          Write-Output $ffmpegVersion
+          Write-Output $ffprobeVersion
       - name: Install project and development dependencies
         run: |
           python -m pip install --upgrade pip
