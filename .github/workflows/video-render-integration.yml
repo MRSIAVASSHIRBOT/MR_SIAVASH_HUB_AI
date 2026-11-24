@@ -143,12 +143,19 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $binPath
           $env:PATH = "$binPath;$env:PATH"
 
-          $ffmpegVersion = (& $ffmpeg.FullName -version | Select-Object -First 1)
-          if ($LASTEXITCODE -ne 0 -or $ffmpegVersion -notmatch "^ffmpeg version 9\.1") {
+          $ffmpegVersionOutput = @(& $ffmpeg.FullName -version 2>&1)
+          $ffmpegExitCode = $LASTEXITCODE
+          $ffmpegVersion = [string]($ffmpegVersionOutput | Select-Object -First 1)
+          Write-Output "FFmpeg version probe (exit $ffmpegExitCode): $ffmpegVersion"
+          if ($ffmpegExitCode -ne 0 -or $ffmpegVersion -notmatch "^ffmpeg version 9\.1") {
             throw "Pinned FFmpeg 9.1 executable failed its version check"
           }
-          $ffprobeVersion = (& $ffprobe.FullName -version | Select-Object -First 1)
-          if ($LASTEXITCODE -ne 0 -or $ffprobeVersion -notmatch "^ffprobe version 9\.1") {
+
+          $ffprobeVersionOutput = @(& $ffprobe.FullName -version 2>&1)
+          $ffprobeExitCode = $LASTEXITCODE
+          $ffprobeVersion = [string]($ffprobeVersionOutput | Select-Object -First 1)
+          Write-Output "FFprobe version probe (exit $ffprobeExitCode): $ffprobeVersion"
+          if ($ffprobeExitCode -ne 0 -or $ffprobeVersion -notmatch "^ffprobe version 9\.1") {
             throw "Pinned FFprobe 9.1 executable failed its version check"
           }
 
