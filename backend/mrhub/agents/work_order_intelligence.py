@@ -5,8 +5,8 @@ or authorize tools, dispatch work, or change permissions.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from enum import StrEnum
 
 from mrhub.agents.awi_planner import ExecutionPlan
@@ -351,7 +351,7 @@ def assess_work_order_intelligence(
 
 
 MAX_PLAN_EXPERIMENT_CANDIDATES = 4
-_PLAN_EXPERIMENT_ID_PATTERN = __import__("re").compile(r"^[a-z][a-z0-9_-]{0,31}$")
+_PLAN_EXPERIMENT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 
 def evaluate_plan_experiment(
