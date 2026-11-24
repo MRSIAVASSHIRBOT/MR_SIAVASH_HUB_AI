@@ -46,6 +46,18 @@ The first version must not:
 
 The Gateway can return only bounded plain text and allowlisted public citations. If the connector is unavailable, expired, revoked or cannot complete within the request window, the existing verified-public-knowledge fallback remains available. There is no silent switch to a private context or an unbounded paid-provider retry.
 
+## Server-owned request fields and poll credential
+
+The browser submits only the public message, explicit consent and bounded public context. The Gateway generates `request_id` and `expires_at`; it rejects caller attempts to supply or override these server-owned fields.
+
+The browser receives the one-request poll credential only in the response body. It sends the credential in the `X-Relay-Poll-Credential` header when polling. It must not appear in a URL, query string, cookie, localStorage, IndexedDB, referrer, analytics or logs. The credential is bound to one opaque request ID and expires after 120 seconds.
+
+## Connector pull and lease fencing
+
+The connector pulls with an opaque cursor scoped to its paired connector ID and a batch limit no greater than five. Retrying the same cursor before lease expiry returns the same batch and lease tokens, so a lost response does not create a second logical claim.
+
+Every leased item carries a random `lease_token` with at least 32 bytes of entropy. The token is bound to the connector ID, request ID and lease deadline; Gateway stores only a hash. Completion requires the current token and a valid connector signature. When an expired request is reclaimed, the new lease gets a new token; a stale worker holding the previous token receives `409 lease_not_valid` and cannot overwrite the current result. Lease tokens are never logged.
+
 ## Delivery and replay
 
 The Gateway owns the relay queue and issues a short lease to the connector when it pulls a request. Completion requires the current request lease and a valid connector signature. An identical duplicate completion may return the original result; a conflicting second completion returns a conflict. Expired read-only public queries can be reclaimed within a strict attempt limit and ultimately fall back to the Gateway's verified public knowledge.
