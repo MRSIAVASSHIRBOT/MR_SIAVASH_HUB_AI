@@ -670,3 +670,127 @@ def test_agent_capability_discovery_uses_authenticated_owner_tool_registry(monke
     tool_names = {item["name"] for item in response.json()["tools"]}
     assert "device.registry.list" in tool_names
     assert "device.app_launch.submit" in tool_names
+
+
+def _plan_experiment_request_payload():
+    work_order = {
+        "goal": "Prepare a safe project review",
+        "intent": "Review a supplied plan and its evidence",
+        "scope": "Compare declarative review plans only",
+        "acceptance_criteria": [
+            "review findings are structured",
+            "evidence is cited",
+        ],
+        "verification_steps": [
+            "Check the structure of the findings",
+            "Check the evidence references",
+        ],
+        "risk_class": "low",
+    }
+    baseline_plan = {
+        "rationale": "One bounded review step covers both criteria",
+        "steps": [
+            {
+                "step_id": "review",
+                "description": "Review the supplied material",
+                "depends_on": [],
+                "required_capabilities": [],
+                "verifies_criteria": [
+                    "review findings are structured",
+                    "evidence is cited",
+                ],
+                "verification": "Inspect the structured findings and evidence references",
+            }
+        ],
+    }
+    alternative_plan = {
+        "rationale": "Separate inspection and evidence review into dependent steps",
+        "steps": [
+            {
+                "step_id": "inspect",
+                "description": "Inspect the supplied material",
+                "depends_on": [],
+                "required_capabilities": [],
+                "verifies_criteria": ["review findings are structured"],
+                "verification": "Inspect the findings structure",
+            },
+            {
+                "step_id": "verify",
+                "description": "Verify evidence references",
+                "depends_on": ["inspect"],
+                "required_capabilities": [],
+                "verifies_criteria": ["evidence is cited"],
+                "verification": "Check the evidence references",
+            },
+        ],
+    }
+    return {
+        "work_order": work_order,
+        "baseline_plan": baseline_plan,
+        "candidates": [
+            {"candidate_id": "two_step", "plan": alternative_plan},
+        ],
+    }
+
+
+def test_plan_experiment_endpoint_compares_candidates_without_execution():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/work-orders/experiments/evaluate",
+        json=_plan_experiment_request_payload(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    experiment = body["experiment"]
+    assert experiment["method"] == "deterministic_structural_comparison_v1"
+    assert experiment["decision"] == "manual_review_required"
+    assert experiment["winner_selected"] is False
+    assert experiment["automatic_promotion"] is False
+    assert experiment["baseline"]["step_count"] == 1
+    assert experiment["candidates"][0]["candidate_id"] == "two_step"
+    assert experiment["candidates"][0]["step_count"] == 2
+    assert experiment["candidates"][0]["dependency_depth"] == 2
+    assert experiment["candidates"][0]["delta_from_baseline"]["step_count"] == 1
+    assert experiment["review_order"] == ["two_step"]
+    assert "not a quality" in experiment["review_order_basis"]
+
+    assert body["evaluation_only"] is True
+    assert body["planning_only"] is True
+    assert body["capability_presence_only"] is True
+    assert body["authorization_checked"] is False
+    assert body["execution_authorized"] is False
+    assert body["research_performed"] is False
+    assert body["execution_started"] is False
+    assert body["tools_executed"] is False
+    assert body["permissions_changed"] is False
+    assert body["state_changed"] is False
+
+
+def test_plan_experiment_endpoint_rejects_incomplete_candidate_coverage():
+    client = authenticated_client()
+    request = _plan_experiment_request_payload()
+    request["candidates"][0]["plan"]["steps"][1]["verifies_criteria"] = [
+        "criterion not declared by the WorkOrder"
+    ]
+
+    response = client.post(
+        "/agent/work-orders/experiments/evaluate",
+        json=request,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "Plan experiment inputs failed structural validation"
+    )
+
+
+def test_plan_experiment_endpoint_requires_authentication(tmp_path, monkeypatch):
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "test.sqlite3"))
+    get_settings.cache_clear()
+    response = TestClient(create_app()).post(
+        "/agent/work-orders/experiments/evaluate",
+        json=_plan_experiment_request_payload(),
+    )
+    assert response.status_code in (401, 403)
+    get_settings.cache_clear()
