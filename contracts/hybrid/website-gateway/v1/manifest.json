@@ -178,7 +178,17 @@
       "required_boolean": "public_query_processing",
       "display_disclosure_required": true,
       "local_hub_processor_disclosure_required": true
-    }
+    },
+    "server_generated_fields": [
+      "request_id",
+      "expires_at"
+    ],
+    "client_supplied_server_fields_accepted": false,
+    "client_fields": [
+      "message",
+      "consent",
+      "public_context"
+    ]
   },
   "response_envelope": {
     "schema_version": 1,
@@ -246,7 +256,8 @@
       "private_path",
       "credential",
       "signature",
-      "poll_token"
+      "poll_token",
+      "lease_token"
     ],
     "audit_events": [
       "hub_connector.challenge_created",
@@ -273,5 +284,45 @@
     "secrets_added": false,
     "cloudflare_resources_changed": false,
     "production_enabled": false
+  },
+  "pull_protocol": {
+    "request_fields": [
+      "cursor",
+      "limit"
+    ],
+    "response_fields": [
+      "items",
+      "next_cursor"
+    ],
+    "cursor_scope": "connector_id",
+    "cursor_is_opaque": true,
+    "same_cursor_retry": "returns_same_batch_and_lease_tokens_until_lease_expiry",
+    "maximum_batch_size": 5
+  },
+  "lease_contract": {
+    "token_field": "lease_token",
+    "minimum_entropy_bytes": 32,
+    "storage": "hash_only_gateway_side",
+    "binds_to": [
+      "connector_id",
+      "request_id",
+      "lease_until"
+    ],
+    "lease_duration_seconds": 60,
+    "completion_requires_current_token": true,
+    "stale_lease_completion": "409_lease_not_valid",
+    "reclaimed_request_receives_new_token": true,
+    "old_token_cannot_complete_after_reclaim": true,
+    "token_in_logs": false
+  },
+  "public_poll_authentication": {
+    "credential_header": "X-Relay-Poll-Credential",
+    "credential_scope": "single_request_id",
+    "credential_lifetime_seconds": 120,
+    "credential_transport": "header_only",
+    "credential_may_appear_in_url": false,
+    "credential_may_be_set_as_cookie": false,
+    "credential_storage": "browser_memory_only",
+    "credential_in_logs_or_analytics": false
   }
 }
