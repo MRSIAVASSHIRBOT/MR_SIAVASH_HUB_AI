@@ -194,9 +194,9 @@ These **19 phase IDs** (A1–A6, H3, H5, H7, H8, E4 and B1–B8) are the current
 
 | Phase slice | Source/merge evidence | Exact-head result | Current status |
 |---|---|---|---|
-| `H11` owner approval | Hub PR #605, merge SHA `e963e1d85ec26b824881b09dc10bbffd94c68925`; action-bound, expiring, single-use receipts bind canonical inputs and ToolDefinition fingerprints, re-check current owner permissions, and consume with audit | 14 exact-head checks passed before merge | Merged; mainline CI after the H19 workflow merge is still running. Do not claim full H11 until post-merge validation and the remaining trust-boundary evidence are green |
-| `H4` capability-gap contracts | Hub PR #612, merge SHA `e9bcd33a52dc2e9875dc50854a97c072b1e20e65`; tests cover exact case-insensitive registered tool names, deterministic order/de-duplication, bounded/malformed catalogs, and no-handler-execution behavior | 13 exact-head checks passed before merge | Merged; post-merge validation on the final H19 mainline is still running. The capability gap evaluator is consumed by authenticated GPI planning routes; H6's registry exposes typed schemas, policies, catalog and lifecycle and is consumed by the agent orchestrator. Keep H4 in integrated/validation-pending state until relevant mainline checks pass |
-| `H19` FFmpeg quality gate | Hub PR #614, merge SHA `6166a16c75da1520139e9eae7d9ffbbe3afa88f4`; Windows FFmpeg installation uses a pinned 9.1 archive with SHA-256 verification, and keeps real MP4/FFprobe checks intact | 9 exact-head checks passed: Python 3.11/3.12, Backend CI, Linux/Windows MP4, Windows wheel smoke, workflow security audit and defensive scan | Merged; post-merge Video Render Integration, Security Audit, Defensive Scan and Scorecard succeeded. Mainline CI, Backend CI and Windows Launcher were still running at this refresh |
+| `H11` owner approval | Hub PR #605, merge SHA `e963e1d85ec26b824881b09dc10bbffd94c68925`; action-bound, expiring, single-use receipts bind canonical inputs and ToolDefinition fingerprints, re-check current owner permissions, and consume with audit | 14 exact-head checks passed before merge | Merged; all 15 check-runs on final main SHA `6166a16c75da1520139e9eae7d9ffbbe3afa88f4` completed successfully on 2026-11-24, including Backend CI, Python 3.11/3.12, Workflow Security Audit, Defensive Scan, Scorecard, Video Render Integration and Windows Launcher. Live trust-boundary acceptance remains separate |
+| `H4` capability-gap contracts | Hub PR #612, merge SHA `e9bcd33a52dc2e9875dc50854a97c072b1e20e65`; tests cover exact case-insensitive registered tool names, deterministic order/de-duplication, bounded/malformed catalogs, and no-handler-execution behavior | 13 exact-head checks passed before merge | Merged; the final main SHA `6166a16c75da1520139e9eae7d9ffbbe3afa88f4` has 15/15 completed successful check-runs, including the Python matrix, Backend CI and security/quality workflows. The capability-gap evaluator is consumed by authenticated GPI planning routes; H6's registry exposes typed schemas, policies, catalog and lifecycle and is consumed by the agent orchestrator |
+| `H19` FFmpeg quality gate | Hub PR #614, merge SHA `6166a16c75da1520139e9eae7d9ffbbe3afa88f4`; Windows FFmpeg installation uses a pinned 9.1 archive with SHA-256 verification, and keeps real MP4/FFprobe checks intact | 9 exact-head checks passed: Python 3.11/3.12, Backend CI, Linux/Windows MP4, Windows wheel smoke, workflow security audit and defensive scan | Merged; all 15 check-runs on final main SHA `6166a16c75da1520139e9eae7d9ffbbe3afa88f4` completed successfully on 2026-11-24 |
 | `E13` credential lifetime | EL_AI PR #120, merge SHA `71f657d5d08770b1981fa41e03566bc1f4bc461c`; exact-integer and positive/range validation rejects bool, float, string, non-positive and unrepresentable lifetimes | Python 3.11/3.12 and Workflow Security Audit passed; post-merge CI/security/Scorecard passed | Focused security contribution only; not completion of all E13 |
 | `E13` Render private-host opt-in | EL_AI PR #121, merge SHA `5cbbd7c4fed09e61556184859641331398305757`; forwards the existing explicit opt-in to HubClient without relaxing defaults | Python 3.11/3.12 and Workflow Security Audit/Scorecard passed; post-merge CI/security/Scorecard passed | Focused integration/security contribution only; not completion of all E13 |
 
@@ -204,12 +204,12 @@ These **19 phase IDs** (A1–A6, H3, H5, H7, H8, E4 and B1–B8) are the current
 
 | Repository | Current `main` SHA | Open PRs | Current mainline workflow evidence |
 |---|---|---|---|
-| Hub | `6166a16c75da1520139e9eae7d9ffbbe3afa88f4` | #615 Draft Render isolation | Post-merge Linux/Windows real MP4 integration, Workflow Security Audit, Defensive Scan and Scorecard succeeded. Python 3.11/3.12, Backend CI and Windows Launcher were still in progress |
+| Hub | `6166a16c75da1520139e9eae7d9ffbbe3afa88f4` | #615 Draft Render isolation | 15/15 current-main check-runs completed successfully on 2026-11-24: Backend CI, Python 3.11/3.12, Linux/Windows MP4, Windows wheel smoke, Windows Launcher, Workflow Security Audit, Defensive Scan and Scorecard |
 | EL_AI | `5cbbd7c4fed09e61556184859641331398305757` | None | Post-merge CI, Workflow Security Audit and OpenSSF Scorecard succeeded after PRs #120/#121 |
 | Website | `9ab2a33d5022188e7f635a7f796177717e6b774f` | None | Gateway CI, Quality/Pages, Workflow Security Audit, Scorecard and Production/Preview runtime smoke succeeded |
 | EL_IR_BOT | `7e994f6956a6e3a5786bda80427b99dc46b54d29` | None | B2 source/migration/tests are in main; PR #25 was closed as duplicate after comparing source/migration/ADR/tests with current main. No live D1 migration or deployment |
 
-All four requested `main` branches still report `protected=false`. No branch-protection settings were changed; this remains an owner/admin governance task.
+The three requested repositories in this run each report `main.protected=false`. EL_IR_BOT remains a dependency in this four-project planning baseline but was not rechecked in this run. No branch-protection settings were changed; this remains an owner/admin governance task.
 
 ### Current implementation PR status
 
@@ -217,7 +217,7 @@ All four requested `main` branches still report `protected=false`. No branch-pro
 - [PR #608 — 73-phase baseline](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/608) merged as `e4bb95019eb86efedfa8b6e53ad8f432831eb8db`.
 - [PR #612 — H4 capability-gap contract coverage](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/612) merged as `e9bcd33a52dc2e9875dc50854a97c072b1e20e65`; 13 exact-head checks passed.
 - [PR #614 — H19 pinned Windows FFmpeg](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/614) merged as `6166a16c75da1520139e9eae7d9ffbbe3afa88f4`; all 9 exact-head checks passed.
-- [PR #615 — Render Hub/EL_AI isolation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/615) remains Draft. It pins EL_AI to `5cbbd7c4fed09e61556184859641331398305757`, separates Hub and EL_AI service state/secrets, and keeps auto-deploy disabled. Exact-head checks were still running; the Blueprint declares two Starter compute services and two persistent disks. No Workspace sync, service provisioning or deployment may occur without separate owner/guardian review of the full current plan and recurring charges.
+- [PR #615 — Render Hub/EL_AI isolation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/615) remains Draft. It pins EL_AI to `5cbbd7c4fed09e61556184859641331398305757`, separates Hub and EL_AI service state/secrets, and keeps service auto-deploy disabled. All 13 exact-head checks passed on 2026-11-24, but the Blueprint declares two Starter compute services and two persistent disks. Do not sync or provision until the account owner/guardian reviews the complete current plan and recurring charges, confirms Workspace Blueprint Auto Sync is disabled, and explicitly authorizes the cost.
 
 EL_IR_BOT PR #25, EL_AI PRs #120/#121, and the prior superseded Hub branches #609/#610/#611/#613 were closed or merged as described above; see their linked GitHub records before re-opening related work.
 
@@ -230,17 +230,15 @@ EL_IR_BOT PR #25, EL_AI PRs #120/#121, and the prior superseded Hub branches #60
 - Desktop/local agent operations must be sandboxed, explicitly scoped, audited, reversible and bounded; no unrestricted filesystem or OS control.
 - Schema migrations are additive, versioned, integrity-checked and tested against isolated fixtures. Production migration/deployment requires separate preflight, backup/restore evidence and explicit owner release.
 - Paid infrastructure, external publishing, provider spend, secret rotation and production changes have distinct approval and verification records. Source changes and CI do not prove those operations occurred.
-- Main branch protection and required status checks are repository governance gates. At this baseline, all four requested repositories reported `main.protected=false`; configure and independently verify protection before relying on main as a guarded release branch.
+- Main branch protection and required status checks are repository governance gates. At this run, the three requested repositories each reported `main.protected=false`; configure and independently verify protection before relying on main as a guarded release branch. EL_IR_BOT was not rechecked here.
 
 ## 7. Immediate execution queue from this baseline
 
-1. Finish H19 post-merge mainline CI, Backend CI and Windows Launcher validation on main SHA `6166a16c75da1520139e9eae7d9ffbbe3afa88f4`; keep H19's mainline acceptance pending until all relevant jobs pass.
-2. Finish H4 and H11 post-merge mainline validation; do not equate exact-head PR success with the full phase Definition of Done.
-3. Keep [PR #615](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/615) Draft until the account owner/guardian reviews the complete current Render Blueprint plan and recurring charges, and explicitly authorizes any manual sync/provisioning. Blueprint Auto Sync remains disabled.
-4. Reconcile the canonical EL_AGENT versus requested EL_IR_BOT product boundary in an ADR before cross-project contracts depend on that ownership decision.
-5. Publish consumer-driven contract tests before enabling A7, B7/B8, E5/E10 or X9.
-6. Capture live-acceptance evidence separately for Cloudflare/D1, Telegram, Windows and Android; do not substitute CI for live acceptance.
-7. Configure and independently verify branch protection on all four requested repositories as an owner/admin governance action.
+1. Keep [PR #615](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/615) Draft until the account owner/guardian reviews the complete current Render Blueprint plan and recurring charges, confirms Workspace Blueprint Auto Sync is disabled, and explicitly authorizes any manual sync/provisioning; green CI is not provisioning approval.
+2. Reconcile the canonical EL_AGENT versus EL_IR_BOT product boundary in an ADR before cross-project contracts depend on that ownership decision.
+3. Publish consumer-driven contract tests before enabling A7, B7/B8, E5/E10 or X9.
+4. Capture live-acceptance evidence separately for Cloudflare/D1, Telegram, Windows and Android; do not substitute CI for live acceptance.
+5. Configure and independently verify branch protection on the three requested repositories as an owner/admin governance action; EL_IR_BOT was not rechecked in this run.
 
 ## 8. Baseline change control
 
