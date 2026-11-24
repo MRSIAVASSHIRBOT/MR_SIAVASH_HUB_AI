@@ -251,3 +251,37 @@ def test_hybrid_contract_document_matches_bounded_retry_policy():
     assert "A second 401 is surfaced" in document
     assert "no generic retries or backoff" in document
     assert "The bridge does not automatically retry Hub requests." not in document
+
+
+def test_website_gateway_relay_uses_server_owned_expiry_and_fenced_connector_leases():
+    relay = _website_gateway_contract()
+
+    request_envelope = relay["request_envelope"]
+    assert request_envelope["server_generated_fields"] == ["request_id", "expires_at"]
+    assert request_envelope["client_supplied_server_fields_accepted"] is False
+    assert request_envelope["client_fields"] == ["message", "consent", "public_context"]
+
+    pull = relay["pull_protocol"]
+    assert pull["cursor_scope"] == "connector_id"
+    assert pull["cursor_is_opaque"] is True
+    assert pull["maximum_batch_size"] == relay["request_envelope"]["limits"]["pull_batch_size"]["maximum"]
+    assert "same_batch_and_lease_tokens" in pull["same_cursor_retry"]
+
+    lease = relay["lease_contract"]
+    assert lease["minimum_entropy_bytes"] >= 32
+    assert lease["storage"] == "hash_only_gateway_side"
+    assert lease["binds_to"] == ["connector_id", "request_id", "lease_until"]
+    assert lease["completion_requires_current_token"] is True
+    assert lease["reclaimed_request_receives_new_token"] is True
+    assert lease["old_token_cannot_complete_after_reclaim"] is True
+    assert lease["token_in_logs"] is False
+
+    poll = relay["public_poll_authentication"]
+    assert poll["credential_header"] == "X-Relay-Poll-Credential"
+    assert poll["credential_transport"] == "header_only"
+    assert poll["credential_may_appear_in_url"] is False
+    assert poll["credential_may_be_set_as_cookie"] is False
+    assert poll["credential_storage"] == "browser_memory_only"
+    assert poll["credential_in_logs_or_analytics"] is False
+
+    assert "lease_token" in relay["observability"]["forbidden_fields"]
