@@ -733,7 +733,13 @@ def _plan_experiment_request_payload():
     }
 
 
-def test_plan_experiment_endpoint_compares_candidates_without_execution():
+def test_plan_experiment_endpoint_compares_candidates_without_execution(monkeypatch):
+    from mrhub.agents.core import AgentCore
+
+    def execution_is_forbidden(*args, **kwargs):
+        raise AssertionError("Plan experiment evaluation must never execute an Agent")
+
+    monkeypatch.setattr(AgentCore, "execute", execution_is_forbidden)
     client = authenticated_client()
     response = client.post(
         "/agent/work-orders/experiments/evaluate",
@@ -783,6 +789,23 @@ def test_plan_experiment_endpoint_rejects_incomplete_candidate_coverage():
     assert response.json()["detail"] == (
         "Plan experiment inputs failed structural validation"
     )
+
+
+def test_plan_experiment_endpoint_rejects_more_than_four_candidates():
+    client = authenticated_client()
+    request = _plan_experiment_request_payload()
+    candidate = request["candidates"][0]
+    request["candidates"] = [
+        {**candidate, "candidate_id": f"candidate_{index}"}
+        for index in range(5)
+    ]
+
+    response = client.post(
+        "/agent/work-orders/experiments/evaluate",
+        json=request,
+    )
+
+    assert response.status_code == 422
 
 
 def test_plan_experiment_endpoint_requires_authentication(tmp_path, monkeypatch):
