@@ -739,7 +739,14 @@ def test_plan_experiment_endpoint_compares_candidates_without_execution(monkeypa
     def execution_is_forbidden(*args, **kwargs):
         raise AssertionError("Plan experiment evaluation must never execute an Agent")
 
+    def provider_selection_is_forbidden(*args, **kwargs):
+        raise AssertionError("Plan experiment evaluation must never select a provider")
+
     monkeypatch.setattr(AgentCore, "execute", execution_is_forbidden)
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.build_model_router",
+        provider_selection_is_forbidden,
+    )
     client = authenticated_client()
     response = client.post(
         "/agent/work-orders/experiments/evaluate",
@@ -771,6 +778,7 @@ def test_plan_experiment_endpoint_compares_candidates_without_execution(monkeypa
     assert body["tools_executed"] is False
     assert body["permissions_changed"] is False
     assert body["state_changed"] is False
+    assert "Prepare a safe project review" not in response.text
 
 
 def test_plan_experiment_endpoint_rejects_incomplete_candidate_coverage():
