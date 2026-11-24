@@ -249,7 +249,10 @@ def test_website_gateway_relay_endpoints_are_unique_and_scoped():
     assert all(item["auth_mode"] for item in endpoints)
     assert relay["request_envelope"]["limits"]["total_request_bytes"] <= 12 * 1024
     assert relay["response_envelope"]["limits"]["response_characters"] <= 8000
-    assert relay["retry_policy"]["maximum_attempts"] <= 3def test_website_gateway_relay_uses_server_owned_expiry_and_fenced_connector_leases():
+    assert relay["retry_policy"]["maximum_attempts"] <= 3
+
+
+def test_website_gateway_relay_uses_server_owned_expiry_and_fenced_connector_leases():
     relay = _website_gateway_contract()
 
     request_envelope = relay["request_envelope"]
