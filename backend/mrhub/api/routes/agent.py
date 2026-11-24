@@ -50,6 +50,12 @@ from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
+from mrhub.security.tool_approvals import (
+    ToolApprovalError,
+    ToolInvocationApprovalStore,
+    canonical_tool_payload,
+    tool_definition_fingerprint,
+)
 from mrhub.security.tool_permissions import ToolPermissionService
 from mrhub.tools.builtins import build_tool_registry
 
@@ -59,17 +65,97 @@ router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(requir
 def _build_owner_agent_core(
     owner_user_id: str,
     repository: TaskRepository | None = None,
+    *,
+    resume_workflow_id: UUID | None = None,
+    resume_request: AgentPlanRequest | None = None,
 ) -> AgentCore:
-    """Build an AgentCore whose grants come only from the authenticated owner store."""
+    """Build an owner-scoped AgentCore with action-bound approval receipts."""
     tasks = repository or TaskRepository(get_settings().database_path)
     tasks.initialize()
-    permissions = ToolPermissionService(tasks, AuditLogger(tasks))
+    audit = AuditLogger(tasks)
+    permissions = ToolPermissionService(tasks, audit)
+    registry = build_tool_registry(owner_user_id=owner_user_id)
+    approval_store = ToolInvocationApprovalStore(tasks)
+
+    def resolve_approval(
+        approval_id: str,
+        tool_name: str,
+        payload: dict[str, object],
+        granted_permissions: frozenset[str],
+        *,
+        consume: bool,
+    ) -> bool:
+        """Validate or consume only a receipt for this exact currently-authorized action."""
+        try:
+            tool = registry.get(tool_name)
+            # The caller reaches this helper only when policy evaluation identified
+            # an approval-required tool. Rechecking required grants here prevents
+            # consuming a receipt after a concurrent permission revocation.
+            if not (tool.risk_class.value == "high" or tool.external_side_effect):
+                return False
+            if not tool.required_permissions.issubset(granted_permissions):
+                return False
+            _normalized, payload_digest = canonical_tool_payload(tool, payload)
+            fingerprint = tool_definition_fingerprint(tool)
+            if consume:
+                audit_event = audit.build_event(
+                    event_type="tool.approval_consumed",
+                    outcome="consumed",
+                    subject_id=approval_id,
+                    subject_type="tool_approval",
+                    actor_type="user",
+                    actor_id=owner_user_id,
+                    metadata={
+                        "tool_name": tool_name,
+                        "approval_id": approval_id,
+                        "status": "consumed",
+                        "decision": "consumed",
+                        "reason_code": "single_use_receipt_consumed",
+                    },
+                ).model_dump(mode="json")
+                return approval_store.consume(
+                    approval_id,
+                    owner_user_id=owner_user_id,
+                    tool_name=tool_name,
+                    payload_digest=payload_digest,
+                    tool_fingerprint=fingerprint,
+                    audit_event=audit_event,
+                )
+            if approval_store.validate(
+                approval_id,
+                owner_user_id=owner_user_id,
+                tool_name=tool_name,
+                payload_digest=payload_digest,
+                tool_fingerprint=fingerprint,
+            ):
+                return True
+            if resume_workflow_id is not None and resume_request is not None:
+                return AgentWorkflowRunner.completed_approval_checkpoint_matches(
+                    WorkflowRecoveryRepository(tasks.database_path),
+                    resume_workflow_id,
+                    owner_user_id,
+                    resume_request,
+                    approval_id,
+                    tool_name,
+                    payload,
+                )
+            return False
+        except (LookupError, ToolApprovalError, TypeError, ValueError):
+            return False
+        except Exception:  # noqa: BLE001 - receipt checks fail closed
+            return False
+
     return AgentCore(
         build_model_router(),
-        build_tool_registry(),
+        registry,
         permission_provider=lambda: permissions.active_permissions(owner_user_id),
+        approval_validator=lambda approval_id, tool_name, payload, grants: resolve_approval(
+            approval_id, tool_name, payload, grants, consume=False
+        ),
+        approval_consumer=lambda approval_id, tool_name, payload, grants: resolve_approval(
+            approval_id, tool_name, payload, grants, consume=True
+        ),
     )
-
 
 class WorkflowReconciliationRequest(BaseModel):
     step_number: int | None = Field(default=None, ge=1)
@@ -647,11 +733,13 @@ def assess_agent_work_order(
 
 
 @router.get("/capabilities")
-def discover_agent_capabilities() -> dict[str, object]:
-    """Return a read-only inventory of configured models, tools, and reviewed sources."""
+def discover_agent_capabilities(
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Return the authenticated owner's read-only inventory of configured tools and sources."""
     settings = get_settings()
     models = build_model_router().catalog()
-    tool_registry = build_tool_registry()
+    tool_registry = build_tool_registry(owner_user_id=current_user.user_id)
     tools = tool_registry.catalog()
     agents = build_default_agent_registry(tool_registry).catalog()
     approved_sources = CapabilityRegistry(settings.database_path).list_candidates(
@@ -1195,7 +1283,12 @@ def resume_agent_workflow(
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
-    core = _build_owner_agent_core(current_user.user_id, tasks)
+    core = _build_owner_agent_core(
+        current_user.user_id,
+        tasks,
+        resume_workflow_id=workflow_id,
+        resume_request=request.request,
+    )
     try:
         plan = core.plan(request.request)
         return AgentWorkflowRunner(tasks, core).queue_resume(

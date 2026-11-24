@@ -601,9 +601,10 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
             required_permissions=frozenset({"cloudflare.read"}),
         )
     )
+    registry_owners = []
     monkeypatch.setattr(
         "mrhub.api.routes.agent.build_tool_registry",
-        lambda: registry,
+        lambda **kwargs: registry_owners.append(kwargs.get("owner_user_id")) or registry,
     )
     request = {
         "goal": "Read a Cloudflare resource only with owner permission",
@@ -625,6 +626,8 @@ def test_agent_execute_uses_only_live_owner_grants(monkeypatch):
     assert allowed.status_code == 200
     assert allowed.json()["execution_completed"] is True
     assert calls == ["read"]
+    # Each executable request builds one owner-scoped registry; the registry is reused by planning and execution.
+    assert registry_owners == ["local-owner", "local-owner"]
 
     revoked = client.delete("/tools/grants/cloudflare.read")
     assert revoked.status_code == 204
@@ -645,3 +648,25 @@ def test_agent_plan_rejects_blank_and_oversized_capability_names():
             },
         )
         assert response.status_code == 422
+
+
+def test_agent_capability_discovery_uses_authenticated_owner_tool_registry(monkeypatch):
+    from mrhub.api.routes import agent as agent_routes
+    from mrhub.tools.builtins import build_tool_registry as build_registry
+
+    client = authenticated_client()
+    observed_owners = []
+
+    def build_owner_registry(**kwargs):
+        observed_owners.append(kwargs.get("owner_user_id"))
+        return build_registry(**kwargs)
+
+    monkeypatch.setattr(agent_routes, "build_tool_registry", build_owner_registry)
+
+    response = client.get("/agent/capabilities")
+
+    assert response.status_code == 200
+    assert observed_owners == ["local-owner"]
+    tool_names = {item["name"] for item in response.json()["tools"]}
+    assert "device.registry.list" in tool_names
+    assert "device.app_launch.submit" in tool_names

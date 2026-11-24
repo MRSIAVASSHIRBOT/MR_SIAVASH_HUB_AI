@@ -196,8 +196,7 @@ def _safe_http_detail(status_code: int, detail: object) -> object:
         return safe_detail
 
     if detail.get("message") == "Unknown model profile ID(s)":
-        # Profile IDs arrive in the request body. Do not echo them, even when
-        # they look like harmless slugs; clients can use the stable message.
+        # Profile IDs are caller-controlled; return the stable message only.
         return {"message": "Unknown model profile ID(s)"}
 
     # This removes provider codes, exception messages, policy reasons,
