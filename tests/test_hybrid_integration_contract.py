@@ -170,7 +170,7 @@ def test_website_gateway_contract_document_matches_disabled_status():
     assert "Status: proposed — not implemented" in document
     assert relay["contract_id"] in document
     assert "Gateway never opens a connection into the owner's private network" in document
-    assert "no runtime endpoint, schema migration, secret, Cloudflare binding" in document
+    assert "The proposal adds no runtime endpoint, schema migration, secret, Cloudflare binding" in document
     assert "A7 is not complete until" in document
 
 
