@@ -30,10 +30,7 @@ The roadmap text in the originating request contains a placeholder for a Persian
 
 This is a dated GitHub source/CI snapshot, not a deployment claim. The observed `main` branches in all four repositories were unprotected. PR CI, production deployment, Telegram acceptance, physical-device acceptance, remote database migrations and live-provider acceptance must be reported separately.
 
-The current Hub PR queue is tracked directly in GitHub:
-- [PR #605 — H4 action-bound approval receipts](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/605). Open; exact-head CI was being repaired at baseline time. Do not merge until all exact-head checks and security regressions pass.
-- [PR #607 — Render runtime separation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/607). Draft; source/CI work does not provision services. Workspace Blueprint Auto Sync, service pricing, persistent-disk charges, secrets and rollback require separate review before any account sync or provisioning.
-
+The dated snapshot above is historical. Current PR and workflow state is refreshed in Section 5 (2026-11-24 UTC). The Hub's active queue is PR #607 (Draft), #609 (H4 regression coverage), and #610 (Windows FFmpeg integration setup); PRs #605 and #608 have merged.
 ## 2. Phase inventory and minimum dependency gates
 
 The dependency column describes minimum integration gates, not a requirement that all implementation work be strictly serial. Parallel development is allowed behind stable contracts; integration and release remain dependency-ordered.
@@ -168,9 +165,9 @@ A phase may be marked **done** only when all applicable items have verifiable ev
 
 Suggested status values: **unassessed**, **in progress**, **blocked**, **implemented — integration pending**, **integrated — validation pending**, **done**. Never infer `done` from PR count, checked boxes in an older plan, green CI alone or a deployment workflow that did not verify the live service.
 
-## 5. Fresh source/CI verification — 2026-11-23 UTC
+## 5. Fresh source/CI verification — 2026-11-24 UTC
 
-This refresh supersedes the starting snapshot for current-main and current-PR status. Completion below means source implementation is merged, cross-module behavior is covered by tests, and the relevant exact-head/mainline automation evidence is green. It does **not** imply live service, production database, Telegram account, physical-device or deployment acceptance.
+This refresh supersedes the 2026-11-23 repository/PR snapshot. Phase completion still requires merged source, integrated behavior, and successful exact-head/mainline validation. This section does **not** imply live service, production database, Telegram account, physical-device, or deployment acceptance.
 
 ### Evidence-backed phase completions
 
@@ -180,27 +177,30 @@ This refresh supersedes the starting snapshot for current-main and current-PR st
 | `H5` | Typed owner-scoped memory, provenance/confidence validation and evidence-only Agent Context authority boundary | Hub PR #597, merge commit `131785f504dd4401c5be2bf987090b7962a6d77c`; additive schema migration 56 is source only | Same exact main-push validation set succeeded; migration and owner-scope regressions are included in repository tests |
 | `H7` | Evidence-linked workflow lesson preview with owner-scoped successful-step provenance; preview does not save or approve memory | Hub PR #597, merge commit `131785f504dd4401c5be2bf987090b7962a6d77c` | Same exact main-push validation set succeeded |
 | `H8` | Typed API error envelope and sanitized HTTP detail boundary; route review maps dynamic/provider-controlled detail to safe public fallbacks | Hub PR #597, merge commit `131785f504dd4401c5be2bf987090b7962a6d77c` | Same exact main-push validation set succeeded; subsequent H11 work added a regression ensuring unknown model profile IDs are fully removed from error bodies |
-| `E4` | Dependency-aware Telegram task plans, persisted pause/resume, stable Hub idempotency keys, and live owner-pause revalidation before each subsequent task dispatch | EL_AI PR #119, merge commit `11f6145f372275bf6986bda80427b99dc46b54d29` | Exact PR-head Python 3.11/3.12 and Workflow Security Audit passed; post-merge CI, security audit and Scorecard passed |
+| `E4` | Dependency-aware Telegram task plans, persisted pause/resume, stable Hub idempotency keys, and live owner-pause revalidation before each subsequent task dispatch | EL_AI PR #119, merge commit `11f6145f372275bf69845261e3d43f402c8a8c89` | Exact PR-head Python 3.11/3.12 and Workflow Security Audit passed; post-merge CI, security audit and Scorecard passed |
 | `B2` | Telegram webhook delivery state/ack fencing, duplicate prevention, and regression for stale release after a new lease owner completes the update | EL_IR_BOT PR #24, merge commit `7e994f6956a6e3a5786bda80427b99dc46b54d29` | Exact PR-head Python 3.11/3.12, Worker Node 22, dependency audit and Workflow Security Audit passed; post-merge tests, security audit and Scorecard passed |
 
-These six entries are counted as **source + integration + automated-validation complete** under the phase contract. Live operation remains a separate gate: H5/H7 did not create or modify live memory; E4 did not submit a real Telegram/Hub task during validation; B2 did not apply migration 0004 to a live D1 database or contact a production Telegram bot.
+These six entries remain the currently verified **source + integration + automated-validation complete** phases. Live operation remains separate: H5/H7 did not create or modify live memory; E4 did not submit a real Telegram/Hub task during validation; B2 did not apply migration 0004 to a live D1 database or contact a production Telegram bot.
 
 ### Fresh repository snapshot
 
 | Repository | Current `main` SHA | Open PRs | Current-main workflow evidence |
 |---|---|---|---|
-| Hub | `131785f504dd4401c5be2bf987090b7962a6d77c` | #605 H11; #607 Draft Render isolation; #608 this baseline | Backend CI, CI, Workflow Security Audit, Defensive Scan, Scorecard, Video Integration and Windows Launcher all succeeded |
-| EL_AI | `11f6145f372275bf6986bda80427b99dc46b54d29` | None | CI, Workflow Security Audit and OpenSSF Scorecard succeeded after PR #119 |
-| Website | `9ab2a33d5022188e7f635a7f796177717e6b774f` | None | Quality/Pages, Gateway CI, Production/Preview runtime smoke, Workflow Security Audit and Scorecard succeeded |
-| EL_IR_BOT | `7e994f6956a6e3a5786bda80427b99dc46b54d29` | None | Post-merge tests, Workflow Security Audit and OpenSSF Scorecard succeeded after PR #24 |
+| Hub | `e963e1d85ec26b824881b09dc10bbffd94c68925` | #607 Draft Render isolation; #609 H4 test coverage; #610 H19 Windows FFmpeg setup | Post-merge Workflow Security Audit, Defensive Scan, Scorecard and Windows Launcher passed. Backend CI and CI were still running at this refresh. Video Render Integration's Linux job passed; its Windows job failed because Chocolatey's community feed returned HTTP 503/504. PR #610 addresses the install verification/retry defect; its exact-head CI is running. |
+| EL_AI | `71f657d5d08770b1981fa41e03566bc1f4bc461c` | None | Post-merge CI, Workflow Security Audit and OpenSSF Scorecard passed after PR #120. PR #120 hardens credential-lifetime parsing; it is a focused E13 security slice, not completion of E13. |
+| Website | `9ab2a33d5022188e7f635a7f796177717e6b774f` | None | Quality/Pages, Gateway CI, Production/Preview runtime smoke, Workflow Security Audit and Scorecard succeeded on the previously checked exact main SHA. |
+| EL_IR_BOT | `7e994f6956a6e3a5786bda80427b99dc46b54d29` | None | B2 lease-fencing source and migration are present in main. PR #25 was closed as superseded after confirming its implementation, migration, ADR, README and migration test files were byte-identical to main; main's Worker tests include an additional stale-release regression. No production migration or deployment was performed. |
 
-All four current `main` branches still report `protected=false`. Source/CI success does not remove the governance blocker and does not authorize production changes.
+All four requested repositories still report `main.protected=false`. Source/CI success does not remove this governance blocker and does not authorize production changes.
 
 ### Current implementation PR status
 
-- [PR #605 — H11 action-bound owner approval](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/605) remains open. Its exact-head Backend CI and Python CI matrix are being re-run after fixing the shared API error-contract regression to require complete removal of profile identifiers. Do not merge until every exact-head check succeeds.
-- [PR #607 — Render runtime separation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/607) remains Draft; no Render service or persistent disk has been provisioned.
-- [PR #608 — 73-phase baseline](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/608) is this document and its deterministic structural test; exact-head CI must pass before merge.
+- [PR #605 — H11 action-bound owner approval](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/605) is merged as `e963e1d85ec26b824881b09dc10bbffd94c68925`. All 14 exact-head PR checks passed before merge. Post-merge validation is not fully green yet: the Windows FFmpeg integration failed on Chocolatey HTTP 503/504, while backend/CI jobs were still pending or running at this refresh. Do not record H11 complete until relevant mainline validation is green.
+- [PR #607 — Render runtime separation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/607) remains Draft; no Render service or persistent disk has been provisioned. Pricing, persistent-disk charges, Workspace Blueprint Auto Sync, secrets and rollback require separate review before account sync or provisioning.
+- [PR #608 — 73-phase baseline](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/608) merged as `e4bb95019eb86efedfa8b6e53ad8f432831eb8db` after its exact-head structural and CI checks passed.
+- [PR #609 — H4 capability-gap regression coverage](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/609) remains open. The backend test module was renamed to avoid pytest's duplicate-basename import collision. Its Python/Backend CI checks were still running; its Windows FFmpeg integration is blocked by the same Chocolatey 503/504 feed failure. H4 is not being marked complete from test-only coverage.
+- [PR #610 — H19 Windows FFmpeg install verification](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/610) remains open. It checks for both executables before accepting installation and verifies them after each retry; exact-head CI is running.
+- [EL_AI PR #120 — E13 credential-boundary hardening](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/pull/120) merged as `71f657d5d08770b1981fa41e03566bc1f4bc461c`. Exact-head Python 3.11/3.12 and Workflow Security Audit passed; post-merge CI, security audit and Scorecard passed. This is a focused E13 contribution, not phase completion.
 
 ## 6. Cross-project release and safety gates
 
@@ -215,12 +215,12 @@ All four current `main` branches still report `protected=false`. Source/CI succe
 
 ## 7. Immediate execution queue from this baseline
 
-1. Finish exact-head CI repair and security review for Hub PR #605; preserve sanitized caller-error behavior and validate live permission rechecks.
-2. Finish exact-head CI for Hub PR #607 while keeping it Draft. Review the full Render plan, Workspace Auto Sync and recurring service/disk charges before any provisioning.
-3. Reconcile the canonical EL_AGENT versus requested EL_IR_BOT product boundary in an ADR.
-4. Map the current Hub roadmap phases 0–7 and EL_AI milestones 0–6 onto this inventory without translating checkboxes into phase completion claims.
-5. Publish consumer-driven contract tests before enabling A7, B7/B8, E5/E10 or X9.
-6. Capture separate live-acceptance evidence for Cloudflare/D1, Telegram, Windows and Android; do not substitute CI for these gates.
+1. Complete exact-head validation for Hub PR #610, then verify mainline Windows FFmpeg integration is truly green without weakening the real MP4/FFprobe assertions.
+2. Finish and review the renamed pytest coverage on Hub PR #609; require all exact-head CI, including the Windows job, before merge.
+3. Complete post-merge mainline validation for H11 PR #605; record H11 only when backend/CI and integration checks are green.
+4. Keep Hub PR #607 Draft until the full Render plan, Workspace Auto Sync and recurring service/disk charges have separate review; do not provision paid infrastructure from this source-only task.
+5. Reconcile the canonical EL_AGENT versus requested EL_IR_BOT product boundary in an ADR.
+6. Publish consumer-driven contract tests before enabling A7, B7/B8, E5/E10 or X9; capture live-acceptance evidence for Cloudflare/D1, Telegram, Windows and Android separately.
 
 ## 8. Baseline change control
 
