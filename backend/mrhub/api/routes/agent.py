@@ -246,7 +246,7 @@ class WorkOrderPlanExperimentCandidate(BaseModel):
 class WorkOrderPlanExperimentRequest(BaseModel):
     """Small, deterministic comparison of bounded declarative plans."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     work_order: WorkOrder
     baseline_plan: ExecutionPlan
@@ -591,7 +591,8 @@ def evaluate_goal_work_order_plan_experiment(
         "execution_started": False,
         "tools_executed": False,
         "permissions_changed": False,
-        "state_changed": False,
+        "plan_persisted": False,
+        "workflow_state_changed": False,
     }
 
 
