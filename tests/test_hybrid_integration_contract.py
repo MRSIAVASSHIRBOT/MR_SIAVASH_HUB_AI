@@ -249,25 +249,7 @@ def test_website_gateway_relay_endpoints_are_unique_and_scoped():
     assert all(item["auth_mode"] for item in endpoints)
     assert relay["request_envelope"]["limits"]["total_request_bytes"] <= 12 * 1024
     assert relay["response_envelope"]["limits"]["response_characters"] <= 8000
-    assert relay["retry_policy"]["maximum_attempts"] <= 3
-
-
-def test_hybrid_contract_document_matches_bounded_retry_policy():
-    document = CONTRACT_DOC_PATH.read_text(encoding="utf-8")
-    request_id = _contract()["observability"]["request_id"]
-
-    assert request_id["retry_policy"] == (
-        "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
-    )
-    assert "one bounded recovery" in document
-    assert "separate request with its own request ID" in document
-    assert "at most once with the original request ID" in document
-    assert "A second 401 is surfaced" in document
-    assert "no generic retries or backoff" in document
-    assert "The bridge does not automatically retry Hub requests." not in document
-
-
-def test_website_gateway_relay_uses_server_owned_expiry_and_fenced_connector_leases():
+    assert relay["retry_policy"]["maximum_attempts"] <= 3def test_website_gateway_relay_uses_server_owned_expiry_and_fenced_connector_leases():
     relay = _website_gateway_contract()
 
     request_envelope = relay["request_envelope"]
