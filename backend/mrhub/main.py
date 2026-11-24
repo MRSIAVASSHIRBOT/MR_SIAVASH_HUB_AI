@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from logging import getLogger
 from pathlib import Path
+from time import perf_counter
 from uuid import RFC_4122, UUID, uuid4
 
 from fastapi import FastAPI, Request
@@ -100,20 +101,27 @@ def create_app() -> FastAPI:
             request_id = str(uuid4())
 
         request.state.request_id = request_id
+        started_at = perf_counter()
         response = await call_next(request)
+        duration_ms = round(max(0.0, (perf_counter() - started_at) * 1000), 3)
         route = request.scope.get("route")
         route_template = getattr(route, "path", "unmatched")
+        outcome = "success" if response.status_code < 400 else "http_error"
         getLogger("mrhub.request").info(
-            "http_request_completed request_id=%s method=%s route_template=%s status_code=%s",
+            "http_request_completed request_id=%s method=%s route_template=%s status_code=%s duration_ms=%.3f outcome=%s",
             request_id,
             request.method,
             route_template,
             response.status_code,
+            duration_ms,
+            outcome,
             extra={
                 "request_id": request_id,
                 "method": request.method,
                 "route_template": route_template,
                 "status_code": response.status_code,
+                "duration_ms": duration_ms,
+                "outcome": outcome,
             },
         )
         response.headers["X-Request-ID"] = request_id
