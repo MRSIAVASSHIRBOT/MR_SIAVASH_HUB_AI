@@ -5,6 +5,8 @@ Canonical machine-readable contract: [manifest.json](../../contracts/hybrid/webs
 
 ## Purpose and boundary
 
+**Contract ID:** `mr-siavash-website-hub-public-query-relay` (version `1.0.0`).
+
 This contract describes a future, owner-paired path for the public website Gateway to relay an explicitly consented public assistant question to an owner-operated local Hub. It is not a remote Hub API and does not enable agent execution.
 
 The connection direction is intentionally asymmetric:
