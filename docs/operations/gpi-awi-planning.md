@@ -149,3 +149,16 @@ and the capability report must match and partition the same WorkOrder
 requirements into available and missing entries. Inconsistent artifacts are
 rejected rather than summarized as a successful or complete plan.
 
+
+
+## H20 initial slice — bounded plan experiments
+
+The authenticated `POST /agent/work-orders/experiments/evaluate` endpoint compares one baseline `ExecutionPlan` with 1–4 named candidate plans for the same validated `WorkOrder`.
+
+- Every plan must satisfy the existing DAG schema, cover exactly the WorkOrder acceptance criteria, and declare exactly its required capabilities.
+- The deterministic comparison reports step count, dependency-edge count, dependency depth, structural-complexity score, information-gap count, and missing-capability count, plus deltas from the baseline.
+- The optional `review_order` is only a deterministic reviewer convenience based on structural complexity, dependency depth, and step count. It is not a plan-quality, truth, safety, or execution-readiness ranking. The endpoint never selects a winner.
+- Capability discovery is owner-scoped and reports catalog presence only. It does not check grants or authorize tools.
+- The endpoint does not call a model provider, perform research, persist a plan or experiment, execute tools, enqueue a workflow, alter permissions, or automatically promote a candidate. Its audit event stores aggregate metadata only.
+
+The response explicitly reports `evaluation_only=true`, `execution_authorized=false`, `tools_executed=false`, `permissions_changed=false`, and `state_changed=false`. This is the first source-level H20 experiment primitive, not completion of H20. Repeated benchmark corpora, empirical execution simulation, adaptive replanning, resource/rollback controls, and independent validation remain separate work items.
