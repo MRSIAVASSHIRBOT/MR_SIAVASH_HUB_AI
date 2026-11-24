@@ -5,7 +5,9 @@ or authorize tools, dispatch work, or change permissions.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+import re
 from enum import StrEnum
 
 from mrhub.agents.awi_planner import ExecutionPlan
@@ -347,3 +349,114 @@ def assess_work_order_intelligence(
         available_capabilities=capability_report.available,
         missing_capabilities=capability_report.missing,
     )
+
+
+MAX_PLAN_EXPERIMENT_CANDIDATES = 4
+_PLAN_EXPERIMENT_ID_PATTERN = __import__("re").compile(r"^[a-z][a-z0-9_-]{0,31}$")
+
+
+def evaluate_plan_experiment(
+    work_order: WorkOrder,
+    baseline_plan: ExecutionPlan,
+    candidates: list[tuple[str, ExecutionPlan]],
+    capability_report: CapabilityGapReport,
+) -> dict[str, object]:
+    """Compare bounded plan variants structurally; never execute or select a winner."""
+    if not isinstance(candidates, list):
+        raise TypeError("candidates must be a list")
+    if not 1 <= len(candidates) <= MAX_PLAN_EXPERIMENT_CANDIDATES:
+        raise ValueError("plan experiment candidate count is outside the allowed range")
+
+    def profile(candidate_id: str, plan: ExecutionPlan) -> dict[str, object]:
+        assessment = assess_work_order_intelligence(
+            work_order, plan, capability_report
+        )
+        workflow = build_workflow_plan(
+            tuple(
+                WorkflowStep(step.step_id, step.description, tuple(step.depends_on))
+                for step in plan.steps
+            )
+        )
+        return {
+            "candidate_id": candidate_id,
+            "step_count": len(plan.steps),
+            "dependency_edge_count": sum(len(step.depends_on) for step in plan.steps),
+            "dependency_depth": len(workflow.dependency_levels),
+            "structural_complexity_score": assessment.complexity_score,
+            "complexity_level": assessment.complexity.value,
+            "planning_readiness": assessment.planning_readiness,
+            "information_gap_count": len(assessment.information_gaps),
+            "missing_capability_count": len(assessment.missing_capabilities),
+            "ordered_step_ids": list(assessment.ordered_step_ids),
+        }
+
+    baseline = profile("baseline", baseline_plan)
+    candidate_profiles: list[dict[str, object]] = []
+    seen_ids: set[str] = set()
+    for item in candidates:
+        if not isinstance(item, tuple) or len(item) != 2:
+            raise TypeError("Each candidate must contain an identifier and an ExecutionPlan")
+        candidate_id, plan = item
+        if (
+            not isinstance(candidate_id, str)
+            or _PLAN_EXPERIMENT_ID_PATTERN.fullmatch(candidate_id) is None
+            or candidate_id == "baseline"
+        ):
+            raise ValueError("Plan experiment candidate identifier is invalid")
+        if candidate_id in seen_ids:
+            raise ValueError("Plan experiment candidate identifiers must be unique")
+        seen_ids.add(candidate_id)
+        if not isinstance(plan, ExecutionPlan):
+            raise TypeError("Every experiment candidate must be a validated ExecutionPlan")
+
+        current = profile(candidate_id, plan)
+        current["delta_from_baseline"] = {
+            "step_count": int(current["step_count"]) - int(baseline["step_count"]),
+            "dependency_edge_count": (
+                int(current["dependency_edge_count"])
+                - int(baseline["dependency_edge_count"])
+            ),
+            "dependency_depth": (
+                int(current["dependency_depth"]) - int(baseline["dependency_depth"])
+            ),
+            "structural_complexity_score": (
+                int(current["structural_complexity_score"])
+                - int(baseline["structural_complexity_score"])
+            ),
+            "information_gap_count": (
+                int(current["information_gap_count"])
+                - int(baseline["information_gap_count"])
+            ),
+            "missing_capability_count": (
+                int(current["missing_capability_count"])
+                - int(baseline["missing_capability_count"])
+            ),
+        }
+        candidate_profiles.append(current)
+
+    # This order is only a reviewer convenience. It is not a quality or safety ranking.
+    review_order = [
+        str(item["candidate_id"])
+        for item in sorted(
+            candidate_profiles,
+            key=lambda item: (
+                int(item["structural_complexity_score"]),
+                int(item["dependency_depth"]),
+                int(item["step_count"]),
+                str(item["candidate_id"]),
+            ),
+        )
+    ]
+    return {
+        "method": "deterministic_structural_comparison_v1",
+        "baseline": baseline,
+        "candidates": candidate_profiles,
+        "review_order": review_order,
+        "review_order_basis": (
+            "ascending structural complexity, dependency depth and step count; "
+            "not a quality, truth, safety or execution-readiness ranking"
+        ),
+        "decision": "manual_review_required",
+        "winner_selected": False,
+        "automatic_promotion": False,
+    }
