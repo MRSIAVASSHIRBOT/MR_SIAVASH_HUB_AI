@@ -1,0 +1,328 @@
+{
+  "contract_id": "mr-siavash-website-hub-public-query-relay",
+  "contract_version": "1.0.0",
+  "status": "proposed",
+  "canonical_parent_contract": "mr-siavash-hybrid-integration@1.0.0",
+  "owners": {
+    "gateway": "public-website-request-validation-and-relay-queue",
+    "hub_connector": "owner-paired-outbound-public-query-consumer",
+    "hub": "private-state-policy-and-agent-control-plane"
+  },
+  "topology": {
+    "direction": "hub_initiated_outbound_only",
+    "gateway_may_open_connection_to_hub": false,
+    "local_hub_port_may_be_public": false,
+    "public_tunnel_to_hub_allowed": false,
+    "shared_database": false,
+    "browser_may_hold_hub_credentials": false,
+    "hub_connector_initiates_requests": true,
+    "public_site_remains_available_when_hub_is_offline": true
+  },
+  "pairing": {
+    "initiated_by": "authenticated_gateway_administrator",
+    "confirmed_by": "authenticated_local_hub_owner",
+    "gateway_environment": [
+      "preview",
+      "production"
+    ],
+    "exact_site_origin_required": true,
+    "challenge_lifetime_seconds": 300,
+    "challenge_single_use": true,
+    "challenge_raw_value_persisted": false,
+    "initial_scopes": [
+      "public_assistant:process"
+    ],
+    "default_scopes": [],
+    "connector_key_algorithm": "Ed25519",
+    "private_key_storage": "hub_local_protected_key_store",
+    "gateway_stores": "connector_public_key_and_pairing_metadata_only",
+    "pairing_proof": "signature_over_challenge_id_environment_site_origin_connector_id_and_requested_scopes",
+    "revocation": {
+      "gateway_admin_endpoint": true,
+      "hub_owner_local_action": true,
+      "connector_must_stop_on_revocation": true,
+      "maximum_revocation_detection_seconds": 60
+    }
+  },
+  "connector_authentication": {
+    "algorithm": "Ed25519",
+    "headers": {
+      "connector_id": "X-Hub-Connector-Id",
+      "timestamp": "X-Hub-Connector-Timestamp",
+      "nonce": "X-Hub-Connector-Nonce",
+      "signature": "X-Hub-Connector-Signature"
+    },
+    "signed_message": "timestamp\\nnonce\\nmethod\\npath\\nsha256(body)",
+    "timestamp_format": "unix_seconds",
+    "maximum_clock_skew_seconds": 60,
+    "nonce_minimum_bytes": 16,
+    "nonce_single_use": true,
+    "nonce_retention_seconds": 120,
+    "request_ids": "canonical_lowercase_uuid",
+    "signatures_cover_exact_path_and_body": true,
+    "redirects_followed": false
+  },
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/v1/admin/hub-connectors/challenges",
+      "auth_mode": "cloudflare_access_admin",
+      "purpose": "Create a short-lived single-use challenge bound to one Gateway environment, exact site origin and the sole public-query scope.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/admin/hub-connectors",
+      "auth_mode": "cloudflare_access_admin",
+      "purpose": "List only connector status, scope, version and last-seen metadata; never return public keys as secrets or private Hub data.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/admin/hub-connectors/{connector_id}/revoke",
+      "auth_mode": "cloudflare_access_admin",
+      "purpose": "Immediately revoke a paired connector and invalidate all pending leases.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/hub-connectors/exchange",
+      "auth_mode": "single_use_pairing_challenge_and_ed25519_proof",
+      "purpose": "Redeem a challenge once, register a Hub connector public key and bind it to the exact Gateway environment and public-query scope.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/hub-connectors/heartbeat",
+      "auth_mode": "paired_connector_signature",
+      "purpose": "Refresh last-seen metadata and report only protocol version and bounded connector health state.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/hub-connectors/requests/pull",
+      "auth_mode": "paired_connector_signature",
+      "purpose": "Lease up to five public-assistant requests for bounded processing; all requests remain classified as public untrusted input.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/hub-connectors/requests/{request_id}/complete",
+      "auth_mode": "paired_connector_signature_and_active_lease",
+      "purpose": "Complete one currently leased public query with bounded plain text and allowlisted public citations; duplicate identical completion is idempotent.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "DELETE",
+      "path": "/v1/hub-connectors/self",
+      "auth_mode": "paired_connector_signature",
+      "purpose": "Allow the local owner-controlled connector to revoke its own pairing without exposing any other connector.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/assistant/relay",
+      "auth_mode": "public_rate_limited_explicit_user_consent",
+      "purpose": "Enqueue one public-only assistant question and return a short-lived in-memory poll credential; does not disclose or proxy private Hub APIs.",
+      "implementation_status": "not_implemented"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/assistant/relay/{request_id}",
+      "auth_mode": "single_use_poll_credential",
+      "purpose": "Read only the public response for the matching relay request; no user account, task or Hub resource lookup is exposed.",
+      "implementation_status": "not_implemented"
+    }
+  ],
+  "request_envelope": {
+    "schema_version": 1,
+    "classification": "public_untrusted_input",
+    "required": [
+      "request_id",
+      "message",
+      "consent",
+      "expires_at"
+    ],
+    "forbidden_fields": [
+      "owner_id",
+      "telegram_user_id",
+      "memory",
+      "private_context",
+      "task_id",
+      "tool_name",
+      "tool_arguments",
+      "credentials",
+      "conversation_history"
+    ],
+    "limits": {
+      "message_characters": {
+        "minimum": 1,
+        "maximum": 2000
+      },
+      "public_context_items": {
+        "maximum": 5
+      },
+      "public_context_item_characters": {
+        "maximum": 1500
+      },
+      "total_request_bytes": 12288,
+      "pending_requests_per_connector": 20,
+      "pull_batch_size": {
+        "minimum": 1,
+        "maximum": 5
+      },
+      "request_ttl_seconds": 90,
+      "lease_ttl_seconds": 60
+    },
+    "consent": {
+      "required_boolean": "public_query_processing",
+      "display_disclosure_required": true,
+      "local_hub_processor_disclosure_required": true
+    },
+    "server_generated_fields": [
+      "request_id",
+      "expires_at"
+    ],
+    "client_supplied_server_fields_accepted": false,
+    "client_fields": [
+      "message",
+      "consent",
+      "public_context"
+    ]
+  },
+  "response_envelope": {
+    "schema_version": 1,
+    "required": [
+      "request_id",
+      "response_text",
+      "sources"
+    ],
+    "limits": {
+      "response_characters": 8000,
+      "source_items": 5,
+      "source_url_scheme": "https",
+      "poll_credential_lifetime_seconds": 120
+    },
+    "allowed_source_fields": [
+      "title",
+      "url",
+      "public_source_id"
+    ],
+    "html_allowed": false,
+    "markdown_raw_html_allowed": false
+  },
+  "processing_policy": {
+    "only_scope": "public_assistant:process",
+    "private_memory_read": false,
+    "private_knowledge_read": false,
+    "owner_task_read": false,
+    "owner_task_create": false,
+    "local_file_read": false,
+    "tool_discovery": false,
+    "tool_execution": false,
+    "device_control": false,
+    "approval_bypass": false,
+    "provider_fallback": "gateway_verified_public_knowledge_only",
+    "owner_context_must_be_absent": true,
+    "public_request_treated_as_untrusted_data": true,
+    "output_must_be_sanitized_before_public_return": true
+  },
+  "retry_policy": {
+    "pull_is_idempotent_with_stable_cursor": true,
+    "completion_is_idempotent_for_same_response_digest": true,
+    "conflicting_duplicate_completion": "409_conflict",
+    "expired_lease_may_be_reclaimed": true,
+    "maximum_attempts": 3,
+    "unknown_outcome": "expire_request_and_use_public_gateway_fallback",
+    "no_private_or_external_side_effects": true
+  },
+  "observability": {
+    "required_fields": [
+      "request_id",
+      "connector_id",
+      "route_template",
+      "outcome",
+      "status_code",
+      "elapsed_ms"
+    ],
+    "forbidden_fields": [
+      "message",
+      "response_text",
+      "owner_id",
+      "telegram_user_id",
+      "chat_id",
+      "memory_content",
+      "task_id",
+      "private_path",
+      "credential",
+      "signature",
+      "poll_token",
+      "lease_token"
+    ],
+    "audit_events": [
+      "hub_connector.challenge_created",
+      "hub_connector.paired",
+      "hub_connector.revoked",
+      "hub_connector.heartbeat",
+      "hub_connector.request_completed"
+    ],
+    "public_gateway_correlation_independent": true
+  },
+  "acceptance_gates": [
+    "Hub connector implementation uses an owner-controlled local key pair and outbound HTTPS only.",
+    "Gateway verifies Ed25519 signature, timestamp, exact path/body digest and single-use nonce.",
+    "Pairing expiry, replay, wrong environment/origin, revoked connector and stale lease all fail closed.",
+    "Public relay cannot access private memory, tasks, files, tool registry, device actions or credentials.",
+    "Public input is bounded, rate-limited, explicitly consented and always treated as untrusted.",
+    "Isolated tests cover both Hub connector and Gateway Worker contracts.",
+    "End-to-end Preview test uses a dedicated Hub instance and synthetic public query.",
+    "No Production enablement before separate owner approval and Privacy/Security review."
+  ],
+  "implementation_boundary": {
+    "runtime_routes_added": false,
+    "database_migrations_added": false,
+    "secrets_added": false,
+    "cloudflare_resources_changed": false,
+    "production_enabled": false
+  },
+  "pull_protocol": {
+    "request_fields": [
+      "cursor",
+      "limit"
+    ],
+    "response_fields": [
+      "items",
+      "next_cursor"
+    ],
+    "cursor_scope": "connector_id",
+    "cursor_is_opaque": true,
+    "same_cursor_retry": "returns_same_batch_and_lease_tokens_until_lease_expiry",
+    "maximum_batch_size": 5
+  },
+  "lease_contract": {
+    "token_field": "lease_token",
+    "minimum_entropy_bytes": 32,
+    "storage": "hash_only_gateway_side",
+    "binds_to": [
+      "connector_id",
+      "request_id",
+      "lease_until"
+    ],
+    "lease_duration_seconds": 60,
+    "completion_requires_current_token": true,
+    "stale_lease_completion": "409_lease_not_valid",
+    "reclaimed_request_receives_new_token": true,
+    "old_token_cannot_complete_after_reclaim": true,
+    "token_in_logs": false
+  },
+  "public_poll_authentication": {
+    "credential_header": "X-Relay-Poll-Credential",
+    "credential_scope": "single_request_id",
+    "credential_lifetime_seconds": 120,
+    "credential_transport": "header_only",
+    "credential_may_appear_in_url": false,
+    "credential_may_be_set_as_cookie": false,
+    "credential_storage": "browser_memory_only",
+    "credential_in_logs_or_analytics": false
+  }
+}
