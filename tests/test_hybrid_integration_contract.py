@@ -99,7 +99,7 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert request_id["request_state"] == "request.state.request_id"
     assert request_id["log_event"] == "http_request_completed"
     assert request_id["log_fields"] == [
-        "request_id", "method", "route_template", "status_code"
+        "request_id", "method", "route_template", "status_code", "duration_ms", "outcome"
     ]
     assert request_id["authorization_effect"] is False
     assert request_id["idempotency_effect"] is False
