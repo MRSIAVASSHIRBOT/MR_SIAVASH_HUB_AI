@@ -777,7 +777,8 @@ def test_plan_experiment_endpoint_compares_candidates_without_execution(monkeypa
     assert body["execution_started"] is False
     assert body["tools_executed"] is False
     assert body["permissions_changed"] is False
-    assert body["state_changed"] is False
+    assert body["plan_persisted"] is False
+    assert body["workflow_state_changed"] is False
     assert "Prepare a safe project review" not in response.text
 
 
