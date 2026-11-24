@@ -157,6 +157,23 @@ def test_website_gateway_relay_is_proposal_only_until_both_sides_are_implemented
     }
 
 
+def test_website_gateway_contract_document_matches_disabled_status():
+    document_path = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "docs"
+        / "integrations"
+        / "website-hub-relay-v1.md"
+    )
+    document = document_path.read_text(encoding="utf-8")
+    relay = _website_gateway_contract()
+
+    assert "Status: proposed — not implemented" in document
+    assert relay["contract_id"] in document
+    assert "Gateway never opens a connection into the owner's private network" in document
+    assert "no runtime endpoint, schema migration, secret, Cloudflare binding" in document
+    assert "A7 is not complete until" in document
+
+
 def test_website_gateway_pairing_is_owner_confirmed_and_hub_initiated():
     relay = _website_gateway_contract()
 
