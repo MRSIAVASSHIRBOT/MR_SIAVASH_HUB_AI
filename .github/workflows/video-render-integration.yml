@@ -111,28 +111,36 @@ jobs:
         shell: pwsh
         run: |
           # Chocolatey Community Feed can intermittently return HTTP 503/504.
-          # Retry the package install with bounded backoff; do not mask a real
-          # installation or PATH failure.
+          # Validate the actual executables on every attempt: Chocolatey may
+          # report a successful process exit even when the package was not fetched.
           $PSNativeCommandUseErrorActionPreference = $false
-          $installed = $false
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
+          $chocolateyBin = Join-Path $env:ProgramData "chocolatey\bin"
+          if (Test-Path $chocolateyBin) {
+            $env:Path = "$chocolateyBin;$env:Path"
+          }
+
+          $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+          $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
+          $installed = ($null -ne $ffmpeg -and $null -ne $ffprobe)
+          $lastExitCode = 0
+
+          for ($attempt = 1; -not $installed -and $attempt -le 3; $attempt++) {
             choco install ffmpeg --no-progress -y
-            if ($LASTEXITCODE -eq 0) {
-              $installed = $true
-              break
-            }
-            if ($attempt -lt 3) {
+            $lastExitCode = $LASTEXITCODE
+
+            # A zero exit code alone is insufficient; require both binaries.
+            $ffmpeg = Get-Command ffmpeg -ErrorAction SilentlyContinue
+            $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
+            $installed = ($null -ne $ffmpeg -and $null -ne $ffprobe)
+
+            if (-not $installed -and $attempt -lt 3) {
+              Write-Warning "FFmpeg/FFprobe are still unavailable after Chocolatey attempt $attempt (exit code $lastExitCode)."
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
+
           if (-not $installed) {
-            throw "FFmpeg installation failed after three Chocolatey attempts"
-          }
-          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
-            throw "FFmpeg was not added to PATH"
-          }
-          if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
-            throw "FFprobe was not added to PATH"
+            throw "FFmpeg and FFprobe were not available after three Chocolatey attempts (last exit code: $lastExitCode)"
           }
           ffmpeg -version | Select-Object -First 1
           ffprobe -version | Select-Object -First 1
