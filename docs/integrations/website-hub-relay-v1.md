@@ -54,6 +54,8 @@ The browser receives a short-lived polling credential only in the response body 
 
 ## Current implementation state
 
+The proposal adds no runtime endpoint, schema migration, secret, Cloudflare binding, D1 table, Worker route, Hub route, connector process or UI.
+
 The contract manifest and its structural tests are planning/interface artifacts only. No runtime endpoint, schema migration, secret, Cloudflare binding, D1 table, Worker route, Hub route, connector process or UI was added by this proposal. Every endpoint in the manifest remains `not_implemented`.
 
 A7 is not complete until the Hub connector, Gateway endpoints, revocation, isolated tests, a real Preview round-trip against a dedicated local Hub, and an independent security review all pass. Production enablement requires a separate owner decision.
