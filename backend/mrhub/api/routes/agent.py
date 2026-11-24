@@ -525,13 +525,21 @@ def evaluate_goal_work_order_plan_experiment(
             detail="The requested goal is outside the supported safety policy",
         )
 
+    # Catalog presence is informational only. This endpoint does not inspect
+    # grants, select tools, invoke handlers, or create an executable workflow.
     try:
-        # Catalog presence is informational only. This endpoint does not inspect
-        # grants, select tools, invoke handlers, or create an executable workflow.
         registry = build_tool_registry(owner_user_id=current_user.user_id)
+        tool_catalog = registry.catalog()
+    except Exception as exc:  # noqa: BLE001 - registry failures fail closed
+        raise HTTPException(
+            status_code=503,
+            detail="Owner-scoped capability catalog is unavailable",
+        ) from exc
+
+    try:
         capability_report = assess_work_order_capabilities(
             request.work_order,
-            registry.catalog(),
+            tool_catalog,
         )
         experiment = evaluate_plan_experiment(
             request.work_order,
@@ -546,11 +554,6 @@ def evaluate_goal_work_order_plan_experiment(
         raise HTTPException(
             status_code=422,
             detail="Plan experiment inputs failed structural validation",
-        ) from exc
-    except Exception as exc:  # noqa: BLE001 - registry failures must not be masked as success
-        raise HTTPException(
-            status_code=503,
-            detail="Owner-scoped capability catalog is unavailable",
         ) from exc
 
     try:
