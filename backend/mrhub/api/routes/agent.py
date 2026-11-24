@@ -27,7 +27,10 @@ from mrhub.agents.plan_repository import (
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
-from mrhub.agents.work_order_intelligence import assess_work_order_intelligence
+from mrhub.agents.work_order_intelligence import (
+    assess_work_order_intelligence,
+    evaluate_plan_experiment,
+)
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
@@ -224,6 +227,42 @@ class PersistedGoalPlanningRequest(GoalPlanningRequest):
     """Bounded request for a short-lived, encrypted plan record."""
 
     expires_in_seconds: int = Field(default=900, ge=60, le=86_400)
+
+
+class WorkOrderPlanExperimentCandidate(BaseModel):
+    """One validated alternative plan; candidate IDs are labels, never commands."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    candidate_id: str = Field(
+        min_length=1,
+        max_length=32,
+        pattern=r"^[a-z][a-z0-9_-]{0,31}$",
+        strict=True,
+    )
+    plan: ExecutionPlan
+
+
+class WorkOrderPlanExperimentRequest(BaseModel):
+    """Small, deterministic comparison of bounded declarative plans."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    work_order: WorkOrder
+    baseline_plan: ExecutionPlan
+    candidates: list[WorkOrderPlanExperimentCandidate] = Field(
+        min_length=1,
+        max_length=4,
+    )
+
+    @model_validator(mode="after")
+    def validate_candidate_ids(self) -> "WorkOrderPlanExperimentRequest":
+        candidate_ids = [item.candidate_id for item in self.candidates]
+        if "baseline" in candidate_ids or len(candidate_ids) != len(set(candidate_ids)):
+            raise ValueError("Candidate identifiers must be unique and cannot use 'baseline'")
+        return self
+
+
 
 
 def _canonical_plan_digest(payload: dict[str, object]) -> str:
@@ -445,6 +484,111 @@ def create_goal_work_order_plan(
         "execution_started": False,
         "tools_executed": False,
         "permissions_changed": False,
+    }
+
+
+@router.post("/work-orders/experiments/evaluate")
+def evaluate_goal_work_order_plan_experiment(
+    request: WorkOrderPlanExperimentRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
+    """Compare bounded plan structures without research, execution, or promotion."""
+    tasks = TaskRepository(get_settings().database_path)
+    tasks.initialize()
+    audit_logger = AuditLogger(tasks)
+
+    server_risk = derive_server_risk_class(
+        request.work_order.goal,
+        request.work_order.model_dump(mode="json"),
+    )
+    if server_risk is RiskClass.PROHIBITED:
+        try:
+            audit_logger.record(
+                event_type="agent.work_order_experiment_blocked",
+                outcome="denied",
+                actor_type="user",
+                actor_id=current_user.user_id,
+                subject_type="work_order_plan_experiment",
+                metadata={
+                    "status": "blocked",
+                    "reason_code": "prohibited_goal",
+                    "candidate_count": len(request.candidates),
+                },
+            )
+        except sqlite3.Error as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Audit storage is unavailable",
+            ) from exc
+        raise HTTPException(
+            status_code=422,
+            detail="The requested goal is outside the supported safety policy",
+        )
+
+    try:
+        # Catalog presence is informational only. This endpoint does not inspect
+        # grants, select tools, invoke handlers, or create an executable workflow.
+        registry = build_tool_registry(owner_user_id=current_user.user_id)
+        capability_report = assess_work_order_capabilities(
+            request.work_order,
+            registry.catalog(),
+        )
+        experiment = evaluate_plan_experiment(
+            request.work_order,
+            request.baseline_plan,
+            [
+                (candidate.candidate_id, candidate.plan)
+                for candidate in request.candidates
+            ],
+            capability_report,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Plan experiment inputs failed structural validation",
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - registry failures must not be masked as success
+        raise HTTPException(
+            status_code=503,
+            detail="Owner-scoped capability catalog is unavailable",
+        ) from exc
+
+    try:
+        audit_logger.record(
+            event_type="agent.work_order_experiment_evaluated",
+            outcome="evaluated",
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="work_order_plan_experiment",
+            metadata={
+                "status": "evaluated",
+                "decision": "manual_review_required",
+                "candidate_count": len(request.candidates),
+                "method": "deterministic_structural_comparison_v1",
+                "winner_selected": False,
+                "automatic_promotion": False,
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+
+    return {
+        "experiment": experiment,
+        "derived_risk_class": server_risk.value,
+        "risk_class_is_authoritative": False,
+        "evaluation_only": True,
+        "planning_only": True,
+        "capability_presence_only": True,
+        "authorization_checked": False,
+        "execution_authorized": False,
+        "research_performed": False,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+        "state_changed": False,
     }
 
 
