@@ -123,6 +123,104 @@ CONTRACT_DOC_PATH = (
 )
 
 
+
+WEBSITE_GATEWAY_CONTRACT_PATH = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "contracts"
+    / "hybrid"
+    / "website-gateway"
+    / "v1"
+    / "manifest.json"
+)
+
+
+def _website_gateway_contract() -> dict:
+    return json.loads(WEBSITE_GATEWAY_CONTRACT_PATH.read_text(encoding="utf-8"))
+
+
+def test_website_gateway_relay_is_proposal_only_until_both_sides_are_implemented():
+    relay = _website_gateway_contract()
+
+    assert relay["contract_id"] == "mr-siavash-website-hub-public-query-relay"
+    assert relay["contract_version"] == "1.0.0"
+    assert relay["status"] == "proposed"
+    assert all(
+        endpoint["implementation_status"] == "not_implemented"
+        for endpoint in relay["endpoints"]
+    )
+    assert relay["implementation_boundary"] == {
+        "runtime_routes_added": False,
+        "database_migrations_added": False,
+        "secrets_added": False,
+        "cloudflare_resources_changed": False,
+        "production_enabled": False,
+    }
+
+
+def test_website_gateway_pairing_is_owner_confirmed_and_hub_initiated():
+    relay = _website_gateway_contract()
+
+    assert relay["topology"]["direction"] == "hub_initiated_outbound_only"
+    assert relay["topology"]["gateway_may_open_connection_to_hub"] is False
+    assert relay["topology"]["local_hub_port_may_be_public"] is False
+    assert relay["topology"]["public_tunnel_to_hub_allowed"] is False
+    assert relay["topology"]["browser_may_hold_hub_credentials"] is False
+    assert relay["pairing"]["initiated_by"] == "authenticated_gateway_administrator"
+    assert relay["pairing"]["confirmed_by"] == "authenticated_local_hub_owner"
+    assert relay["pairing"]["challenge_single_use"] is True
+    assert relay["pairing"]["challenge_lifetime_seconds"] == 300
+    assert relay["connector_authentication"]["algorithm"] == "Ed25519"
+    assert relay["connector_authentication"]["nonce_single_use"] is True
+
+
+def test_website_gateway_relay_has_only_public_query_scope_and_no_private_authority():
+    relay = _website_gateway_contract()
+
+    assert relay["pairing"]["initial_scopes"] == ["public_assistant:process"]
+    assert relay["pairing"]["default_scopes"] == []
+    policy = relay["processing_policy"]
+    for capability in (
+        "private_memory_read",
+        "private_knowledge_read",
+        "owner_task_read",
+        "owner_task_create",
+        "local_file_read",
+        "tool_discovery",
+        "tool_execution",
+        "device_control",
+        "approval_bypass",
+    ):
+        assert policy[capability] is False
+    assert policy["owner_context_must_be_absent"] is True
+    assert policy["public_request_treated_as_untrusted_data"] is True
+
+    envelope = relay["request_envelope"]
+    assert envelope["classification"] == "public_untrusted_input"
+    assert {
+        "owner_id",
+        "telegram_user_id",
+        "memory",
+        "private_context",
+        "task_id",
+        "tool_arguments",
+        "credentials",
+    }.issubset(envelope["forbidden_fields"])
+
+
+def test_website_gateway_relay_endpoints_are_unique_and_scoped():
+    relay = _website_gateway_contract()
+    endpoints = relay["endpoints"]
+    keys = [(item["method"], item["path"]) for item in endpoints]
+
+    assert len(keys) == len(set(keys))
+    assert len(endpoints) >= 8
+    assert all(item["method"] in {"GET", "POST", "DELETE"} for item in endpoints)
+    assert all(item["auth_mode"] for item in endpoints)
+    assert relay["request_envelope"]["limits"]["total_request_bytes"] <= 12 * 1024
+    assert relay["response_envelope"]["limits"]["response_characters"] <= 8000
+    assert relay["retry_policy"]["maximum_attempts"] <= 3
+
+
 def test_hybrid_contract_document_matches_bounded_retry_policy():
     document = CONTRACT_DOC_PATH.read_text(encoding="utf-8")
     request_id = _contract()["observability"]["request_id"]
