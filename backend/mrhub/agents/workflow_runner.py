@@ -292,6 +292,12 @@ class AgentWorkflowRunner:
         report = evaluate_criteria(criteria)
         return {
             **report.as_dict(),
+            # A successful tool call proves only that the registered tool completed.
+            # It does not independently prove that a natural-language goal or its
+            # WorkOrder acceptance criteria were satisfied.
+            "evaluation_scope": "tool_execution_only",
+            "goal_satisfaction": "not_evaluated",
+            "acceptance_criteria_evaluation": "not_implemented",
             "correction_plan": build_correction_plan(report),
         }
 
