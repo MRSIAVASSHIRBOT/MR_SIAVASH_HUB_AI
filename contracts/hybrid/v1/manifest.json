@@ -372,7 +372,7 @@
       "authorization_effect": false,
       "idempotency_effect": false,
       "public_gateway": "independent_correlation_id_only",
-      "note": "EL_AI generates a canonical UUIDv4 for each logical Hub operation. On the single authorized 401 recovery path it refreshes credentials with a separate request ID, then retries the original operation once with its original request ID; it does not perform generic retries or backoff. EL_AI logs only request_id, method, route template, response status, and outcome. The Hub validates canonical lowercase UUIDs, replaces missing or invalid values with UUIDv4, echoes the canonical ID on handled HTTP responses, and logs only its allowlisted fields including monotonic duration_ms and bounded outcome. Public Gateway calls use an independent ID and are not forwarded to the private Hub.",
+      "note": "EL_AI generates a canonical UUIDv4 for each logical Hub operation. On the single authorized 401 recovery path it refreshes credentials with a separate request ID, then retries the original operation once with its original request ID; it does not perform generic retries or backoff. EL_AI logs only request_id, method, route template, response status, and outcome. The Hub validates canonical lowercase UUIDs, replaces missing or invalid values with UUIDv4, echoes the canonical ID on handled HTTP responses, and logs only its allowlisted fields including monotonic duration_ms and bounded outcome. Public Gateway calls use an independent ID and are not forwarded to the private Hub. The per-operation request ID remains distinct from the stable Bridge job correlation ID.",
       "el_ai_log_event": "hub_request_completed",
       "el_ai_log_fields": [
         "request_id",
@@ -383,7 +383,50 @@
       ],
       "retry_policy": "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
     },
-    "secrets_in_logs_or_urls": false
+    "secrets_in_logs_or_urls": false,
+    "bridge_job_correlation": {
+      "status": "standardized",
+      "header": "X-Correlation-ID",
+      "source": "el_ai_bridge_job_uuid_context",
+      "format": "canonical_lowercase_uuid",
+      "accepted_uuid_versions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "input_case": "lowercase_only",
+      "server_fallback": "request_id_when_missing_or_invalid",
+      "request_state": "request.state.correlation_id",
+      "response": "not_echoed",
+      "log_event": "http_request_completed",
+      "log_fields": [
+        "request_id",
+        "correlation_id",
+        "method",
+        "route_template",
+        "status_code",
+        "duration_ms",
+        "outcome"
+      ],
+      "el_ai_log_event": "hub_request_completed",
+      "el_ai_log_fields": [
+        "request_id",
+        "correlation_id",
+        "method",
+        "route_template",
+        "status_code",
+        "outcome"
+      ],
+      "authorization_effect": false,
+      "idempotency_effect": false,
+      "ownership_effect": false,
+      "note": "EL_AI binds the canonical Bridge job UUID to Hub calls through its task-local ContextVar. Hub accepts only canonical lowercase UUID metadata, falls back to the per-request ID when missing or invalid, and records it only in structured diagnostics. It is never an owner identity, credential, authorization grant, idempotency key, or execution control. Invalid values are not echoed or logged."
+    }
   },
   "compatibility_policy": {
     "additive_change": "May be introduced within v1 when existing request and response semantics remain unchanged.",
