@@ -155,7 +155,7 @@ Parallel source development is permitted within a wave. Cross-wave integration m
 **Phases:** `H3/H12`, `E3/E4/E5/E8`, `X1`.
 
 - Hub PR #624 provides the producer contract `telegram_agent_plan.v1` and now publishes a typed response envelope in OpenAPI, including the legacy step projection and explicit non-execution flags.
-- EL_AI PR #132 is the consumer and remains Draft until the producer is merged and validated on main.
+- EL_AI PR #132 is the consumer and remains Draft until the producer is merged and validated on main. Its consumer-side validator now rejects mismatches between planning_status, missing-information/clarification state and research-required state before persisting a plan.
 - Keep preview planning-only: no Task creation, tool invocation or inferred authorization.
 - Reconcile the open PRs before adding another producer/consumer version.
 
@@ -271,3 +271,15 @@ No change is counted twice. A partial PR, green lint job, source file, test fixt
 - EL_IR_BOT main: `0c7249b4b598c1af8fe1455e3e64384aaf8b4c3b`
 
 Refresh this snapshot before review or rebase. It is not evidence that remote production environments match source.
+
+
+## 9. Implementation checkpoint update — 2026-11-25 UTC
+
+The following additive implementation edits were completed after the first roadmap draft. They are WIP branches, not merged mainline features:
+
+- Hub PR #624 producer contract branch latest head: `ba17f76365b0a77370fd1f809d5d022d9c94fa32`. Added `TelegramAgentPlanPreviewResponse` with `response_model` on the route and a focused OpenAPI contract regression for nested plan schema and explicit non-execution fields.
+- EL_AI PR #132 consumer branch latest head: `d13385e603743b5fa3eef26e15340fa1d7183788`. Contract loading now derives the only valid planning status from the missing-information/clarification and research fields, and rejects mismatched or incomplete combinations before local persistence. Exact-head Python 3.11/3.12 and Workflow Security checks were green at this checkpoint. The PR remains Draft pending producer integration.
+- Website A13 branch latest head: `30f02e29150d423fb2b24fc0944757672b738293`. SSE responses now align with the JSON response frame/CSP headers, and complete upstream SSE frames are checked against the 32 KiB limit before JSON parsing. Regression coverage was added; full tests have not yet been run on this WIP head.
+- Hub H10 branch latest head remains `8b4fe60f8eef2c518202f85a4d28a0f107a8788f`: explicit tool-only evaluation scope fields are returned to consumers.
+
+The test strategy for these source waves is checkpointed rather than commit-by-commit: preserve focused regression cases with the code, group implementations, then execute the complete exact-head matrix before marking a PR review-ready/merging. Any CI that runs automatically because a branch is attached to an open PR remains separately visible; pending checks are never reported as passed.
