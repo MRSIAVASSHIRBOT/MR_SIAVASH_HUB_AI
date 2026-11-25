@@ -6,13 +6,13 @@ code. Model output and caller-supplied status labels are never evidence.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-import hashlib
-import json
-import re
 
 MAX_WORK_ORDER_CRITERIA = 12
 MAX_EVIDENCE_REFERENCES = 100
@@ -225,7 +225,7 @@ def _validate_timestamp(value: object) -> str:
     if not isinstance(value, str) or not 1 <= len(value) <= 40:
         raise EvidenceInputError("Evidence timestamp is invalid")
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise EvidenceInputError("Evidence timestamp is invalid") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
