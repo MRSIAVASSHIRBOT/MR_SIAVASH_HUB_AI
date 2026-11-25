@@ -27,7 +27,7 @@ class RequestMetrics:
         method: str, route_template: str, status_code: int
     ) -> tuple[str, str, str]:
         """Accept only bounded method, registered route-template, and status dimensions."""
-        safe_method = method.upper() if isinstance(method, str) else ""
+        safe_method = method.upper() if isinstance(method, str) and len(method) <= 16 else ""
         if safe_method not in METHODS:
             safe_method = "OTHER"
 
@@ -70,10 +70,10 @@ class RequestMetrics:
         duration = max(0.0, float(duration_ms))
         key = self._dimensions(method, route_template, status_code)
         with self._lock:
-            if key not in self._series:
-                if len(self._series) >= self._max_series:
+            if key not in self._series and key != self._overflow_key:
+                if len(self._series) >= self._max_series - 1:
                     key = self._overflow_key
-                self._series.setdefault(key, self._new_series())
+            self._series.setdefault(key, self._new_series())
             metric = self._series[key]
             metric["count"] += 1
             metric["duration_sum_ms"] = round(
