@@ -1331,7 +1331,7 @@ def test_telegram_plan_preview_rejects_plans_outside_two_to_eight_steps(monkeypa
         )
 
     assert error.value.status_code == 502
-    assert error.value.detail == "Planning provider returned an invalid structured work order or plan"
+    assert error.value.detail == "The planning provider returned an invalid plan or work order."
     assert router.generate_calls == 2
 
 
@@ -1358,3 +1358,53 @@ def test_telegram_plan_preview_rejects_duplicate_acceptance_criteria(monkeypatch
 
     assert error.value.status_code == 502
     assert router.generate_calls == 1
+
+
+def test_telegram_plan_preview_rejects_non_topological_dependencies(monkeypatch):
+    from uuid import uuid4
+
+    plan = json.loads(_telegram_plan_output())
+    plan["steps"][0]["depends_on"] = ["review"]
+    plan["steps"][1]["depends_on"] = []
+    telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [_telegram_work_order_output(), json.dumps(plan)],
+    )
+
+    with pytest.raises(HTTPException) as error:
+        telegram_routes.preview_telegram_agent_plan(
+            telegram_routes.TelegramAgentPlanPreviewRequest(
+                goal="Prepare a reviewable proposal",
+            ),
+            SimpleNamespace(owner_user_id="owner-forward-dependency", client_id=uuid4()),
+        )
+
+    assert error.value.status_code == 502
+    assert "invalid plan" in error.value.detail.lower()
+    assert router.generate_calls == 2
+
+
+def test_telegram_plan_preview_rejects_duplicate_criterion_references_per_step(monkeypatch):
+    from uuid import uuid4
+
+    plan = json.loads(_telegram_plan_output())
+    plan["steps"][0]["verifies_criteria"] = [
+        "The proposal has a bounded structure",
+        "The proposal has a bounded structure",
+    ]
+    telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [_telegram_work_order_output(), json.dumps(plan)],
+    )
+
+    with pytest.raises(HTTPException) as error:
+        telegram_routes.preview_telegram_agent_plan(
+            telegram_routes.TelegramAgentPlanPreviewRequest(
+                goal="Prepare a reviewable proposal",
+            ),
+            SimpleNamespace(owner_user_id="owner-duplicate-reference", client_id=uuid4()),
+        )
+
+    assert error.value.status_code == 502
+    assert "invalid plan" in error.value.detail.lower()
+    assert router.generate_calls == 2
