@@ -1408,6 +1408,9 @@ def preview_telegram_agent_plan(
         ) from exc
 
     if payload.provider_mode == "remote":
+        # GPI and AWI each make one bounded model request; reserve both quota units
+        # before the first inference so a second-stage rate denial cannot waste a partial plan.
+        _enforce_kimi_request_limit(identity.owner_user_id)
         _enforce_kimi_request_limit(identity.owner_user_id)
 
     try:
