@@ -317,3 +317,16 @@ This is a telemetry minimization slice, not a closure of the privacy or release 
 The product-boundary mismatch is now described in Proposed ADR-0045 at `docs/architecture/adr-0045-product-taxonomy-el-agent-vs-el-ir-bot.md`, commit `4e0c3e3bfe1a0c349234e3088201166843ce299c`. No product mapping or phase count has been changed pending owner decision.
 
 A draft PR may be used to track a WIP branch, but test checks remain Pending if GitHub workflow runs are skipped; such a PR must stay Draft and must never be merged. Before review/merge, push a non-skipped final head, run every required exact-head check, then verify post-merge mainline checks.
+
+
+## 11. A13 stream boundary and current Hub producer CI — 2026-11-25 UTC
+
+Website A13 latest WIP branch is fix/a13-sse-security-headers-20261125, head e6978c24afce8133172e45d3f57416542a50fb3b. It now includes:
+- SSE frame-denial/CSP headers.
+- UTF-8 byte-size enforcement for complete frames, partial buffers and the final TextDecoder flush.
+- Fail-closed handling for malformed complete upstream JSON frames.
+- Regression fixtures for multibyte UTF-8, oversized complete frames, decoder-flush overflow and malformed data.
+
+Full Gateway tests have not been run on this head; no test pass or merge readiness is claimed.
+
+Hub PR #624 latest head is 29899a03468c8c21a14dad0087cbba3bde9c9426. At the latest read, its primary test check had passed on this head; Python 3.11 and Python 3.12 matrix checks were still in progress. Other visible Windows/FFmpeg/runtime/security checks had completed successfully. PR #624 remains open and unmerged pending both matrix checks.
