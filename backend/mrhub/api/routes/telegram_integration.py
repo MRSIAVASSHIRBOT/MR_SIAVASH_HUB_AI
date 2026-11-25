@@ -175,6 +175,8 @@ class TelegramAgentPlanContract(BaseModel):
     constraints: list[str] = Field(default_factory=list, max_length=20)
     dependencies: list[str] = Field(default_factory=list, max_length=20)
     required_capabilities: list[str] = Field(default_factory=list, max_length=20)
+    capability_availability: Literal["not_assessed"]
+    authorization_checked: Literal[False]
     estimated_complexity: Literal["low", "moderate", "high"]
     missing_information: list[str] = Field(default_factory=list, max_length=12)
     clarification_questions: list[str] = Field(default_factory=list, max_length=12)
@@ -1487,6 +1489,8 @@ def preview_telegram_agent_plan(
         "constraints": work_order.constraints,
         "dependencies": work_order.dependencies,
         "required_capabilities": work_order.required_capabilities,
+        "capability_availability": "not_assessed",
+        "authorization_checked": False,
         "estimated_complexity": work_order.estimated_complexity,
         "missing_information": work_order.missing_information,
         "clarification_questions": work_order.clarification_questions,
