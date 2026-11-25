@@ -1137,7 +1137,6 @@ def _configure_telegram_plan_preview(monkeypatch, outputs: list[str], *, local: 
 
 
 def test_telegram_plan_preview_returns_versioned_gpi_awi_contract_and_legacy_steps(monkeypatch):
-    from mrhub.api.routes import telegram_integration as telegram_routes
     from uuid import uuid4
 
     telegram_routes, router, captured, audit_events = _configure_telegram_plan_preview(
@@ -1195,7 +1194,6 @@ def test_telegram_plan_preview_returns_versioned_gpi_awi_contract_and_legacy_ste
 
 
 def test_telegram_plan_preview_requires_clarification_before_execution(monkeypatch):
-    from mrhub.api.routes import telegram_integration as telegram_routes
     from uuid import uuid4
 
     telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
@@ -1235,7 +1233,6 @@ def test_telegram_plan_preview_requires_clarification_before_execution(monkeypat
 
 
 def test_telegram_remote_plan_preview_applies_remote_quota_once(monkeypatch):
-    from mrhub.api.routes import telegram_integration as telegram_routes
     from uuid import uuid4
 
     telegram_routes, router, captured, _audit_events = _configure_telegram_plan_preview(
@@ -1266,8 +1263,9 @@ def test_telegram_remote_plan_preview_applies_remote_quota_once(monkeypatch):
 
 
 def test_telegram_plan_preview_blocks_prohibited_goal_before_provider_selection(monkeypatch):
-    from mrhub.api.routes import telegram_integration as telegram_routes
     from uuid import uuid4
+
+    from mrhub.api.routes import telegram_integration as telegram_routes
 
     audit_events: list[dict[str, object]] = []
     client_id = uuid4()
@@ -1317,7 +1315,6 @@ def test_telegram_plan_preview_blocks_prohibited_goal_before_provider_selection(
 
 
 def test_telegram_plan_preview_rejects_plans_outside_two_to_eight_steps(monkeypatch):
-    from mrhub.api.routes import telegram_integration as telegram_routes
     from uuid import uuid4
 
     telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
@@ -1339,7 +1336,6 @@ def test_telegram_plan_preview_rejects_plans_outside_two_to_eight_steps(monkeypa
 
 
 def test_telegram_plan_preview_rejects_duplicate_acceptance_criteria(monkeypatch):
-    from mrhub.api.routes import telegram_integration as telegram_routes
     from uuid import uuid4
 
     duplicated = _telegram_work_order_output(
