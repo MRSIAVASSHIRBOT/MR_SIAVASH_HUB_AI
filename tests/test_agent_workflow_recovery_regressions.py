@@ -107,7 +107,7 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
         metadata = event["metadata"]
         assert metadata["trace_id"] == task_id
         assert metadata["workflow_id"] == workflow_id
-        assert metadata["step_id"] == "step-2"
+        assert metadata["step_id"] == stored["steps"][1]["step_key"]
         assert metadata["attempt_id"]
         assert metadata["attempt_number"] >= 2
         assert metadata["tool_name"] == "text.echo"
