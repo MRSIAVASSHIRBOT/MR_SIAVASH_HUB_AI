@@ -90,6 +90,34 @@ def test_safe_interruption_resume_is_queued_then_completed_by_worker(monkeypatch
     assert result["result"]["evaluation"]["decision"] == "accept"
     assert result["result"]["evaluation"]["passed"] == 1
 
+    lifecycle_events = [
+        event
+        for event in repository.list_task_audit_events(UUID(task_id), limit=50)
+        if event["event_type"].startswith("agent.workflow.tool.")
+    ]
+    assert {
+        "input_validated",
+        "authorization_granted",
+        "handler_started",
+        "handler_returned",
+        "output_validated",
+        "succeeded",
+    } <= {event["outcome"] for event in lifecycle_events}
+    for event in lifecycle_events:
+        metadata = event["metadata"]
+        assert metadata["trace_id"] == task_id
+        assert metadata["workflow_id"] == workflow_id
+        assert metadata["step_id"] == stored["steps"][1]["step_key"]
+        assert metadata["attempt_id"]
+        assert metadata["attempt_number"] >= 2
+        assert metadata["tool_name"] == "text.echo"
+        assert not {
+            "input_digest",
+            "output_digest",
+            "payload",
+            "result",
+        } & metadata.keys()
+
 
 def test_finish_decision_finalizes_without_replaying_succeeded_steps(monkeypatch):
     client = authenticated_client()

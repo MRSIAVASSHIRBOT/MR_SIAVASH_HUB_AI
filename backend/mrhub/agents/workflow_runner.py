@@ -23,7 +23,7 @@ from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.recovery import ResumeDecision, StepAttempt, WorkflowRecoveryRepository
 from mrhub.security.audit import AuditLogger
-from mrhub.tools.registry import ReplaySafety
+from mrhub.tools.registry import ReplaySafety, ToolLifecycleEvent
 
 
 def _failure_trace_for_tool(replay_safety: ReplaySafety) -> tuple[str, str]:
@@ -411,6 +411,7 @@ class AgentWorkflowRunner:
             heartbeat.start()
         trace_id = str(task.task_id)
         attempts: dict[int, StepAttempt] = {}
+        active_step_number: int | None = None
         runtime_step_ids = {
             runtime_number: request.tool_step_id(request_number, requested_tool)
             for runtime_number, request_number, requested_tool in self.core.ordered_tool_steps(
@@ -459,9 +460,11 @@ class AgentWorkflowRunner:
             )
 
             def on_step(number: int, status: str, error_code: str | None) -> None:
+                nonlocal active_step_number
                 if lease_lost.is_set():
                     raise RuntimeError("Workflow worker lease was lost")
                 if status == "running":
+                    active_step_number = number
                     step_key = runtime_step_ids[number]
                     attempts[number] = self.recovery.start_step(
                         workflow_id, step_key, lease=lease
@@ -501,12 +504,15 @@ class AgentWorkflowRunner:
                             trace_id=trace_id,
                             event_type=failure_event_type,
                             outcome=failure_outcome,
-                            step_id=attempt.step_id,
+                            step_id=attempt.step_key,
                             attempt_id=attempt.attempt_id,
                             attempt_number=attempt.attempt_number,
                             tool_name=definition.name,
                             reason_code=failure_code,
                         )
+                    active_step_number = None
+                elif status == "succeeded":
+                    active_step_number = None
 
             def on_step_result(number: int, output_digest: str) -> None:
                 if lease_lost.is_set():
@@ -530,6 +536,33 @@ class AgentWorkflowRunner:
                 )
                 del attempts[number]
 
+            def on_tool_lifecycle(event: ToolLifecycleEvent) -> None:
+                """Attach sanitized tool stages to the active durable workflow attempt."""
+                attempt = (
+                    attempts.get(active_step_number)
+                    if active_step_number is not None
+                    else None
+                )
+                if attempt is None:
+                    self._logger.warning(
+                        "workflow_tool_lifecycle_trace_missing_attempt trace_id=%s stage=%s",
+                        trace_id,
+                        event.stage.value,
+                    )
+                    return
+                self._record_trace_event(
+                    task_id=str(task.task_id),
+                    workflow_id=workflow_id,
+                    trace_id=trace_id,
+                    event_type=f"agent.workflow.tool.{event.stage.value}",
+                    outcome=event.stage.value,
+                    step_id=attempt.step_id,
+                    attempt_id=attempt.attempt_id,
+                    attempt_number=attempt.attempt_number,
+                    tool_name=event.tool_name,
+                    reason_code=event.reason_code,
+                )
+
             def should_cancel() -> bool:
                 # Lease loss is not user cancellation: a stale worker must stop
                 # without finalizing state owned by the successor.
@@ -549,6 +582,7 @@ class AgentWorkflowRunner:
                 request,
                 on_step=on_step,
                 on_step_result=on_step_result,
+                on_tool_lifecycle=on_tool_lifecycle,
                 should_cancel=should_cancel,
             )
             evaluation = self._evaluate_workflow_tools(
@@ -866,7 +900,9 @@ class AgentWorkflowRunner:
             heartbeat.start()
 
         assert lease is not None and lease_lost is not None
+        trace_id = str(task_id)
         attempts: dict[int, StepAttempt] = {}
+        active_step_number: int | None = None
         _step_specs, tools_by_execution_step = self._durable_step_metadata(
             request, plan
         )
@@ -933,9 +969,11 @@ class AgentWorkflowRunner:
                 def on_step(
                     number: int, status: str, error_code: str | None
                 ) -> None:
+                    nonlocal active_step_number
                     if lease_lost.is_set():
                         raise RuntimeError("Workflow worker lease was lost")
                     if status == "running":
+                        active_step_number = number
                         step_key = runtime_step_ids[number]
                         attempts[number] = self.recovery.start_step(
                             workflow_id,
@@ -955,6 +993,9 @@ class AgentWorkflowRunner:
                                 unknown_outcome=definition.replay_safety is not ReplaySafety.RETRY_SAFE,
                                 lease=lease,
                             )
+                        active_step_number = None
+                    elif status == "succeeded":
+                        active_step_number = None
 
                 def on_step_result(number: int, output_digest: str) -> None:
                     if lease_lost.is_set():
@@ -967,10 +1008,38 @@ class AgentWorkflowRunner:
                     )
                     del attempts[number]
 
+                def on_tool_lifecycle(event: ToolLifecycleEvent) -> None:
+                    """Attach sanitized tool stages to the active resumed attempt."""
+                    attempt = (
+                        attempts.get(active_step_number)
+                        if active_step_number is not None
+                        else None
+                    )
+                    if attempt is None:
+                        self._logger.warning(
+                            "workflow_tool_lifecycle_trace_missing_attempt trace_id=%s stage=%s",
+                            trace_id,
+                            event.stage.value,
+                        )
+                        return
+                    self._record_trace_event(
+                        task_id=str(task_id),
+                        workflow_id=workflow_id,
+                        trace_id=trace_id,
+                        event_type=f"agent.workflow.tool.{event.stage.value}",
+                        outcome=event.stage.value,
+                        step_id=attempt.step_key,
+                        attempt_id=attempt.attempt_id,
+                        attempt_number=attempt.attempt_number,
+                        tool_name=event.tool_name,
+                        reason_code=event.reason_code,
+                    )
+
                 execution = self.core.execute(
                     request,
                     on_step=on_step,
                     on_step_result=on_step_result,
+                    on_tool_lifecycle=on_tool_lifecycle,
                     start_step=(
                         max(2, int(decision.next_step or 2))
                         if legacy_definition else 2

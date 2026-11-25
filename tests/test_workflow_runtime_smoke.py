@@ -9,6 +9,7 @@ import base64
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -146,6 +147,52 @@ def test_api_and_worker_execute_queued_workflow_in_separate_processes(tmp_path: 
         assert latest["status"] == "succeeded", (
             f"separate-process workflow did not succeed; final state: {latest!r}"
         )
+
+        # The tool registry lifecycle must be correlated to the same durable
+        # task/workflow/step attempt in the audit timeline, without storing payloads.
+        with sqlite3.connect(database) as connection:
+            task_row = connection.execute(
+                "SELECT task_id FROM workflow_runs WHERE workflow_id = ?",
+                (workflow_id,),
+            ).fetchone()
+            assert task_row is not None
+            task_id = task_row[0]
+            lifecycle_rows = connection.execute(
+                """
+                SELECT event_type, outcome, metadata_json
+                FROM audit_events
+                WHERE subject_type = 'task'
+                  AND subject_id = ?
+                  AND event_type LIKE 'agent.workflow.tool.%'
+                """,
+                (task_id,),
+            ).fetchall()
+
+        observed_stages = {outcome for _, outcome, _ in lifecycle_rows}
+        assert {
+            "input_validated",
+            "authorization_granted",
+            "handler_started",
+            "handler_returned",
+            "output_validated",
+            "succeeded",
+        } <= observed_stages
+        for event_type, outcome, metadata_json in lifecycle_rows:
+            metadata = json.loads(metadata_json)
+            assert event_type == f"agent.workflow.tool.{outcome}"
+            assert metadata["trace_id"] == task_id
+            assert metadata["workflow_id"] == workflow_id
+            assert metadata["step_id"]
+            assert metadata["attempt_id"]
+            assert metadata["attempt_number"] == 1
+            assert metadata["tool_name"] == "text.echo"
+            assert not {
+                "input_digest",
+                "output_digest",
+                "payload",
+                "result",
+                "message",
+            } & metadata.keys()
 
         # Exercise the durable emergency-stop gate through the real API and worker
         # processes. Stop before queueing so this assertion is independent of polling
