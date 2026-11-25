@@ -301,3 +301,19 @@ A defensive B10 branch now removes Telegram `update_id` from the Cloudflare Work
 - Regression commit: `4688709bdbba3a83f7bc80cfec73243799575f02`
 
 This is a telemetry minimization slice, not a closure of the privacy or release gates. Exact Worker and Python test matrices have not yet been run on this WIP branch.
+
+
+## 10. Latest WIP branch ledger — 2026-11-25 UTC
+
+| Workstream | Repository / branch | Latest source/test checkpoint | Validation |
+|---|---|---|---|
+| H10 evaluation scope | Hub `fix/h10-explicit-evaluation-scope-20261125` | `8b4fe60f8eef2c518202f85a4d28a0f107a8788f` | Focused test added; full wave matrix deferred |
+| X1 / GPI-AWI producer | Hub PR #624, branch `feat/telegram-gpi-awi-contract-20261125` | `ba17f76365b0a77370fd1f809d5d022d9c94fa32` | Main test job was still running at last check; other visible checks green |
+| E8 readiness consumer | EL_AI PR #132, branch `feat/e8-store-versioned-acceptance-contract-20261125` | `d13385e603743b5fa3eef26e15340fa1d7183788` | Python 3.11/3.12 and security checks green at exact head; Draft pending producer merge |
+| A13 SSE hardening | Website `fix/a13-sse-security-headers-20261125` | `1e1ca88ddde3cb9f5c0acaae75d9ba6b928a6f8a` | Header and 32 KiB frame guards plus regression tests; full matrix deferred |
+| B10 telemetry minimization | EL_IR_BOT `fix/b10-redact-telegram-update-ids-20261125` | `4688709bdbba3a83f7bc80cfec73243799575f02` | Removes update identifiers from Worker logs; focused regression added; full matrix deferred |
+| 73-phase roadmap and learning track | Hub `roadmap/implementation-waves-learning-track-20261125` | `0df40341ecb28d3ed9e90ce1b0e7590ec940567d` | Documentation WIP, no mainline change |
+
+The product-boundary mismatch is now described in Proposed ADR-0045 at `docs/architecture/adr-0045-product-taxonomy-el-agent-vs-el-ir-bot.md`, commit `4e0c3e3bfe1a0c349234e3088201166843ce299c`. No product mapping or phase count has been changed pending owner decision.
+
+A draft PR may be used to track a WIP branch, but test checks remain Pending if GitHub workflow runs are skipped; such a PR must stay Draft and must never be merged. Before review/merge, push a non-skipped final head, run every required exact-head check, then verify post-merge mainline checks.
