@@ -1158,6 +1158,8 @@ def test_telegram_plan_preview_returns_versioned_gpi_awi_contract_and_legacy_ste
     assert contract["planning_status"] == "ready_for_review"
     assert contract["evaluation_scope"] == "planning_only"
     assert contract["goal_satisfaction"] == "not_evaluated"
+    assert contract["capability_availability"] == "not_assessed"
+    assert contract["authorization_checked"] is False
     assert contract["risk_class_is_authoritative"] is False
     assert contract["acceptance_criteria"] == [
         {"criterion_id": "ac_001", "statement": "The proposal has a bounded structure"},
