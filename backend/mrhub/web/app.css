@@ -88,6 +88,13 @@ summary { color: var(--green); cursor: pointer; }
 .workflow-step small { color: var(--muted); overflow-wrap: anywhere; grid-column: 1 / -1; }
 .workflow-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .workflow-actions .button { justify-self: start; }
+.workflow-trace-panel { border-top: 1px solid var(--line); margin-top: .75rem; padding-top: .75rem; display: grid; gap: .55rem; }
+.workflow-trace-panel h4 { margin: 0; font-size: .98rem; }
+.workflow-trace-list { display: grid; gap: .4rem; }
+.workflow-trace-event { border: 1px solid var(--line); border-radius: .55rem; padding: .55rem .7rem; background: #07130f; display: grid; gap: .2rem; min-width: 0; }
+.workflow-trace-event strong, .workflow-trace-event small { overflow-wrap: anywhere; }
+.workflow-trace-event small { color: var(--muted); line-height: 1.55; }
+.workflow-trace-more { justify-self: start; }
 @media (max-width: 760px) {
   .workflow-step { grid-template-columns: 1fr; }
   .workflow-step small { grid-column: auto; }
