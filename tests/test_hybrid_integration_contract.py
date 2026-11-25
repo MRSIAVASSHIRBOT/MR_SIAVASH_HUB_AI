@@ -113,6 +113,27 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert request_id["el_ai_log_fields"] == [
         "request_id", "method", "route_template", "status_code", "outcome"
     ]
+    job_correlation = contract["observability"]["bridge_job_correlation"]
+    assert job_correlation["status"] == "standardized"
+    assert job_correlation["header"] == "X-Correlation-ID"
+    assert job_correlation["source"] == "authenticated_telegram_bridge_job_uuid"
+    assert job_correlation["format"] == "canonical_lowercase_uuid"
+    assert job_correlation["accepted_uuid_versions"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert job_correlation["server_fallback"] == "request_id_when_missing_or_invalid"
+    assert job_correlation["request_state"] == "request.state.correlation_id"
+    assert job_correlation["response"] == "not_echoed"
+    assert job_correlation["log_event"] == "http_request_completed"
+    assert job_correlation["log_fields"] == [
+        "request_id", "correlation_id", "method", "route_template",
+        "status_code", "duration_ms", "outcome"
+    ]
+    assert job_correlation["el_ai_log_fields"] == [
+        "request_id", "correlation_id", "method", "route_template", "status_code", "outcome"
+    ]
+    assert job_correlation["authorization_effect"] is False
+    assert job_correlation["idempotency_effect"] is False
+    assert job_correlation["ownership_effect"] is False
+    assert "not an owner identity" in job_correlation["note"]
 
 
 CONTRACT_DOC_PATH = (
