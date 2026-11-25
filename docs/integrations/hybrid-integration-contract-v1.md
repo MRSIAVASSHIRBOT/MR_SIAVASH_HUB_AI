@@ -103,6 +103,6 @@ The machine-readable `security_model` block in the v1 manifest records the imple
 - The Hub policy engine fails closed for prohibited risk and missing required permissions. High-risk or external-side-effect actions require explicit approval; a capability name or diagnostic identifier does not grant authority.
 - Request IDs and Bridge correlation IDs are diagnostic metadata only. They do not establish ownership, authorization, or idempotency.
 - The Website Gateway remains public-only. It cannot call private Hub APIs, receive Hub credentials, or receive private owner context; the browser cannot hold Hub credentials.
-- Hub credentials must not appear in URLs or logs. EL_AI uses the operating-system credential store rather than browser or plaintext fallback storage.
+- Hub credentials must not appear in URLs or logs. EL_AI uses an explicitly trusted OS keyring or an AES-256-GCM encrypted file with a secret-manager-injected key; plaintext fallback is disabled.
 
 This is a contract and regression-test slice for X8, not a full ecosystem security certification. Consumer-side alignment in EL_AI, Website, and EL_IR_BOT, live secret-store verification, and the complete security acceptance matrix remain separate Definition-of-Done requirements.
