@@ -387,7 +387,7 @@
     "bridge_job_correlation": {
       "status": "standardized",
       "header": "X-Correlation-ID",
-      "source": "authenticated_telegram_bridge_job_uuid",
+      "source": "el_ai_bridge_job_uuid_context",
       "format": "canonical_lowercase_uuid",
       "accepted_uuid_versions": [
         1,
