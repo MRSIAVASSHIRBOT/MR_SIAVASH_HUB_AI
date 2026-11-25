@@ -1118,7 +1118,6 @@ def _configure_telegram_plan_preview(monkeypatch, outputs: list[str], *, local: 
     router = FakeTelegramPlanningRouter(outputs, local=local)
     captured: dict[str, object] = {}
     audit_events: list[dict[str, object]] = []
-    client_id = uuid4()
 
     class FakeAuditLogger:
         def __init__(self, repository):
@@ -1269,6 +1268,7 @@ def test_telegram_plan_preview_blocks_prohibited_goal_before_provider_selection(
     from uuid import uuid4
 
     audit_events: list[dict[str, object]] = []
+    client_id = uuid4()
 
     class FakeAuditLogger:
         def __init__(self, repository):
@@ -1305,7 +1305,7 @@ def test_telegram_plan_preview_blocks_prohibited_goal_before_provider_selection(
         "outcome": "denied",
         "subject_type": "agent_plan",
         "actor_type": "telegram_client",
-        "actor_id": audit_events[0]["actor_id"],
+        "actor_id": client_id,
         "metadata": {
             "status": "blocked",
             "declared_risk_class": RiskClass.PROHIBITED.value,
