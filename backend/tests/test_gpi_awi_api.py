@@ -1118,6 +1118,7 @@ def _configure_telegram_plan_preview(monkeypatch, outputs: list[str], *, local: 
     router = FakeTelegramPlanningRouter(outputs, local=local)
     captured: dict[str, object] = {}
     audit_events: list[dict[str, object]] = []
+    client_id = uuid4()
 
     class FakeAuditLogger:
         def __init__(self, repository):
@@ -1256,7 +1257,8 @@ def test_telegram_remote_plan_preview_applies_remote_quota_once(monkeypatch):
     )
 
     assert captured["provider_mode"] == "kimi"
-    assert quota_owners == ["owner-remote"]
+    # One Kimi rate-limit reservation for GPI and one for AWI.
+    assert quota_owners == ["owner-remote", "owner-remote"]
     assert router.generate_calls == 2
     assert result["provider"] == "test-remote"
     assert result["plan_contract"]["execution_started"] is False
@@ -1294,7 +1296,7 @@ def test_telegram_plan_preview_blocks_prohibited_goal_before_provider_selection(
                 goal="A prohibited request",
                 provider_mode="remote",
             ),
-            SimpleNamespace(owner_user_id="owner-blocked", client_id=uuid4()),
+            SimpleNamespace(owner_user_id="owner-blocked", client_id=client_id),
         )
 
     assert error.value.status_code == 422
