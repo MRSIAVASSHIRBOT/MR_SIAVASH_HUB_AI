@@ -620,6 +620,62 @@ def test_request_id_is_available_on_request_state_and_logged_privacy_safely(capl
     assert "must-not-be-logged" not in caplog.text
 
 
+def test_bridge_correlation_id_is_validated_and_logged_separately_from_request_id(caplog) -> None:
+    from fastapi import Request
+
+    app = create_app()
+
+    @app.get("/__correlation_probe/{probe_id}")
+    async def correlation_probe(request: Request, probe_id: str):
+        return {
+            "request_id": request.state.request_id,
+            "correlation_id": request.state.correlation_id,
+            "probe_id": probe_id,
+        }
+
+    request_id = str(uuid4())
+    correlation_id = str(uuid4())
+    with caplog.at_level("INFO", logger="mrhub.request"):
+        response = TestClient(app).get(
+            "/__correlation_probe/private-resource?private_query=never-log",
+            headers={
+                "X-Request-ID": request_id,
+                "X-Correlation-ID": correlation_id,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == request_id
+    assert response.json()["request_id"] == request_id
+    assert response.json()["correlation_id"] == correlation_id
+    record = next(record for record in caplog.records if record.name == "mrhub.request")
+    assert record.request_id == request_id
+    assert record.correlation_id == correlation_id
+    assert record.request_id != record.correlation_id
+    assert record.route_template == "/__correlation_probe/{probe_id}"
+    assert "private-resource" not in caplog.text
+    assert "private_query" not in caplog.text
+    assert "never-log" not in caplog.text
+
+
+def test_invalid_bridge_correlation_id_falls_back_to_request_id_without_logging_raw_value(caplog) -> None:
+    app = create_app()
+    invalid_correlation_id = "not-a-uuid-correlation-value-must-not-be-logged"
+
+    with caplog.at_level("INFO", logger="mrhub.request"):
+        response = TestClient(app).get(
+            "/health",
+            headers={"X-Correlation-ID": invalid_correlation_id},
+        )
+
+    assert response.status_code == 200
+    request_id = response.headers["X-Request-ID"]
+    record = next(record for record in caplog.records if record.name == "mrhub.request")
+    assert record.request_id == request_id
+    assert record.correlation_id == request_id
+    assert invalid_correlation_id not in caplog.text
+
+
 def test_request_observability_records_http_errors_without_sensitive_details(caplog) -> None:
     from fastapi import HTTPException
 
