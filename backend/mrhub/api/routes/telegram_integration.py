@@ -1448,7 +1448,7 @@ def preview_telegram_agent_plan(
     except (WorkOrderGenerationError, PlanningError, ValueError) as exc:
         raise HTTPException(
             status_code=502,
-            detail="Planning provider returned an invalid structured work order or plan",
+            detail="The planning provider returned an invalid plan or work order.",
         ) from exc
     except LookupError as exc:
         raise HTTPException(status_code=503, detail="Planning provider is unavailable") from exc
