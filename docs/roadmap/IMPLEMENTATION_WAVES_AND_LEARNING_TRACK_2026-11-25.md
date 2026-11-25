@@ -154,7 +154,7 @@ Parallel source development is permitted within a wave. Cross-wave integration m
 
 **Phases:** `H3/H12`, `E3/E4/E5/E8`, `X1`.
 
-- Hub PR #624 provides the producer contract `telegram_agent_plan.v1`.
+- Hub PR #624 provides the producer contract `telegram_agent_plan.v1` and now publishes a typed response envelope in OpenAPI, including the legacy step projection and explicit non-execution flags.
 - EL_AI PR #132 is the consumer and remains Draft until the producer is merged and validated on main.
 - Keep preview planning-only: no Task creation, tool invocation or inferred authorization.
 - Reconcile the open PRs before adding another producer/consumer version.
@@ -241,7 +241,7 @@ Siavash's safe starting work is local code review, UX review, non-production tes
 
 | Repository | PR | Role | State at checkpoint | Dependency |
 |---|---:|---|---|---|
-| Hub | #624 | GPI/AWI `telegram_agent_plan.v1` producer | Open, not merged; Python 3.11 and most checks green; Python 3.12 matrix still running at last read | Producer contract for EL_AI #132 |
+| Hub | #624 | GPI/AWI `telegram_agent_plan.v1` producer | Open, not merged; typed OpenAPI response model added to WIP head; exact-head tests deferred to the next integration checkpoint | Producer contract for EL_AI #132 |
 | EL_AI | #132 | Versioned criteria persistence/consumer | Draft; latest exact-head Python 3.11/3.12 and Workflow Security Audit succeeded | Must wait for Hub #624 merge and post-merge checks |
 | Hub | #618 | Render isolation infrastructure | Draft; recurring cost and autosync approval gate | Not part of the code-only integration wave |
 | Website | none | Next A13/A14 source work | No open PR at checkpoint | Audit existing current-main source before branching |
