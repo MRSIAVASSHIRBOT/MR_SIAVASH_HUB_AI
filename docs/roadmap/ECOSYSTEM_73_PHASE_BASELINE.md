@@ -351,3 +351,18 @@ Small implementation edits may be accumulated between full-suite checkpoints, bu
 - EL_IR_BOT privacy Issue #1 and release Issue #18 remain open; no live Telegram traffic or webhook registration.
 - Branch protection remains disabled on all four repositories and is an owner/admin governance task.
 - The EL_AGENT vs EL_IR_BOT product taxonomy remains unresolved.
+
+
+### Typed planning response contract update — 2026-11-25
+
+Hub PR #624 now includes a typed `TelegramAgentPlanPreviewResponse` envelope in addition to the nested `telegram_agent_plan.v1` criteria contract. The envelope preserves `provider_mode`, `provider`, `model`, legacy description-only `steps`, nested `plan_contract`, and explicit `execution_started=false` / `tasks_created=0` fields. The endpoint declares this response model so OpenAPI consumers can discover the contract without reverse-engineering a generic dictionary.
+
+A focused OpenAPI regression has been added to verify the endpoint response reference, legacy projection, nested contract schema and non-execution constants. It has not yet been executed; the full exact-head test checkpoint is deferred until this implementation wave is grouped. PR #624 remains open and unmerged.
+
+Current WIP branch commits (not merged, not phase-completion evidence):
+- Hub H10 evaluation-scope clarity: `fix/h10-explicit-evaluation-scope-20261125`, `8b4fe60f8eef2c518202f85a4d28a0f107a8788f`.
+- Hub GPI/AWI producer contract: `feat/telegram-gpi-awi-contract-20261125`, latest response-model/test commits `afcda9847b207bf61db6c99264566a885582a972` and `ba17f76365b0a77370fd1f809d5d022d9c94fa32`.
+- Website A13 SSE response hardening: `fix/a13-sse-security-headers-20261125`, `4d55e39344e6e0968f89439822c69e1b20f99517`.
+- Hub 73-phase implementation/learning map: `roadmap/implementation-waves-learning-track-20261125`, latest plan doc commit `756f2eb685ffebd69da2ea3b5a9f650d3ecfbce5`.
+
+All four `main` branches remain unchanged by these WIP branches. Do not claim exact-head test success or merge readiness for untested WIP.
