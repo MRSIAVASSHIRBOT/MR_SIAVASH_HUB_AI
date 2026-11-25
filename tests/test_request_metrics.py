@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import json
 
 from fastapi.testclient import TestClient
@@ -67,6 +69,28 @@ def test_request_metrics_clamp_extreme_finite_durations():
     sample = metrics.snapshot()["series"][0]
     assert sample["duration_sum_ms"] == 86_400_000.0
     assert sample["duration_sum_ms"] != float("inf")
+
+
+def test_request_metrics_concurrent_updates_are_not_lost():
+    metrics = RequestMetrics()
+    workers = 8
+    records_per_worker = 250
+
+    def record_batch(_worker_id):
+        for _ in range(records_per_worker):
+            metrics.record("GET", "/health", 200, 5.0)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        list(executor.map(record_batch, range(workers)))
+
+    snapshot = metrics.snapshot()
+    assert len(snapshot["series"]) == 1
+    sample = snapshot["series"][0]
+    assert sample["count"] == workers * records_per_worker
+    assert sample["duration_sum_ms"] == 5.0 * workers * records_per_worker
+    assert sample["bucket_counts"] == [
+        workers * records_per_worker for _ in range(len(BUCKETS_MS))
+    ]
 
 
 def test_jobs_metrics_endpoint_requires_authentication():
