@@ -230,6 +230,9 @@ def test_evaluation_follows_topological_execution_order_not_request_array_order(
     assert report["criteria"][1]["criterion_id"] == "tool-step-3"
     assert report["criteria"][1]["description"] == "Tool execution completed: text.alpha"
     assert report["criteria"][1]["status"] == "failed"
+    assert report["evaluation_scope"] == "tool_execution_only"
+    assert report["goal_satisfaction"] == "not_evaluated"
+    assert report["acceptance_criteria_evaluation"] == "not_implemented"
 
 
 def test_accepted_evaluation_produces_no_correction_actions():
