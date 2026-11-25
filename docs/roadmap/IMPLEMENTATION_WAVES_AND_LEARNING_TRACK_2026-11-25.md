@@ -283,3 +283,10 @@ The following additive implementation edits were completed after the first roadm
 - Hub H10 branch latest head remains `8b4fe60f8eef2c518202f85a4d28a0f107a8788f`: explicit tool-only evaluation scope fields are returned to consumers.
 
 The test strategy for these source waves is checkpointed rather than commit-by-commit: preserve focused regression cases with the code, group implementations, then execute the complete exact-head matrix before marking a PR review-ready/merging. Any CI that runs automatically because a branch is attached to an open PR remains separately visible; pending checks are never reported as passed.
+
+
+### Product taxonomy ADR
+
+A proposed decision document now exists at `docs/architecture/adr-0045-product-taxonomy-el-agent-vs-el-ir-bot.md` (ADR-0045, status Proposed). It records the mismatch between the canonical ecosystem document's Windows/Android `MR_SIAVASH_EL_AGENT` and the current four-repository 73-phase baseline's Telegram Bridge `MR_SIAVASH_EL_IR_BOT`.
+
+The provisional recommendation is to preserve the current four-repository execution baseline and keep EL_AGENT as a separately tracked adjacent product until the owner decides whether to expand or restructure the phase inventory. No product identity or phase ownership is changed by the ADR.
