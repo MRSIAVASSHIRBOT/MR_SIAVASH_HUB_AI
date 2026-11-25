@@ -1,4 +1,5 @@
 import hashlib
+import json
 import sqlite3
 from uuid import UUID, uuid4
 
@@ -1536,16 +1537,18 @@ class _PlanPreviewProvider:
         priority=1,
     )
 
-    def __init__(self, output: str):
+    def __init__(self, output: str | list[str]):
         self.output = output
+        self.outputs = list(output) if isinstance(output, list) else [output]
         self.requests: list[ProviderRequest] = []
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
         self.requests.append(request)
+        output = self.outputs.pop(0) if len(self.outputs) > 1 else self.outputs[0]
         return ProviderResponse(
             provider=self.descriptor.provider,
             model=self.descriptor.model,
-            output_text=self.output,
+            output_text=output,
         )
 
     def health(self, timeout_seconds: float = 2.0) -> ProviderHealth:
@@ -1558,9 +1561,43 @@ def test_telegram_agent_plan_preview_is_owner_scoped_and_non_executing(tmp_path,
         client, scopes=["tasks:create"]
     )
     tokens = _exchange(client, payload, challenge).json()
-    provider = _PlanPreviewProvider(
-        '{"steps":[{"description":"مرحله نخست"},{"description":"مرحله دوم"}]}'
-    )
+    work_order_output = json.dumps({
+        "intent": "Prepare a bounded review proposal",
+        "scope": "Planning only",
+        "assumptions": [],
+        "constraints": ["No execution"],
+        "dependencies": [],
+        "required_capabilities": ["tool.alpha"],
+        "acceptance_criteria": ["Criterion one", "Criterion two"],
+        "verification_steps": ["Verify criterion one", "Verify criterion two"],
+        "estimated_complexity": "low",
+        "missing_information": [],
+        "clarification_questions": [],
+        "research_required": False,
+        "research_questions": [],
+    })
+    plan_output = json.dumps({
+        "rationale": "Two bounded steps linked to explicit criteria",
+        "steps": [
+            {
+                "step_id": "prepare",
+                "description": "مرحله نخست",
+                "depends_on": [],
+                "required_capabilities": ["tool.alpha"],
+                "verifies_criteria": ["Criterion one"],
+                "verification": "Verify criterion one",
+            },
+            {
+                "step_id": "review",
+                "description": "مرحله دوم",
+                "depends_on": ["prepare"],
+                "required_capabilities": [],
+                "verifies_criteria": ["Criterion two"],
+                "verification": "Verify criterion two",
+            },
+        ],
+    })
+    provider = _PlanPreviewProvider([work_order_output, plan_output])
     router = ModelRouter()
     router.register_provider(provider)
     monkeypatch.setattr(
@@ -1580,6 +1617,13 @@ def test_telegram_agent_plan_preview_is_owner_scoped_and_non_executing(tmp_path,
     assert body["provider"] == "test-local"
     assert body["execution_started"] is False
     assert body["tasks_created"] == 0
+    assert body["plan_contract"]["contract_version"] == "telegram_agent_plan.v1"
+    assert body["plan_contract"]["acceptance_criteria"][0]["criterion_id"] == "ac_001"
+    assert body["plan_contract"]["steps"][1]["verifies_criteria"] == ["ac_002"]
+    assert body["plan_contract"]["goal_satisfaction"] == "not_evaluated"
+    assert body["plan_contract"]["authorization_checked"] is False
+    assert body["plan_contract"]["capability_availability"] == "not_assessed"
+    assert len(provider.requests) == 2
     assert "ساخت یک ابزار کوچک و آزمایش آن" in provider.requests[0].input_text
     assert "untrusted data" in provider.requests[0].input_text
     get_settings.cache_clear()
@@ -1631,7 +1675,25 @@ def test_telegram_agent_plan_preview_rejects_invalid_provider_output(tmp_path, m
     client, _ = _owner_client(tmp_path, monkeypatch)
     payload, challenge = _create_pairing(client, scopes=["tasks:create"])
     tokens = _exchange(client, payload, challenge).json()
-    provider = _PlanPreviewProvider('{"steps":[{"description":"only one"}]}')
+    work_order_output = json.dumps({
+        "intent": "Prepare a bounded review proposal",
+        "scope": "Planning only",
+        "assumptions": [],
+        "constraints": ["No execution"],
+        "dependencies": [],
+        "required_capabilities": [],
+        "acceptance_criteria": ["Criterion one"],
+        "verification_steps": ["Verify criterion one"],
+        "estimated_complexity": "low",
+        "missing_information": [],
+        "clarification_questions": [],
+        "research_required": False,
+        "research_questions": [],
+    })
+    provider = _PlanPreviewProvider([
+        work_order_output,
+        '{"steps":[{"description":"only one"}]}',
+    ])
     router = ModelRouter()
     router.register_provider(provider)
     monkeypatch.setattr(
@@ -1646,5 +1708,5 @@ def test_telegram_agent_plan_preview_rejects_invalid_provider_output(tmp_path, m
     )
 
     assert response.status_code == 502
-    assert "invalid plan" in response.json()["detail"]
+    assert response.json()["detail"] == "A required upstream operation failed."
     get_settings.cache_clear()

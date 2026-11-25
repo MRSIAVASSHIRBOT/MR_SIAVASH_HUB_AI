@@ -114,13 +114,27 @@ class PlanningError(ValueError):
     """Raised when the generated plan is malformed or incomplete."""
 
 
-def generate_execution_plan(work_order: WorkOrder, model_router: ModelRouter) -> ExecutionPlan:
-    """Generate a bounded AWI plan and verify it covers declared requirements."""
+def generate_execution_plan(
+    work_order: WorkOrder,
+    model_router: ModelRouter,
+    *,
+    min_steps: int = 1,
+    max_steps: int = 12,
+) -> ExecutionPlan:
+    """Generate a bounded AWI plan and verify declared criteria/capability coverage."""
+    if (
+        isinstance(min_steps, bool)
+        or isinstance(max_steps, bool)
+        or not isinstance(min_steps, int)
+        or not isinstance(max_steps, int)
+        or not 1 <= min_steps <= max_steps <= 12
+    ):
+        raise ValueError("Plan step bounds must satisfy 1 <= min_steps <= max_steps <= 12")
     prompt = (
         "Create a JSON object with exactly {steps:[...], rationale:string}. "
         "Each step must have exactly step_id, description, depends_on, "
         "required_capabilities, verifies_criteria, verification. "
-        "Use 1 to 12 steps. Dependencies must refer to other step_id values. "
+        f"Use {min_steps} to {max_steps} steps. Dependencies must refer to other step_id values. "
         "Every acceptance criterion must appear exactly in at least one "
         "verifies_criteria list. Every required capability from the work order "
         "must appear in at least one step. Do not include shell commands, code, "
@@ -141,6 +155,9 @@ def generate_execution_plan(work_order: WorkOrder, model_router: ModelRouter) ->
         plan = ExecutionPlan.model_validate(payload)
     except (json.JSONDecodeError, ValidationError, TypeError) as exc:
         raise PlanningError("Generated execution plan failed schema validation") from exc
+
+    if not min_steps <= len(plan.steps) <= max_steps:
+        raise PlanningError("Plan step count is outside the requested bounds")
 
     declared_criteria = set(work_order.acceptance_criteria)
     covered_criteria = {
