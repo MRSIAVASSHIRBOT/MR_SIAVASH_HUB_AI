@@ -1,3 +1,48 @@
+## Coordinated source, CI and dependency checkpoint — 2026-11-25
+
+This addendum supersedes older repository-head and open-PR statements below where they conflict. It records GitHub source, repository metadata, file contents and exact-commit Actions check-runs observed during this checkpoint. It is not a live Cloudflare, Render, Telegram, Hub-staging or physical-device acceptance report.
+
+### Main branches and exact-head evidence
+
+- **Hub `main`:** `5d3813d974a8e2681d47dea176f04f20546ffb4f`. PR [#631](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/631) added a regression test proving `ModelRequest(prefer_local=True)` fails closed when the local adapter is unavailable and does not probe or invoke an available remote adapter. Its exact PR head `b634ae367c16d0ca78c63398d224ae5a654bb982` passed all 13 observed check-runs before squash merge. The post-merge main check-runs for `5d3813d` were still running at snapshot time: 9 of 14 had succeeded and 5 were in progress (Python tests, Windows FFmpeg and Windows backup/device regression). Do not call post-merge CI fully green until all 14 finish. [Post-merge checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45605929591).
+- **Website `main`:** `b0f878ff52d9bae4c59f2a862bacbb5642598e80`; all 8 observed exact-main check-runs succeeded, including Gateway CI, production/preview runtime smoke, Workflow Security Audit, Scorecard, syntax/structure, tests and GitHub Pages deployment. The current source includes A12 consented aggregate analytics and A13 deterministic first-party payload-budget guards. A12 and A13 remain partial phases; A14 release acceptance is not complete. [Main check-runs](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45581962735).
+- **EL_AI `main`:** `c4f3cf44d63ecf99db9a0b9dd82b0591a12de8ba`; all 4 observed exact-main check-runs succeeded: Python 3.11, Python 3.12, Workflow Security Audit and supply-chain Scorecard. Current source includes bounded E12 dispatch retries, X7 Bridge correlation and X8 consumer-side security-contract regression coverage. [Main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45582682513).
+
+### Open pull requests and cross-repository pin
+
+- Hub [PR #618](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/618) remains Draft and GitHub reports it is not mergeable. It proposes two paid Render services and separate persistent disks; it must remain unprovisioned until the owner reviews the complete plan, recurring charges and Workspace Blueprint Auto Sync setting and explicitly authorizes the cost.
+- PR #618 pins EL_AI to `57b8289fddbc53c4e7ee1709066939467770f3a0`. Current EL_AI `main` is `c4f3cf44d63ecf99db9a0b9dd82b0591a12de8ba`, 10 commits ahead of that pin. The proposed worker therefore does not yet consume the latest reviewed EL_AI source. Re-pin and revalidate the deployment proposal before any future approval; do not treat the current pin as current.
+- Website and EL_AI had no open PRs at snapshot time.
+
+### Versioned contract and trust boundaries
+
+The Hub canonical contract `contracts/hybrid/v1/manifest.json` and EL_AI pinned consumer fixture `tests/fixtures/hub-hybrid-manifest-v1.json` have the same Git blob SHA: `e6c7ab219ccf0d9fd0613d09f8c12b2c8d1fdcdd`.
+
+The X8 `security_model` keeps Hub pairing authoritative for owner/client/Telegram identity, defaults paired clients to `status:read`, requires Hub-side scope enforcement and policy decisions, denies prohibited risk and missing grants, and requires explicit approval for high-risk or external side effects. Request and correlation IDs remain diagnostic only. The public Website Gateway cannot call private Hub routes, receive Hub credentials or private owner context; browser code cannot hold Hub credentials. EL_AI credentials use a trusted OS keyring or explicit AES-256-GCM encrypted-file mode, with no plaintext fallback.
+
+X7 `X-Correlation-ID` is task-local diagnostic metadata, distinct from per-operation `X-Request-ID`; it is not an authentication, ownership or idempotency signal. Hub remains authoritative for private state, policy, approvals and audit; EL_AI owns Telegram-facing conversation/identity and consumes scoped Hub routes; Website remains public-only. No shared database or ambient trust is introduced.
+
+### Dependencies, workflows and governance
+
+- Hub: Python 3.11+, FastAPI, Pydantic, HTTPX, cryptography and SQLite; Backend CI, Python matrix, Windows wheel/device checks, FFmpeg integration, security scan, Workflow Security Audit and Scorecard.
+- Website: static application plus Node 22 Cloudflare Gateway tests; CI, Pages, production/preview smoke, Workflow Security Audit and Scorecard.
+- EL_AI: Python 3.11+, HTTPX, Keyring, python-dotenv and cryptography; Python 3.11/3.12 CI, Telegram edge workflow, Workflow Security Audit and Scorecard.
+- No Python lockfile was present in the inspected root manifests. Reproducible dependency locking remains follow-up work.
+- GitHub reports `main.protected=false` for all three repositories. No branch-protection, ruleset or access-control setting was changed.
+
+### Live-service evidence boundary
+
+The last recorded Cloudflare/D1 inspection in the Website release ledger is dated 2026-11-23 15:48 UTC, not this checkpoint. It reported Production Worker v14, Preview Worker v10, Preview query-string redaction disabled, and only migrations 0001–0005 in the then-observed Production and Preview ledgers. These are historical observations and require fresh control-plane/D1 readback before any release. No Cloudflare deployment, D1 migration, Render provisioning, Telegram webhook change, production message or device operation is claimed.
+
+### Prioritized next work
+
+1. Complete all 14 post-merge Hub checks on `5d3813d`; resolve any failure before further Hub integration.
+2. Keep Render PR #618 Draft; update its EL_AI pin and rerun exact-head tests only after source review, then require explicit owner cost/Auto Sync approval before any manual sync.
+3. Perform a fresh read-only Cloudflare Preview/Production inventory; verify source provenance, `redact_query_string=true`, D1 migration ledgers and backup/rollback evidence before any deployment.
+4. Run isolated Hub–EL_AI pairing, scope, revocation, Bridge pull/complete, idempotency and sanitized-failure acceptance. Do not send production Telegram messages.
+5. Add reproducible Python dependency locks and enforce current-head CI/PR governance through an owner/admin-approved policy.
+
+
 ## Current Hub and ecosystem state refresh — 2026-11-21 (latest verified GitHub state)
 
 This addendum supersedes earlier repository and companion snapshots below where they conflict. It records exact GitHub commits and Actions evidence only. It is not a fresh Cloudflare inventory, Production release approval, live bot acceptance, Hub Staging acceptance, or physical-device acceptance.
