@@ -1408,3 +1408,35 @@ def test_telegram_plan_preview_rejects_duplicate_criterion_references_per_step(m
     assert error.value.status_code == 502
     assert "invalid plan" in error.value.detail.lower()
     assert router.generate_calls == 2
+
+
+def test_telegram_plan_preview_publishes_versioned_response_schema_in_openapi():
+    from mrhub.main import create_app
+
+    schema = create_app().openapi()
+    operation = schema["paths"]["/integrations/telegram/agent/plan-preview"]["post"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+    assert response_schema["$ref"].endswith("/TelegramAgentPlanPreviewResponse")
+
+    components = schema["components"]["schemas"]
+    response_model = components["TelegramAgentPlanPreviewResponse"]
+    properties = response_model["properties"]
+    assert set(properties) == {
+        "provider_mode",
+        "provider",
+        "model",
+        "steps",
+        "plan_contract",
+        "execution_started",
+        "tasks_created",
+    }
+    assert properties["steps"]["items"]["$ref"].endswith("/TelegramAgentPlanStep")
+    assert properties["plan_contract"]["$ref"].endswith("/TelegramAgentPlanContract")
+
+    plan_contract = components["TelegramAgentPlanContract"]["properties"]
+    assert plan_contract["contract_version"]["enum"] == ["telegram_agent_plan.v1"]
+    assert plan_contract["evaluation_scope"]["enum"] == ["planning_only"]
+    assert plan_contract["goal_satisfaction"]["enum"] == ["not_evaluated"]
+    assert plan_contract["authorization_checked"]["const"] is False
+    assert plan_contract["execution_started"]["const"] is False
+    assert plan_contract["tasks_created"]["const"] == 0
