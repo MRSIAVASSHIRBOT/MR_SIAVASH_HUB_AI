@@ -1040,3 +1040,321 @@ def test_persisted_plan_revoke_fails_closed_when_audit_storage_is_unavailable(mo
     assert error.value.status_code == 503
     assert error.value.detail == "Audit storage is unavailable"
 
+
+
+# Telegram integration GPI/AWI contract regression coverage.
+
+def _telegram_work_order_output(**overrides: object) -> str:
+    payload: dict[str, object] = {
+        "intent": "Prepare a reviewable proposal",
+        "scope": "Planning only",
+        "assumptions": [],
+        "constraints": ["No execution or external side effects"],
+        "dependencies": [],
+        "required_capabilities": ["tool.alpha"],
+        "estimated_complexity": "low",
+        "missing_information": [],
+        "clarification_questions": [],
+        "research_required": False,
+        "research_questions": [],
+        "acceptance_criteria": [
+            "The proposal has a bounded structure",
+            "Every criterion has a verification step",
+        ],
+        "verification_steps": [
+            "Validate the proposal schema",
+            "Inspect the criterion coverage",
+        ],
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
+def _telegram_plan_output(*, step_count: int = 2) -> str:
+    steps = [
+        {
+            "step_id": "outline",
+            "description": "Prepare the bounded proposal",
+            "depends_on": [],
+            "required_capabilities": ["tool.alpha"],
+            "verifies_criteria": ["The proposal has a bounded structure"],
+            "verification": "Validate the proposal schema",
+        },
+        {
+            "step_id": "review",
+            "description": "Review the proposal coverage",
+            "depends_on": ["outline"],
+            "required_capabilities": [],
+            "verifies_criteria": ["Every criterion has a verification step"],
+            "verification": "Inspect the criterion coverage",
+        },
+    ]
+    return json.dumps({"rationale": "A bounded proposal with explicit checks", "steps": steps[:step_count]})
+
+
+class FakeTelegramPlanningRouter:
+    def __init__(self, outputs: list[str], *, local: bool = True) -> None:
+        self.outputs = list(outputs)
+        self.local = local
+        self.generate_calls = 0
+        self.selection_calls = 0
+
+    def select(self, _request):
+        self.selection_calls += 1
+        return SimpleNamespace(
+            provider="test-local" if self.local else "test-remote",
+            model="test-planner-v1",
+            local=self.local,
+        )
+
+    def generate(self, _request, _provider_request):
+        self.generate_calls += 1
+        return SimpleNamespace(output_text=self.outputs.pop(0))
+
+
+def _configure_telegram_plan_preview(monkeypatch, outputs: list[str], *, local: bool = True):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+
+    router = FakeTelegramPlanningRouter(outputs, local=local)
+    captured: dict[str, object] = {}
+    audit_events: list[dict[str, object]] = []
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
+    def fake_build_model_router(**kwargs):
+        captured.update(kwargs)
+        return router
+
+    monkeypatch.setattr(telegram_routes, "build_model_router", fake_build_model_router)
+    monkeypatch.setattr(telegram_routes, "_tasks_repository", lambda: object())
+    monkeypatch.setattr(telegram_routes, "AuditLogger", FakeAuditLogger)
+    return telegram_routes, router, captured, audit_events
+
+
+def test_telegram_plan_preview_returns_versioned_gpi_awi_contract_and_legacy_steps(monkeypatch):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+    from uuid import uuid4
+
+    telegram_routes, router, captured, audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [_telegram_work_order_output(), _telegram_plan_output()],
+    )
+    identity = SimpleNamespace(owner_user_id="owner-telegram", client_id=uuid4())
+    result = telegram_routes.preview_telegram_agent_plan(
+        telegram_routes.TelegramAgentPlanPreviewRequest(
+            goal="Prepare a reviewable proposal",
+            provider_mode="local",
+        ),
+        identity,
+    )
+
+    contract = result["plan_contract"]
+    assert contract["contract_version"] == "telegram_agent_plan.v1"
+    assert contract["planning_status"] == "ready_for_review"
+    assert contract["evaluation_scope"] == "planning_only"
+    assert contract["goal_satisfaction"] == "not_evaluated"
+    assert contract["risk_class_is_authoritative"] is False
+    assert contract["acceptance_criteria"] == [
+        {"criterion_id": "ac_001", "statement": "The proposal has a bounded structure"},
+        {"criterion_id": "ac_002", "statement": "Every criterion has a verification step"},
+    ]
+    assert contract["steps"][0]["verifies_criteria"] == ["ac_001"]
+    assert contract["steps"][1]["verifies_criteria"] == ["ac_002"]
+    assert contract["steps"][1]["depends_on"] == ["outline"]
+    assert contract["execution_ready"] is False
+    assert contract["execution_started"] is False
+    assert contract["tools_executed"] is False
+    assert contract["tasks_created"] == 0
+
+    # Compatibility for existing EL_AI clients: the old description-only field remains.
+    assert result["steps"] == [
+        {"description": "Prepare the bounded proposal"},
+        {"description": "Review the proposal coverage"},
+    ]
+    assert result["execution_started"] is False
+    assert result["tasks_created"] == 0
+    assert captured == {
+        "provider_mode": "local",
+        "include_stub": False,
+        "max_timeout_seconds": 20.0,
+    }
+    assert router.selection_calls == 1
+    assert router.generate_calls == 2
+    assert router.outputs == []
+    assert audit_events[-1]["event_type"] == "telegram.agent_plan_previewed"
+    assert audit_events[-1]["metadata"]["contract_version"] == "telegram_agent_plan.v1"
+    assert audit_events[-1]["metadata"]["tasks_created"] == 0
+    assert "goal" not in audit_events[-1]["metadata"]
+
+
+def test_telegram_plan_preview_requires_clarification_before_execution(monkeypatch):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+    from uuid import uuid4
+
+    telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [
+            _telegram_work_order_output(
+                missing_information=["The required target environment is unknown"],
+                clarification_questions=["Which target environment should be used?"],
+                research_required=True,
+                research_questions=["Check current target environment requirements"],
+            ),
+            _telegram_plan_output(),
+        ],
+    )
+    result = telegram_routes.preview_telegram_agent_plan(
+        telegram_routes.TelegramAgentPlanPreviewRequest(
+            goal="Prepare a reviewable proposal",
+        ),
+        SimpleNamespace(owner_user_id="owner-clarify", client_id=uuid4()),
+    )
+
+    contract = result["plan_contract"]
+    assert contract["planning_status"] == "needs_clarification"
+    assert contract["missing_information"] == [
+        "The required target environment is unknown"
+    ]
+    assert contract["clarification_questions"] == [
+        "Which target environment should be used?"
+    ]
+    assert contract["research_required"] is True
+    assert contract["research_questions"] == [
+        "Check current target environment requirements"
+    ]
+    assert contract["execution_ready"] is False
+    assert contract["tasks_created"] == 0
+    assert router.generate_calls == 2
+
+
+def test_telegram_remote_plan_preview_applies_remote_quota_once(monkeypatch):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+    from uuid import uuid4
+
+    telegram_routes, router, captured, _audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [_telegram_work_order_output(), _telegram_plan_output()],
+        local=False,
+    )
+    quota_owners: list[str] = []
+    monkeypatch.setattr(
+        telegram_routes,
+        "_enforce_kimi_request_limit",
+        lambda owner_id: quota_owners.append(owner_id),
+    )
+    result = telegram_routes.preview_telegram_agent_plan(
+        telegram_routes.TelegramAgentPlanPreviewRequest(
+            goal="Prepare a reviewable proposal",
+            provider_mode="remote",
+        ),
+        SimpleNamespace(owner_user_id="owner-remote", client_id=uuid4()),
+    )
+
+    assert captured["provider_mode"] == "kimi"
+    assert quota_owners == ["owner-remote"]
+    assert router.generate_calls == 2
+    assert result["provider"] == "test-remote"
+    assert result["plan_contract"]["execution_started"] is False
+
+
+def test_telegram_plan_preview_blocks_prohibited_goal_before_provider_selection(monkeypatch):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+    from uuid import uuid4
+
+    audit_events: list[dict[str, object]] = []
+
+    class FakeAuditLogger:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def record(self, **kwargs):
+            audit_events.append(kwargs)
+
+    monkeypatch.setattr(telegram_routes, "_tasks_repository", lambda: object())
+    monkeypatch.setattr(telegram_routes, "AuditLogger", FakeAuditLogger)
+    monkeypatch.setattr(
+        telegram_routes,
+        "derive_server_risk_class",
+        lambda *_args, **_kwargs: RiskClass.PROHIBITED,
+    )
+    monkeypatch.setattr(
+        telegram_routes,
+        "build_model_router",
+        lambda **_kwargs: pytest.fail("prohibited goals must be blocked before provider selection"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        telegram_routes.preview_telegram_agent_plan(
+            telegram_routes.TelegramAgentPlanPreviewRequest(
+                goal="A prohibited request",
+                provider_mode="remote",
+            ),
+            SimpleNamespace(owner_user_id="owner-blocked", client_id=uuid4()),
+        )
+
+    assert error.value.status_code == 422
+    assert audit_events == [{
+        "event_type": "telegram.agent_plan_blocked",
+        "outcome": "denied",
+        "subject_type": "agent_plan",
+        "actor_type": "telegram_client",
+        "actor_id": audit_events[0]["actor_id"],
+        "metadata": {
+            "status": "blocked",
+            "declared_risk_class": RiskClass.PROHIBITED.value,
+            "tasks_created": 0,
+        },
+    }]
+
+
+def test_telegram_plan_preview_rejects_plans_outside_two_to_eight_steps(monkeypatch):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+    from uuid import uuid4
+
+    telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [_telegram_work_order_output(), _telegram_plan_output(step_count=1)],
+    )
+
+    with pytest.raises(HTTPException) as error:
+        telegram_routes.preview_telegram_agent_plan(
+            telegram_routes.TelegramAgentPlanPreviewRequest(
+                goal="Prepare a reviewable proposal",
+            ),
+            SimpleNamespace(owner_user_id="owner-bounds", client_id=uuid4()),
+        )
+
+    assert error.value.status_code == 502
+    assert error.value.detail == "Planning provider returned an invalid structured work order or plan"
+    assert router.generate_calls == 2
+
+
+def test_telegram_plan_preview_rejects_duplicate_acceptance_criteria(monkeypatch):
+    from mrhub.api.routes import telegram_integration as telegram_routes
+    from uuid import uuid4
+
+    duplicated = _telegram_work_order_output(
+        acceptance_criteria=[
+            "The proposal has a bounded structure",
+            "The proposal has a bounded structure",
+        ],
+    )
+    telegram_routes, router, _captured, _audit_events = _configure_telegram_plan_preview(
+        monkeypatch,
+        [duplicated],
+    )
+    with pytest.raises(HTTPException) as error:
+        telegram_routes.preview_telegram_agent_plan(
+            telegram_routes.TelegramAgentPlanPreviewRequest(
+                goal="Prepare a reviewable proposal",
+            ),
+            SimpleNamespace(owner_user_id="owner-duplicate", client_id=uuid4()),
+        )
+
+    assert error.value.status_code == 502
+    assert router.generate_calls == 1
