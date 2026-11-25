@@ -306,3 +306,73 @@ def test_website_gateway_relay_uses_server_owned_expiry_and_fenced_connector_lea
     assert poll["credential_in_logs_or_analytics"] is False
 
     assert "lease_token" in relay["observability"]["forbidden_fields"]
+
+
+def test_x8_security_contract_matches_fail_closed_hub_policy():
+    from mrhub.domain.tasks import RiskClass
+    from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
+
+    security = _contract()["security_model"]
+    assert security["status"] == "standardized"
+    assert security["identity"]["authority"] == "hub_authenticated_pairing"
+    assert security["identity"]["paired_client_binds"] == [
+        "client_id", "telegram_user_id", "owner_user_id"
+    ]
+    assert security["identity"]["owner_header"] == "X-Telegram-User-Id"
+    assert security["identity"]["caller_supplied_owner_identity_is_authoritative"] is False
+    assert security["identity"]["scope_enforcement"] == "hub_require_telegram_scope"
+    assert security["identity"]["revocation_authority"] == "authenticated_hub_owner"
+
+    authorization = security["authorization"]
+    assert authorization["decision_authority"] == "hub_policy_engine"
+    assert authorization["prohibited_risk_decision"] == "deny"
+    assert authorization["missing_required_permission_decision"] == "deny"
+    assert authorization["high_risk_or_external_side_effect_without_explicit_approval"] == "require_approval"
+    assert authorization["missing_grants_are_inferred"] is False
+
+    policy = PolicyEngine()
+    missing_grant = policy.evaluate(ActionRequest(
+        action="tasks.create",
+        risk_class=RiskClass.LOW,
+        granted_permissions=frozenset(),
+        required_permissions=frozenset({"tasks:create"}),
+    ))
+    assert missing_grant.decision is PolicyDecision.DENY
+
+    prohibited = policy.evaluate(ActionRequest(
+        action="tasks.create",
+        risk_class=RiskClass.PROHIBITED,
+    ))
+    assert prohibited.decision is PolicyDecision.DENY
+
+    approval_required = policy.evaluate(ActionRequest(
+        action="content.publish",
+        risk_class=RiskClass.HIGH,
+        external_side_effect=True,
+        user_approved=False,
+    ))
+    assert approval_required.decision is PolicyDecision.REQUIRE_APPROVAL
+
+    diagnostic = security["diagnostic_metadata"]
+    assert diagnostic == {
+        "request_id_authorization_effect": False,
+        "request_id_idempotency_effect": False,
+        "correlation_id_authorization_effect": False,
+        "correlation_id_idempotency_effect": False,
+        "correlation_id_ownership_effect": False,
+    }
+
+    public_gateway = security["public_gateway"]
+    assert public_gateway["data_classification"] == "public_only"
+    assert public_gateway["may_call_private_hub"] is False
+    assert public_gateway["may_receive_hub_credentials"] is False
+    assert public_gateway["may_receive_private_owner_context"] is False
+    assert public_gateway["browser_may_hold_hub_credentials"] is False
+
+    secrets = security["secret_handling"]
+    assert secrets["hub_credentials_in_urls"] is False
+    assert secrets["secrets_in_logs_or_urls"] is False
+    assert secrets["el_ai_credential_storage"] == "trusted_os_keyring_or_aes256_gcm_encrypted_file"
+    assert secrets["plaintext_fallback"] is False
+    assert secrets["encrypted_file_key_source"] == "explicit_secret_manager_environment_injection"
+    assert secrets["encrypted_file_requires_posix_host"] is True

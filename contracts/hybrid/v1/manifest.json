@@ -434,5 +434,53 @@
     "additive_change": "May be introduced within v1 when existing request and response semantics remain unchanged.",
     "breaking_change": "Requires a new major contract directory and coordinated consumer migration.",
     "canonical_source": "MR_SIAVASH_HUB_AI/contracts/hybrid/v1/manifest.json"
+  },
+  "security_model": {
+    "status": "standardized",
+    "identity": {
+      "authority": "hub_authenticated_pairing",
+      "paired_client_binds": [
+        "client_id",
+        "telegram_user_id",
+        "owner_user_id"
+      ],
+      "owner_header": "X-Telegram-User-Id",
+      "caller_supplied_owner_identity_is_authoritative": false,
+      "default_scopes": [
+        "status:read"
+      ],
+      "scope_enforcement": "hub_require_telegram_scope",
+      "revocation_authority": "authenticated_hub_owner"
+    },
+    "authorization": {
+      "decision_authority": "hub_policy_engine",
+      "prohibited_risk_decision": "deny",
+      "missing_required_permission_decision": "deny",
+      "high_risk_or_external_side_effect_without_explicit_approval": "require_approval",
+      "missing_grants_are_inferred": false
+    },
+    "diagnostic_metadata": {
+      "request_id_authorization_effect": false,
+      "request_id_idempotency_effect": false,
+      "correlation_id_authorization_effect": false,
+      "correlation_id_idempotency_effect": false,
+      "correlation_id_ownership_effect": false
+    },
+    "public_gateway": {
+      "data_classification": "public_only",
+      "may_call_private_hub": false,
+      "may_receive_hub_credentials": false,
+      "may_receive_private_owner_context": false,
+      "browser_may_hold_hub_credentials": false
+    },
+    "secret_handling": {
+      "hub_credentials_in_urls": false,
+      "secrets_in_logs_or_urls": false,
+      "el_ai_credential_storage": "trusted_os_keyring_or_aes256_gcm_encrypted_file",
+      "hub_secret_authority": "server_side_configuration_and_owner_pairing",
+      "plaintext_fallback": false,
+      "encrypted_file_key_source": "explicit_secret_manager_environment_injection",
+      "encrypted_file_requires_posix_host": true
+    }
   }
 }
