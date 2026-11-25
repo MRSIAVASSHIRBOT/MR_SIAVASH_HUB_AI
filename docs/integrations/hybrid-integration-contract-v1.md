@@ -63,7 +63,7 @@ A future authenticated owner console would require a separately designed server-
 
 The Hub currently uses FastAPI's `detail` error envelope for HTTP exceptions. Consumers should map status codes to safe user-facing messages and must not expose internal exception text or credential material.
 
-The private EL_AI ↔ Hub request-correlation contract uses `X-Request-ID` as opaque diagnostic metadata:
+The private EL_AI ↔ Hub observability contract distinguishes a per-operation request ID from a stable Bridge-job correlation ID:
 
 - EL_AI generates a canonical lowercase UUIDv4 for each logical Hub operation. If an authorized operation receives HTTP 401, EL_AI performs one bounded recovery: it refreshes credentials through a separate request with its own request ID, then replays the original operation at most once with the original request ID. A second 401 is surfaced to the caller; no generic retries or backoff are performed.
 - Hub accepts canonical lowercase UUID versions 1–8. Missing, malformed, noncanonical, or unsupported values are replaced with a server-generated UUIDv4.
@@ -71,7 +71,9 @@ The private EL_AI ↔ Hub request-correlation contract uses `X-Request-ID` as op
 - Hub completion logs contain only `request_id`, HTTP `method`, route template, `status_code`, monotonic `duration_ms`, and the bounded `outcome` label.
 - EL_AI emits `hub_request_completed` with the same `request_id`, HTTP `method`, route template, `status_code`, and an `outcome` label. Dynamic task IDs are replaced by a route placeholder.
 - Neither side logs raw paths, query strings, request bodies, Telegram identities, task/client identifiers, or credentials.
-- Request IDs do not grant permissions and are not idempotency keys.
+- The EL_AI Bridge consumer may send `X-Correlation-ID` from its task-local Bridge job UUID context. Hub accepts only canonical lowercase UUID versions 1–8, stores it at `request.state.correlation_id`, and records it in structured completion logs. Missing or invalid values fall back to that operation's `request_id`; invalid raw input is never logged or echoed.
+- The stable `correlation_id` is separate from `request_id`: multiple Hub calls made for one Bridge job may share the former while each HTTP operation keeps its own request ID. Requests without a valid Bridge correlation ID use their own request ID as the local diagnostic correlation value.
+- Correlation metadata is diagnostic only. It does not identify an owner, authenticate a caller, grant a scope, change idempotency behavior, or authorize task/tool execution.
 
 The public website Gateway remains a separate public-only path. Its outbound requests may carry an independently generated request ID, but this does not create a route to the private Hub or imply shared request context.
 
