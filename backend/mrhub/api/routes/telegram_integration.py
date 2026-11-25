@@ -154,7 +154,7 @@ class TelegramAgentPlanContractStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     step_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,39}$", min_length=1, max_length=40)
-    description: str = Field(min_length=1, max_length=500)
+    description: str = Field(min_length=1, max_length=400)
     depends_on: list[str] = Field(default_factory=list, max_length=12)
     required_capabilities: list[str] = Field(default_factory=list, max_length=20)
     verifies_criteria: list[str] = Field(min_length=1, max_length=12)
