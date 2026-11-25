@@ -366,3 +366,17 @@ Current WIP branch commits (not merged, not phase-completion evidence):
 - Hub 73-phase implementation/learning map: `roadmap/implementation-waves-learning-track-20261125`, latest plan doc commit `756f2eb685ffebd69da2ea3b5a9f650d3ecfbce5`.
 
 All four `main` branches remain unchanged by these WIP branches. Do not claim exact-head test success or merge readiness for untested WIP.
+
+
+### Follow-up cross-project edge-case gates — 2026-11-25 UTC
+
+The consumer-side E8 validator now verifies not only the Pydantic/JSON field shapes, but also the logical readiness relationship:
+
+- Non-empty `missing_information` must have at least one `clarification_question`.
+- `research_required=true` must include at least one `research_question`.
+- Research questions are invalid when `research_required=false`.
+- `planning_status` must exactly equal the deterministic precedence: clarification required → research required → ready for review.
+
+This closes a fail-open condition where a contradictory `ready_for_review` label could otherwise be accepted with unresolved information. Regression fixtures for valid clarification/research cases and contradictory states were updated in EL_AI PR #132. Latest consumer head at this checkpoint is `d13385e603743b5fa3eef26e15340fa1d7183788`; exact-head Python 3.11/3.12 and Workflow Security checks were observed green. The full final matrix has not been rerun after the newest readiness-consistency edits.
+
+Website A13 branch has an additional resource-boundary check: complete upstream SSE frames as well as incomplete buffers are now checked against 32 KiB before parsing, with a regression test for a single oversized complete frame. Latest A13 branch head is `30f02e29150d423fb2b24fc0944757672b738293`. Its full tests have not been run on this head.
