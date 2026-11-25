@@ -23,8 +23,20 @@ Request bodies, query strings, authorization headers, user identifiers, credenti
 
 Regression tests assert duration presence and non-negativity for successful and HTTP error responses, request ID consistency, safe route-template logging, and absence of query strings or sensitive error details.
 
+## Bounded process-local request metrics
+
+The Hub also maintains an in-memory aggregate snapshot and exposes it through authenticated `GET /jobs/metrics`. It records only normalized HTTP method, registered route template, status class, request count, duration sum, and cumulative fixed latency buckets. The collector uses a lock for concurrent updates and has a hard series limit with an overflow bucket.
+
+The response explicitly reports:
+- `scope=single_process`
+- `temporality=cumulative_since_process_start`
+
+The endpoint inherits the jobs router's `require_user` authentication. Query strings, raw paths, request bodies, IP addresses, user/session identifiers, authorization headers and provider payloads are excluded. Metrics reset when the process restarts; multiple processes expose independent snapshots.
+
+See [ADR-0047](../architecture/decisions/ADR-0047-process-local-http-request-metrics.md) for the design decision.
+
 ## Limitations
 
-This is structured log telemetry only. It does not create a metrics exporter, tracing backend, latency histogram, SLO alert, or full task-to-tool distributed trace. Those remain separate H15/X7 acceptance items. It does not certify production runtime telemetry.
+This is a bounded process-local metrics slice, not a fleet-wide metrics backend. Prometheus/OpenTelemetry export, cross-process aggregation, latency SLO alerts, durable retention, and full task-to-tool distributed traces remain separate H15/X7 acceptance items. It does not certify production runtime telemetry.
 
 Production services and deployment configuration were not changed.
