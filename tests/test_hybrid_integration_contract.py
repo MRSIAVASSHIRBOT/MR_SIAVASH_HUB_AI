@@ -133,7 +133,7 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert job_correlation["authorization_effect"] is False
     assert job_correlation["idempotency_effect"] is False
     assert job_correlation["ownership_effect"] is False
-    assert "not an owner identity" in job_correlation["note"]
+    assert "never an owner identity" in job_correlation["note"]
 
 
 CONTRACT_DOC_PATH = (
