@@ -380,3 +380,9 @@ The consumer-side E8 validator now verifies not only the Pydantic/JSON field sha
 This closes a fail-open condition where a contradictory `ready_for_review` label could otherwise be accepted with unresolved information. Regression fixtures for valid clarification/research cases and contradictory states were updated in EL_AI PR #132. Latest consumer head at this checkpoint is `d13385e603743b5fa3eef26e15340fa1d7183788`; exact-head Python 3.11/3.12 and Workflow Security checks were observed green. The full final matrix has not been rerun after the newest readiness-consistency edits.
 
 Website A13 branch has an additional resource-boundary check: complete upstream SSE frames as well as incomplete buffers are now checked against 32 KiB before parsing, with a regression test for a single oversized complete frame. Latest A13 branch head is `30f02e29150d423fb2b24fc0944757672b738293`. Its full tests have not been run on this head.
+
+
+### B10 telemetry minimization and product taxonomy ADR — 2026-11-25
+
+- EL_IR_BOT WIP branch `fix/b10-redact-telegram-update-ids-20261125` removes Telegram `update_id` from retry/failure log events while retaining it in D1 delivery/idempotency state where required. The retry log retains only attempt count, delay and fixed reason code. Regression coverage was added but not yet executed on the WIP head.
+- ADR-0045 (`docs/architecture/adr-0045-product-taxonomy-el-agent-vs-el-ir-bot.md`) is Proposed and owner-decision-required. It records the distinction between the canonical Windows/Android EL_AGENT and the current Telegram Bridge EL_IR_BOT. The temporary recommendation is to keep the current four-repository 73-phase campaign intact and track EL_AGENT separately until the owner decides whether to expand/restructure the phase inventory.
