@@ -76,9 +76,12 @@ class RequestMetrics:
         duration = min(86_400_000.0, max(0.0, float(duration_ms)))
         key = self._dimensions(method, route_template, status_code)
         with self._lock:
-            if key not in self._series and key != self._overflow_key:
-                if len(self._series) >= self._max_series - 1:
-                    key = self._overflow_key
+            if (
+                key not in self._series
+                and key != self._overflow_key
+                and len(self._series) >= self._max_series - 1
+            ):
+                key = self._overflow_key
             self._series.setdefault(key, self._new_series())
             metric = self._series[key]
             metric["count"] += 1
