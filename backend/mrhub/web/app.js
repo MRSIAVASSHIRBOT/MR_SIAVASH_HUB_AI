@@ -523,6 +523,73 @@
       : "ثبت نشده";
   }
 
+  async function appendWorkflowTracePage(taskId, container, cursor = null) {
+    if (typeof taskId !== "string"
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskId)) {
+      throw new Error("شناسهٔ Trace معتبر نیست.");
+    }
+    const params = new URLSearchParams({ limit: "50" });
+    if (cursor && typeof cursor === "object") {
+      if (typeof cursor.before_created_at !== "string"
+        || typeof cursor.before_event_id !== "string") {
+        throw new Error("نشانگر صفحه‌بندی Trace معتبر نیست.");
+      }
+      params.set("before_created_at", cursor.before_created_at);
+      params.set("before_event_id", cursor.before_event_id);
+    }
+    const trace = await api(
+      "/agent/traces/" + encodeURIComponent(taskId) + "?" + params.toString()
+    );
+    if (!trace || !Array.isArray(trace.events)) {
+      throw new Error("پاسخ Timeline اجرا معتبر نیست.");
+    }
+
+    let list = container.querySelector(".workflow-trace-list");
+    if (!list) {
+      list = element("div", undefined, "workflow-trace-list");
+      container.append(list);
+    }
+    if (trace.events.length === 0 && list.childElementCount === 0) {
+      list.append(element("p", "هنوز رویدادی برای این اجرا ثبت نشده است.", "muted"));
+    }
+    for (const event of trace.events) {
+      const record = event && typeof event === "object" && !Array.isArray(event)
+        ? event : {};
+      const metadata = record.metadata && typeof record.metadata === "object"
+        && !Array.isArray(record.metadata) ? record.metadata : {};
+      const item = element("article", undefined, "workflow-trace-event");
+      item.append(
+        element("strong", record.event_type || "رویداد نامشخص"),
+        element("span", record.outcome || "وضعیت نامشخص"),
+        element("small", formatWorkflowTraceTimestamp(record.created_at))
+      );
+      const details = [];
+      if (typeof metadata.step_id === "string") details.push("مرحله: " + metadata.step_id);
+      if (Number.isInteger(metadata.attempt_number)) details.push("تلاش: " + metadata.attempt_number);
+      if (typeof metadata.tool_name === "string") details.push("ابزار: " + metadata.tool_name);
+      if (typeof metadata.reason_code === "string") details.push("کد: " + metadata.reason_code);
+      if (details.length) item.append(element("small", details.join(" · ")));
+      list.append(item);
+    }
+
+    const previous = container.querySelector(".workflow-trace-more");
+    if (previous) previous.remove();
+    if (trace.has_more === true && trace.next_cursor) {
+      let button;
+      button = actionButton("رویدادهای قدیمی‌تر", async () => {
+        button.disabled = true;
+        try {
+          await appendWorkflowTracePage(taskId, container, trace.next_cursor);
+        } catch (error) {
+          button.disabled = false;
+          message("#workspace-message", error.message, "error");
+        }
+      });
+      button.classList.add("workflow-trace-more");
+      container.append(button);
+    }
+  }
+
   function renderWorkflowCard(workflow) {
     const title = "Workflow · " + workflow.workflow_id.slice(0, 8);
     const metadata = [
@@ -532,6 +599,24 @@
     ].join(" · ");
     const card = recordCard(title, workflow.workflow_id, metadata);
     const actions = element("div", undefined, "workflow-actions");
+    if (typeof workflow.task_id === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workflow.task_id)) {
+      actions.append(actionButton("Timeline اجرا", async () => {
+        try {
+          const previous = card.querySelector(".workflow-trace-panel");
+          if (previous) previous.remove();
+          const panel = element("section", undefined, "workflow-trace-panel");
+          panel.setAttribute("aria-label", "Timeline اجرای Workflow");
+          panel.setAttribute("aria-live", "polite");
+          panel.append(element("h4", "رویدادهای اجرای Workflow"));
+          panel.append(element("p", "رویدادها فقط برای مالک این وظیفه نمایش داده می‌شوند.", "muted"));
+          card.append(panel);
+          await appendWorkflowTracePage(workflow.task_id, panel);
+        } catch (error) {
+          message("#workspace-message", error.message, "error");
+        }
+      }));
+    }
     actions.append(actionButton("جزئیات مراحل", async () => {
       try {
         const detail = await api("/agent/workflows/" + encodeURIComponent(workflow.workflow_id));
