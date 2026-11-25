@@ -553,13 +553,15 @@
       list.append(element("p", "هنوز رویدادی برای این اجرا ثبت نشده است.", "muted"));
     }
     for (const event of trace.events) {
-      const metadata = event && event.metadata && typeof event.metadata === "object"
-        && !Array.isArray(event.metadata) ? event.metadata : {};
+      const record = event && typeof event === "object" && !Array.isArray(event)
+        ? event : {};
+      const metadata = record.metadata && typeof record.metadata === "object"
+        && !Array.isArray(record.metadata) ? record.metadata : {};
       const item = element("article", undefined, "workflow-trace-event");
       item.append(
-        element("strong", event.event_type || "رویداد نامشخص"),
-        element("span", event.outcome || "وضعیت نامشخص"),
-        element("small", formatWorkflowTraceTimestamp(event.created_at))
+        element("strong", record.event_type || "رویداد نامشخص"),
+        element("span", record.outcome || "وضعیت نامشخص"),
+        element("small", formatWorkflowTraceTimestamp(record.created_at))
       );
       const details = [];
       if (typeof metadata.step_id === "string") details.push("مرحله: " + metadata.step_id);
