@@ -403,3 +403,8 @@ All entries above are WIP and do not increase the 19 whole-phase evidence baseli
 ### A13 UTF-8 byte-boundary follow-up — 2026-11-25 UTC
 
 The latest Website A13 WIP head is now `23869f535eadea32baae16b341f3ead04651963c` (source commit `2b24a637c0c157fdad0b825aba09f1905557cb97`). The SSE stream enforces the 32 KiB limit against UTF-8 byte length for both complete frames and incomplete buffers. Its regression fixture uses a multibyte string whose UTF-16 code-unit count is below 32 KiB while its UTF-8 byte length exceeds the limit. This closes the character-count/byte-count mismatch in the earlier test design. The full Gateway CI matrix has not yet been run on this WIP head.
+
+
+### A13 stream-boundary final WIP update — 2026-11-25 UTC
+
+Website branch fix/a13-sse-security-headers-20261125 is now at e6978c24afce8133172e45d3f57416542a50fb3b. In addition to response frame/CSP headers, it checks complete and incomplete SSE frames against 32 KiB in UTF-8 bytes, rechecks after final TextDecoder flush, and fails closed on malformed complete upstream JSON frames. Regression coverage includes multibyte UTF-8 and flush-boundary cases. The complete Gateway test matrix has not yet run on this WIP head.
