@@ -1434,9 +1434,9 @@ def test_telegram_plan_preview_publishes_versioned_response_schema_in_openapi():
     assert properties["plan_contract"]["$ref"].endswith("/TelegramAgentPlanContract")
 
     plan_contract = components["TelegramAgentPlanContract"]["properties"]
-    assert plan_contract["contract_version"]["enum"] == ["telegram_agent_plan.v1"]
-    assert plan_contract["evaluation_scope"]["enum"] == ["planning_only"]
-    assert plan_contract["goal_satisfaction"]["enum"] == ["not_evaluated"]
+    assert plan_contract["contract_version"]["const"] == "telegram_agent_plan.v1"
+    assert plan_contract["evaluation_scope"]["const"] == "planning_only"
+    assert plan_contract["goal_satisfaction"]["const"] == "not_evaluated"
     assert plan_contract["authorization_checked"]["const"] is False
     assert plan_contract["execution_started"]["const"] is False
     assert plan_contract["tasks_created"]["const"] == 0
