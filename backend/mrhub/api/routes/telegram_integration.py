@@ -193,6 +193,21 @@ class TelegramAgentPlanContract(BaseModel):
     tasks_created: Literal[0]
 
 
+class TelegramAgentPlanPreviewResponse(BaseModel):
+    """Stable OpenAPI response contract for the planning-only Telegram GPI/AWI endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider_mode: Literal["local", "remote"]
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=128)
+    # Keep the legacy projection so existing EL_AI versions remain compatible.
+    steps: list[TelegramAgentPlanStep] = Field(min_length=2, max_length=8)
+    plan_contract: TelegramAgentPlanContract
+    execution_started: Literal[False]
+    tasks_created: Literal[0]
+
+
 class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=5, ge=1, le=10)
@@ -1365,11 +1380,14 @@ def create_telegram_task(
     return saved.model_dump(mode="json")
 
 
-@router.post("/agent/plan-preview")
+@router.post(
+    "/agent/plan-preview",
+    response_model=TelegramAgentPlanPreviewResponse,
+)
 def preview_telegram_agent_plan(
     payload: TelegramAgentPlanPreviewRequest,
     identity: Annotated[TelegramClientIdentity, Depends(require_telegram_scope("tasks:create"))],
-) -> dict[str, object]:
+) -> TelegramAgentPlanPreviewResponse:
     """Return a typed, criteria-linked GPI/AWI proposal; never creates tasks or invokes tools."""
     # Apply the deterministic server policy before selecting or calling a model provider.
     if derive_server_risk_class(payload.goal, {}) is RiskClass.PROHIBITED:
