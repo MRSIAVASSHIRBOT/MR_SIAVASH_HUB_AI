@@ -1443,6 +1443,14 @@ def preview_telegram_agent_plan(
             min_steps=2,
             max_steps=8,
         )
+        # The EL_AI v1 consumer persists a linear review order. Reject a valid DAG
+        # that refers to a future step rather than silently reordering its meaning.
+        step_positions = {step.step_id: index for index, step in enumerate(plan.steps)}
+        for index, step in enumerate(plan.steps):
+            if len(step.verifies_criteria) != len(set(step.verifies_criteria)):
+                raise PlanningError("A plan step cannot repeat acceptance-criterion references")
+            if any(step_positions[dependency] >= index for dependency in step.depends_on):
+                raise PlanningError("Plan dependencies must refer to earlier steps")
     except HTTPException:
         raise
     except (WorkOrderGenerationError, PlanningError, ValueError) as exc:
