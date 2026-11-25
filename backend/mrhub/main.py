@@ -51,6 +51,7 @@ from mrhub.api.routes.tools import router as tools_router
 from mrhub.api.routes.video_intelligence import router as video_intelligence_router
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.infrastructure.request_metrics import RequestMetrics
 from mrhub.integrations.assistant_gateway import router as assistant_gateway_router
 from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     )
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
+    app.state.request_metrics = RequestMetrics()
 
     # Preserve legacy 'detail' fields while exposing a stable error envelope.
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -107,6 +109,9 @@ def create_app() -> FastAPI:
         route = request.scope.get("route")
         route_template = getattr(route, "path", "unmatched")
         outcome = "success" if response.status_code < 400 else "http_error"
+        app.state.request_metrics.record(
+            request.method, route_template, response.status_code, duration_ms
+        )
         getLogger("mrhub.request").info(
             "http_request_completed request_id=%s method=%s route_template=%s status_code=%s duration_ms=%.3f outcome=%s",
             request_id,

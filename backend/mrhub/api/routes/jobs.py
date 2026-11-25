@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from mrhub.api.dependencies import require_user
@@ -32,6 +32,15 @@ def summary() -> dict[str, object]:
     repository = TaskRepository(get_settings().database_path)
     repository.initialize()
     return WorkerEngine(repository).summary()
+
+
+@router.get("/metrics")
+def request_metrics(request: Request) -> dict[str, object]:
+    """Return bounded process-local HTTP metrics to an authenticated operator."""
+    collector = getattr(request.app.state, "request_metrics", None)
+    if collector is None:
+        raise HTTPException(status_code=503, detail="Request metrics are not initialized")
+    return collector.snapshot()
 
 
 @router.post("/{task_id}/cancel", response_model=TaskRecord)
