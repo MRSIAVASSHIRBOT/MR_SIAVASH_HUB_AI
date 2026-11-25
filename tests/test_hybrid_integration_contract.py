@@ -350,4 +350,7 @@ def test_x8_security_contract_matches_fail_closed_hub_policy():
     secrets = security["secret_handling"]
     assert secrets["hub_credentials_in_urls"] is False
     assert secrets["secrets_in_logs_or_urls"] is False
-    assert secrets["el_ai_credential_storage"] == "operating_system_credential_store"
+    assert secrets["el_ai_credential_storage"] == "trusted_os_keyring_or_aes256_gcm_encrypted_file"
+    assert secrets["plaintext_fallback"] is False
+    assert secrets["encrypted_file_key_source"] == "explicit_secret_manager_environment_injection"
+    assert secrets["encrypted_file_requires_posix_host"] is True
