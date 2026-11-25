@@ -111,7 +111,7 @@ def test_hybrid_trust_boundaries_remain_explicit():
     assert "does not perform generic retries or backoff" in request_id["note"]
     assert request_id["el_ai_log_event"] == "hub_request_completed"
     assert request_id["el_ai_log_fields"] == [
-        "request_id", "method", "route_template", "status_code", "outcome"
+        "request_id", "method", "route_template", "status_code", "duration_ms", "outcome"
     ]
     job_correlation = contract["observability"]["bridge_job_correlation"]
     assert job_correlation["status"] == "standardized"
