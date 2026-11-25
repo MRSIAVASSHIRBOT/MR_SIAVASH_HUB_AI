@@ -116,7 +116,7 @@ def test_hybrid_trust_boundaries_remain_explicit():
     job_correlation = contract["observability"]["bridge_job_correlation"]
     assert job_correlation["status"] == "standardized"
     assert job_correlation["header"] == "X-Correlation-ID"
-    assert job_correlation["source"] == "authenticated_telegram_bridge_job_uuid"
+    assert job_correlation["source"] == "el_ai_bridge_job_uuid_context"
     assert job_correlation["format"] == "canonical_lowercase_uuid"
     assert job_correlation["accepted_uuid_versions"] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert job_correlation["server_fallback"] == "request_id_when_missing_or_invalid"
