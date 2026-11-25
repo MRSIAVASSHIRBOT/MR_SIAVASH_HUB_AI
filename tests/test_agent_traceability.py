@@ -117,3 +117,35 @@ def test_trace_cursor_normalizes_equivalent_timezone_offsets():
     assert page.status_code == 200
     assert page.json()["events"] == []
     assert page.json()["has_more"] is False
+
+
+def test_workflow_dashboard_exposes_the_owner_scoped_execution_trace_timeline():
+    web_root = Path(__file__).resolve().parents[1] / "backend" / "mrhub" / "web"
+    app = (web_root / "app.js").read_text(encoding="utf-8")
+    css = (web_root / "app.css").read_text(encoding="utf-8")
+
+    assert 'actionButton("Timeline اجرا"' in app
+    assert '"/agent/traces/" + encodeURIComponent(taskId)' in app
+    assert 'params.set("before_created_at", cursor.before_created_at)' in app
+    assert 'params.set("before_event_id", cursor.before_event_id)' in app
+    assert 'element("strong", event.event_type || "رویداد نامشخص")' in app
+    assert 'metadata.step_id' in app
+    assert 'metadata.attempt_number' in app
+    assert 'metadata.tool_name' in app
+    assert 'metadata.reason_code' in app
+    assert 'classList.add("workflow-trace-more")' in app
+    assert ".workflow-trace-panel" in css
+    assert ".workflow-trace-event" in css
+    assert "innerHTML" not in app
+
+
+def test_workflow_dashboard_does_not_offer_trace_lookup_without_a_valid_task_id():
+    web_root = Path(__file__).resolve().parents[1] / "backend" / "mrhub" / "web"
+    app = (web_root / "app.js").read_text(encoding="utf-8")
+    start = app.index("  function renderWorkflowCard(workflow) {")
+    end = app.index("\\n  function readResumeInput()", start)
+    card = app[start:end]
+
+    assert 'typeof workflow.task_id === "string"' in card
+    assert 'test(workflow.task_id)' in card
+    assert 'appendWorkflowTracePage(workflow.task_id, panel)' in card
