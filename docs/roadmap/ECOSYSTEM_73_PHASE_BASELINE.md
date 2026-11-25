@@ -386,3 +386,15 @@ Website A13 branch has an additional resource-boundary check: complete upstream 
 
 - EL_IR_BOT WIP branch `fix/b10-redact-telegram-update-ids-20261125` removes Telegram `update_id` from retry/failure log events while retaining it in D1 delivery/idempotency state where required. The retry log retains only attempt count, delay and fixed reason code. Regression coverage was added but not yet executed on the WIP head.
 - ADR-0045 (`docs/architecture/adr-0045-product-taxonomy-el-agent-vs-el-ir-bot.md`) is Proposed and owner-decision-required. It records the distinction between the canonical Windows/Android EL_AGENT and the current Telegram Bridge EL_IR_BOT. The temporary recommendation is to keep the current four-repository 73-phase campaign intact and track EL_AGENT separately until the owner decides whether to expand/restructure the phase inventory.
+
+
+### Consolidated WIP branch ledger — 2026-11-25 UTC
+
+- Hub H10: `fix/h10-explicit-evaluation-scope-20261125`, `8b4fe60f8eef2c518202f85a4d28a0f107a8788f`.
+- Hub producer/X1: PR #624 branch `feat/telegram-gpi-awi-contract-20261125`, `ba17f76365b0a77370fd1f809d5d022d9c94fa32`; OpenAPI response contract added; primary test job pending at last check.
+- EL_AI E8 consumer: PR #132 branch `feat/e8-store-versioned-acceptance-contract-20261125`, `d13385e603743b5fa3eef26e15340fa1d7183788`; exact-head Python 3.11/3.12 and security checks green at last check; Draft pending Hub producer.
+- Website A13: `fix/a13-sse-security-headers-20261125`, `1e1ca88ddde3cb9f5c0acaae75d9ba6b928a6f8a`; SSE security headers and complete-frame size guard added with regression coverage; full matrix deferred.
+- EL_IR_BOT B10: `fix/b10-redact-telegram-update-ids-20261125`, `4688709bdbba3a83f7bc80cfec73243799575f02`; Worker telemetry no longer logs Telegram update IDs; D1 idempotency state remains unchanged.
+- Hub roadmap/learning and ADR: `roadmap/implementation-waves-learning-track-20261125`, `0df40341ecb28d3ed9e90ce1b0e7590ec940567d`; proposed ADR-0045 at `4e0c3e3bfe1a0c349234e3088201166843ce299c`.
+
+All entries above are WIP and do not increase the 19 whole-phase evidence baseline.
