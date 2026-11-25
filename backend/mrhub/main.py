@@ -102,7 +102,23 @@ def create_app() -> FastAPI:
         except (AttributeError, TypeError, ValueError):
             request_id = str(uuid4())
 
+        supplied_correlation_id = request.headers.get("X-Correlation-ID", "")
+        try:
+            parsed_correlation_id = UUID(supplied_correlation_id)
+            if (
+                len(supplied_correlation_id) != 36
+                or str(parsed_correlation_id) != supplied_correlation_id
+                or parsed_correlation_id.version not in range(1, 9)
+                or parsed_correlation_id.variant != RFC_4122
+            ):
+                raise ValueError("Correlation ID must be a canonical UUID")
+            correlation_id = str(parsed_correlation_id)
+        except (AttributeError, TypeError, ValueError):
+            # Correlation metadata is diagnostic only; never trust or log invalid input.
+            correlation_id = request_id
+
         request.state.request_id = request_id
+        request.state.correlation_id = correlation_id
         started_at = perf_counter()
         response = await call_next(request)
         duration_ms = round(max(0.0, (perf_counter() - started_at) * 1000), 3)
@@ -113,8 +129,9 @@ def create_app() -> FastAPI:
             request.method, route_template, response.status_code, duration_ms
         )
         getLogger("mrhub.request").info(
-            "http_request_completed request_id=%s method=%s route_template=%s status_code=%s duration_ms=%.3f outcome=%s",
+            "http_request_completed request_id=%s correlation_id=%s method=%s route_template=%s status_code=%s duration_ms=%.3f outcome=%s",
             request_id,
+            correlation_id,
             request.method,
             route_template,
             response.status_code,
@@ -122,6 +139,7 @@ def create_app() -> FastAPI:
             outcome,
             extra={
                 "request_id": request_id,
+                "correlation_id": correlation_id,
                 "method": request.method,
                 "route_template": route_template,
                 "status_code": response.status_code,
