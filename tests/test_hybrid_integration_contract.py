@@ -128,7 +128,8 @@ def test_hybrid_trust_boundaries_remain_explicit():
         "status_code", "duration_ms", "outcome"
     ]
     assert job_correlation["el_ai_log_fields"] == [
-        "request_id", "correlation_id", "method", "route_template", "status_code", "outcome"
+        "request_id", "correlation_id", "method", "route_template",
+        "status_code", "duration_ms", "outcome"
     ]
     assert job_correlation["authorization_effect"] is False
     assert job_correlation["idempotency_effect"] is False
