@@ -290,3 +290,14 @@ The test strategy for these source waves is checkpointed rather than commit-by-c
 A proposed decision document now exists at `docs/architecture/adr-0045-product-taxonomy-el-agent-vs-el-ir-bot.md` (ADR-0045, status Proposed). It records the mismatch between the canonical ecosystem document's Windows/Android `MR_SIAVASH_EL_AGENT` and the current four-repository 73-phase baseline's Telegram Bridge `MR_SIAVASH_EL_IR_BOT`.
 
 The provisional recommendation is to preserve the current four-repository execution baseline and keep EL_AGENT as a separately tracked adjacent product until the owner decides whether to expand or restructure the phase inventory. No product identity or phase ownership is changed by the ADR.
+
+
+### EL_IR_BOT B10 telemetry minimization branch
+
+A defensive B10 branch now removes Telegram `update_id` from the Cloudflare Worker's retry/failure log events while retaining it in the D1 idempotency/delivery state machine where it is operationally required. The retry log retains only the bounded attempt count, retry delay and fixed reason code.
+
+- Branch: `fix/b10-redact-telegram-update-ids-20261125`
+- Worker commit: `8d53d8bb9d6d9a79bebbc298fe43adfbfe2c8e7a`
+- Regression commit: `4688709bdbba3a83f7bc80cfec73243799575f02`
+
+This is a telemetry minimization slice, not a closure of the privacy or release gates. Exact Worker and Python test matrices have not yet been run on this WIP branch.
