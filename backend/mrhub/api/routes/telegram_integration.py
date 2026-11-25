@@ -18,13 +18,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
+from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
+from mrhub.agents.gpi import WorkOrderGenerationError, derive_server_risk_class, generate_work_order
+from mrhub.agents.work_order import WorkOrder
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.api.telegram_auth import require_telegram_scope
 from mrhub.config import get_settings
-from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
-from mrhub.agents.gpi import WorkOrderGenerationError, derive_server_risk_class, generate_work_order
-from mrhub.agents.work_order import WorkOrder
 from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.telegram_pairing import (
@@ -39,7 +39,7 @@ from mrhub.media.repository import MAX_OUTPUT_BYTES, MediaAssetRepository
 from mrhub.memory.dreaming import MemoryDreamingEngine
 from mrhub.memory.repository import MemoryRepository
 from mrhub.memory.validation import MemoryValidationEngine
-from mrhub.providers.base import ProviderError, ProviderRequest
+from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
