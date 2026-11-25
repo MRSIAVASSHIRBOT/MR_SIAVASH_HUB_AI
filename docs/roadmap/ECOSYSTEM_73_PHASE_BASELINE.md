@@ -244,3 +244,44 @@ EL_IR_BOT PR #25 was closed as superseded; PRs #26 and #27 are merged. EL_AI PRs
 ## 8. Baseline change control
 
 This document is a planning baseline, not a permission grant. Changes to phase ownership, dependencies, shared data boundaries or release gates require an ADR and updated contract tests. Keep source snapshots dated; refresh GitHub branch/PR/CI and runtime-control-plane evidence before each release decision.
+
+
+## 9. Fresh ecosystem evidence refresh — 2026-11-25 UTC
+
+This checkpoint supersedes the repository SHAs and active-queue observations above. It does not retroactively promote partial implementation slices to whole-phase completion. Section 4's Definition of Done remains authoritative.
+
+### Current repository snapshot
+
+| Repository | Current `main` SHA | Open PRs | Source/CI observations |
+|---|---|---|---|
+| Hub | `56f47c19bf986db44d2930c78a7c0f23d10f9c63` | #618 Draft | Latest Backend CI, CI, Windows Launcher and OpenSSF Scorecard observations were successful. PR #618's base snapshot is older than this current main and must be reconciled before review. |
+| EL_AI | `b68872c32b98ef224e10a0eb7bdb92afe74b6770` | None | Latest CI, Worker tests, Workflow Security Audit and OpenSSF Scorecard observations were successful. No live Telegram token, webhook or production deployment is verified. |
+| Website | `c059a01bf0fcfeb622dc3b12efa6b6625879248a` | None | A12 PR #312 merged; the post-merge workflow and all eight check-runs succeeded, including repository quality, D1 isolated migration tests, browser E2E, accessibility, Gateway tests, runtime smoke, security audit, Scorecard and Pages deployment. |
+| EL_IR_BOT | `a7c810d2ab653147a07ebccfafdffa45b781190d` | None | B11 PR #31 merged; post-merge Python 3.11/3.12, Worker Node 22, dependency audit, Workflow Security Audit and Scorecard succeeded. No production deployment or live Telegram traffic is verified. |
+
+All four `main` branches still report `protected=false`. This remains an owner/admin governance task; no branch protection was changed in this refresh.
+
+### New merged evidence since the 2026-11-24 checkpoint
+
+- **Website A12 slice:** PR #312, [merged commit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/commit/c059a01bf0fcfeb622dc3b12efa6b6625879248a). Implements consented, privacy-minimized daily aggregates, an Access-protected admin report and the additive D1 migration source `0009_privacy_safe_analytics.sql`. The GitHub Pages site was publicly deployed at [the website URL](https://mrsiavasshirbot.github.io/MR_SIAVASH_AI/) and the deployment verifier checked 33 public assets against this exact commit. This proves static-site publication only. Migration 0009 was **not** applied to any remote D1 database; Cloudflare Production Worker deployment and production data operations were **not** performed. The slice is not by itself a declaration that all A12 acceptance criteria are complete.
+- **EL_IR_BOT B11 delivery quarantine slice:** PR #31, [merged commit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_IR_BOT/commit/a7c810d2ab653147a07ebccfafdffa45b781190d). Hardens atomic review/audit state transitions for ambiguous delivery outcomes and passed exact-head plus post-merge checks. This is focused B11 hardening, not proof of a live release or full B11 operational acceptance.
+
+These are additional implementation and validation evidence, not new whole-phase IDs. Keep the existing 19 phase-ID baseline unchanged until each affected phase is re-assessed against all applicable Definition of Done criteria and linked to stable dependent-phase integration.
+
+### Current cross-project blockers and contract gaps
+
+1. **Hub / Render (#618):** keep Draft. Its Blueprint declares two Starter compute services and two persistent disks, creating recurring costs; it also has branch-sync behavior that requires owner review. Do not provision, approve or merge this infrastructure PR until the account owner/guardian reviews the exact current plan, recurring charges and auto-sync behavior and explicitly authorizes the cost. Its base snapshot must first be refreshed against current Hub main.
+2. **Hub AWI bridge / EL_AI E8:** Hub's `WorkOrder` and `ExecutionPlan` models include natural-language acceptance criteria and per-step criterion coverage, but the current Telegram-specific `/agent/plan-preview` contract returns only bounded step descriptions. EL_AI persists descriptions/dependencies, not a versioned acceptance-criteria contract. EL_AI `/taskplanevaluate` is read-only structural result-evidence validation; it does not prove semantic goal completion. Hub ADR-0044 remains **Proposed**, and `docs/architecture/evidence-driven-correction.md` explicitly limits persisted evaluation to `tool_execution_only`. Do not infer criteria from task descriptions, and do not claim semantic acceptance evaluation until a versioned, typed, owner-scoped plan/result contract is integrated and tested across Hub and EL_AI.
+3. **EL_AI issue #107:** its older backlog text references PR #106 as a Draft review item. PR #106 has since merged (merge commit `0ffa8aa7c0815a3c77c12ac92c546488b4889d95`). Refresh the issue against current main rather than treating the old draft status as current. The merge does not imply live Telegram activation.
+4. **Website release (#254):** A12's D1 migration file and Cloudflare release preflights are source changes only. Preview/Production Worker deploy, remote D1 migration, backup/restore rehearsal and post-deploy verification remain separate gates. Do not treat Pages deployment as Gateway or D1 production release.
+5. **EL_IR_BOT privacy/release (#1, #18):** the privacy/authorization review and operational release gate remain open. Keep production deployment, remote D1 migration, webhook registration and live Telegram traffic blocked until the privacy boundary is reviewed, the release checklist is satisfied, and a separate explicit release authorization is recorded. Do not enable credential collection, covert tracking, biometric identification or sensitive-trait inference.
+6. **Canonical product taxonomy:** the previously recorded EL_AGENT versus EL_IR_BOT discrepancy remains unresolved. Do not silently reclassify either product or introduce a shared contract that assumes they are identical.
+
+### Current execution order
+
+- Continue parallel, isolated source/test work only where published contracts are stable.
+- First reconcile Hub ADR-0044 and define a versioned, typed acceptance-criteria/result-evidence contract shared by Hub and EL_AI; keep semantic evaluation disabled until results carry independently verifiable evidence.
+- Refresh EL_AI issue #107 and Website issue #254 with current merged evidence and remaining release gates.
+- Continue EL_IR_BOT defensive privacy review without expanding sensitive-data collection.
+- Keep paid Render provisioning, Cloudflare Production changes, remote D1 migrations, Telegram live traffic, secrets and branch-governance changes outside automatic merge/deploy actions until their specific approvals and environment evidence exist.
+- For every PR, require exact-head CI success, review its diff against the current base, merge only when the dependency contract is stable, and verify post-merge mainline checks separately.
