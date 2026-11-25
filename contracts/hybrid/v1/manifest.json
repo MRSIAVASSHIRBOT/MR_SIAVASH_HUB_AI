@@ -431,8 +431,11 @@
     "secret_handling": {
       "hub_credentials_in_urls": false,
       "secrets_in_logs_or_urls": false,
-      "el_ai_credential_storage": "operating_system_credential_store",
-      "hub_secret_authority": "server_side_configuration_and_owner_pairing"
+      "el_ai_credential_storage": "trusted_os_keyring_or_aes256_gcm_encrypted_file",
+      "hub_secret_authority": "server_side_configuration_and_owner_pairing",
+      "plaintext_fallback": false,
+      "encrypted_file_key_source": "explicit_secret_manager_environment_injection",
+      "encrypted_file_requires_posix_host": true
     }
   }
 }
