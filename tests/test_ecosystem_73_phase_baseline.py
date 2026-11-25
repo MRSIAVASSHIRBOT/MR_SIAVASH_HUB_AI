@@ -34,3 +34,21 @@ def test_ecosystem_baseline_requires_integration_and_evidence_for_completion() -
     assert "Runtime, Telegram, device, remote database and deployment acceptance" in content
     assert "This is a dated GitHub source/CI snapshot, not a deployment claim." in content
     assert "EL_AGENT" in content
+
+
+def test_agent_companion_and_telegram_bridge_remain_distinct_products() -> None:
+    """Keep E11's device companion separate from the EL_IR_BOT transport bridge."""
+    content = ROADMAP.read_text(encoding="utf-8")
+    adr = (
+        ROADMAP.parents[1]
+        / "architecture"
+        / "decisions"
+        / "ADR-0046-four-repository-scope-and-agent-bridge-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "ADR-0046" in content
+    assert "EL_IR_BOT" in content
+    assert "EL_AGENT remains a separate fifth ecosystem product" in content
+    assert "EL_IR_BOT owns the Telegram edge transport" in adr
+    assert "EL_AGENT is a separate Windows/Android companion" in adr
+    assert "EL_AGENT features do not count as E11 completion" in adr
