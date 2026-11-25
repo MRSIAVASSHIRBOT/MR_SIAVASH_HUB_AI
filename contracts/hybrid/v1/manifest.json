@@ -379,6 +379,7 @@
         "method",
         "route_template",
         "status_code",
+        "duration_ms",
         "outcome"
       ],
       "retry_policy": "single_401_refresh_then_one_retry_same_request_id; no_generic_retry_or_backoff"
@@ -420,6 +421,7 @@
         "method",
         "route_template",
         "status_code",
+        "duration_ms",
         "outcome"
       ],
       "authorization_effect": false,
