@@ -129,7 +129,7 @@ def test_workflow_dashboard_exposes_the_owner_scoped_execution_trace_timeline():
     assert '"/agent/traces/" + encodeURIComponent(taskId)' in app
     assert 'params.set("before_created_at", cursor.before_created_at)' in app
     assert 'params.set("before_event_id", cursor.before_event_id)' in app
-    assert 'element("strong", event.event_type || "رویداد نامشخص")' in app
+    assert 'element("strong", record.event_type || "رویداد نامشخص")' in app
     assert 'metadata.step_id' in app
     assert 'metadata.attempt_number' in app
     assert 'metadata.tool_name' in app
