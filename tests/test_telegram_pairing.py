@@ -1708,5 +1708,5 @@ def test_telegram_agent_plan_preview_rejects_invalid_provider_output(tmp_path, m
     )
 
     assert response.status_code == 502
-    assert "invalid plan" in response.json()["detail"]
+    assert response.json()["detail"] == "A required upstream operation failed."
     get_settings.cache_clear()
