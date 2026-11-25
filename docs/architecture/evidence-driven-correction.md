@@ -10,7 +10,7 @@ The deterministic evaluator classifies structured acceptance criteria as:
 
 A report is accepted only when every criterion passed. Any failure rejects the evaluation; otherwise any unknown criterion requires review. A missing or malformed evidence digest is an input error, not a pass.
 
-The current durable workflow runner evaluates tool-step completion using persisted status and output/failure digests. Its scope is deliberately reported as `tool_execution_only`; successful tool calls do not prove that the user's end-to-end business goal or every natural-language acceptance criterion was met.
+The current durable workflow runner evaluates tool-step completion using persisted status and output/failure digests. Its scope is deliberately reported as `tool_execution_only`; successful tool calls do not prove that the user's end-to-end business goal or every natural-language acceptance criterion was met. The structured evaluation payload also returns `goal_satisfaction: not_evaluated` and `acceptance_criteria_evaluation: not_implemented` so downstream clients cannot mistake an `accept` decision for goal completion.
 
 ## Correction plan
 
