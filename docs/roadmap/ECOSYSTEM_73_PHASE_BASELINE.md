@@ -285,3 +285,69 @@ These are additional implementation and validation evidence, not new whole-phase
 - Continue EL_IR_BOT defensive privacy review without expanding sensitive-data collection.
 - Keep paid Render provisioning, Cloudflare Production changes, remote D1 migrations, Telegram live traffic, secrets and branch-governance changes outside automatic merge/deploy actions until their specific approvals and environment evidence exist.
 - For every PR, require exact-head CI success, review its diff against the current base, merge only when the dependency contract is stable, and verify post-merge mainline checks separately.
+
+
+## 10. Implementation-wave checkpoint — 2026-11-25 UTC
+
+This checkpoint supersedes the earlier Section 9 repository snapshot and PR queue. The conservative whole-phase baseline remains 19 IDs; the 54 other IDs are **not yet whole-phase evidence verified**, which does not assert that their repositories contain no source. See `IMPLEMENTATION_WAVES_AND_LEARNING_TRACK_2026-11-25.md` for the full 73-ID inventory, the status vocabulary, parallel implementation waves and the separate owner learning/acceptance track.
+
+### Current main snapshots
+
+| Repository | Current main SHA | Open implementation PRs |
+|---|---|---|
+| Hub | `8d448f6824edaedf01ed545b82bc7dcf95b6850e` | #624 GPI/AWI plan-preview producer; #618 Draft Render resources |
+| EL_AI | `fd4ed4d5c574614e07e897fe9127070ab900bd84` | #132 Draft consumer for versioned plan criteria |
+| Website | `c059a01bf0fcfeb622dc3b12efa6b6625879248a` | None |
+| EL_IR_BOT | `0c7249b4b598c1af8fe1455e3e64384aaf8b4c3b` | None |
+
+All four main branches remain unprotected. No governance settings were changed.
+
+### Merged evidence since the preceding checkpoint
+
+- Website A12 PR #312 merged at `c059a01bf0fcfeb622dc3b12efa6b6625879248a`; GitHub Pages static publication was verified for 33 assets. D1 migration 0009 was not applied to a remote database; Cloudflare Production Worker was not deployed.
+- EL_AI E8 clarification PR #131 merged at `fd4ed4d5c574614e07e897fe9127070ab900bd84`; evaluation JSON explicitly reports `evaluation_scope=tool_execution_only`, `goal_satisfaction=not_evaluated`, and `acceptance_criteria_evaluation=not_implemented`.
+- EL_IR_BOT B11 quarantine PR #31 merged at `a7c810d2ab653147a07ebccfafdffa45b781190d`.
+- EL_IR_BOT privacy-source-review PR #32 merged at `0c7249b4b598c1af8fe1455e3e64384aaf8b4c3b`. It documents source behavior; it is not a security certification and does not close privacy Issue #1 or release Issue #18.
+- Hub PR #623 refreshed this roadmap at `8d448f6824edaedf01ed545b82bc7dcf95b6850e`.
+
+These are implementation slices and evidence updates; they do not increase the 19 whole-phase count without a phase-by-phase Definition of Done review.
+
+### Current cross-repository integration
+
+- Hub PR #624 proposes the additive producer contract `telegram_agent_plan.v1`, reusing GPI WorkOrder and AWI ExecutionPlan while preserving the legacy description-only `steps` field. It remains unmerged pending the final exact-head test matrix.
+- EL_AI PR #132 consumes this versioned contract and stores bounded acceptance criteria and step mapping in TaskPlan schema v4, with v1-v3 migration compatibility. It remains Draft pending Hub producer merge and post-merge checks.
+- Neither preview route creates a Task or invokes tools. Semantic goal evaluation remains deliberately unavailable; a planning label such as `ready_for_review` is not a passed criterion or an execution authorization.
+
+### Active WIP implementation branches
+
+The following branches are source work in progress, not merged phase completions:
+
+- Hub roadmap/learning wave: `roadmap/implementation-waves-learning-track-20261125`, commit `aa53a53aa06ce96f532fc811dd134303e8a8e06d`.
+- Hub H10 evaluation-scope clarity: `fix/h10-explicit-evaluation-scope-20261125`, latest commit `8b4fe60f8eef2c518202f85a4d28a0f107a8788f`. It adds explicit tool-only scope fields in the workflow evaluation payload and a focused regression assertion; semantic acceptance remains not implemented.
+- Website A13 SSE response hardening: `fix/a13-sse-security-headers-20261125`, latest commit `4d55e39344e6e0968f89439822c69e1b20f99517`. It adds the same frame-denial/CSP headers used by JSON responses to the streaming response and asserts those headers in the SSE contract test.
+
+These branches intentionally remain unmerged WIP until their implementation wave is grouped and the final exact-head test matrix is run. They must be refreshed/rebased against current main before final review. No PR is marked complete merely because its source files and tests have been authored.
+
+### Owner learning track
+
+The project owner can start with non-production, reversible work while engineering continues:
+
+1. Review the `telegram_agent_plan.v1` contract and write a harmless two-step local sample with one dependency and explicit acceptance criteria.
+2. Inspect a Hub evaluation result and explain why successful tool execution does not imply end-to-end goal satisfaction.
+3. Review the Persian preview/clarification messages in EL_AI and report wording/UX defects.
+4. Draw the public website ↔ Hub ↔ EL_AI ↔ Telegram Bridge trust boundaries and identify which service owns each identity/task/delivery.
+5. Decide the canonical product boundary between `MR_SIAVASH_EL_AGENT` and `MR_SIAVASH_EL_IR_BOT` so the architecture decision can be recorded before dependent cross-product work.
+
+Do not use production secrets, live Telegram webhooks, paid infrastructure, or remote database migrations for these learning tasks.
+
+### Test cadence
+
+Small implementation edits may be accumulated between full-suite checkpoints, but focused regression cases are kept alongside code changes. Before a PR leaves Draft or is merged, all required checks must pass on its exact current head; after merge, the relevant mainline checks must pass. Never merge untested code or treat a pending/old-head run as a pass.
+
+### Blockers unchanged
+
+- Hub Render PR #618 is Draft; its recurring compute/storage cost and autosync behavior require separate account-owner/guardian review and explicit cost authorization.
+- Website Preview/Production Worker releases, remote D1 migrations, backup/restore and Production changes remain separate owner-approved gates.
+- EL_IR_BOT privacy Issue #1 and release Issue #18 remain open; no live Telegram traffic or webhook registration.
+- Branch protection remains disabled on all four repositories and is an owner/admin governance task.
+- The EL_AGENT vs EL_IR_BOT product taxonomy remains unresolved.
