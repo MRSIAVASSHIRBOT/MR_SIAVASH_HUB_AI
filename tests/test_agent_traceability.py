@@ -1,3 +1,4 @@
+from pathlib import Path
 from uuid import UUID
 
 from client_helpers import authenticated_client
@@ -143,7 +144,7 @@ def test_workflow_dashboard_does_not_offer_trace_lookup_without_a_valid_task_id(
     web_root = Path(__file__).resolve().parents[1] / "backend" / "mrhub" / "web"
     app = (web_root / "app.js").read_text(encoding="utf-8")
     start = app.index("  function renderWorkflowCard(workflow) {")
-    end = app.index("\\n  function readResumeInput()", start)
+    end = app.index("\n  function readResumeInput()", start)
     card = app[start:end]
 
     assert 'typeof workflow.task_id === "string"' in card
