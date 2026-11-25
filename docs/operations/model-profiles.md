@@ -70,3 +70,19 @@ artifacts. This endpoint can contact the explicitly configured loopback Ollama
 service, so it should be called only when an operator intends to check that
 local service. The passive `GET /models/providers` inventory never performs
 these probes.
+
+
+## Provider routing and no-fallback boundary
+
+The model router treats `ModelRequest(prefer_local=True)` as a local-only
+constraint: only registered local descriptors are eligible. If no local
+descriptor exists, or the selected local adapter fails its bounded health
+check, the request fails closed. It does **not** silently fall through to a
+registered remote provider. Remote inference remains a separate explicitly
+configured route; it is never a recovery fallback for a local request.
+
+The router also verifies the returned provider/model identity and rejects
+malformed response contracts. A route selection or health check does not
+itself start inference. Regression tests keep the no-remote-fallback property
+explicit even when a healthy remote adapter is registered alongside an
+unavailable local one.

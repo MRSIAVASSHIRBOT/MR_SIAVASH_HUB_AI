@@ -246,3 +246,55 @@ def test_provider_request_rejects_invalid_timeout_budgets(timeout):
 def test_provider_request_accepts_bounded_timeout_budget(timeout):
     request = ProviderRequest(input_text="bounded request", timeout_seconds=timeout)
     assert request.timeout_seconds == float(timeout)
+
+
+def test_local_route_fails_closed_without_falling_back_to_registered_remote_provider():
+    class CountingProvider:
+        def __init__(self, provider, model, *, local, health_available):
+            self.descriptor = ModelDescriptor(
+                provider=provider,
+                model=model,
+                capability=ModelCapability(text=True),
+                available=True,
+                local=local,
+                priority=1,
+            )
+            self.health_available = health_available
+            self.health_calls = 0
+            self.generate_calls = 0
+
+        def health(self, timeout_seconds=2.0):
+            self.health_calls += 1
+            return ProviderHealth(
+                available=self.health_available,
+                reason_code="ready" if self.health_available else "offline",
+            )
+
+        def generate(self, request):
+            self.generate_calls += 1
+            return ProviderResponse(
+                provider=self.descriptor.provider,
+                model=self.descriptor.model,
+                output_text="must not be reached",
+            )
+
+    local = CountingProvider(
+        "ollama", "local-model", local=True, health_available=False
+    )
+    remote = CountingProvider(
+        "moonshot", "remote-model", local=False, health_available=True
+    )
+    router = ModelRouter()
+    router.register_provider(local)
+    router.register_provider(remote)
+
+    with pytest.raises(LookupError, match="Selected provider is unavailable"):
+        router.generate(
+            ModelRequest(requires_text=True, prefer_local=True),
+            ProviderRequest(input_text="private request"),
+        )
+
+    assert local.health_calls == 1
+    assert local.generate_calls == 0
+    assert remote.health_calls == 0
+    assert remote.generate_calls == 0
