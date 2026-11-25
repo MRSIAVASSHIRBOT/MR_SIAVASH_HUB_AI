@@ -60,6 +60,15 @@ def test_request_metrics_reject_invalid_series_limits():
             RequestMetrics(max_series=invalid)
 
 
+def test_request_metrics_clamp_extreme_finite_durations():
+    metrics = RequestMetrics()
+    metrics.record("GET", "/health", 200, 1e308)
+
+    sample = metrics.snapshot()["series"][0]
+    assert sample["duration_sum_ms"] == 86_400_000.0
+    assert sample["duration_sum_ms"] != float("inf")
+
+
 def test_jobs_metrics_endpoint_requires_authentication():
     client = TestClient(create_app())
 
