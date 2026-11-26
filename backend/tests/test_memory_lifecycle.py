@@ -180,7 +180,7 @@ def test_dreaming_only_considers_retained_entries():
 
 
 def test_legacy_insert_defaults_to_retained_after_schema_upgrade():
-    client = authenticated_client()
+    authenticated_client()
     repository = MemoryRepository(get_settings().database_path)
     owner_id = _owner_id(repository)
     memory_id = str(uuid4())
