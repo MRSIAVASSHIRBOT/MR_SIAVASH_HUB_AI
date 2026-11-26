@@ -205,7 +205,27 @@ class AgentWorkOrderPlanRepository:
                 """,
                 (now_text, limit),
             )
-            return cursor.rowcount
+            # Consumed plans keep their workflow foreign key for audit integrity,
+            # but their encrypted content still obeys the original plan TTL.
+            consumed = connection.execute(
+                """
+                UPDATE agent_work_order_plans
+                SET nonce_b64 = 'expired', ciphertext_b64 = 'expired'
+                WHERE status = 'consumed'
+                  AND ciphertext_b64 != 'expired'
+                  AND plan_id IN (
+                    SELECT plan_id
+                    FROM agent_work_order_plans
+                    WHERE status = 'consumed'
+                      AND expires_at <= ?
+                      AND ciphertext_b64 != 'expired'
+                    ORDER BY expires_at, plan_id
+                    LIMIT ?
+                  )
+                """,
+                (now_text, limit),
+            )
+            return cursor.rowcount + consumed.rowcount
 
 
     def get(
@@ -255,6 +275,23 @@ class AgentWorkOrderPlanRepository:
                     (normalized_plan_id, owner_user_id),
                 )
                 status = "expired"
+                nonce_b64 = "expired"
+                ciphertext_b64 = "expired"
+            elif (
+                status == "consumed"
+                and row["expires_at"] <= now_text
+                and ciphertext_b64 != "expired"
+            ):
+                # Retain the one-to-one workflow association while erasing expired
+                # ciphertext; status/foreign-key checks remain valid.
+                connection.execute(
+                    """
+                    UPDATE agent_work_order_plans
+                    SET nonce_b64 = 'expired', ciphertext_b64 = 'expired'
+                    WHERE plan_id = ? AND owner_user_id = ? AND status = 'consumed'
+                    """,
+                    (normalized_plan_id, owner_user_id),
+                )
                 nonce_b64 = "expired"
                 ciphertext_b64 = "expired"
 
