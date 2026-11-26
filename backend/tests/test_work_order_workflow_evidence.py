@@ -194,6 +194,8 @@ def test_failed_workflow_step_returns_digest_bound_failure():
         _reference(),
         _criterion(),
         repository=FakeWorkflowRepository(failed),
+
+        plan_repository=FakePlanRepository(),
     )
 
     assert isinstance(result, EvidenceVerification)
@@ -207,6 +209,8 @@ def test_workflow_evidence_requires_internal_owner_context():
         _reference(owner_user_id=None),
         _criterion(),
         repository=FakeWorkflowRepository(_step()),
+
+        plan_repository=FakePlanRepository(),
     )
 
     assert result.status is VerifierStatus.UNKNOWN
