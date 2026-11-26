@@ -48,7 +48,7 @@ At this baseline no phase is globally declared DONE by this inventory. The repos
 | H7 | Worker execution, step dispatch, context and resource budgets | H1, H11, H12, H16 | Evidence exists | Bounded execution, isolation, cancellation and trusted results |
 | H8 | Retry, idempotency, checkpoints, recovery and unknown-outcome handling | H7, H11, H16 | Evidence exists | Fault-injection and crash/restart tests; no unsafe replay |
 | H9 | Private memory, knowledge, retrieval, provenance and selective sharing | H11, H16, X3 | Evidence exists | Owner isolation, export/delete, provenance and retrieval-quality acceptance |
-| H10 | Evidence evaluator, completion, correction, replanning and lessons | H7, H8, H9, H12 | Partial | Missing/stale/conflicting evidence matrix and owner-scoped evaluation route |
+| H10 | Evidence evaluator, completion, correction, replanning and lessons | H7, H8, H9, H12 | Partial — evaluator contract tests merged; owner-scoped API candidate in PR #641 | Merge/API acceptance, canonical WorkOrder digest/revision persistence, production verifier adapters, E8 consumer integration and negative evidence matrix |
 | H11 | Identity, authentication, authorization, policy, approvals, grants and audit | H0, X1, X2 | Evidence exists | Negative auth, expiry, revocation, replay and audit tests |
 | H12 | Versioned APIs, contract validation, errors, rate limits and compatibility | H7, H8, H11, X1 | Evidence exists | OpenAPI/schema validation and consumer compatibility across supported versions |
 | H13 | Specialist agents, delegation, handoff, aggregation and conflict handling | H3, H4, H7, H8, H11, H14 | Partial | Delegation remains budgeted, bounded, attributable and measurably useful |
@@ -76,7 +76,7 @@ EL_AI owns the complete Telegram implementation boundary, including adapters/wor
 | E7 | Owner-scoped memory access and learning flows | E1, H9, X3 | Evidence exists | Memory scopes, provenance, export/delete and no public-context leakage |
 | E8 | Evidence review, user-visible correction and plan replanning | E5, E7, H10 | Partial | Terminal state is not semantic acceptance; full evidence-negative matrix |
 | E9 | Model/provider choice and routing under HUB policy | E0, H14, X6 | Partial | Provider substitution, consent, secret handling, budget and local/cloud routing tests |
-| E10 | Dedicated Telegram bot: update intake, polling/webhook adapters, command lifecycle, send/delivery state, idempotency, retry/rate-limit handling and media | E0, E1, E2, E3, E13 | Partial | Full Telegram adapter tests and real test-bot acceptance; duplicate/unknown/expired/rate-limit/media paths |
+| E10 | Dedicated Telegram bot: update intake, polling/webhook adapters, command lifecycle, send/delivery state, idempotency, retry/rate-limit handling and media | E0, E1, E2, E3, E13 | Partial — Unicode validation slice merged in PR #148 (`bb7239c4`); Python 3.11/3.12 and post-merge security/supply-chain checks passed | Full Telegram adapter state-machine coverage, test-bot configuration and real E2E acceptance; duplicate/unknown/expired/rate-limit/media paths and operational runbook |
 | E11 | Optional EL_AGENT client/command bridge for owner-authorized device capabilities | E1, E5, D11, X2, X9 | Planned / gated | Versioned typed contract, explicit grants, confirmation, cancellation, revocation and device evidence |
 | E12 | Bounded autonomous plans/chains, budgets, pause/resume and kill switch | E5, E8, H7, H8, H11 | Evidence exists — acceptance pending | All continuation points revalidate owner pause, grants, budget and deadlines |
 | E13 | EL_AI security/privacy, actor contexts, audit and prompt/context protection | E0, H11, X8 | Evidence exists | Independent threat review and negative tests for owner/public/customer contexts |
@@ -90,7 +90,7 @@ EL_AGENT owns device execution and remains useful as a standalone local product.
 |---|---|---|---|---|
 | D0 | Repository, packaging, configuration, platform support and safe defaults | — | Evidence exists | Reproducible Windows/Android build/install and support matrix |
 | D1 | Local runtime/API/CLI/desktop foundation | D0 | Evidence exists | Loopback-only/API auth, lifecycle and invalid-request tests |
-| D2 | Local identity, credential storage and session protection | D1 | Evidence exists | OS-backed secrets, lock/revoke and tamper/expiry tests |
+| D2 | Local identity, credential storage and session protection | D1 | Evidence exists — local API token file hardening merged in PR #33 (`de8007bd`); Linux/Windows Python 3.11/3.12 tests passed | Android Keystore-backed credential acceptance, session lock/revoke, physical-device tamper/expiry and clean Windows installation evidence |
 | D3 | Typed capability manifests and deterministic local policy engine | D1, D2 | Partial | Default deny; schema, scope, confirmation and bounds tests for all actions |
 | D4 | Local scheduler, idempotency, leases, recovery and cancellation | D1, D3 | Evidence exists | Restart/duplicate/stale lease/unknown outcome and safe recovery tests |
 | D5 | Local and remote provider abstraction, model routing and offline fallback | D0, D3 | Evidence exists | Local-only test with network blocked; remote use only after explicit consent |
@@ -172,3 +172,16 @@ A code branch, PR, green CI, historical checklist or proposed architecture alone
 5. Publish contract fixtures and run producer/consumer CI before enabling optional cross-product execution.
 6. Address branch protection for all four repositories through owner/admin configuration and independent verification.
 7. Begin the next phase only when its own dependency gates and source ownership are clear.
+
+
+## 11. Merged implementation slices and open acceptance — 2026-11-27
+
+This table records narrow implementation slices; it does not promote the owning phase to DONE.
+
+| Phase | Exact merged source | Test/CI evidence observed | Remaining phase acceptance |
+|---|---|---|---|
+| D2 | EL_AGENT PR #33, merge `de8007bd3a32e636a589d8afb7806725ac55d414`; `src/el_agent/security.py`, `tests/test_security.py` | Exact PR-head Linux/Windows × Python 3.11/3.12 passed; post-merge main checks passed on that source snapshot | Android Keystore and physical Windows/Android credential lifecycle acceptance |
+| E10 | EL_AI PR #148, merge `bb7239c46556f6fa68841e48740507f31ba58e6c`; `src/el_ai/telegram/api.py`, `tests/test_telegram_api.py` | Python 3.11/3.12, Workflow Security Audit and post-merge Scorecard/security checks passed | Real test-bot E2E, update intake, delivery state reconciliation, duplicate/retry/rate-limit/media/unknown-outcome acceptance |
+| H10 | HUB PR #640, merge `47a8e4fee206ef72e928fa3ce381a52ee4324921`; `tests/test_work_order_evidence_contract.py` | Exact PR-head validation suite passed before merge; post-merge main test matrix was in progress at latest read | PR #641 owner-scoped API candidate, separate canonical WorkOrder revision/digest persistence, trusted production verifier adapters, E8 consumer contract and exact-main validation |
+| G0–G12 | HUB PR #639 — open, not yet merged | Python 3.11/3.12 and final CI checks still running at latest read | Review ADR-0051, resolve one-commit main divergence, complete exact-head CI and merge; owner/legal/admin gates remain |
+
