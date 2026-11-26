@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -109,6 +110,11 @@ def verify_workflow_step_evidence(
         return EvidenceVerification(
             VerifierStatus.UNKNOWN,
             reason_code="workflow_not_bound_to_work_order_plan",
+        )
+    if plan_record.expires_at <= datetime.now(UTC).isoformat():
+        return EvidenceVerification(
+            VerifierStatus.UNKNOWN,
+            reason_code="work_order_plan_expired",
         )
 
     try:
