@@ -58,7 +58,7 @@ Initial governance milestone structure:
 
 | Milestone | Outcome | Candidate Work Orders | Exit gate |
 |---|---|---|---|
-| MS-GOV-01 — Canonical portfolio baseline | One accepted four-product scope and linked G0–G12 authority | WO-GOV-001, WO-GOV-004 | ADR-0047 and baseline reviewed/merged; all active roadmaps and repository entry points agree |
+| MS-GOV-01 — Canonical portfolio baseline | One accepted four-product scope and linked G0–G12 authority | WO-GOV-001, WO-GOV-004 | ADR-0051 and baseline reviewed/merged; all active roadmaps and repository entry points agree |
 | MS-GOV-02 — Repository trust controls | Protected integration branches and verified CI/review policy | WO-GOV-002, WO-GOV-003 | Effective rules read back for all four repositories; required checks identified and enforced |
 | MS-GOV-03 — Requirements and architecture traceability | Requirements, use cases, ADRs and technical phases are traceable | WO-GOV-005, WO-GOV-006 | Stable IDs link requirement → owner → phase/Work Order → acceptance test/evidence |
 | MS-GOV-04 — Operational and legal readiness | Release operations, recovery, cost and legal gates are explicit | WO-GOV-007, WO-GOV-008 | Owner/legal reviews recorded; backup restore and live environment acceptance evidenced where applicable |
