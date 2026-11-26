@@ -6,7 +6,9 @@ from mrhub.agents.registry import AgentProfile, AgentRegistry, build_default_age
 from mrhub.tools.builtins import build_tool_registry
 
 
-def _profile(*, version: int = 1, instructions: str = "Private reviewed instructions") -> AgentProfile:
+def _profile(
+    *, version: int = 1, instructions: str = "Private reviewed instructions"
+) -> AgentProfile:
     return AgentProfile(
         name="test_specialist",
         description="A bounded test specialist.",
