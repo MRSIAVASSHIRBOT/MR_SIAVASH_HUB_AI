@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from mrhub.agents.work_order_evidence import EvidenceVerifierRegistry
 from mrhub.api.errors import (
     API_ERROR_RESPONSES,
     http_exception_handler,
@@ -49,7 +50,6 @@ from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.telegram_integration import router as telegram_integration_router
 from mrhub.api.routes.tools import router as tools_router
 from mrhub.api.routes.video_intelligence import router as video_intelligence_router
-from mrhub.agents.work_order_evidence import EvidenceVerifierRegistry
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.infrastructure.request_metrics import RequestMetrics
