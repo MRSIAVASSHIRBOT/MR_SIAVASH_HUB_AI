@@ -220,3 +220,162 @@ def test_legacy_insert_defaults_to_retained_after_schema_upgrade():
         ).fetchone()
     assert migration is not None
     assert migration["name"] == "owner_scoped_memory_lifecycle_stages"
+
+
+def _insert_memory_row(
+    repository: MemoryRepository,
+    *,
+    owner_id: str,
+    content: str,
+    expires_at: str | None,
+) -> str:
+    memory_id = str(uuid4())
+    now = datetime.now(UTC).isoformat()
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO memory_entries (
+                memory_id, owner_user_id, scope, memory_type, memory_stage,
+                category, content, provenance, confidence, verification_status,
+                created_at, updated_at, expires_at
+            ) VALUES (?, ?, 'private', 'unspecified', 'working', ?, ?, ?, 0.7,
+                      'user_authored', ?, ?, ?)
+            """,
+            (
+                memory_id,
+                owner_id,
+                "expiry-cleanup",
+                content,
+                "expiry-cleanup-test",
+                now,
+                now,
+                expires_at,
+            ),
+        )
+    return memory_id
+
+
+def test_memory_access_deletes_expired_rows_in_owner_scoped_batches():
+    client = authenticated_client()
+    repository = MemoryRepository(get_settings().database_path)
+    owner_id = _owner_id(repository)
+    other_owner_id = "expiry-cleanup-other-owner"
+    now = datetime.now(UTC)
+    expired_at = (now - timedelta(days=1)).isoformat()
+    future_at = (now + timedelta(days=1)).isoformat()
+
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO auth_users (
+                user_id, username, salt, password_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                other_owner_id,
+                "expiry-cleanup-other-owner@example.test",
+                "salt",
+                "hash",
+                now.isoformat(),
+            ),
+        )
+
+    expired_owner_id = _insert_memory_row(
+        repository,
+        owner_id=owner_id,
+        content="owner expired cleanup search fixture",
+        expires_at=expired_at,
+    )
+    active_owner_id = _insert_memory_row(
+        repository,
+        owner_id=owner_id,
+        content="owner active cleanup search fixture",
+        expires_at=future_at,
+    )
+    expired_other_id = _insert_memory_row(
+        repository,
+        owner_id=other_owner_id,
+        content="other owner expired cleanup fixture",
+        expires_at=expired_at,
+    )
+
+    listed = repository.list_entries(owner_id, limit=100)
+    assert [item["memory_id"] for item in listed] == [active_owner_id]
+
+    with repository.tasks._connection() as connection:
+        remaining = {
+            row["memory_id"]
+            for row in connection.execute(
+                "SELECT memory_id FROM memory_entries WHERE memory_id IN (?, ?, ?)",
+                (expired_owner_id, active_owner_id, expired_other_id),
+            )
+        }
+        fts_rows = {
+            row["memory_id"]
+            for row in connection.execute(
+                "SELECT memory_id FROM memory_entries_fts WHERE memory_id IN (?, ?, ?)",
+                (expired_owner_id, active_owner_id, expired_other_id),
+            )
+        }
+
+    assert remaining == {active_owner_id, expired_other_id}
+    assert fts_rows == {active_owner_id, expired_other_id}
+
+
+def test_memory_expiry_cleanup_respects_a_strict_batch_limit():
+    client = authenticated_client()
+    repository = MemoryRepository(get_settings().database_path)
+    owner_id = _owner_id(repository)
+    expired_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    expired_ids = {
+        _insert_memory_row(
+            repository,
+            owner_id=owner_id,
+            content=f"bounded expiry cleanup fixture {index}",
+            expires_at=expired_at,
+        )
+        for index in range(3)
+    }
+
+    assert repository.delete_expired(owner_id, limit=2) == 2
+    with repository.tasks._connection() as connection:
+        remaining = {
+            row["memory_id"]
+            for row in connection.execute(
+                "SELECT memory_id FROM memory_entries WHERE owner_user_id = ?",
+                (owner_id,),
+            )
+            if row["memory_id"] in expired_ids
+        }
+
+    assert len(remaining) == 1
+    assert repository.delete_expired(owner_id, limit=500) == 1
+
+
+def test_expired_memory_cannot_be_revived_by_an_owner_update():
+    client = authenticated_client()
+    repository = MemoryRepository(get_settings().database_path)
+    owner_id = _owner_id(repository)
+    expired_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    memory_id = _insert_memory_row(
+        repository,
+        owner_id=owner_id,
+        content="expired memory cannot be revived marker",
+        expires_at=expired_at,
+    )
+
+    from uuid import UUID
+
+    result = repository.update(
+        owner_id,
+        UUID(memory_id),
+        {"memory_stage": "retained", "expires_at": None},
+    )
+
+    assert result is None
+    with repository.tasks._connection() as connection:
+        row = connection.execute(
+            "SELECT 1 FROM memory_entries WHERE memory_id = ? AND owner_user_id = ?",
+            (memory_id, owner_id),
+        ).fetchone()
+    assert row is None
