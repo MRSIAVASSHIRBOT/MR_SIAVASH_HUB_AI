@@ -25,8 +25,8 @@ from mrhub.agents.plan_repository import (
     AgentWorkOrderPlanRepository,
 )
 from mrhub.agents.registry import build_default_agent_registry
-from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.repository import AgentRunRepository
+from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.work_order_evidence import (
     EvidenceInputError,
     EvidenceReference,
