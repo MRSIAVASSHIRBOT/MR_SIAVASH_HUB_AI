@@ -15,6 +15,7 @@ from datetime import datetime
 from enum import StrEnum
 
 MAX_WORK_ORDER_CRITERIA = 12
+MAX_CRITERION_DESCRIPTION_LENGTH = 300
 MAX_EVIDENCE_REFERENCES = 100
 MAX_IDENTIFIER_LENGTH = 80
 MAX_SOURCE_REFERENCE_LENGTH = 160
@@ -57,6 +58,7 @@ class WorkOrderCriterion:
 
     criterion_id: str
     required: bool = True
+    description: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,6 +264,11 @@ def _validate_snapshot(snapshot: WorkOrderSnapshot) -> dict[str, WorkOrderCriter
             raise EvidenceInputError("WorkOrder criterion ID is invalid")
         if type(criterion.required) is not bool:
             raise EvidenceInputError("WorkOrder criterion required flag must be boolean")
+        if (
+            not isinstance(criterion.description, str)
+            or len(criterion.description) > MAX_CRITERION_DESCRIPTION_LENGTH
+        ):
+            raise EvidenceInputError("WorkOrder criterion description is invalid")
         if criterion.criterion_id in by_id:
             raise EvidenceInputError("WorkOrder criterion IDs must be unique")
         by_id[criterion.criterion_id] = criterion
