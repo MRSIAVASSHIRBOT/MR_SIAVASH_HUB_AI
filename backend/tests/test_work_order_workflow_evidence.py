@@ -30,6 +30,7 @@ class FakeWorkflowRepository:
 class FakePlanRecord:
     status = "consumed"
     workflow_id = WORKFLOW_ID
+    expires_at = "2099-01-01T00:00:00+00:00"
 
 
 class FakePlanRepository:
@@ -238,3 +239,15 @@ def test_workflow_step_cannot_verify_evidence_for_a_different_or_unconsumed_plan
 
     assert unconsumed.status is VerifierStatus.UNKNOWN
     assert unconsumed.reason_code == "workflow_not_bound_to_work_order_plan"
+
+    expired_repository = FakePlanRepository()
+    expired_repository.record.expires_at = "2000-01-01T00:00:00+00:00"
+    expired = verify_workflow_step_evidence(
+        _reference(),
+        _criterion(),
+        repository=FakeWorkflowRepository(_step()),
+        plan_repository=expired_repository,
+    )
+
+    assert expired.status is VerifierStatus.UNKNOWN
+    assert expired.reason_code == "work_order_plan_expired"
