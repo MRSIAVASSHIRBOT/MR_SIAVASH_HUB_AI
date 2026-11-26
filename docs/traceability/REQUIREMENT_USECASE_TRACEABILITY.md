@@ -26,7 +26,7 @@ This matrix connects each cross-product requirement to the owning technical phas
 | FR-HUB-03 | HUB | H11, X2 | UC-01, UC-02, UC-07, UC-10 | Negative authorization matrix; expiry/revocation and replay tests | Mapped / verification pending |
 | FR-HUB-04 | HUB | H9, H11, H16 | UC-02, UC-11 | Owner isolation, provenance, export/deletion and authorization tests | Mapped / verification pending |
 | FR-HUB-05 | HUB | H14, X6 | UC-02, UC-11 | Adapter contract tests; prove no hidden local-to-cloud fallback | Mapped / verification pending |
-| FR-HUB-06 | HUB | H10, H7, H8, H12 | UC-02, UC-12 | Merged evaluator contract tests: `tests/test_work_order_evidence_contract.py` (PR #640); owner-scoped API candidate and tests: `tests/test_agent_work_order_evidence_api.py` (PR #641; CI pending) | Partial implementation evidence / verification pending; production verifiers and E8 consumer contract remain open |
+| FR-HUB-06 | HUB | H10, H7, H8, H12 | UC-02, UC-12 | Merged evaluator contract tests: `tests/test_work_order_evidence_contract.py` (PR #640); merged owner-scoped API and tests: `backend/mrhub/api/routes/agent.py`, `tests/test_agent_work_order_evidence_api.py` (PR #641; merge `4f684b8a`) | Partial implementation evidence / verification pending; production verifiers and E8 consumer contract remain open |
 | FR-HUB-07 | HUB | H15, H17, H18 | UC-12 | Schema/log redaction and operator authorization tests | Mapped / verification pending |
 | FR-ELAI-01 | EL_AI | E2, E13, X8 | UC-03, UC-08 | Runtime routing tests proving private context never enters public requests/replies | Mapped / verification pending |
 | FR-ELAI-02 | EL_AI | E10, E14 | UC-03 | Outbound invalid-Unicode regression tests in `tests/test_telegram_api.py` (PR #148 merged); full Telegram adapter integration and test-bot acceptance remain separate gates | Partial implementation evidence / owner gate |
@@ -103,7 +103,7 @@ This matrix connects each cross-product requirement to the owning technical phas
 | D2 local API token file safety (subset of NFR-SEC-02) | EL_AGENT | PR #33 merge `de8007bd3a32e636a589d8afb7806725ac55d414`; `src/el_agent/security.py`, `tests/test_security.py` | Linux/Windows Python 3.11/3.12 exact-head tests passed; no Android Keystore or physical-device acceptance claimed |
 | E10 outbound Unicode input validation (subset of FR-ELAI-02/05) | EL_AI | PR #148 merge `bb7239c46556f6fa68841e48740507f31ba58e6c`; `src/el_ai/telegram/api.py`, `tests/test_telegram_api.py` | Python 3.11/3.12 and post-merge security/supply-chain checks passed; no live Telegram E2E claimed |
 | H10 deterministic evaluator contract (FR-HUB-06) | HUB | PR #640 merge `47a8e4fee206ef72e928fa3ce381a52ee4324921`; `tests/test_work_order_evidence_contract.py` | Exact PR-head checks passed; post-merge main validation was separately tracked |
-| H10 owner-scoped API candidate (FR-HUB-06) | HUB | PR #641; `backend/mrhub/api/routes/agent.py`, `tests/test_agent_work_order_evidence_api.py` | Open PR, exact-head CI pending; production registry intentionally has no verifier adapters yet |
+| H10 owner-scoped API (FR-HUB-06) | HUB | PR #641 merged as `4f684b8a8494ffe263db6769b312f884cd6df311`; `backend/mrhub/api/routes/agent.py`, `tests/test_agent_work_order_evidence_api.py` | Exact PR-head checks passed; production registry intentionally has no verifier adapters yet, so untrusted evidence remains review_required |
 
 These slices update evidence state only. They do not mark the parent requirement or phase Done.
 
