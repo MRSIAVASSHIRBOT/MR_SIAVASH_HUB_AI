@@ -142,6 +142,20 @@ def test_expiry_filters_retrieval_and_lazy_cleanup_removes_fts_rows() -> None:
 
     assert client.get(f"/memory/{memory_id}").status_code == 404
     assert client.post("/memory/search", json={"query": "comet retention"}).json()["results"] == []
+    # Read/search are side-effect free; the expired row remains until an owner write or purge.
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is not None
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries_fts WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is not None
+
+    cleanup_trigger = client.post(
+        "/memory",
+        json={"category": "retention", "content": "new owner memory write cleanup trigger"},
+    )
+    assert cleanup_trigger.status_code == 201
     with repository.tasks._connection() as connection:
         assert connection.execute(
             "SELECT 1 FROM memory_entries WHERE memory_id = ?", (memory_id,)
@@ -150,7 +164,7 @@ def test_expiry_filters_retrieval_and_lazy_cleanup_removes_fts_rows() -> None:
             "SELECT 1 FROM memory_entries_fts WHERE memory_id = ?", (memory_id,)
         ).fetchone() is None
 
-    # The ordinary read already performed lazy cleanup; explicit purge is now a no-op.
+    # The owner write already performed lazy cleanup; explicit purge is now a no-op.
     purge = client.delete("/memory/expired")
     assert purge.status_code == 200
     assert purge.json()["deleted"] == 0
