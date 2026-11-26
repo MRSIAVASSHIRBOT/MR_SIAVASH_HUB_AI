@@ -1358,7 +1358,7 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
 
     connection = connect(tmp_path / "typed-memory.sqlite3")
     monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS[:-2])
-    assert SchemaMigrator(connection).migrate()[-1] == 55
+    assert SchemaMigrator(connection).migrate()[-1] == 56
 
     owner_id = "typed-memory-legacy-owner"
     connection.execute(
