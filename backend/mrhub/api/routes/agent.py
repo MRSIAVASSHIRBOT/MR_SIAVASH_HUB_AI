@@ -725,7 +725,8 @@ def evaluate_persisted_work_order_evidence(
         raise HTTPException(status_code=404, detail="Plan record not found")
     if record.status == "expired":
         raise HTTPException(status_code=410, detail="Plan record has expired")
-    if record.status != "active":
+    # Consumed records remain readable only for evaluating their bound workflow.
+    if record.status not in {"active", "consumed"}:
         raise HTTPException(status_code=409, detail="Plan record is not available")
 
     try:
@@ -1388,6 +1389,11 @@ def execute_agent_workflow(
             raise HTTPException(
                 status_code=409,
                 detail="Workflow submission conflicts with an existing resource",
+            ) from exc
+        except WorkflowRecoveryError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="WorkOrder plan could not be bound to this workflow",
             ) from exc
         trace_id = str(task.task_id)
         response.headers["X-Trace-ID"] = trace_id
