@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from mrhub.agents.awi_planner import ExecutionPlan, PlanningError, generate_execution_plan
@@ -26,6 +26,14 @@ from mrhub.agents.plan_repository import (
 )
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
+from mrhub.agents.work_order_evidence import (
+    EvidenceInputError,
+    EvidenceReference,
+    EvidenceVerifierRegistry,
+    WorkOrderCriterion,
+    WorkOrderSnapshot,
+    evaluate_work_order_evidence,
+)
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
 from mrhub.agents.work_order_intelligence import assess_work_order_intelligence
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
@@ -224,6 +232,30 @@ class PersistedGoalPlanningRequest(GoalPlanningRequest):
     """Bounded request for a short-lived, encrypted plan record."""
 
     expires_in_seconds: int = Field(default=900, ge=60, le=86_400)
+
+
+class EvidenceReferenceInput(BaseModel):
+    """Opaque evidence reference; callers cannot submit verifier status or payload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9._:-]{0,79}$")
+    criterion_id: str = Field(min_length=6, max_length=6, pattern=r"^ac_[0-9]{3}$")
+    source_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9._:-]{0,79}$")
+    source_ref: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+    evidence_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    work_order_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    work_order_revision: int = Field(ge=1, strict=True)
+    observed_at: str = Field(min_length=1, max_length=40)
+    verifier_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9._:-]{0,79}$")
+
+
+class WorkOrderEvidenceEvaluationRequest(BaseModel):
+    """A bounded set of opaque references to review against one persisted plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    evidence: list[EvidenceReferenceInput] = Field(default_factory=list, max_length=100)
 
 
 def _canonical_plan_digest(payload: dict[str, object]) -> str:
@@ -631,6 +663,145 @@ def get_persisted_goal_work_order_plan(
     }
 
 
+
+
+@router.post("/work-orders/plans/{plan_id}/evidence/evaluate")
+def evaluate_persisted_work_order_evidence(
+    plan_id: UUID,
+    payload: WorkOrderEvidenceEvaluationRequest,
+    current_user: Annotated[AuthenticatedUser, Depends(require_user)],
+    response: Response,
+    http_request: Request,
+) -> dict[str, object]:
+    """Evaluate opaque evidence for one active, owner-scoped encrypted plan.
+
+    The plan digest is the immutable revision binding. Acceptance-criterion IDs
+    are derived deterministically from the persisted WorkOrder order (ac_001...).
+    Only verifiers registered in trusted server composition code can return a
+    passed/failed outcome. An empty or unconfigured registry therefore fails
+    closed as review_required.
+    """
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    settings = get_settings()
+    tasks = TaskRepository(settings.database_path)
+    tasks.initialize()
+    record = AgentWorkOrderPlanRepository(settings.database_path).get(
+        str(plan_id),
+        owner_user_id=current_user.user_id,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Plan record not found")
+    if record.status == "expired":
+        raise HTTPException(status_code=410, detail="Plan record has expired")
+    if record.status != "active":
+        raise HTTPException(status_code=409, detail="Plan record is not available")
+
+    try:
+        key = load_payload_key()
+    except PayloadEnvelopeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Persisted plans are unavailable until a valid payload key is configured",
+        ) from exc
+
+    try:
+        stored_payload = decrypt_plan_payload(
+            record.envelope,
+            plan_id=record.plan_id,
+            owner_user_id=record.owner_user_id,
+            key=key,
+        )
+        required_fields = {"work_order", "plan"}
+        allowed_fields = required_fields | set(_PERSISTED_PLAN_METADATA_FIELDS)
+        if (
+            not required_fields.issubset(stored_payload)
+            or not set(stored_payload).issubset(allowed_fields)
+        ):
+            raise PayloadEnvelopeError("Agent plan payload shape is invalid")
+        plan_metadata = _extract_persisted_plan_metadata(stored_payload)
+        work_order = WorkOrder.model_validate(stored_payload["work_order"])
+        plan = ExecutionPlan.model_validate(stored_payload["plan"])
+        canonical = {
+            "work_order": work_order.model_dump(mode="json"),
+            "plan": plan.model_dump(mode="json"),
+            **plan_metadata,
+        }
+        digest = _canonical_plan_digest(canonical)
+        if not hmac.compare_digest(digest, record.plan_digest):
+            raise PayloadEnvelopeError("Agent plan digest does not match its stored record")
+    except (PayloadEnvelopeError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Plan record failed integrity or schema validation",
+        ) from exc
+
+    criteria = tuple(
+        WorkOrderCriterion(criterion_id=f"ac_{index:03d}", required=True)
+        for index, _criterion in enumerate(work_order.acceptance_criteria, start=1)
+    )
+    snapshot = WorkOrderSnapshot(
+        work_order_id=f"plan-{record.plan_id}",
+        revision=1,
+        digest=record.plan_digest,
+        criteria=criteria,
+    )
+    references = tuple(
+        EvidenceReference(**item.model_dump(mode="python"))
+        for item in payload.evidence
+    )
+    verifiers = getattr(http_request.app.state, "work_order_evidence_verifiers", None)
+    if not isinstance(verifiers, EvidenceVerifierRegistry):
+        raise HTTPException(
+            status_code=503,
+            detail="Trusted WorkOrder evidence verifier registry is not initialized",
+        )
+    try:
+        report = evaluate_work_order_evidence(snapshot, references, verifiers)
+    except (EvidenceInputError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Evidence references do not match the versioned WorkOrder contract",
+        ) from exc
+
+    try:
+        AuditLogger(tasks).record(
+            event_type="agent.work_order_evidence_evaluated",
+            outcome=report.decision.value,
+            actor_type="user",
+            actor_id=current_user.user_id,
+            subject_type="agent_work_order_plan",
+            subject_id=record.plan_id,
+            metadata={
+                "status": "read_only_evaluation",
+                "decision": report.decision.value,
+                "evidence_count": len(references),
+                "criterion_count": len(criteria),
+                "report_digest": report.report_digest,
+            },
+        )
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Audit storage is unavailable",
+        ) from exc
+
+    return {
+        "plan_id": record.plan_id,
+        "plan_digest": record.plan_digest,
+        "plan_revision": 1,
+        "criteria_map": {
+            f"ac_{index:03d}": criterion
+            for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
+        },
+        "report": report.as_dict(),
+        "read_only": True,
+        "execution_started": False,
+        "tools_executed": False,
+        "permissions_changed": False,
+    }
 
 
 @router.delete("/work-orders/plans/{plan_id}")
