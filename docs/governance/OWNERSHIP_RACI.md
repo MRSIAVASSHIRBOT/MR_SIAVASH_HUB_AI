@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-27
 - **Status:** Initial operating RACI; organization/person-level assignments require owner review.
-- **Authority:** ADR-0047
+- **Authority:** ADR-0051
 - **Scope:** Four active products plus independent security assurance.
 
 ## 1. Roles
