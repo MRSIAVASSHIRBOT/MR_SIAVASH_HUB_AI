@@ -20,6 +20,7 @@ manifest of server-reviewed specialist profiles.
 - Names are unique within the active registry; duplicate registration fails.
 - Each profile has an immutable tool allow-list and a bounded turn count.
 - The default registry is frozen after construction. Registration after freeze fails and the backing mapping is read-only.
+- Metadata composition does not initialize optional tool integrations; the owner-specific runtime registry validates every profile tool scope before execution.
 - The manifest contains stable SHA-256 profile fingerprints. The digest covers the reviewed instructions and public metadata, but the instructions themselves are never returned.
 - The manifest is sorted by profile name and includes an explicit statement that discovery does not authorize execution.
 
