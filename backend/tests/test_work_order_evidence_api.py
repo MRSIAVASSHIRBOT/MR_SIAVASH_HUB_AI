@@ -135,6 +135,10 @@ def test_registered_workflow_step_evidence_accepts_only_exact_typed_criterion():
     assert body["report"]["permissions_changed"] is False
     assert body["execution_started"] is False
     assert body["permissions_changed"] is False
+    assert body["correction_proposal"]["items"] == []
+    assert body["correction_proposal"]["evidence_report_digest"] == body["report"]["report_digest"]
+    assert body["correction_proposal"]["execution_started"] is False
+    assert body["correction_proposal"]["automatic_retry"] is False
     assert body["verifier_contract"] == "hub.workflow_step.v1"
     assert body["decision_scope"] == "declared_work_order_acceptance_criteria_only"
     assert body["goal_completion_claimed"] is False
