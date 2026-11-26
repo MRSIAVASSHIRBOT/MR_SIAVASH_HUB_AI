@@ -66,3 +66,6 @@ signature or proof that the output is correct.
 - Search can filter by lifecycle stage.
 - Lesson candidates remain untrusted, expiring review items. The UI offers an explicit owner-confirmed transition to `retained`, clears expiry and records the owner-attested `user_approved` state. This is an owner attestation, not independent verification.
 - The UI does not automatically promote, consolidate, or execute memory candidates.
+
+
+The create form defaults to the temporary `working` stage with a seven-day expiry. Choosing indefinite `retained` storage is an explicit owner selection rather than the form default.
