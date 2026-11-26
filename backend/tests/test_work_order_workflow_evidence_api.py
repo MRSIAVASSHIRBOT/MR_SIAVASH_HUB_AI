@@ -257,10 +257,7 @@ def test_non_executable_workflow_cannot_consume_a_persisted_work_order_plan():
     )
 
     assert response.status_code == 409
-    assert (
-        response.json()["detail"]
-        == "A persisted WorkOrder plan can only bind to an execution-ready workflow"
-    )
+    assert response.json()["detail"] == "The requested operation conflicts with the current state."
     record = AgentWorkOrderPlanRepository(get_settings().database_path).get(
         plan_id,
         owner_user_id=_owner_id(client),
@@ -296,10 +293,7 @@ def test_plan_binding_rejects_extra_workflow_capability_requirements():
     )
 
     assert response.status_code == 409
-    assert (
-        response.json()["detail"]
-        == "Workflow capability requirements do not match the persisted WorkOrder"
-    )
+    assert response.json()["detail"] == "The requested operation conflicts with the current state."
     record = AgentWorkOrderPlanRepository(get_settings().database_path).get(
         plan_id,
         owner_user_id=_owner_id(client),
