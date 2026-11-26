@@ -19,6 +19,8 @@
 | WO-GOV-006 | G9 | Operate the centralized portfolio risk/dependency register | HUB / delivery coordinator + product risk owners | P1 | IN_PROGRESS | D-01…D-10; R-12 | Every active P0/P1 risk has accountable owner, mitigation, dependency, evidence, status and explicit accept/close decision |
 | WO-GOV-007 | G11 | Adopt Work Order, milestone, release and evidence lifecycle | HUB / delivery coordinator + product maintainers | P1 | IN_PROGRESS | R-01, R-03, R-11, R-12 | Template and delivery standard adopted; linked Work Orders and milestones maintained; exact-SHA evidence and owner gates recorded |
 | WO-GOV-008 | G12 | Complete licensing, privacy, operational ownership, backup and incident readiness review | Ecosystem owner + qualified adviser + product operators | P1 | OWNER GATE | D-04…D-08; R-05…R-09 | [G12 readiness checklist](../governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) completed with written legal/privacy review, named operators, restore drill, incident/rollback plan and explicit cost/live-service decisions |
+| WO-GOV-010 | G3 | Reconcile logical use-case sequences against actual product APIs, schemas and state transitions | HUB coordinates / owning product maintainers | P2 | IN_PROGRESS | R-04, R-13; D-03, D-09 | [G3 sequence diagrams](../architecture/USE_CASE_SEQUENCE_DIAGRAMS.md) reviewed by each product; actual API/module names, denial/failure paths and executable test references linked |
+| WO-GOV-011 | G7 | Align CI and engineering standards across Python, Android and Website stacks | HUB coordinates / product maintainers + Security Assurance | P1 | IN_PROGRESS | R-01, R-10, R-15 | [G7 standards matrix](../governance/ENGINEERING_STANDARDS_MATRIX_G7.md) reviewed; full workflow inventory, immutable action pins, lint/test/security gates and required-check evidence reconciled per exact main SHA |
 | WO-GOV-009 | G8 | Reconcile duplicate historical ADR identifiers with a backward-compatible alias/index plan | HUB / architecture owner + product maintainers | P2 | PROPOSED | R-14 | Complete inbound-link inventory; decide canonical namespace; preserve historical files and citations; provide aliases/redirect notes and merge a separately reviewed compatibility change |
 
 ## 2. Work Order operating rules
@@ -38,9 +40,11 @@
 1. Resolve WO-GOV-001 through explicit review of the existing G0–G12 PR; no parallel governance baseline should be created.
 2. Keep WO-GOV-002 blocked until repository owner/admin applies and verifies the branch rules.
 3. Run WO-GOV-003 against fresh exact-main snapshots, then update G6 and the dependency pins from observed facts.
-4. Execute WO-GOV-004/005 against current product requirements, APIs and tests; create consumer-side acceptance work where required.
-5. Maintain WO-GOV-006/007 as ongoing controls; reconcile G9 risks and G11 milestones on every checkpoint.
-6. Keep WO-GOV-008 behind the owner/legal/operations gate; complete the [G12 checklist](../governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) with accountable reviewers and do not invent legal or production acceptance.
+4. Continue WO-GOV-004 and WO-GOV-010 against product requirements, sequence flows, APIs and tests; create consumer-side acceptance work where required.
+5. Continue WO-GOV-005/009 for ADR index and historical ID compatibility; keep the existing accepted decisions intact.
+6. Continue WO-GOV-011 for G7 workflow and standards parity.
+7. Maintain WO-GOV-006/007 as ongoing controls; reconcile G9 risks and G11 milestones on every checkpoint.
+8. Keep WO-GOV-008 behind the owner/legal/operations gate; complete the [G12 checklist](../governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) with accountable reviewers and do not invent legal or production acceptance.
 
 ## 4. Status change log
 
@@ -48,3 +52,4 @@
 |---|---|---|---|
 | 2026-11-27 | WO-GOV-001 | Existing four-product/G0–G12 baseline identified in PR #639; retained in review rather than duplicated | [PR #639](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/639) |
 | 2026-11-27 | WO-GOV-006/007 | Added canonical G9 register and G11 delivery controls/templates as reviewable artifacts | Current branch PR #639; exact Actions evidence pending |
+| 2026-11-27 | WO-GOV-003/004/010/011 | Added G6 baseline, G2/G3 traceability map, G3 logical sequence diagrams and G7 standards matrix; follow-up evidence reconciliation remains in progress | Current branch PR #639; exact-head checks pending |
