@@ -84,6 +84,8 @@
 
 ## 5. Traceability workflow
 
+The initial requirement-to-phase/use-case map is maintained in [REQUIREMENT_USECASE_TRACEABILITY.md](../traceability/REQUIREMENT_USECASE_TRACEABILITY.md). It is an index only; it does not mark implementation or acceptance complete.
+
 Each requirement is decomposed into a Work Order with:
 - requirement ID(s);
 - owning product and accountable owner;
