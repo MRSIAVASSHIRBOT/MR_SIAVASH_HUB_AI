@@ -11,7 +11,7 @@
 
 | ID | Phase | Outcome | Owning repository / accountable role | Priority | Status | Dependencies / risks | Acceptance evidence |
 |---|---|---|---|---|---|---|---|
-| WO-GOV-001 | G0/G1/G4/G8 | Establish and accept the four-product scope, portfolio roles and ADR-0051 | HUB / ecosystem owner + architecture | P1 | REVIEW | D-01; R-02 | Reviewed/merged ADR-0051 and G0–G12 baseline; current repository entry points and active roadmaps agree |
+| WO-GOV-001 | G0/G1/G4/G8 | Establish and accept the four-product scope, portfolio roles and ADR-0051 | HUB / ecosystem owner + architecture | P1 | ACCEPTED | D-01; R-02 | ADR-0051 and G0–G12 baseline merged on HUB main; EL_AI, EL_AGENT and Website entry points/roadmaps aligned in their respective main branches |
 | WO-GOV-002 | G7 | Enforce protected main branches and required review/check policy | All four repositories / repository owner-admin | P1 | BLOCKED | D-02; R-01 | Effective rules read back from GitHub for HUB, EL_AI, EL_AGENT and Website; required checks run on exact PR heads |
 | WO-GOV-003 | G6 | Complete per-repository baseline inventory at current exact main SHAs | Each repository / product maintainer | P1 | IN_PROGRESS | D-09; R-03, R-10, R-11 | Initial [G6 inventory](../governance/REPOSITORY_BASELINE_G6.md) exists; remaining recursive module/config/lockfile inventory, exact source SHAs and live/deployment freshness must be evidenced per repo |
 | WO-GOV-004 | G2/G3 | Link requirements and use cases to owning product, Work Order and executable verification | HUB coordinates / product owners | P2 | IN_PROGRESS | R-12, R-13 | Initial [G2/G3 traceability map](../traceability/REQUIREMENT_USECASE_TRACEABILITY.md) covers all catalogue IDs; exact source/test IDs, Work Order links and current-SHA results remain to be reconciled |
@@ -37,7 +37,7 @@
 
 ## 3. Next sequencing
 
-1. Resolve WO-GOV-001 through explicit review of the existing G0–G12 PR; no parallel governance baseline should be created.
+1. WO-GOV-001 is ACCEPTED on 2026-11-27; retain the four-product boundary and ADR-0051 as current authority.
 2. Keep WO-GOV-002 blocked until repository owner/admin applies and verifies the branch rules.
 3. Run WO-GOV-003 against fresh exact-main snapshots, then update G6 and the dependency pins from observed facts.
 4. Continue WO-GOV-004 and WO-GOV-010 against product requirements, sequence flows, APIs and tests; create consumer-side acceptance work where required.
@@ -51,5 +51,6 @@
 | Date | Work Order | Change | Evidence |
 |---|---|---|---|
 | 2026-11-27 | WO-GOV-001 | Existing four-product/G0–G12 baseline identified in PR #639; retained in review rather than duplicated | [PR #639](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/639) |
+| 2026-11-27 | WO-GOV-001 | Accepted: ADR-0051 and G0–G12 baseline merged to HUB main; EL_AI, EL_AGENT and Website ownership/roadmap alignment merged to each main | [HUB PR #639](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/639) · [EL_AI PR #147](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/pull/147) · [EL_AGENT PR #32](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/pull/32) · [Website PR #319](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/pull/319) |
 | 2026-11-27 | WO-GOV-006/007 | Added canonical G9 register and G11 delivery controls/templates as reviewable artifacts | Current branch PR #639; exact Actions evidence pending |
 | 2026-11-27 | WO-GOV-003/004/010/011 | Added G6 baseline, G2/G3 traceability map, G3 logical sequence diagrams and G7 standards matrix; follow-up evidence reconciliation remains in progress | Current branch PR #639; exact-head checks pending |
