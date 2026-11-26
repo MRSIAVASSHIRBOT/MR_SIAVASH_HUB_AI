@@ -768,10 +768,6 @@ def evaluate_persisted_work_order_evidence(
         )
         for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
     )
-    planned_capabilities = {
-        step.step_id: tuple(sorted(step.required_capabilities))
-        for step in plan.steps
-    }
     work_order_digest = _canonical_plan_digest(
         {"work_order": work_order.model_dump(mode="json")}
     )
