@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from mrhub.agents.work_order_evidence import EvidenceVerifierRegistry
 from mrhub.api.errors import (
     API_ERROR_RESPONSES,
     http_exception_handler,
@@ -75,6 +76,8 @@ def create_app() -> FastAPI:
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
     app.state.request_metrics = RequestMetrics()
+    # Trusted adapters register only in server composition code; no HTTP route can register verifiers.
+    app.state.work_order_evidence_verifiers = EvidenceVerifierRegistry()
 
     # Preserve legacy 'detail' fields while exposing a stable error envelope.
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)

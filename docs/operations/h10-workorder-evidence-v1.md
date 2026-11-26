@@ -52,3 +52,43 @@ This change adds the deterministic contract and its unit tests only. It does not
 The tests in this change cover deterministic aggregation, required/optional criteria, missing/unregistered verifiers, failures, stale references, conflicts, malformed verifier outputs, digest mismatch, invalid references, duplicate identifiers, bounded input, report privacy, and deterministic report digests.
 
 They do not prove any external evidence source, live Telegram flow, Hub deployment, or semantic correctness of a model-produced result.
+
+## Owner-scoped API candidate — PR #641 (2026-11-27)
+
+The current implementation candidate adds:
+
+- `POST /agent/work-orders/plans/{plan_id}/evidence/evaluate`.
+- It loads the plan only through the authenticated owner's encrypted plan repository lookup, requires an active record, decrypts it with plan/owner associated data, revalidates WorkOrder and ExecutionPlan schemas, and recomputes the stored plan digest before evaluation.
+- The API binds two distinct identities: the full encrypted **plan digest** is recomputed and verified before evaluation; a separate canonical **WorkOrder digest** is computed from the validated WorkOrder JSON and used by the evidence evaluator. The WorkOrder snapshot is revision 1 within the persisted plan record. Acceptance criteria are mapped in order to ac_001... identifiers and returned to the authenticated owner.
+- The request accepts bounded opaque evidence references only. It forbids caller-supplied pass/fail status, raw evidence payloads, and verifier definitions.
+- Verifiers resolve only from the server-side EvidenceVerifierRegistry initialized by the application composition root. The registry currently starts empty. Until trusted production adapters are registered, unknown/unregistered references return review_required; nothing is accepted from client claims.
+- Each evaluation writes an allow-listed audit event with decision, bounded counts and report digest. Raw source references, evidence payloads and WorkOrder text are not written to audit.
+
+**Status:** Candidate implementation in PR #641; not yet merged or accepted by mainline CI. This is progress toward the owner-scoped API gate, not full H10 completion.
+
+### Remaining H10 gates
+
+1. Persist a first-class WorkOrder revision/digest alongside the plan in a backward-compatible versioned planning response; the current API computes the WorkOrder-only digest at read time and binds it to the parent plan record.
+2. Implement and independently review production verifier adapters for approved evidence sources.
+3. Add consumer-driven contract fixtures and an E8 integration in EL_AI; until that passes, E8 must remain execution-coverage-only and goal satisfaction not evaluated.
+4. Run exact-head CI, post-merge CI and any required live integration acceptance.
+
+## Owner-scoped API candidate — PR #641 (2026-11-27)
+
+The current implementation candidate adds:
+
+- `POST /agent/work-orders/plans/{plan_id}/evidence/evaluate`.
+- It loads the plan only through the authenticated owner's encrypted plan repository lookup, requires an active record, decrypts it with plan/owner associated data, revalidates WorkOrder and ExecutionPlan schemas, and recomputes the stored plan digest before evaluation.
+- The evidence snapshot is bound to the exact persisted **plan** digest (not yet a separate canonical WorkOrder-only digest) and a single immutable plan revision. Acceptance criteria are mapped in order to ac_001... identifiers and returned to the authenticated owner.
+- The request accepts bounded opaque evidence references only. It forbids caller-supplied pass/fail status, raw evidence payloads, and verifier definitions.
+- Verifiers resolve only from the server-side EvidenceVerifierRegistry initialized by the application composition root. The registry currently starts empty. Until trusted production adapters are registered, unknown/unregistered references return review_required; nothing is accepted from client claims.
+- Each evaluation writes an allow-listed audit event with decision, bounded counts and report digest. Raw source references, evidence payloads and WorkOrder text are not written to audit.
+
+**Status:** Candidate implementation in PR #641; not yet merged or accepted by mainline CI. This is progress toward the owner-scoped API gate, not full H10 completion.
+
+### Remaining H10 gates
+
+1. Define a canonical WorkOrder-only digest/revision field in a backward-compatible, versioned planning response; the current API binds to the immutable persisted plan digest.
+2. Implement and independently review production verifier adapters for approved evidence sources.
+3. Add consumer-driven contract fixtures and an E8 integration in EL_AI; until that passes, E8 must remain execution-coverage-only and goal satisfaction not evaluated.
+4. Run exact-head CI, post-merge CI and any required live integration acceptance.

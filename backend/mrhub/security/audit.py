@@ -68,6 +68,9 @@ class AuditLogger:
         "step_number",
         "attempt_number",
         "duration_ms",
+        "evidence_count",
+        "criterion_count",
+        "report_digest",
     })
 
     def __init__(self, repository: TaskRepository) -> None:
