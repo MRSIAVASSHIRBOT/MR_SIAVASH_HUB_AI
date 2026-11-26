@@ -49,7 +49,9 @@ def verify_workflow_step_evidence(
 
     expected_step_key = criterion_match.group(1)
     workflow_text, source_step_key = source_match.groups()
-    if expected_step_key not in criterion.allowed_step_ids:
+    bindings = dict(criterion.step_capability_bindings)
+    expected_capabilities = bindings.get(expected_step_key)
+    if expected_capabilities is None:
         return EvidenceVerification(
             VerifierStatus.UNKNOWN,
             reason_code="criterion_step_not_in_plan",
@@ -59,7 +61,7 @@ def verify_workflow_step_evidence(
             VerifierStatus.UNKNOWN,
             reason_code="criterion_source_mismatch",
         )
-    if not criterion.allowed_capabilities:
+    if not expected_capabilities:
         return EvidenceVerification(
             VerifierStatus.UNKNOWN,
             reason_code="criterion_capability_scope_missing",
@@ -119,7 +121,7 @@ def verify_workflow_step_evidence(
         )
 
     step_name = step.get("step_name")
-    if not isinstance(step_name, str) or step_name not in criterion.allowed_capabilities:
+    if not isinstance(step_name, str) or step_name not in expected_capabilities:
         return EvidenceVerification(
             VerifierStatus.UNKNOWN,
             reason_code="workflow_step_capability_mismatch",
