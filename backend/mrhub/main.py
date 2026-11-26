@@ -49,6 +49,7 @@ from mrhub.api.routes.tasks import router as tasks_router
 from mrhub.api.routes.telegram_integration import router as telegram_integration_router
 from mrhub.api.routes.tools import router as tools_router
 from mrhub.api.routes.video_intelligence import router as video_intelligence_router
+from mrhub.agents.work_order_evidence import EvidenceVerifierRegistry
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.infrastructure.request_metrics import RequestMetrics
@@ -75,6 +76,8 @@ def create_app() -> FastAPI:
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
     app.state.request_metrics = RequestMetrics()
+    # Trusted adapters register only in server composition code; no HTTP route can register verifiers.
+    app.state.work_order_evidence_verifiers = EvidenceVerifierRegistry()
 
     # Preserve legacy 'detail' fields while exposing a stable error envelope.
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
