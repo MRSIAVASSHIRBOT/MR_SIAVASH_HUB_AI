@@ -4,6 +4,8 @@
 **Purpose:** Establish a traceable planning contract for the 73-phase roadmap.  
 **Status semantics:** This file is a dependency and evidence baseline. It does **not** declare any phase complete.
 
+> **Historical baseline — active scope superseded 2026-11-27:** The 73-phase inventory below records the prior portfolio decision in ADR-0046, including EL_IR_BOT B0–B11 and the previous exclusion of EL_AGENT. [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md) supersedes that decision for current and future work. Do not use B0–B11 as active scope, do not work in EL_IR_BOT, and do not count its historical evidence as EL_AI completion. The new active portfolio contains HUB, EL_AI, EL_AGENT and MR_SIAVASH_AI; use [G0–G12 governance](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) pending a revised four-product technical phase inventory. Historical evidence in this file is retained without being relabelled.
+
 ## 1. Scope and source-of-truth boundary
 
 The requested execution scope currently names these repositories:

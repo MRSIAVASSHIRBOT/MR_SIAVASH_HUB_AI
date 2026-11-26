@@ -3,6 +3,9 @@
 ## Mission
 Develop MR_SIAVASH_HUB_AI as a secure, local-first, modular AI workspace. Follow the architecture and roadmap already documented in this repository; do not invent a parallel architecture.
 
+## Canonical portfolio scope
+Use `docs/architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md` and `docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md` as the current portfolio authority. The active ecosystem has four products: HUB, EL_AI, EL_AGENT and MR_SIAVASH_AI. The ecosystem Telegram bot belongs inside EL_AI. `MR_SIAVASH_EL_IR_BOT` is out of scope; do not inspect, modify, migrate, deploy or create dependencies on it as part of this portfolio. The older 73-phase baseline and PAIOS execution roadmap are historical references for the superseded scope: do not execute B0–B11 or legacy-Bridge migration tasks from them. Any future scope change requires an explicit owner decision and a new ADR.
+
 ## Required workflow
 1. Read the relevant README and architecture/security docs before making structural changes.
 2. Inspect existing implementations and tests before editing. Prefer the smallest coherent change.

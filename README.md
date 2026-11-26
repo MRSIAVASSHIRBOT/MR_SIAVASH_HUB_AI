@@ -12,7 +12,14 @@ An integrated, modular AI workspace designed for local-first and hybrid executio
 MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabilities for agents, memory, workflows, developer assistance, content production, integrations, and defensive security.
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
-**Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).
+**Ecosystem goals:** [Canonical four-product goals and integration boundaries](docs/PROJECT_GOALS_ECOSYSTEM.md).
+
+**Governance & delivery:** [G0–G12 baseline](docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) · [ADR-0051](docs/architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md) · [ADR index](docs/architecture/ADR_INDEX.md) · [ADR template](docs/architecture/decisions/ADR_TEMPLATE.md) · [G12 readiness checklist](docs/governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) · [G9 risk register](docs/governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) · [G11 delivery standard](docs/management/DELIVERY_MANAGEMENT_STANDARD.md) · [Work Order registry](docs/management/ECOSYSTEM_WORK_ORDERS.md) · [Work Order template](docs/management/WORK_ORDER_TEMPLATE.md).
+
+**Product & requirements:** [G0/G1 product strategy](docs/product/PRODUCT_STRATEGY_G0_G1.md) · [FR/NFR requirements](docs/requirements/ECOSYSTEM_REQUIREMENTS.md) · [Use cases](docs/architecture/USE_CASE_CATALOG.md) · [Ownership RACI](docs/governance/OWNERSHIP_RACI.md).
+
+**Technical roadmap:** [76-phase four-product inventory](docs/roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md).
+
 
 
 **Operational capabilities:** [AWI, GPI, CGI, PAIOS, gap detection, planning, self-evaluation, quality and security requirements](docs/OPERATIONAL_CAPABILITIES.md).
