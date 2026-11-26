@@ -742,10 +742,13 @@ def evaluate_persisted_work_order_evidence(
         WorkOrderCriterion(criterion_id=f"ac_{index:03d}", required=True)
         for index, _criterion in enumerate(work_order.acceptance_criteria, start=1)
     )
+    work_order_digest = _canonical_plan_digest(
+        {"work_order": work_order.model_dump(mode="json")}
+    )
     snapshot = WorkOrderSnapshot(
         work_order_id=f"plan-{record.plan_id}",
         revision=1,
-        digest=record.plan_digest,
+        digest=work_order_digest,
         criteria=criteria,
     )
     references = tuple(
@@ -791,6 +794,8 @@ def evaluate_persisted_work_order_evidence(
     return {
         "plan_id": record.plan_id,
         "plan_digest": record.plan_digest,
+        "work_order_digest": work_order_digest,
+        "work_order_revision": 1,
         "plan_revision": 1,
         "criteria_map": {
             f"ac_{index:03d}": criterion
