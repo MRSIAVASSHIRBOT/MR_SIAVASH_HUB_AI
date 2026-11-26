@@ -1399,6 +1399,11 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
     monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS)
     assert SchemaMigrator(connection).migrate() == [57, 58, 59]
 
+    expiry_indexes = {
+        row["name"] for row in connection.execute("PRAGMA index_list(memory_entries)")
+    }
+    assert "idx_memory_owner_expiry" in expiry_indexes
+
     columns = {
         row["name"] for row in connection.execute("PRAGMA table_info(memory_entries)")
     }
