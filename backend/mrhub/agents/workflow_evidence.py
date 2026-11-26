@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from uuid import UUID
 
+from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
 from mrhub.agents.work_order_evidence import (
     EvidenceReference,
     EvidenceVerification,
@@ -15,7 +16,6 @@ from mrhub.agents.work_order_evidence import (
     VerifierStatus,
     WorkOrderCriterion,
 )
-from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 
 _CRITERION_PATTERN = re.compile(r"^workflow_step_succeeded:([a-z][a-z0-9_-]{0,39})$")
@@ -91,10 +91,16 @@ def verify_workflow_step_evidence(
             VerifierStatus.UNKNOWN,
             reason_code="work_order_plan_binding_missing",
         )
-    plan_record = plan_repository.get(
-        reference.plan_id,
-        owner_user_id=reference.owner_user_id,
-    )
+    try:
+        plan_record = plan_repository.get(
+            reference.plan_id,
+            owner_user_id=reference.owner_user_id,
+        )
+    except Exception:  # noqa: BLE001 - unavailable binding evidence remains unknown.
+        return EvidenceVerification(
+            VerifierStatus.UNKNOWN,
+            reason_code="work_order_plan_lookup_unavailable",
+        )
     if (
         plan_record is None
         or plan_record.status != "consumed"
