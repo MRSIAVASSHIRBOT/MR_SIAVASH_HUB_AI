@@ -10,7 +10,6 @@ from mrhub.agents.work_order_evidence import (
 )
 from mrhub.agents.workflow_evidence import verify_workflow_step_evidence
 
-
 WORK_ORDER_DIGEST = "a" * 64
 OUTPUT_DIGEST = "b" * 64
 WORKFLOW_ID = "123e4567-e89b-12d3-a456-426614174000"
