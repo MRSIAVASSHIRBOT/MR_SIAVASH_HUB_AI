@@ -3,7 +3,7 @@
 - **Date:** 2026-11-27
 - **Status:** Initial traceability baseline; detailed product backlog decomposition continues.
 - **Scope:** HUB, EL_AI, EL_AGENT, MR_SIAVASH_AI
-- **Portfolio authority:** [ADR-0047](../architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md)
+- **Portfolio authority:** [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 
 ## 1. Requirement semantics
 
