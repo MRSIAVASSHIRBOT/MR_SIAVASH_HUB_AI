@@ -27,7 +27,8 @@ def test_agent_registry_endpoint_returns_frozen_metadata_without_instructions():
         }
         for item in body["agents"]
     )
-    assert "instructions" not in first.text
+    assert all("instructions" not in item for item in body["agents"])
+    assert body["instructions_exposed"] is False
     assert first.headers["cache-control"] == "no-store"
 
 
@@ -44,7 +45,8 @@ def test_agent_run_fails_closed_when_shared_registry_is_unavailable():
         client.app.state.agent_registry = registry
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Agent registry is not ready"
+    # The app-level exception sanitizer intentionally hides internal 503 details.
+    assert response.json()["detail"] == "The service is temporarily unavailable."
 
 
 def test_agent_registry_endpoint_requires_owner_authentication():
