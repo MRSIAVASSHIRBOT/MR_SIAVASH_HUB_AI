@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mrhub.api.dependencies import require_user
 from mrhub.config import get_settings
@@ -45,6 +45,7 @@ def _validate_finite_numeric(value: object, field_name: str) -> object:
 
 class MemoryCreate(BaseModel):
     memory_type: Literal["unspecified", "episodic", "semantic", "procedural"] = "unspecified"
+    memory_stage: Literal["working", "lesson_candidate", "retained"] = "retained"
     category: str = Field(min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
     content: str = Field(min_length=1, max_length=2000)
     provenance: str = Field(default="user-authored", min_length=1, max_length=300)
@@ -78,9 +79,21 @@ class MemoryCreate(BaseModel):
                 raise ValueError("Expiry timestamp must be in the future")
         return value
 
+    @model_validator(mode="after")
+    def ephemeral_stages_require_bounded_expiry(self):
+        limits = {"working": 7 * 24 * 60 * 60, "lesson_candidate": 30 * 24 * 60 * 60}
+        if self.memory_stage in limits:
+            if self.expires_at is None:
+                raise ValueError("Working memory and lesson candidates require an expiry")
+            seconds = (self.expires_at.astimezone(UTC) - datetime.now(UTC)).total_seconds()
+            if seconds <= 0 or seconds > limits[self.memory_stage]:
+                raise ValueError("Memory expiry exceeds the lifecycle stage retention limit")
+        return self
+
 
 class MemoryUpdate(BaseModel):
     memory_type: Literal["unspecified", "episodic", "semantic", "procedural"] | None = None
+    memory_stage: Literal["working", "lesson_candidate", "retained"] | None = None
     category: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[\w .:/-]+$")
     content: str | None = Field(default=None, min_length=1, max_length=2000)
     provenance: str | None = Field(default=None, min_length=1, max_length=300)
@@ -94,11 +107,11 @@ class MemoryUpdate(BaseModel):
     verification_status: Literal["user_authored", "user_approved"] | None = None
     expires_at: datetime | None = None
 
-    @field_validator("memory_type")
+    @field_validator("memory_type", "memory_stage")
     @classmethod
-    def memory_type_must_not_be_null(cls, value: str | None):
+    def classifications_must_not_be_null(cls, value: str | None):
         if value is None:
-            raise ValueError("memory_type cannot be null")
+            raise ValueError("Memory classifications cannot be null")
         return value
 
     @field_validator("content")
@@ -127,6 +140,9 @@ class MemorySearch(BaseModel):
     limit: int = Field(default=10, ge=1, le=25, strict=True)
     memory_types: list[Literal["unspecified", "episodic", "semantic", "procedural"]] | None = Field(
         default=None, max_length=4
+    )
+    memory_stages: list[Literal["working", "lesson_candidate", "retained"]] | None = Field(
+        default=None, max_length=3
     )
 
 
@@ -170,7 +186,10 @@ def _audit(user: AuthenticatedUser, event: str, memory_id: str | None, reason: s
 def create_memory(
     payload: MemoryCreate, user: Annotated[AuthenticatedUser, Depends(require_user)]
 ) -> dict[str, object]:
-    record = _repository().create(user.user_id, payload.model_dump())
+    try:
+        record = _repository().create(user.user_id, payload.model_dump())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid memory lifecycle or content") from exc
     _audit(user, "memory.created", str(record["memory_id"]), "memory_created")
     return record
 
@@ -200,6 +219,7 @@ def search_memory(
         payload.query,
         payload.limit,
         memory_types=payload.memory_types,
+        memory_stages=payload.memory_stages,
     )
     _audit(user, "memory.searched", None, "lexical_search")
     return {
@@ -215,6 +235,7 @@ def search_memory(
             "candidate_limit": 100,
             "owner_approval_is_self_attested": True,
             "confidence_is_owner_supplied": True,
+            "lifecycle_stage_filter": payload.memory_stages,
             "note": (
                 "The score estimates retrieval relevance only. Owner approval and confidence "
                 "are caller-supplied signals, not independent verification, truth, safety, "
