@@ -27,6 +27,7 @@ from mrhub.agents.plan_repository import (
 from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.repository import AgentRunRepository
 from mrhub.agents.work_order import WorkOrder, assess_work_order_capabilities
+from mrhub.agents.work_order_correction import build_work_order_correction_proposal
 from mrhub.agents.work_order_evidence import (
     EvidenceInputError,
     EvidenceReference,
@@ -738,10 +739,39 @@ def evaluate_persisted_work_order_evidence(
             detail="Plan record failed integrity or schema validation",
         ) from exc
 
+    declared_criteria = set(work_order.acceptance_criteria)
+    covered_criteria = {
+        criterion
+        for step in plan.steps
+        for criterion in step.verifies_criteria
+    }
+    if covered_criteria != declared_criteria:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan does not cover the WorkOrder acceptance criteria",
+        )
     criteria = tuple(
-        WorkOrderCriterion(criterion_id=f"ac_{index:03d}", required=True)
-        for index, _criterion in enumerate(work_order.acceptance_criteria, start=1)
+        WorkOrderCriterion(
+            criterion_id=f"ac_{index:03d}",
+            required=True,
+            description=criterion,
+            allowed_step_ids=tuple(
+                step.step_id for step in plan.steps
+                if criterion in step.verifies_criteria
+            ),
+            allowed_capabilities=tuple(sorted({
+                capability
+                for step in plan.steps
+                if criterion in step.verifies_criteria
+                for capability in step.required_capabilities
+            })),
+        )
+        for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
     )
+    planned_capabilities = {
+        step.step_id: tuple(sorted(step.required_capabilities))
+        for step in plan.steps
+    }
     work_order_digest = _canonical_plan_digest(
         {"work_order": work_order.model_dump(mode="json")}
     )
@@ -752,7 +782,10 @@ def evaluate_persisted_work_order_evidence(
         criteria=criteria,
     )
     references = tuple(
-        EvidenceReference(**item.model_dump(mode="python"))
+        EvidenceReference(
+            **item.model_dump(mode="python"),
+            owner_user_id=current_user.user_id,
+        )
         for item in payload.evidence
     )
     verifiers = getattr(http_request.app.state, "work_order_evidence_verifiers", None)
@@ -769,6 +802,7 @@ def evaluate_persisted_work_order_evidence(
             detail="Evidence references do not match the versioned WorkOrder contract",
         ) from exc
 
+    correction_proposal = build_work_order_correction_proposal(report)
     try:
         AuditLogger(tasks).record(
             event_type="agent.work_order_evidence_evaluated",
@@ -802,6 +836,7 @@ def evaluate_persisted_work_order_evidence(
             for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
         },
         "report": report.as_dict(),
+        "correction_proposal": correction_proposal.as_dict(),
         "read_only": True,
         "execution_started": False,
         "tools_executed": False,
