@@ -15,6 +15,11 @@ The initial release is designed for one primary user while keeping clean boundar
 **Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).
 **Governance & product strategy:** [G0–G12 baseline, four-product ownership, layered architecture, current evidence and risks](docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md).  
 **Accepted portfolio decision:** [ADR-0047 — four-product scope and EL_AI Telegram ownership](docs/architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md).
+**Product strategy:** [G0/G1 vision, mission, values and outcomes](docs/product/PRODUCT_STRATEGY_G0_G1.md).  
+**Requirements:** [Cross-product FR/NFR catalogue](docs/requirements/ECOSYSTEM_REQUIREMENTS.md).  
+**Use cases:** [Actor and workflow catalogue](docs/architecture/USE_CASE_CATALOG.md).  
+**Ownership:** [Four-product RACI](docs/governance/OWNERSHIP_RACI.md).  
+**Technical phases:** [76-phase four-product roadmap](docs/roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md).
 
 
 **Operational capabilities:** [AWI, GPI, CGI, PAIOS, gap detection, planning, self-evaluation, quality and security requirements](docs/OPERATIONAL_CAPABILITIES.md).
