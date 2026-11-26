@@ -182,7 +182,7 @@ class AgentWorkOrderPlanRepository:
 
 
     def expire_due(self, *, limit: int = 100) -> int:
-        """Erase ciphertext for a bounded batch of expired, still-active plans."""
+        """Erase expired active plans and ciphertext for expired consumed plans in bounded batches."""
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise AgentWorkOrderPlanError("Expiry sweep limit must be between 1 and 500")
 
