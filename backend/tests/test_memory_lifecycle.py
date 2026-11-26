@@ -259,7 +259,7 @@ def _insert_memory_row(
     return memory_id
 
 
-def test_memory_access_deletes_expired_rows_in_owner_scoped_batches():
+def test_memory_write_deletes_expired_rows_in_owner_scoped_batches():
     authenticated_client()
     repository = MemoryRepository(get_settings().database_path)
     owner_id = _owner_id(repository)
@@ -303,8 +303,17 @@ def test_memory_access_deletes_expired_rows_in_owner_scoped_batches():
         expires_at=expired_at,
     )
 
+    created = repository.create(
+        owner_id,
+        {
+            "category": "cleanup-trigger",
+            "content": "new owner memory write triggers bounded expiry cleanup",
+            "provenance": "owner-authored test fixture",
+        },
+    )
+    created_id = str(created["memory_id"])
     listed = repository.list_entries(owner_id, limit=100)
-    assert [item["memory_id"] for item in listed] == [active_owner_id]
+    assert {item["memory_id"] for item in listed} == {active_owner_id, created_id}
 
     with repository.tasks._connection() as connection:
         remaining = {
@@ -322,8 +331,8 @@ def test_memory_access_deletes_expired_rows_in_owner_scoped_batches():
             )
         }
 
-    assert remaining == {active_owner_id, expired_other_id}
-    assert fts_rows == {active_owner_id, expired_other_id}
+    assert remaining == {active_owner_id, expired_other_id, created_id}
+    assert fts_rows == {active_owner_id, expired_other_id, created_id}
 
 
 def test_memory_expiry_cleanup_respects_a_strict_batch_limit():
