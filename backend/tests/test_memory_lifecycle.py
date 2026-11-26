@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
@@ -178,16 +179,41 @@ def test_dreaming_only_considers_retained_entries():
     assert result["state_changed"] is False
 
 
-def test_existing_records_default_to_retained_after_schema_upgrade():
+def test_legacy_insert_defaults_to_retained_after_schema_upgrade():
     client = authenticated_client()
-    response = client.post(
-        "/memory",
-        json={"category": "compatibility", "content": "legacy memory compatibility marker"},
-    )
-    assert response.status_code == 201
-    assert response.json()["memory_stage"] == "retained"
-
     repository = MemoryRepository(get_settings().database_path)
+    owner_id = _owner_id(repository)
+    memory_id = str(uuid4())
+    now = datetime.now(UTC).isoformat()
+
+    # Simulate an older application writer that does not know about memory_stage.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO memory_entries (
+                memory_id, owner_user_id, scope, memory_type, category, content,
+                provenance, confidence, verification_status, created_at,
+                updated_at, expires_at
+            ) VALUES (?, ?, 'private', 'unspecified', ?, ?, ?, 0.7,
+                      'user_authored', ?, ?, NULL)
+            """,
+            (
+                memory_id,
+                owner_id,
+                "compatibility",
+                "legacy memory compatibility marker",
+                "legacy-writer",
+                now,
+                now,
+            ),
+        )
+
+    from uuid import UUID
+
+    migrated = repository.get(owner_id, UUID(memory_id))
+    assert migrated is not None
+    assert migrated["memory_stage"] == "retained"
+
     with repository.tasks._connection() as connection:
         migration = connection.execute(
             "SELECT version, name FROM schema_migrations WHERE version = 58"
