@@ -70,3 +70,14 @@ Dreaming may propose deduplication, summarization, category changes, contradicti
 4. Provenance-aware Dreaming preview and review/commit flow.
 5. Semantic retrieval behind a feature flag with lexical fallback.
 6. Shared-memory UI, audit, purge, and tests.
+
+
+## Implemented lifecycle stage boundary — migration 58
+
+The storage layer now separates the durable memory type (`episodic`, `semantic`, `procedural`, or `unspecified`) from its lifecycle stage:
+
+- `working`: temporary task context. Expiry is mandatory and bounded to seven days.
+- `lesson_candidate`: an unapproved learning proposal. Expiry is mandatory and bounded to thirty days; it remains in the owner review queue.
+- `retained`: owner-managed memory. Expiry is optional.
+
+Migration 58 adds the stage column with a backward-compatible `retained` default for every existing record. The existing private owner scope is unchanged. Search can filter on both type and lifecycle stage. Dreaming only proposes consolidation for retained entries; working context is excluded, and lesson candidates are not silently promoted or merged. These stages do not grant cross-project visibility, trust, or execution authority.
