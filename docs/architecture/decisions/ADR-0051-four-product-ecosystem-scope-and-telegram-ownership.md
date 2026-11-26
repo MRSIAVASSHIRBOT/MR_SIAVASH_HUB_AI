@@ -1,6 +1,6 @@
 # ADR-0051 — Four-product ecosystem scope and Telegram ownership
 
-- **Status:** Accepted by the ecosystem owner; repository integration pending review
+- **Status:** Accepted by the ecosystem owner and integrated into HUB main on 2026-11-27 (PR #639; post-merge CI tracked separately)
 - **Date:** 2026-11-27
 - **Decision owner:** MR_SIAVASH ecosystem owner
 - **Supersedes:** ADR-0046 for current and future portfolio scope; supersedes the product-taxonomy and legacy-Bridge assumptions in proposed ADR-0050
