@@ -25,7 +25,7 @@ Build a coherent personal AI ecosystem in which:
 
 The ecosystem should remain modular, replaceable, observable, privacy-preserving and cost-aware. Prefer local-first execution where practical and explicit hybrid routing where needed. Preserve clear public/private and model/tool/device trust boundaries. Do not introduce distributed services merely because the architecture has multiple logical layers.
 
-Mission, measurable outcomes, target user journeys and product-level success metrics still require a focused G0/G1 owner review; this baseline does not invent those decisions.
+A proposed mission, principles, strategic outcomes, product positioning and metric definitions are now documented in [Product Strategy G0/G1](product/PRODUCT_STRATEGY_G0_G1.md). Numeric SLO targets and final priority trade-offs remain owner-review decisions; they are not invented from insufficient usage data.
 
 ## 3. Canonical product portfolio and ownership
 
@@ -116,23 +116,35 @@ Status values:
 
 | Phase | Title | Current status | Evidence already present | Next acceptance gate |
 |---|---|---|---|---|
-| G0 | Vision & Mission | PARTIAL | Canonical ecosystem vision and product direction exist in `PROJECT_GOALS_ECOSYSTEM.md` and product READMEs | Owner-approved mission, values, measurable outcomes and short-/long-term goals |
-| G1 | Product Strategy | IN_PROGRESS | Four product roles and responsibilities exist; ADR-0047 records the updated scope in this branch | Merge the current scope decision; approve audience, use cases, value proposition, product boundaries and success metrics per product |
-| G2 | Requirements Engineering | PARTIAL | Functional requirements, security invariants, API contracts and operational acceptance criteria are distributed across repository docs | Build a traceable cross-product functional/NFR catalogue with priority, owner, verification method and dependencies |
-| G3 | Use Case Architecture | PARTIAL | Agent execution cycle, Telegram flows, device boundaries and public Gateway flows are documented separately | Publish actor-based use-case catalogue with primary, alternate, exception, failure, recovery and privacy paths |
+| G0 | Vision & Mission | IN_PROGRESS | Draft vision, mission, principles, outcomes and measurement definitions in [Product Strategy G0/G1](product/PRODUCT_STRATEGY_G0_G1.md) | Owner review of mission/values and numeric targets after a representative baseline |
+| G1 | Product Strategy | IN_PROGRESS | Draft positioning, primary actors, value propositions, non-goals and metric definitions in [Product Strategy G0/G1](product/PRODUCT_STRATEGY_G0_G1.md) | Owner approval of audience expansion, portfolio priorities and numeric success targets |
+| G2 | Requirements Engineering | IN_PROGRESS | Initial FR/NFR catalogue, priorities, owners and verification methods in [ECOSYSTEM_REQUIREMENTS.md](requirements/ECOSYSTEM_REQUIREMENTS.md) | Decompose each requirement into repository issues/Work Orders and verify implementation traceability |
+| G3 | Use Case Architecture | IN_PROGRESS | Actor model and 12 primary/exception use cases in [USE_CASE_CATALOG.md](architecture/USE_CASE_CATALOG.md) | Add sequence diagrams and product-specific executable acceptance scenarios linked to tests |
 | G4 | Ecosystem Architecture | IN_PROGRESS | PAIOS target architecture, logical module boundaries and integration contracts exist; ADR-0047 and this layer model update the portfolio boundary | Reconcile the target architecture and active roadmap with the four-product model; approve contract and data-flow diagrams |
-| G5 | Project Ownership | PARTIAL | Product responsibility and cross-project authority are documented | Make the four-product RACI/ownership matrix consistent across entry points, contracts, phase plans and release runbooks |
+| G5 | Project Ownership | IN_PROGRESS | Product capability owners and reserved owner decisions in [OWNERSHIP_RACI.md](governance/OWNERSHIP_RACI.md) | Owner validates named maintainers and release operators; mirror ownership into repo issue/PR templates |
 | G6 | Repository Baseline | PARTIAL | Current main heads, root inventories, open PRs and latest mainline Actions observations were inspected for all four repositories | Complete per-repository code/architecture/dependency/configuration/test/deployment/live-runtime inventories and record evidence freshness |
 | G7 | Engineering Standards | PARTIAL | HUB `AGENTS.md`, continuous execution standard, per-repository CI and security workflows exist | Apply and verify required branch protection/rulesets; align contribution, testing, review, dependency-lock and release standards across four repositories |
 | G8 | Architecture Decisions | IN_PROGRESS | ADRs 0041–0046 and Website decisions 0001/0003/0004 exist; ADR-0047 records the owner-approved scope correction in this branch | Merge ADR-0047; record future cross-product contract, data-ownership and deployment decisions before implementation |
 | G9 | Risk & Dependency Register | PARTIAL | Risks and dependencies appear across the 73-phase baseline, status ledger, release checkpoints and security docs | Maintain one current portfolio register with severity, likelihood, owner, mitigation, due gate and evidence link |
-| G10 | Product Portfolio | PARTIAL | Four products are identifiable and have local roadmaps; older phase inventory still reflects a different portfolio | Publish the four-product capability matrix, priority/backlog, phase inventory, roadmap dependencies and product lifecycle states |
-| G11 | Delivery Management | PARTIAL | PR-based delivery, Work Orders, continuous execution standard and local release gates exist | Establish cross-project milestones, release trains, dependency-aware Work Orders, change windows, rollback owners and portfolio progress reporting |
+| G10 | Product Portfolio | IN_PROGRESS | 76-phase four-product technical inventory in [FOUR_PRODUCT_TECHNICAL_PHASES.md](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | Audit each technical phase against exact mainline code/tests and publish prioritized Work Orders |
+| G11 | Delivery Management | IN_PROGRESS | Technical phase dependency gates and global DoD in [FOUR_PRODUCT_TECHNICAL_PHASES.md](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md); operating standards in `docs/management/CONTINUOUS_EXECUTION_STANDARD.md` | Create repository-level work orders/milestones and add phase/evidence tracking to release checkpoints |
 | G12 | Legal & Operational Readiness | OWNER ACTION REQUIRED | Repository copyright/security documents and operational runbooks exist; several deployment and live-acceptance gates are explicitly separate from CI | Owner/legal review of IP, licenses, privacy/terms and data handling; confirm operational ownership, backup/incident plans, provider costs and live acceptance before production use |
 
 ### G-phase exit rule
 
 A phase advances only when its deliverables are linked to source-of-truth artifacts, owners are assigned, dependencies are recorded, acceptance criteria are testable, and residual risks are explicit. A phase may contain parallel workstreams, but its acceptance gate remains evidence-based.
+
+## 5.1 G0–G5 and G10–G11 deliverables
+
+| Governance area | Canonical artefact | Purpose |
+|---|---|---|
+| G0/G1 | [Product Strategy](product/PRODUCT_STRATEGY_G0_G1.md) | Proposed mission, values, outcomes, product positioning and metric definitions |
+| G2 | [Requirements Catalogue](requirements/ECOSYSTEM_REQUIREMENTS.md) | Cross-product functional and non-functional requirements with IDs and verification gates |
+| G3 | [Use-Case Catalogue](architecture/USE_CASE_CATALOG.md) | Actors, primary flows, exceptions, privacy boundaries and acceptance conditions |
+| G5 | [Ownership RACI](governance/OWNERSHIP_RACI.md) | Product capability ownership, reserved owner decisions and independent assurance |
+| G10/G11 | [Four-Product Technical Phase Inventory](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | 76 technical phases, dependencies, evidence posture and global Definition of Done |
+
+The technical inventory contains 21 HUB phases (H0–H20), 15 EL_AI phases (E0–E14), 15 EL_AGENT phases (D0–D14), 15 Website phases (A0–A14) and 10 shared phases (X1–X10). Governance phases G0–G12 are separately tracked. The inventory deliberately declares no phase globally DONE until its specific acceptance criteria and exact-mainline evidence are reconciled.
 
 ## 6. Repository and CI baseline — observed 2026-11-27
 
