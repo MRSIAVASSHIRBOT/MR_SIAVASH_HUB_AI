@@ -15,6 +15,7 @@ from mrhub.agents.work_order_evidence import (
     VerifierStatus,
     WorkOrderCriterion,
 )
+from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
 
 _CRITERION_PATTERN = re.compile(r"^workflow_step_succeeded:([a-z][a-z0-9_-]{0,39})$")
@@ -37,6 +38,7 @@ def verify_workflow_step_evidence(
     criterion: WorkOrderCriterion,
     *,
     repository: WorkflowRecoveryRepository,
+    plan_repository: AgentWorkOrderPlanRepository,
 ) -> EvidenceVerification:
     """Verify one exact owner-owned workflow step within the persisted AWI plan scope."""
     criterion_match = _CRITERION_PATTERN.fullmatch(criterion.description)
@@ -83,6 +85,24 @@ def verify_workflow_step_evidence(
         return EvidenceVerification(
             VerifierStatus.UNKNOWN,
             reason_code="evidence_owner_context_missing",
+        )
+    if not isinstance(reference.plan_id, str) or not reference.plan_id:
+        return EvidenceVerification(
+            VerifierStatus.UNKNOWN,
+            reason_code="work_order_plan_binding_missing",
+        )
+    plan_record = plan_repository.get(
+        reference.plan_id,
+        owner_user_id=reference.owner_user_id,
+    )
+    if (
+        plan_record is None
+        or plan_record.status != "consumed"
+        or plan_record.workflow_id != workflow_text
+    ):
+        return EvidenceVerification(
+            VerifierStatus.UNKNOWN,
+            reason_code="workflow_not_bound_to_work_order_plan",
         )
 
     try:
@@ -167,6 +187,7 @@ def build_default_work_order_evidence_verifiers(
 ) -> EvidenceVerifierRegistry:
     """Build the fixed server-owned verifier allow-list for this Hub process."""
     repository = WorkflowRecoveryRepository(database_path)
+    plan_repository = AgentWorkOrderPlanRepository(database_path)
     registry = EvidenceVerifierRegistry()
     registry.register(
         source_type="agent_workflow_step",
@@ -175,6 +196,7 @@ def build_default_work_order_evidence_verifiers(
             reference,
             criterion,
             repository=repository,
+            plan_repository=plan_repository,
         ),
     )
     return registry
