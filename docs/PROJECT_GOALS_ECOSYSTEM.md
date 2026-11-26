@@ -1,8 +1,8 @@
 # Canonical Project Goals — MR_SIAVASH Ecosystem
 
 **Document role:** Canonical product-intent reference for the four connected MR_SIAVASH projects.  
-**Last reviewed:** 2026-11-22  
-**Status:** Living goals and architecture direction; goals are not claims of implementation or production readiness.
+**Last reviewed:** 2026-11-27  
+**Status:** Living goals and architecture direction; goals are not claims of implementation or production readiness. Current portfolio scope is governed by [ADR-0047](architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md); execution governance is tracked in [G0–G12](GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md).
 
 This document records the long-term goals, responsibilities, boundaries, integration direction, priorities, and delivery principles. Repository code, CI, release records, and runtime evidence remain the sources of truth for what is actually implemented. If implementation status conflicts with this document, report the gap instead of changing the goal silently.
 
