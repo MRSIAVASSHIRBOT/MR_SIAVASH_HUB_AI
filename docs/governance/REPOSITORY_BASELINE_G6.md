@@ -21,6 +21,23 @@ The inventory does **not** claim a complete recursive tree listing, exhaustive d
 | [MR_SIAVASH_EL_AGENT](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) | Standalone local/device runtime for Windows and Android | Python 3.11+ for Windows/local runtime; Android Gradle/Kotlin module | Python 3.11/3.12 on Ubuntu and Windows; PowerShell syntax validation; Android debug build/unit test workflow | Hosted CI is not physical Windows/Android acceptance; README says Hub Staging and physical-device acceptance remain pending |
 | [MR_SIAVASH_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI) | Public digital identity, static website, learning workspace and public Gateway | Static Persian-first web app; Cloudflare Worker Gateway package using Node.js | Gateway CI uses Node.js 22, syntax checks and Node test runner under `cloudflare/gateway`; static site quality/Pages has separate deployment evidence | Public/Preview/Production source and D1 state require fresh control-plane readback; historical notes are not current release authorization |
 
+### Latest exact-main source and CI checkpoint — 2026-11-27
+
+This table supersedes the initial portfolio heads/check-run snapshots above for the current default-branch state observed on 2026-11-27. It remains a GitHub source/Actions snapshot, not live deployment, Telegram or physical-device acceptance.
+
+| Repository | Current `main` SHA | Exact-head check-runs | Pending / failed | Open PRs observed | `main` protection |
+|---|---|---:|---|---|---|
+| HUB | `47a8e4fee206ef72e928fa3ce381a52ee4324921` | 14 success; one duplicate scan run cancelled after a successful scan completed | 0 pending; 0 failures | #641 H10 API, #639 governance, #637 PromptForge, #636 portfolio status, #618 Draft Render isolation | `protected=false` |
+| EL_AI | `368cbdf808f9bde672edee4f8fef6ad3fe8e8577` | 4 success | 0 pending; 0 failures | None | `protected=false` |
+| EL_AGENT | `d98aaff9593b7ffac996e0841c1232bae1dee4df` | 5 success | 0 pending; 0 failures | None | `protected=false` |
+| MR_SIAVASH_AI | `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a` | 8 success | 0 pending; 0 failures | #318 Dependabot workflow-action update | `protected=false` |
+
+Source links:
+- [HUB main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions)
+- [EL_AI main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions)
+- [EL_AGENT main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions)
+- [Website main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions)
+
 ## 3. Repository details
 
 ### 3.1 HUB
