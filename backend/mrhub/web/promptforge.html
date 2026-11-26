@@ -74,7 +74,7 @@
   <div class="field"><label>متن دقیق داخل تصویر (در صورت نیاز)</label><textarea id="p_text" placeholder="متن دقیق و زبان آن را وارد کن؛ در غیر این صورت خالی بگذار"></textarea></div>
   <div class="field"><label>دستورهای تکمیلی</label><textarea id="p_extra" placeholder="محدودیت‌ها، اولویت‌ها، مواردی که نباید تغییر کنند..."></textarea></div>
  </div>
- <div class="grid three" style="margin-top:12px">
+ <div class="grid three" class="mt-12">
   <label class="check"><input type="checkbox" id="p_noText" checked> از متن ناخواسته اجتناب شود</label>
   <label class="check"><input type="checkbox" id="p_noLogo" checked> بدون لوگو یا واترمارک</label>
   <label class="check"><input type="checkbox" id="p_coherent" checked> حفظ انسجام ساختاری</label>
@@ -85,7 +85,7 @@
  <div class="output-head"><h3>۴. خروجی نهایی</h3><div class="metrics"><span class="metric">کلمات: <b id="wordCount">0</b></span><span class="metric">کاراکتر: <b id="charCount">0</b></span></div></div>
  <div class="output" id="imageOutput">ایده‌ات را وارد کن و «ساخت پرامپت تصویر» را بزن.</div>
  <div class="toolbar"><button class="btn primary" id="copyImage">کپی پرامپت</button><button class="btn" id="downloadImage">دانلود TXT</button><button class="btn" id="saveImage">ذخیره در کتابخانه</button></div>
- <div id="variants" class="hidden" style="margin-top:15px"></div>
+ <div id="variants" class="hidden" class="mt-15"></div>
 </div>
 </section>
 
@@ -109,7 +109,7 @@
   <div class="field full"><label>موارد ممنوع / خطاهای ناخواسته</label><textarea id="v_avoid" placeholder="flicker, jitter, morphing, inconsistent face, extra objects..."></textarea></div>
  </div>
  <div class="toolbar"><button class="btn primary" id="buildVideo">ساخت پرامپت ویدئو</button><button class="btn" id="copyVideo">کپی</button><button class="btn" id="downloadVideo">دانلود TXT</button></div>
- <div class="output" id="videoOutput" style="margin-top:12px">پرامپت ویدئوی تو اینجا ساخته می‌شود.</div>
+ <div class="output" id="videoOutput" class="mt-12">پرامپت ویدئوی تو اینجا ساخته می‌شود.</div>
  <div class="notice">مدت، فریم‌ریت و قابلیت‌های واقعی به مدل ویدئوساز وابسته‌اند. این ابزار متن دستور را آماده می‌کند و خودش ویدئو رندر نمی‌کند.</div>
 </div>
 </section>
@@ -130,7 +130,7 @@
   <div class="field full"><label>قالب خروجی مورد انتظار</label><textarea id="t_format" placeholder="مثلاً خلاصه، مراحل، کد، تست‌ها، محدودیت‌ها و کارهای باقی‌مانده"></textarea></div>
  </div>
  <div class="toolbar"><button class="btn primary" id="buildText">ساخت System Prompt</button><button class="btn" id="copyText">کپی</button><button class="btn" id="downloadText">دانلود TXT</button></div>
- <div class="output" id="textOutput" style="margin-top:12px">با تکمیل فرم، دستور سیستم ساخته می‌شود.</div>
+ <div class="output" id="textOutput" class="mt-12">با تکمیل فرم، دستور سیستم ساخته می‌شود.</div>
 </div>
 </section>
 
@@ -153,7 +153,7 @@
  <h3>ارزیابی ساختاری پرامپت</h3>
  <p class="sub">این ارزیابی، چک‌لیست ابتکاری و مبتنی بر وجود مؤلفه‌هاست؛ معیار رسمی هیچ مدل هوش مصنوعی نیست و کیفیت خروجی را تضمین نمی‌کند.</p>
  <div class="score"><strong id="scoreNum">0%</strong><div class="bar"><i id="scoreBar"></i></div></div>
- <div id="scoreDetails" class="sub" style="margin-top:12px">پس از ساخت پرامپت تصویر، چک‌لیست اینجا نمایش داده می‌شود.</div>
+ <div id="scoreDetails" class="sub" class="mt-12">پس از ساخت پرامپت تصویر، چک‌لیست اینجا نمایش داده می‌شود.</div>
 </div>
 <div class="panel">
  <h3>روش استفاده حرفه‌ای</h3>
