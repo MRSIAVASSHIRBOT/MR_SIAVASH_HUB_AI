@@ -58,7 +58,6 @@ from mrhub.infrastructure.request_metrics import RequestMetrics
 from mrhub.integrations.assistant_gateway import router as assistant_gateway_router
 from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
-from mrhub.tools.builtins import build_tool_registry
 
 
 def create_app() -> FastAPI:
@@ -80,7 +79,7 @@ def create_app() -> FastAPI:
     app.state.login_attempt_limiter = LoginAttemptLimiter()
     app.state.request_metrics = RequestMetrics()
     # The server-defined specialist catalog is frozen once at application composition.
-    app.state.agent_registry = build_default_agent_registry(build_tool_registry())
+    app.state.agent_registry = build_default_agent_registry()
     # Trusted adapters register only in server composition code; no HTTP route can register verifiers.
     app.state.work_order_evidence_verifiers = EvidenceVerifierRegistry()
 
