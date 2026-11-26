@@ -135,6 +135,7 @@ class MemoryRepository:
         memory_id = str(uuid4())
         now = self._now()
         expires_at = self._validate_lifecycle_expiry(memory_stage, values.get("expires_at"))
+        self.delete_expired(owner_user_id, limit=100)
         with self.tasks._connection() as connection:
             connection.execute(
                 """
@@ -167,6 +168,8 @@ class MemoryRepository:
         return self._record(row)
 
     def get(self, owner_user_id: str, memory_id: UUID, *, include_expired: bool = False):
+        if not include_expired:
+            self.delete_expired(owner_user_id, limit=100)
         query = "SELECT * FROM memory_entries WHERE memory_id = ? AND owner_user_id = ?"
         params: tuple[object, ...] = (str(memory_id), owner_user_id)
         if not include_expired:
@@ -185,6 +188,8 @@ class MemoryRepository:
         memory_stages: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> list[dict[str, object]]:
         bounded_limit = max(1, min(limit, 100))
+        if not include_expired:
+            self.delete_expired(owner_user_id, limit=100)
         query = "SELECT * FROM memory_entries WHERE owner_user_id = ?"
         params: tuple[object, ...] = (owner_user_id,)
         if not include_expired:
@@ -225,11 +230,13 @@ class MemoryRepository:
         if any(key not in allowed for key in changes):
             raise ValueError("Unsupported memory field")
 
+        self.delete_expired(owner_user_id, limit=100)
         with self.tasks._connection() as connection:
             current = connection.execute(
                 "SELECT memory_stage, expires_at FROM memory_entries "
-                "WHERE memory_id = ? AND owner_user_id = ?",
-                (str(memory_id), owner_user_id),
+                "WHERE memory_id = ? AND owner_user_id = ? "
+                "AND (expires_at IS NULL OR expires_at > ?)",
+                (str(memory_id), owner_user_id, self._now()),
             ).fetchone()
             if current is None:
                 return None
@@ -259,8 +266,9 @@ class MemoryRepository:
             values.extend((str(memory_id), owner_user_id))
             cursor = connection.execute(
                 f"UPDATE memory_entries SET {', '.join(assignments)} "  # nosec B608 -- column identifiers come only from the fixed allowlist; values are bound.
-                "WHERE memory_id = ? AND owner_user_id = ?",
-                tuple(values),
+                "WHERE memory_id = ? AND owner_user_id = ? "
+                "AND (expires_at IS NULL OR expires_at > ?)",
+                (*values, self._now()),
             )
             if cursor.rowcount != 1:
                 return None
@@ -278,12 +286,40 @@ class MemoryRepository:
             )
         return cursor.rowcount == 1
 
-    def delete_expired(self, owner_user_id: str) -> int:
+    def delete_expired(self, owner_user_id: str, *, limit: int = 100) -> int:
+        """Delete a bounded batch of this owner's expired memories.
+
+        Expired records are also excluded from reads immediately. This bounded
+        cleanup physically removes ciphertext/content and lets FTS delete triggers
+        clean the matching index rows without an unbounded request-time sweep.
+        """
+        if (
+            not isinstance(owner_user_id, str)
+            or not owner_user_id.strip()
+            or len(owner_user_id) > 200
+        ):
+            raise ValueError("Memory owner identifier is invalid")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ValueError("Memory expiry cleanup limit must be between 1 and 500")
+
+        now = self._now()
         with self.tasks._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
-                "DELETE FROM memory_entries WHERE owner_user_id = ? "
-                "AND expires_at IS NOT NULL AND expires_at <= ?",
-                (owner_user_id, self._now()),
+                """
+                DELETE FROM memory_entries
+                WHERE memory_id IN (
+                    SELECT memory_id
+                    FROM memory_entries
+                    WHERE owner_user_id = ?
+                      AND expires_at IS NOT NULL
+                      AND expires_at <= ?
+                    ORDER BY expires_at ASC, memory_id ASC
+                    LIMIT ?
+                )
+                  AND owner_user_id = ?
+                """,
+                (owner_user_id, now, limit, owner_user_id),
             )
         return cursor.rowcount
 
@@ -357,6 +393,7 @@ class MemoryRepository:
             if selected_stages is not None
             else None
         )
+        self.delete_expired(owner_user_id, limit=100)
         now = datetime.now(UTC)
         query_params: tuple[object, ...] = (
             match_expression,
