@@ -7,9 +7,9 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from mrhub.agents.work_order import WorkOrder
+from mrhub.prompts.registry import DEFAULT_PROMPT_REGISTRY, PromptRender
 from mrhub.providers.base import ProviderRequest
 from mrhub.providers.router import ModelRequest, ModelRouter
-from mrhub.prompts.registry import DEFAULT_PROMPT_REGISTRY, PromptRender
 
 MAX_PLAN_OUTPUT_CHARS = 16_000
 MAX_PLAN_OUTPUT_TOKENS = 1_800
