@@ -163,7 +163,7 @@ This is a GitHub source/CI snapshot. It does not establish live service, physica
 
 | Repository | Current `main` SHA | Open PRs observed | Exact-head Actions evidence |
 |---|---|---:|---|
-| HUB | `47a8e4fee206ef72e928fa3ce381a52ee4324921` | #641 H10 API, #639 governance, #637 PromptForge, #636 portfolio status, #618 Draft Render isolation | 14 successful checks; one duplicate scan run cancelled after the successful scan; no pending/failing checks |
+| HUB | `4f684b8a8494ffe263db6769b312f884cd6df311` | #637 PromptForge, #636 portfolio status, #618 Draft Render isolation | Post-merge exact-main snapshot: 5/10 checks succeeded, 3 in progress and 2 queued; no failures observed at snapshot time |
 | EL_AI | `368cbdf808f9bde672edee4f8fef6ad3fe8e8577` | 0 | 4/4 checks succeeded |
 | EL_AGENT | `d98aaff9593b7ffac996e0841c1232bae1dee4df` | 0 | 5/5 checks succeeded |
 | MR_SIAVASH_AI | `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a` | #318 Dependabot workflow-action update | 8/8 checks succeeded |
