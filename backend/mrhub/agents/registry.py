@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from mrhub.tools.registry import ToolRegistry
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AgentProfile:
     """A reviewed specialist definition; profiles are never supplied by model output."""
 
@@ -17,6 +21,7 @@ class AgentProfile:
     instructions: str
     allowed_tools: frozenset[str]
     max_turns: int = 2
+    version: int = 1
 
 
 class AgentRegistry:
@@ -25,21 +30,49 @@ class AgentRegistry:
     NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 
     def __init__(self) -> None:
-        self._agents: dict[str, AgentProfile] = {}
+        self._agents: Mapping[str, AgentProfile] = {}
+        self._frozen = False
+
+    @property
+    def frozen(self) -> bool:
+        return self._frozen
+
+    def freeze(self) -> AgentRegistry:
+        """Make this reviewed registry immutable for the lifetime of the process."""
+        if not self._frozen:
+            self._agents = MappingProxyType(dict(self._agents))
+            self._frozen = True
+        return self
 
     def register(self, profile: AgentProfile) -> None:
-        if not self.NAME_PATTERN.fullmatch(profile.name):
+        if self._frozen:
+            raise RuntimeError("Agent registry is frozen")
+        if not isinstance(profile, AgentProfile):
+            raise TypeError("profile must be an AgentProfile")
+        if not isinstance(profile.name, str) or not self.NAME_PATTERN.fullmatch(profile.name):
             raise ValueError("Invalid agent name")
-        if not profile.description.strip() or len(profile.description) > 200:
+        if type(profile.version) is not int or not 1 <= profile.version <= 2_147_483_647:
+            raise ValueError("Agent profile version must be a positive integer")
+        if not isinstance(profile.description, str) or not profile.description.strip() or len(profile.description) > 200:
             raise ValueError("Agent description must contain 1 to 200 characters")
-        if not profile.instructions.strip() or len(profile.instructions) > 1_200:
+        if not isinstance(profile.instructions, str) or not profile.instructions.strip() or len(profile.instructions) > 1_200:
             raise ValueError("Agent instructions must contain 1 to 1200 characters")
-        if not 1 <= profile.max_turns <= 3:
+        if type(profile.max_turns) is not int or not 1 <= profile.max_turns <= 3:
             raise ValueError("Agent turn limit must be between 1 and 3")
+        if not isinstance(profile.allowed_tools, frozenset):
+            raise ValueError("Agent tool scope must be an immutable set")
         if len(profile.allowed_tools) > 10:
             raise ValueError("Agent tool scope exceeds the supported limit")
+        if any(
+            not isinstance(tool_name, str) or not self.NAME_PATTERN.fullmatch(tool_name)
+            for tool_name in profile.allowed_tools
+        ):
+            raise ValueError("Agent tool scope contains an invalid tool name")
         if profile.name in self._agents:
             raise ValueError("Agent is already registered")
+        # Registration is allowed only during trusted application composition.
+        if not isinstance(self._agents, dict):
+            raise RuntimeError("Agent registry is not mutable")
         self._agents[profile.name] = profile
 
     def get(self, name: str) -> AgentProfile:
@@ -58,6 +91,51 @@ class AgentRegistry:
             }
             for profile in sorted(self._agents.values(), key=lambda item: item.name)
         ]
+
+    @staticmethod
+    def _profile_digest(profile: AgentProfile) -> str:
+        """Return a stable fingerprint without exposing private profile instructions."""
+        canonical = {
+            "schema_version": "agent_profile.v1",
+            "name": profile.name,
+            "version": profile.version,
+            "description": profile.description,
+            "instructions": profile.instructions,
+            "allowed_tools": sorted(profile.allowed_tools),
+            "max_turns": profile.max_turns,
+        }
+        encoded = json.dumps(
+            canonical,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def manifest(self) -> dict[str, object]:
+        """Expose metadata-only agent capabilities for authenticated discovery."""
+        agents = [
+            {
+                "name": profile.name,
+                "version": profile.version,
+                "description": profile.description,
+                "allowed_tools": sorted(profile.allowed_tools),
+                "max_turns": profile.max_turns,
+                "profile_digest": self._profile_digest(profile),
+            }
+            for profile in sorted(self._agents.values(), key=lambda item: item.name)
+        ]
+        return {
+            "schema_version": "agent_registry_manifest.v1",
+            "registry_frozen": self._frozen,
+            "registry_mutable": False,
+            "agent_count": len(agents),
+            "agents": agents,
+            "instructions_exposed": False,
+            "runtime_registration_enabled": False,
+            "execution_authorized": False,
+        }
 
     def scoped_tools(self, name: str, tools: ToolRegistry) -> ToolRegistry:
         """Build a registry containing only the tools explicitly granted to a profile."""
@@ -169,4 +247,4 @@ def build_default_agent_registry(tools: ToolRegistry) -> AgentRegistry:
     for profile in registry._agents.values():
         for tool_name in profile.allowed_tools:
             tools.get(tool_name)
-    return registry
+    return registry.freeze()
