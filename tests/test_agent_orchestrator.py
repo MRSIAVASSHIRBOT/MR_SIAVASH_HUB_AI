@@ -222,6 +222,7 @@ def test_orchestrator_delegates_to_a_registered_specialist_with_shared_budgets()
     assert result["tool_calls"] == 0
     assert result["trace"][0]["type"] == "delegation_observation"
     assert result["trace"][0]["agent"] == "knowledge_synthesizer"
+    assert result["trace"][0]["agent_version"] == 1
     assert result["trace"][0]["observation_is_untrusted_data"] is True
     assert "Synthesize only the supplied retrieved evidence" in provider.requests[1].input_text
     assert "untrusted_agent_output" in result["trace"][0]["observation"]
