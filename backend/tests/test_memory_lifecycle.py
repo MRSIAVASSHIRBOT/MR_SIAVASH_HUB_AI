@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from client_helpers import authenticated_client
 from mrhub.config import get_settings
@@ -208,8 +208,6 @@ def test_legacy_insert_defaults_to_retained_after_schema_upgrade():
             ),
         )
 
-    from uuid import UUID
-
     migrated = repository.get(owner_id, UUID(memory_id))
     assert migrated is not None
     assert migrated["memory_stage"] == "retained"
@@ -220,6 +218,12 @@ def test_legacy_insert_defaults_to_retained_after_schema_upgrade():
         ).fetchone()
     assert migration is not None
     assert migration["name"] == "owner_scoped_memory_lifecycle_stages"
+    with repository.tasks._connection() as connection:
+        expiry_index = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?",
+            ("idx_memory_owner_expiry",),
+        ).fetchone()
+    assert expiry_index is not None
 
 
 def _insert_memory_row(
@@ -363,8 +367,6 @@ def test_expired_memory_cannot_be_revived_by_an_owner_update():
         content="expired memory cannot be revived marker",
         expires_at=expired_at,
     )
-
-    from uuid import UUID
 
     result = repository.update(
         owner_id,
