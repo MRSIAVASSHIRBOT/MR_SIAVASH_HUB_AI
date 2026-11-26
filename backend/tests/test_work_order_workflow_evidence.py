@@ -33,8 +33,7 @@ def _criterion(**changes):
         "criterion_id": "ac_001",
         "required": True,
         "description": "workflow_step_succeeded:step-2",
-        "allowed_step_ids": ("step-2",),
-        "allowed_capabilities": ("text.echo",),
+        "step_capability_bindings": (("step-2", ("text.echo",)),),
     }
     values.update(changes)
     return WorkOrderCriterion(**values)
@@ -141,7 +140,7 @@ def test_step_id_must_be_declared_by_the_exact_awiplan_step():
             work_order_id="wo_example",
             revision=1,
             digest=WORK_ORDER_DIGEST,
-            criteria=(_criterion(allowed_step_ids=("another-step",)),),
+            criteria=(_criterion(step_capability_bindings=(("another-step", ("text.echo",)),)),),
         ),
         (_reference(),),
         _registry(FakeWorkflowRepository(_step())),
