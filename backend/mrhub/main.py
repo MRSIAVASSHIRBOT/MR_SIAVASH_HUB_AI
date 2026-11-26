@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from mrhub.agents.registry import build_default_agent_registry
 from mrhub.agents.work_order_evidence import EvidenceVerifierRegistry
 from mrhub.api.errors import (
     API_ERROR_RESPONSES,
@@ -24,6 +25,7 @@ from mrhub.api.routes.agent_context import router as agent_context_router
 from mrhub.api.routes.agent_model_runs import router as agent_model_runs_router
 from mrhub.api.routes.agent_proposals import router as agent_proposals_router
 from mrhub.api.routes.agent_run import router as agent_run_router
+from mrhub.api.routes.agent_registry import router as agent_registry_router
 from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
 from mrhub.api.routes.capabilities import router as capabilities_router
@@ -56,6 +58,7 @@ from mrhub.infrastructure.request_metrics import RequestMetrics
 from mrhub.integrations.assistant_gateway import router as assistant_gateway_router
 from mrhub.integrations.code_engine import router as code_engine_router
 from mrhub.security.auth import LoginAttemptLimiter
+from mrhub.tools.builtins import build_tool_registry
 
 
 def create_app() -> FastAPI:
@@ -76,6 +79,8 @@ def create_app() -> FastAPI:
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
     app.state.request_metrics = RequestMetrics()
+    # The server-defined specialist catalog is frozen once at application composition.
+    app.state.agent_registry = build_default_agent_registry(build_tool_registry())
     # Trusted adapters register only in server composition code; no HTTP route can register verifiers.
     app.state.work_order_evidence_verifiers = EvidenceVerifierRegistry()
 
@@ -196,6 +201,7 @@ def create_app() -> FastAPI:
     include_api_router(tools_router)
     include_api_router(video_intelligence_router)
     include_api_router(agent_router)
+    include_api_router(agent_registry_router)
     include_api_router(agent_context_router)
     include_api_router(agent_run_router)
     include_api_router(agent_model_runs_router)
