@@ -15,7 +15,7 @@ This document defines the long-lived architecture for the four canonical MR_SIAV
 3. `MR_SIAVASH_EL_AGENT` — independent Windows/Android device agent.
 4. `MR_SIAVASH_AI` — public digital identity, website/PWA, learning experience and public gateway.
 
-`MR_SIAVASH_EL_IR_BOT` is treated as a **legacy capability source and transitional Telegram edge/bridge component**, not a fifth long-term product. Its useful behavior and transport capabilities are migrated or retained behind contracts. It must not become a competing AI core.
+`MR_SIAVASH_EL_IR_BOT` is outside the current portfolio and execution scope. The ecosystem Telegram bot is owned and developed inside `MR_SIAVASH_EL_AI`; no separate legacy Bridge repository, transport service or migration dependency is assumed. See [ADR-0047](decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md).
 
 The target is not a speculative 2030 stack. The target is an architecture that can replace models, agent harnesses, transports, storage engines, frameworks and deployment topology without replacing the whole ecosystem.
 
@@ -29,7 +29,6 @@ This blueprint was prepared against these GitHub `main` snapshots observed on 20
 | EL_AI | `678d368b17cc6e2ccc8c99e3e96a3bad9e12e3eb` | Telegram-facing app, task-plan consumer, scoped Hub client, signed Bridge consumer, owner/public routing |
 | EL_AGENT | `9d830ef05468db90da39cf8572f73192bec00e0b` | Standalone Windows/Android runtimes, local providers, device capabilities, scheduler and optional Hub adapters |
 | Website | `e55d4a04dd9d59e54c8c1fa13ef864117fae6c4c` | Static Persian-first site/PWA, public Cloudflare Gateway, local workspace and public integrations |
-| Legacy EL_IR_BOT | `b74fcbf6b46b5c740668ab58aaa197a489cca67a` | `MR_SIAVASH_EL_IR_BOT.py`, `self_core.py`, `ai_router.py`, Telegram Worker/D1 Bridge, old Bot API paths and two dependency files |
 
 This is a repository-source snapshot, not proof of local uncommitted changes, live Telegram behavior, current Cloudflare traffic, physical-device acceptance or production readiness. No local `SIA.env` values were inspected.
 
@@ -39,7 +38,7 @@ This is a repository-source snapshot, not proof of local uncommitted changes, li
 - EL_AI already has a Telegram-facing application boundary, a signed Bridge consumer and versioned Hub integration.
 - EL_AGENT already has independent local execution and Windows/Android platform adapters.
 - The Website already has a separate public Gateway and must remain a public product rather than a mirror of private Hub state.
-- Legacy EL_IR_BOT contains valuable custom behavior. Its three protected Python files are feature sources; no non-bug feature is removed as part of migration.
+- EL_AI owns the complete ecosystem Telegram bot boundary, including channel transport and user-facing behavior. Internal adapters/workers may be separated only when justified within the EL_AI product; no separate EL_IR_BOT dependency is assumed.
 
 ## 3. Architectural thesis
 
@@ -147,7 +146,6 @@ This is a responsibility map. It does not require every box to be a separately d
 | EL_AI | Telegram and Business channel lifecycle, user-facing conversation, Telegram identity mapping, command interpretation, message/media normalization, channel session state and response delivery | A competing cross-product database, global permission authority or duplicate long-running workflow engine |
 | EL_AGENT | Standalone device runtime, device-local state, local providers, scheduler and Windows/Android actions | Telegram Business lifecycle or HUB's canonical task database |
 | Website | Public identity, public learning/workspace experience, public Gateway and public content | Private owner context, HUB credentials, private memory or local agent execution by implication |
-| Legacy EL_IR_BOT | Transitional legacy feature source; optionally the Telegram edge webhook/queue adapter while it remains useful | A separate product-level AI brain or a competing command/permission authority |
 
 ### Cross-product communication
 
@@ -253,7 +251,7 @@ Start with one orchestrator and specialist capabilities. Delegate only when work
 
 ## 11. Telegram and Business architecture
 
-EL_AI owns the Business experience; the Telegram edge adapter owns transport receipt and durable delivery only.
+EL_AI owns the complete Telegram bot experience and implementation boundary: update intake, transport adapters, identity mapping, command routing, conversation, delivery state and user-facing responses. Internal workers or queue modules may exist inside EL_AI, but a separate Telegram Bridge repository or service is not assumed.
 
 ### Normalized update envelope
 
@@ -290,13 +288,13 @@ Owner messages and Business-customer messages may enter the same *command interp
 - Business customer context: customer-facing business capabilities explicitly exposed by the owner.
 - Business operator/admin context: only explicitly configured business-management capabilities.
 
-This permits one shared command engine without accidentally treating a customer message as an owner instruction. It also keeps custom `self_core.py` behavior intact; this architecture does not authorize removing or arbitrarily restricting its existing features.
+This permits one shared command engine without accidentally treating a customer message as an owner instruction. Owner and Business/customer actor contexts remain strictly distinct regardless of channel.
 
 ### Media path
 
 Incoming media is represented by an `AttachmentRef`, persisted or staged through the media adapter, then passed to OCR/transcription/vision/document processors as required. Outbound media is an artifact reference routed through the Telegram delivery adapter. The conversation engine should not contain Telegram-specific download or upload code.
 
-The edge worker's current allowed-update configuration and D1 migration state must be checked before Business events are activated. Current repository documentation describes an owner-focused Bridge; Business support is a new acceptance target, not an already verified capability.
+EL_AI's actual Telegram ingress/update allowlist, delivery-state persistence and migration state must be checked before Business events are activated. Business support is a separate acceptance target; proposed architecture or mocked CI is not proof of live Telegram acceptance.
 
 ## 12. Memory, history and SQLite session lifecycle
 
@@ -415,7 +413,7 @@ This architecture does not authorize:
 - a multi-agent swarm for ordinary chat;
 - automatic cloud fallback for a local-only request;
 - arbitrary self-modification of production code;
-- removal of non-bug functionality from `MR_SIAVASH_EL_IR_BOT.py`, `self_core.py` or `ai_router.py`;
+- inspection, modification, migration, deployment or infrastructure changes in the out-of-scope `MR_SIAVASH_EL_IR_BOT` repository;
 - production deployment, live Telegram webhook changes, D1 migrations or paid infrastructure.
 
 ## 19. Research basis
@@ -435,3 +433,23 @@ Reviewed 2026-11-26:
 - Python 3.15 What's New: https://docs.python.org/3.15/whatsnew/3.15.html
 
 This document records architectural conclusions drawn from public material; it does not claim that any vendor's internal production architecture is fully public or reproducible.
+
+
+## 20. Owner-approved portfolio and logical-layer update — 2026-11-27
+
+[ADR-0047](decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md) and [the G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) supersede any conflicting portfolio or legacy-Bridge assumptions in this v1 document. The active products are HUB, EL_AI, EL_AGENT and MR_SIAVASH_AI. EL_IR_BOT is out of scope; the Telegram bot belongs inside EL_AI.
+
+The current logical layer model is:
+
+1. **Interaction & Experience:** Telegram, Web, Desktop, Android and API.
+2. **Personal Agent — EL_AI:** identity, conversation, personalization and Telegram bot experience.
+3. **Central Intelligence — HUB:** GPI, AWI, CGI, decisions, workflows and orchestration.
+4. **AI Intelligence:** models, prompts, RAG, context construction and evaluation.
+5. **Capability:** tools, skills, extensions and plugins.
+6. **Data & Knowledge:** memory, knowledge, product data and events.
+7. **Execution:** bounded workers, sandboxes and EL_AGENT device-local execution.
+8. **Shared Infrastructure:** identity, data governance, APIs, observability, reliability and cost.
+
+The **Independent Security Program** is an assurance overlay across every product and layer: security architecture, defensive cyber assurance, AI safety, threat modelling, audit and verification.
+
+These are logical responsibility boundaries, not a one-to-one service topology. Prefer a modular monolith or a small number of deployables until measurable requirements justify service separation. Product ownership, state ownership and trust boundaries remain explicit even when multiple layers share one process.
