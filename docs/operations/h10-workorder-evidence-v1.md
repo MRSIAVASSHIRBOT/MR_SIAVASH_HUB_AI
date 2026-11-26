@@ -72,3 +72,23 @@ The current implementation candidate adds:
 2. Implement and independently review production verifier adapters for approved evidence sources.
 3. Add consumer-driven contract fixtures and an E8 integration in EL_AI; until that passes, E8 must remain execution-coverage-only and goal satisfaction not evaluated.
 4. Run exact-head CI, post-merge CI and any required live integration acceptance.
+
+## Owner-scoped API candidate — PR #641 (2026-11-27)
+
+The current implementation candidate adds:
+
+- `POST /agent/work-orders/plans/{plan_id}/evidence/evaluate`.
+- It loads the plan only through the authenticated owner's encrypted plan repository lookup, requires an active record, decrypts it with plan/owner associated data, revalidates WorkOrder and ExecutionPlan schemas, and recomputes the stored plan digest before evaluation.
+- The evidence snapshot is bound to the exact persisted **plan** digest (not yet a separate canonical WorkOrder-only digest) and a single immutable plan revision. Acceptance criteria are mapped in order to ac_001... identifiers and returned to the authenticated owner.
+- The request accepts bounded opaque evidence references only. It forbids caller-supplied pass/fail status, raw evidence payloads, and verifier definitions.
+- Verifiers resolve only from the server-side EvidenceVerifierRegistry initialized by the application composition root. The registry currently starts empty. Until trusted production adapters are registered, unknown/unregistered references return review_required; nothing is accepted from client claims.
+- Each evaluation writes an allow-listed audit event with decision, bounded counts and report digest. Raw source references, evidence payloads and WorkOrder text are not written to audit.
+
+**Status:** Candidate implementation in PR #641; not yet merged or accepted by mainline CI. This is progress toward the owner-scoped API gate, not full H10 completion.
+
+### Remaining H10 gates
+
+1. Define a canonical WorkOrder-only digest/revision field in a backward-compatible, versioned planning response; the current API binds to the immutable persisted plan digest.
+2. Implement and independently review production verifier adapters for approved evidence sources.
+3. Add consumer-driven contract fixtures and an E8 integration in EL_AI; until that passes, E8 must remain execution-coverage-only and goal satisfaction not evaluated.
+4. Run exact-head CI, post-merge CI and any required live integration acceptance.
