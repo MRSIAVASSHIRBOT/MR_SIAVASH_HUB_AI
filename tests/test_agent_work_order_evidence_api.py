@@ -17,8 +17,8 @@ from mrhub.api.routes.agent import _canonical_plan_digest
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.security.auth import AuthService, _password_digest
 from mrhub.jobs.payload_envelope import encrypt_plan_payload, load_payload_key
+from mrhub.security.auth import AuthService, _password_digest
 
 
 def _create_owned_plan(client) -> tuple[str, str, str]:
@@ -202,6 +202,7 @@ def test_work_order_evidence_api_is_owner_scoped_and_hides_foreign_records():
     assert foreign_login is not None
 
     from fastapi.testclient import TestClient
+
     from mrhub.main import create_app
 
     foreign_client = TestClient(create_app())
