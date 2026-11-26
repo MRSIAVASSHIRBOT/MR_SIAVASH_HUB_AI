@@ -86,6 +86,7 @@ def _reference(plan_digest: str) -> dict[str, object]:
 
 def test_work_order_evidence_api_is_owner_authenticated():
     from fastapi.testclient import TestClient
+
     from mrhub.main import create_app
 
     response = TestClient(create_app()).post(
