@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from mrhub.agents.awi_planner import ExecutionPlan
 from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
 from mrhub.agents.work_order import WorkOrder
+from mrhub.agents.work_order_correction import build_work_order_correction_proposal
 from mrhub.agents.work_order_evidence import (
     EvidenceReference,
     EvidenceVerification,
@@ -333,6 +334,7 @@ def evaluate_plan_evidence(
         raise HTTPException(status_code=422, detail="Evidence references are invalid") from exc
 
     decision = report.decision.value
+    correction_proposal = build_work_order_correction_proposal(report)
     try:
         AuditLogger(tasks).record(
             event_type="agent.work_order_evidence_evaluated",
@@ -353,6 +355,7 @@ def evaluate_plan_evidence(
     return {
         "plan_id": record.plan_id,
         "report": report.as_dict(),
+        "correction_proposal": correction_proposal.as_dict(),
         "verifier_contract": "hub.workflow_step.v1",
         "decision_scope": "declared_work_order_acceptance_criteria_only",
         "goal_completion_claimed": False,
