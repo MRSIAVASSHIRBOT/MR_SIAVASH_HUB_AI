@@ -27,6 +27,23 @@ class FakeWorkflowRepository:
         return {"steps": [self.step]}
 
 
+class FakePlanRecord:
+    status = "consumed"
+    workflow_id = WORKFLOW_ID
+
+
+class FakePlanRepository:
+    def __init__(self, *, workflow_id=WORKFLOW_ID, status="consumed"):
+        self.record = FakePlanRecord()
+        self.record.workflow_id = workflow_id
+        self.record.status = status
+
+    def get(self, plan_id, *, owner_user_id):
+        if plan_id != "plan-example" or owner_user_id != "owner-a":
+            return None
+        return self.record
+
+
 def _criterion(**changes):
     values = {
         "criterion_id": "ac_001",
@@ -50,6 +67,7 @@ def _reference(**changes):
         "observed_at": "2026-11-27T12:00:00+00:00",
         "verifier_id": "hub.workflow_step.v1",
         "owner_user_id": "owner-a",
+        "plan_id": "plan-example",
     }
     values.update(changes)
     return EvidenceReference(**values)
@@ -70,7 +88,7 @@ def _step(**changes):
     return value
 
 
-def _registry(repository):
+def _registry(repository, plan_repository=None):
     registry = EvidenceVerifierRegistry()
     registry.register(
         source_type="agent_workflow_step",
@@ -79,6 +97,7 @@ def _registry(repository):
             reference,
             criterion,
             repository=repository,
+            plan_repository=plan_repository or FakePlanRepository(),
         ),
     )
     return registry
@@ -192,3 +211,26 @@ def test_workflow_evidence_requires_internal_owner_context():
 
     assert result.status is VerifierStatus.UNKNOWN
     assert result.reason_code == "evidence_owner_context_missing"
+
+
+
+def test_workflow_step_cannot_verify_evidence_for_a_different_or_unconsumed_plan():
+    result = verify_workflow_step_evidence(
+        _reference(),
+        _criterion(),
+        repository=FakeWorkflowRepository(_step()),
+        plan_repository=FakePlanRepository(workflow_id="123e4567-e89b-12d3-a456-426614174001"),
+    )
+
+    assert result.status is VerifierStatus.UNKNOWN
+    assert result.reason_code == "workflow_not_bound_to_work_order_plan"
+
+    unconsumed = verify_workflow_step_evidence(
+        _reference(),
+        _criterion(),
+        repository=FakeWorkflowRepository(_step()),
+        plan_repository=FakePlanRepository(status="active"),
+    )
+
+    assert unconsumed.status is VerifierStatus.UNKNOWN
+    assert unconsumed.reason_code == "workflow_not_bound_to_work_order_plan"
