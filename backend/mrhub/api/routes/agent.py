@@ -755,16 +755,14 @@ def evaluate_persisted_work_order_evidence(
             criterion_id=f"ac_{index:03d}",
             required=True,
             description=criterion,
-            allowed_step_ids=tuple(
-                step.step_id for step in plan.steps
-                if criterion in step.verifies_criteria
-            ),
-            allowed_capabilities=tuple(sorted({
-                capability
+            step_capability_bindings=tuple(
+                (
+                    step.step_id,
+                    tuple(sorted(step.required_capabilities)),
+                )
                 for step in plan.steps
                 if criterion in step.verifies_criteria
-                for capability in step.required_capabilities
-            })),
+            ),
         )
         for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
     )
