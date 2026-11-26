@@ -268,3 +268,42 @@ def test_non_executable_workflow_cannot_consume_a_persisted_work_order_plan():
     assert record is not None
     assert record.status == "active"
     assert record.workflow_id is None
+
+
+def test_plan_binding_rejects_extra_workflow_capability_requirements():
+    client = authenticated_client()
+    plan_id, _work_order_digest = _persist_plan(
+        client,
+        criterion="workflow_step_succeeded:step-2",
+        planned_capability="text.echo",
+    )
+
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Verify an exact durable workflow step",
+            "work_order_plan_id": plan_id,
+            "required_capabilities": ["text.echo", "device.registry.list"],
+            "tools": [
+                {
+                    "step_id": "step-2",
+                    "depends_on": [],
+                    "name": "text.echo",
+                    "payload": {"text": "workflow evidence marker"},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "Workflow capability requirements do not match the persisted WorkOrder"
+    )
+    record = AgentWorkOrderPlanRepository(get_settings().database_path).get(
+        plan_id,
+        owner_user_id=_owner_id(client),
+    )
+    assert record is not None
+    assert record.status == "active"
+    assert record.workflow_id is None
