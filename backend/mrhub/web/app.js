@@ -2605,10 +2605,55 @@
     }, "هنوز پیش‌نویسی ثبت نشده است.");
   }
 
+  const MEMORY_STAGE_LABELS = {
+    working: "موقت",
+    lesson_candidate: "پیشنهاد یادگیری",
+    retained: "پایدار",
+  };
+
+  function updateMemoryRetentionLimit() {
+    const stage = $("#memory-form").elements.memory_stage.value;
+    const input = $("#memory-form").elements.retention_days;
+    const help = $("#memory-retention-help");
+    if (stage === "retained") {
+      input.disabled = true;
+      help.textContent = "حافظهٔ پایدار بدون تاریخ انقضا ذخیره می‌شود؛ مالک مسئول بازبینی و حذف آن است.";
+      return;
+    }
+    input.disabled = false;
+    const limit = stage === "working" ? 7 : 30;
+    input.max = String(limit);
+    if (!Number.isInteger(Number(input.value)) || Number(input.value) < 1 || Number(input.value) > limit) {
+      input.value = String(limit === 7 ? 7 : 30);
+    }
+    help.textContent = stage === "working"
+      ? "یادداشت موقت باید حداکثر تا ۷ روز منقضی شود."
+      : "پیشنهاد یادگیری تا حداکثر ۳۰ روز در صف بازبینی مالک باقی می‌ماند و خودکار به حافظهٔ پایدار تبدیل نمی‌شود.";
+  }
+
   async function loadMemory() {
     const response = await api("/memory?limit=100");
     renderRecords("#memory-results", response.entries, (item) => {
-      const card = recordCard(item.category, item.content, `${item.verification_status} · ${item.provenance} · ${item.memory_id}`);
+      const stage = MEMORY_STAGE_LABELS[item.memory_stage] || "نامشخص";
+      const expiry = item.expires_at ? "انقضا: " + item.expires_at : "بدون انقضا";
+      const card = recordCard(
+        item.category,
+        item.content,
+        `${stage} · ${item.verification_status} · ${expiry} · ${item.provenance} · ${item.memory_id}`
+      );
+      if (item.memory_stage === "lesson_candidate") {
+        card.append(actionButton("تأیید و نگه‌داری پایدار", async () => {
+          if (!window.confirm("این پیشنهاد را بررسی کرده‌اید و می‌خواهید آن را به حافظهٔ پایدارِ تأییدشده تبدیل کنید؟")) return;
+          try {
+            await api(`/memory/${encodeURIComponent(item.memory_id)}`, {
+              method: "PATCH",
+              body: { memory_stage: "retained", expires_at: null, verification_status: "user_approved" },
+            });
+            await loadMemory();
+            message("#workspace-message", "پیشنهاد با تأیید صریح مالک به حافظهٔ پایدار منتقل شد.", "success");
+          } catch (error) { message("#workspace-message", error.message, "error"); }
+        }));
+      }
       card.append(deleteButton("حذف", async () => {
         if (!window.confirm("این یادداشت حذف شود؟")) return;
         try { await api(`/memory/${encodeURIComponent(item.memory_id)}`, { method: "DELETE" }); await loadMemory(); }
@@ -4221,24 +4266,53 @@
     } catch (error) { message("#workspace-message", error.message, "error"); }
   });
 
+  $("#memory-form").elements.memory_stage.addEventListener("change", updateMemoryRetentionLimit);
+  updateMemoryRetentionLimit();
+
   $("#memory-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const stage = String(form.get("memory_stage") || "retained");
+    const body = {
+      category: String(form.get("category") || ""),
+      content: String(form.get("content") || ""),
+      memory_stage: stage,
+    };
+    if (stage !== "retained") {
+      const days = Number($("#memory-form").elements.retention_days.value);
+      const limit = stage === "working" ? 7 : 30;
+      if (!Number.isInteger(days) || days < 1 || days > limit) {
+        message("#workspace-message", "مدت نگه‌داری از سقف مجاز این مرحله بیشتر است.", "error");
+        return;
+      }
+      body.expires_at = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    }
     try {
-      await api("/memory", { method: "POST", body: { category: form.get("category"), content: form.get("content") } });
-      event.currentTarget.reset();
+      await api("/memory", { method: "POST", body });
+      formElement.reset();
+      updateMemoryRetentionLimit();
       await loadMemory();
-      message("#workspace-message", "یادداشت ذخیره شد.", "success");
+      message("#workspace-message", "یادداشت در مرحلهٔ انتخاب‌شده ذخیره شد.", "success");
     } catch (error) { message("#workspace-message", error.message, "error"); }
   });
 
   $("#memory-search-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const query = String(new FormData(event.currentTarget).get("query") || "");
+    const values = new FormData(event.currentTarget);
+    const query = String(values.get("query") || "");
+    const selectedStage = String(values.get("memory_stage") || "");
     try {
-      const result = await api("/memory/search", { method: "POST", body: { query, limit: 10 } });
+      const result = await api("/memory/search", {
+        method: "POST",
+        body: { query, limit: 10, memory_stages: selectedStage ? [selectedStage] : null },
+      });
       renderRecords("#memory-results", result.results, (item) =>
-        recordCard(item.category, item.content, `${item.verification_status} · ${item.provenance} · ${item.memory_id}`),
+        recordCard(
+          item.category,
+          item.content,
+          `${MEMORY_STAGE_LABELS[item.memory_stage] || "نامشخص"} · ${item.verification_status} · ${item.provenance} · ${item.memory_id}`
+        ),
       "نتیجه‌ای پیدا نشد.");
     } catch (error) { message("#workspace-message", error.message, "error"); }
   });
