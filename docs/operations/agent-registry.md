@@ -2,13 +2,19 @@
 
 ## Phase mapping
 
-This change delivers the specialist-registry work item in the requested
-H0–H32 execution sequence. The repository's current
-`docs/roadmap/ECOSYSTEM_73_PHASE_BASELINE.md` assigns the corresponding
-multi-agent registry/delegation domain to canonical H13, while canonical H20
-is advanced research and bounded self-improvement. The PR is therefore a
-scoped registry capability slice, not a claim that either complete phase has
-been accepted.
+Under the active H0–H32 delivery sequence:
+
+- **H20 — Agent Registry & Lifecycle:** reviewed specialist profile versions,
+  immutable allow-lists, freeze-on-composition, and metadata-only registry discovery.
+- **H21 — Multi-Agent Orchestration:** bounded sequential specialist handoff,
+  with at most two children and no recursive delegation.
+- **H22 — Agent Intelligence & Coordination:** parent synthesis of explicitly
+  untrusted child observations, including preservation of conflicting assessments.
+
+The repository also contains an older 73-phase baseline with different phase
+numbers. That legacy numbering remains historical input for a later roadmap
+crosswalk; it does not override the active H0–H32 sequence. This PR is a scoped
+H20–H22 capability slice, not acceptance of any complete phase.
 
 The authenticated `GET /agent/registry` endpoint exposes a metadata-only
 manifest of server-reviewed specialist profiles.
