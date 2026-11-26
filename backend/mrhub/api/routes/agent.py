@@ -1279,6 +1279,11 @@ def execute_agent_workflow(
         plan = core.plan(request)
         request_digest = _workflow_digest(request)
         if not plan.get("execution_ready"):
+            if request.work_order_plan_id is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A persisted WorkOrder plan can only bind to an execution-ready workflow",
+                )
             legacy = AgentWorkflowRepository(settings.database_path)
             workflow = legacy.create(request_digest, plan, owner_user_id=current_user.user_id)
             return {"workflow": workflow, "execution": None}
