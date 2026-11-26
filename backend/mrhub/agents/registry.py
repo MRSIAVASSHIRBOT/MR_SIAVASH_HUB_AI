@@ -152,7 +152,7 @@ class AgentRegistry:
         return tools.scoped(profile.allowed_tools)
 
 
-def build_default_agent_registry(tools: ToolRegistry) -> AgentRegistry:
+def build_default_agent_registry(tools: ToolRegistry | None = None) -> AgentRegistry:
     """Build reviewed, conservative specialist profiles for the initial release."""
     registry = AgentRegistry()
     registry.register(
@@ -252,8 +252,11 @@ def build_default_agent_registry(tools: ToolRegistry) -> AgentRegistry:
             max_turns=2,
         )
     )
-    # Fail at startup if a reviewed profile references a tool absent from this build.
-    for profile in registry._agents.values():
-        for tool_name in profile.allowed_tools:
-            tools.get(tool_name)
+    # When a runtime registry is supplied, fail closed if a reviewed profile names
+    # a missing tool. App-level metadata composition can omit integrations; the
+    # actual owner-scoped execution registry validates the scope before dispatch.
+    if tools is not None:
+        for profile in registry._agents.values():
+            for tool_name in profile.allowed_tools:
+                tools.get(tool_name)
     return registry.freeze()
