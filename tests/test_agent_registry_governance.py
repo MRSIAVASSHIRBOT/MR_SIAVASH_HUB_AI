@@ -87,7 +87,7 @@ def test_registry_requires_immutable_tool_scope():
         instructions="Do not allow mutable tool grants.",
         allowed_tools={"text.echo"},
     )
-    with pytest.raises(ValueError, match="immutable"):
+    with pytest.raises(TypeError, match="immutable"):
         registry.register(profile)
 
 
