@@ -68,29 +68,25 @@ def _persist_plan(client, *, criterion: str, planned_capability: str) -> tuple[s
     return plan_id, work_order_digest
 
 
-def _execute_echo_step(client) -> tuple[str, dict[str, object]]:
-    submitted = client.post(
-        "/agent/workflows",
-        json={
-            "goal": "Run one deterministic text echo evidence step",
-            "tools": [
-                {
-                    "step_id": "step-2",
-                    "name": "text.echo",
-                    "payload": {"text": "workflow evidence marker"},
-                }
-            ],
-        },
-    )
-    assert submitted.status_code == 200
-    workflow_id = submitted.json()["workflow"]["workflow_id"]
-    assert run_worker_once() is not None
-    response = client.get(f"/agent/workflows/{workflow_id}")
-    assert response.status_code == 200
-    workflow = response.json()
-    step = next(item for item in workflow["steps"] if item["step_key"] == "step-2")
-    assert step["status"] == "succeeded"
-    return workflow_id, step
+def _execute_echo_step(
+    client,
+    *,
+    work_order_plan_id: str | None = None,
+) -> tuple[str, dict[str, object]]:
+    request_body = {
+        "goal": "Verify an exact durable workflow step",
+        "tools": [
+            {
+                "step_id": "step-2",
+                "depends_on": [],
+                "name": "text.echo",
+                "payload": {"text": "workflow evidence marker"},
+            }
+        ],
+    }
+    if work_order_plan_id is not None:
+        request_body["work_order_plan_id"] = work_order_plan_id
+    submitted = client.post("/agent/workflows", json=request_body)
 
 
 def _evidence(work_order_digest: str, workflow_id: str, step: dict[str, object]):
@@ -115,7 +111,7 @@ def test_default_server_verifier_accepts_exact_owner_owned_awiplan_step():
         criterion=criterion,
         planned_capability="text.echo",
     )
-    workflow_id, step = _execute_echo_step(client)
+    workflow_id, step = _execute_echo_step(client, work_order_plan_id=plan_id)
 
     response = client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
@@ -143,7 +139,7 @@ def test_default_server_verifier_keeps_non_machine_verifiable_goal_unknown():
         criterion=criterion,
         planned_capability="text.echo",
     )
-    workflow_id, step = _execute_echo_step(client)
+    workflow_id, step = _execute_echo_step(client, work_order_plan_id=plan_id)
 
     response = client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
@@ -159,14 +155,15 @@ def test_default_server_verifier_keeps_non_machine_verifiable_goal_unknown():
     assert body["correction_proposal"]["items"][0]["action"] == "gather_or_reconcile_evidence"
 
 
-def test_default_server_verifier_rejects_workflow_step_capability_mismatch():
+def test_default_server_verifier_rejects_unbound_workflow_even_for_matching_step():
     client = authenticated_client()
     criterion = "workflow_step_succeeded:step-2"
     plan_id, work_order_digest = _persist_plan(
         client,
         criterion=criterion,
-        planned_capability="other.registered.capability",
+        planned_capability="text.echo",
     )
+    # Same owner, step ID and capability are insufficient without atomic plan linkage.
     workflow_id, step = _execute_echo_step(client)
 
     response = client.post(
@@ -178,4 +175,4 @@ def test_default_server_verifier_rejects_workflow_step_capability_mismatch():
     report = response.json()["report"]
     assert report["decision"] == "review_required"
     assert report["criteria"][0]["status"] == "unknown"
-    assert "workflow_step_capability_mismatch" in report["criteria"][0]["reason_codes"]
+    assert "workflow_not_bound_to_work_order_plan" in report["criteria"][0]["reason_codes"]
