@@ -19,7 +19,7 @@ from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.payload_envelope import encrypt_plan_payload, load_payload_key
 
 
-def _create_owned_plan(client) -> tuple[str, str]:
+def _create_owned_plan(client) -> tuple[str, str, str]:
     """Persist a minimal encrypted plan for the owner authenticated by this client."""
     authorization = client.headers["Authorization"]
     token = authorization.split(" ", maxsplit=1)[1]
@@ -49,6 +49,8 @@ def _create_owned_plan(client) -> tuple[str, str]:
         ],
         rationale="A single deterministic read-only verification step",
     )
+    work_order_payload = {"work_order": work_order.model_dump(mode="json")}
+    work_order_digest = _canonical_plan_digest(work_order_payload)
     payload = {
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
@@ -67,17 +69,17 @@ def _create_owned_plan(client) -> tuple[str, str]:
         envelope=envelope,
         ttl_seconds=900,
     )
-    return plan_id, digest
+    return plan_id, digest, work_order_digest
 
 
-def _reference(plan_digest: str) -> dict[str, object]:
+def _reference(work_order_digest: str) -> dict[str, object]:
     return {
         "evidence_id": "evidence-001",
         "criterion_id": "ac_001",
         "source_type": "test.fixture",
         "source_ref": "test-runs/123/checks/1",
         "evidence_digest": "b" * 64,
-        "work_order_digest": plan_digest,
+        "work_order_digest": work_order_digest,
         "work_order_revision": 1,
         "observed_at": "2026-11-27T00:00:00+00:00",
         "verifier_id": "test.fixture.passed",
@@ -99,11 +101,11 @@ def test_work_order_evidence_api_is_owner_authenticated():
 
 def test_work_order_evidence_api_returns_review_required_without_trusted_verifier():
     client = authenticated_client()
-    plan_id, plan_digest = _create_owned_plan(client)
+    plan_id, plan_digest, work_order_digest = _create_owned_plan(client)
 
     response = client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
-        json={"evidence": [_reference(plan_digest)]},
+        json={"evidence": [_reference(work_order_digest)]},
     )
 
     assert response.status_code == 200
@@ -113,6 +115,8 @@ def test_work_order_evidence_api_returns_review_required_without_trusted_verifie
     assert report["criteria"][0]["status"] == "unknown"
     assert "unregistered_verifier" in report["criteria"][0]["reason_codes"]
     assert body["plan_digest"] == plan_digest
+    assert body["work_order_digest"] == work_order_digest
+    assert body["report"]["work_order_digest"] == work_order_digest
     assert body["criteria_map"] == {
         "ac_001": "The expected local build check is successful"
     }
@@ -179,7 +183,7 @@ def test_work_order_evidence_api_does_not_accept_caller_supplied_status():
 
 def test_work_order_evidence_api_is_owner_scoped_and_hides_foreign_records():
     owner_client = authenticated_client()
-    plan_id, plan_digest = _create_owned_plan(owner_client)
+    plan_id, _plan_digest, work_order_digest = _create_owned_plan(owner_client)
     foreign_client = authenticated_client()
 
     response = foreign_client.post(
