@@ -168,7 +168,6 @@ class MemoryRepository:
         return self._record(row)
 
     def get(self, owner_user_id: str, memory_id: UUID, *, include_expired: bool = False):
-        if not include_expired:
         query = "SELECT * FROM memory_entries WHERE memory_id = ? AND owner_user_id = ?"
         params: tuple[object, ...] = (str(memory_id), owner_user_id)
         if not include_expired:
@@ -187,7 +186,6 @@ class MemoryRepository:
         memory_stages: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> list[dict[str, object]]:
         bounded_limit = max(1, min(limit, 100))
-        if not include_expired:
         query = "SELECT * FROM memory_entries WHERE owner_user_id = ?"
         params: tuple[object, ...] = (owner_user_id,)
         if not include_expired:
