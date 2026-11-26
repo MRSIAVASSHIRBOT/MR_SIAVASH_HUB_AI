@@ -58,8 +58,7 @@ class WorkOrderCriterion:
     criterion_id: str
     required: bool = True
     description: str = ""
-    allowed_step_ids: tuple[str, ...] = ()
-    allowed_capabilities: tuple[str, ...] = ()
+    step_capability_bindings: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,22 +273,25 @@ def _validate_snapshot(snapshot: WorkOrderSnapshot) -> dict[str, WorkOrderCriter
         ):
             raise EvidenceInputError("WorkOrder criterion description is invalid")
         if (
-            not isinstance(criterion.allowed_step_ids, tuple)
-            or len(criterion.allowed_step_ids) > MAX_WORK_ORDER_CRITERIA
-            or any(
-                not isinstance(step_id, str)
-                or re.fullmatch(r"^[a-z][a-z0-9_-]{0,39}$", step_id) is None
-                for step_id in criterion.allowed_step_ids
-            )
+            not isinstance(criterion.step_capability_bindings, tuple)
+            or len(criterion.step_capability_bindings) > MAX_WORK_ORDER_CRITERIA
         ):
-            raise EvidenceInputError("WorkOrder criterion step scope is invalid")
-        if (
-            not isinstance(criterion.allowed_capabilities, tuple)
-            or len(criterion.allowed_capabilities) > MAX_WORK_ORDER_CRITERIA
-        ):
-            raise EvidenceInputError("WorkOrder criterion capability scope is invalid")
-        for capability in criterion.allowed_capabilities:
-            _validate_identifier(capability, "WorkOrder criterion capability")
+            raise EvidenceInputError("WorkOrder criterion step/capability bindings are invalid")
+        seen_step_ids: set[str] = set()
+        for binding in criterion.step_capability_bindings:
+            if (
+                not isinstance(binding, tuple)
+                or len(binding) != 2
+                or not isinstance(binding[0], str)
+                or re.fullmatch(r"^[a-z][a-z0-9_-]{0,39}$", binding[0]) is None
+                or binding[0] in seen_step_ids
+                or not isinstance(binding[1], tuple)
+                or len(binding[1]) > MAX_WORK_ORDER_CRITERIA
+            ):
+                raise EvidenceInputError("WorkOrder criterion step/capability binding is invalid")
+            seen_step_ids.add(binding[0])
+            for capability in binding[1]:
+                _validate_identifier(capability, "WorkOrder criterion capability")
         if criterion.criterion_id in by_id:
             raise EvidenceInputError("WorkOrder criterion IDs must be unique")
         by_id[criterion.criterion_id] = criterion
