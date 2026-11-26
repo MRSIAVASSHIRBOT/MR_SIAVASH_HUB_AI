@@ -4,6 +4,7 @@ import pytest
 
 from mrhub.agents.registry import AgentProfile, AgentRegistry, build_default_agent_registry
 from mrhub.tools.builtins import build_tool_registry
+from mrhub.tools.registry import ToolRegistry
 
 
 def _profile(
@@ -88,3 +89,12 @@ def test_registry_requires_immutable_tool_scope():
     )
     with pytest.raises(ValueError, match="immutable"):
         registry.register(profile)
+
+
+
+def test_registry_metadata_composition_does_not_require_optional_integrations():
+    registry = build_default_agent_registry()
+
+    assert registry.frozen is True
+    with pytest.raises(LookupError, match="Tool is not registered"):
+        registry.scoped_tools("text_helper", ToolRegistry())
