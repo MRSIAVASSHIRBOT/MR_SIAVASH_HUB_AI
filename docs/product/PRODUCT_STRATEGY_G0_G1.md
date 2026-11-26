@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-27
 - **Status:** Draft strategy baseline derived from the owner's four-product architecture; measurable targets require owner approval.
-- **Authority:** [ADR-0047](../architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md)
+- **Authority:** [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 - **Governance:** [G0–G12](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md)
 
 ## G0 — Vision & Mission
@@ -38,7 +38,7 @@ Deliver an extensible AI environment that helps its owner understand goals, plan
 
 ### Short-term outcomes (next portfolio increment)
 
-1. Adopt the four-product scope in ADR-0047 and remove active planning ambiguity.
+1. Adopt the four-product scope in ADR-0051 and remove active planning ambiguity.
 2. Complete requirements, actor/use-case catalogue and RACI.
 3. Publish and sequence the new four-product technical phase inventory.
 4. Reconcile each repository's current mainline source, tests, dependencies and release evidence against that inventory.
@@ -101,7 +101,7 @@ Numeric SLOs must be set only after capturing a baseline over a representative p
 
 ### G0/G1 acceptance
 
-- The four product identities and owners match ADR-0047.
+- The four product identities and owners match ADR-0051.
 - The mission, principles, short/long-term outcomes and product positioning are recorded.
 - Proposed metrics have clear definitions and sources.
 - Numeric targets, priority trade-offs and audience expansion are recorded as owner-approved decisions rather than silently assumed.
