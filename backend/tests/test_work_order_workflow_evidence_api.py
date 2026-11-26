@@ -112,6 +112,13 @@ def test_default_server_verifier_accepts_exact_owner_owned_awiplan_step():
         planned_capability="text.echo",
     )
     workflow_id, step = _execute_echo_step(client, work_order_plan_id=plan_id)
+    persisted_plan = AgentWorkOrderPlanRepository(get_settings().database_path).get(
+        plan_id,
+        owner_user_id=_owner_id(client),
+    )
+    assert persisted_plan is not None
+    assert persisted_plan.status == "consumed"
+    assert persisted_plan.workflow_id == workflow_id
 
     response = client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
@@ -176,3 +183,38 @@ def test_default_server_verifier_rejects_unbound_workflow_even_for_matching_step
     assert report["decision"] == "review_required"
     assert report["criteria"][0]["status"] == "unknown"
     assert "workflow_not_bound_to_work_order_plan" in report["criteria"][0]["reason_codes"]
+
+
+
+def test_plan_binding_rejects_mismatched_step_without_consuming_the_plan():
+    client = authenticated_client()
+    plan_id, _work_order_digest = _persist_plan(
+        client,
+        criterion="workflow_step_succeeded:step-2",
+        planned_capability="text.echo",
+    )
+
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Verify an exact durable workflow step",
+            "work_order_plan_id": plan_id,
+            "tools": [
+                {
+                    "step_id": "different-step",
+                    "depends_on": [],
+                    "name": "text.echo",
+                    "payload": {"text": "workflow evidence marker"},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    record = AgentWorkOrderPlanRepository(get_settings().database_path).get(
+        plan_id,
+        owner_user_id=_owner_id(client),
+    )
+    assert record is not None
+    assert record.status == "active"
+    assert record.workflow_id is None
