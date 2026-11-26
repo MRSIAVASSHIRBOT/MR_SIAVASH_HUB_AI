@@ -103,6 +103,16 @@ def test_default_verifier_accepts_only_exact_owner_plan_step_and_capability():
     criterion = "workflow_step_succeeded:step-2"
     plan_id, work_order_digest = _create_plan(client, criterion, "text.echo")
     workflow_id, step = _execute_text_echo_workflow(client, work_order_plan_id=plan_id)
+    token = client.headers["Authorization"].split(" ", maxsplit=1)[1]
+    owner = get_auth_service().authenticate(token)
+    assert owner is not None
+    persisted_plan = AgentWorkOrderPlanRepository(get_settings().database_path).get(
+        plan_id,
+        owner_user_id=owner.user_id,
+    )
+    assert persisted_plan is not None
+    assert persisted_plan.status == "consumed"
+    assert persisted_plan.workflow_id == workflow_id
 
     response = client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
@@ -158,3 +168,38 @@ def test_default_verifier_rejects_an_unbound_workflow_even_for_the_same_owner_st
     assert report["decision"] == "review_required"
     assert report["criteria"][0]["status"] == "unknown"
     assert "workflow_not_bound_to_work_order_plan" in report["criteria"][0]["reason_codes"]
+
+
+
+def test_plan_binding_rejects_workflow_steps_outside_the_persisted_awiplan():
+    client = authenticated_client()
+    criterion = "workflow_step_succeeded:step-2"
+    plan_id, _work_order_digest = _create_plan(client, criterion, "text.echo")
+
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Verify one exact workflow step",
+            "work_order_plan_id": plan_id,
+            "tools": [
+                {
+                    "step_id": "different-step",
+                    "depends_on": [],
+                    "name": "text.echo",
+                    "payload": {"text": "workflow evidence marker"},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    token = client.headers["Authorization"].split(" ", maxsplit=1)[1]
+    owner = get_auth_service().authenticate(token)
+    assert owner is not None
+    record = AgentWorkOrderPlanRepository(get_settings().database_path).get(
+        plan_id,
+        owner_user_id=owner.user_id,
+    )
+    assert record is not None
+    assert record.status == "active"
+    assert record.workflow_id is None
