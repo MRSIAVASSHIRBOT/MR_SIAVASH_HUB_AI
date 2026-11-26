@@ -48,8 +48,8 @@ def _persist_plan(criterion: str) -> tuple[str, dict[str, object], str]:
     plan = ExecutionPlan(
         steps=[
             PlanStep(
-                step_id="verify-step",
-                description="Wait for the explicitly named workflow step",
+                step_id="step-2",
+                description="Verify the explicitly named workflow step",
                 depends_on=[],
                 required_capabilities=["text.echo"],
                 verifies_criteria=[criterion],
@@ -136,6 +136,9 @@ def test_registered_workflow_step_evidence_accepts_only_exact_typed_criterion():
     assert body["execution_started"] is False
     assert body["permissions_changed"] is False
     assert body["verifier_contract"] == "hub.workflow_step.v1"
+    assert body["decision_scope"] == "declared_work_order_acceptance_criteria_only"
+    assert body["goal_completion_claimed"] is False
+    assert body["human_review_required_for_goal_completion"] is True
     assert client.get(f"/agent/workflows/{workflow_id}").json()["status"] == "succeeded"
 
 
