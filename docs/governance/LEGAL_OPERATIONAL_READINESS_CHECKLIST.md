@@ -2,7 +2,7 @@
 
 - **Baseline:** 2026-11-27
 - **Scope:** HUB, EL_AI, EL_AGENT, MR_SIAVASH_AI and their approved integrations
-- **Authority:** [G0–G12 governance](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md), [ADR-0047](../architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md), and [G9 risk register](ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md)
+- **Authority:** [G0–G12 governance](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md), [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md), and [G9 risk register](ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md)
 - **Status:** OWNER ACTION REQUIRED — this checklist is a preparation and evidence-tracking aid, not a legal opinion, certification or production approval
 
 ## 1. Purpose and decision rule
