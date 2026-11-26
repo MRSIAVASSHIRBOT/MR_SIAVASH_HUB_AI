@@ -29,3 +29,19 @@ def test_agent_registry_endpoint_returns_frozen_metadata_without_instructions():
     )
     assert "instructions" not in first.text
     assert first.headers["cache-control"] == "no-store"
+
+
+def test_agent_run_fails_closed_when_shared_registry_is_unavailable():
+    client = authenticated_client()
+    registry = client.app.state.agent_registry
+    client.app.state.agent_registry = None
+    try:
+        response = client.post(
+            "/agent/run",
+            json={"goal": "Do not run without the reviewed registry."},
+        )
+    finally:
+        client.app.state.agent_registry = registry
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Agent registry is not ready"
