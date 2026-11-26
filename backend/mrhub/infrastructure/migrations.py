@@ -1607,8 +1607,8 @@ MIGRATIONS = (
             """ALTER TABLE memory_entries
                ADD COLUMN memory_stage TEXT NOT NULL DEFAULT 'retained'
                CHECK (memory_stage IN ('working', 'lesson_candidate', 'retained'))""",
-            "CREATE INDEX idx_memory_owner_stage_expiry "
-            "ON memory_entries(owner_user_id, memory_stage, expires_at, updated_at)",
+            ("CREATE INDEX idx_memory_owner_stage_expiry "
+             "ON memory_entries(owner_user_id, memory_stage, expires_at, updated_at)"),
         ),
     ),
 )
