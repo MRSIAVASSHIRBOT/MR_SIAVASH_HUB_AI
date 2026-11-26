@@ -302,7 +302,7 @@ class KnowledgeRepository:
             ).fetchall()
 
         candidates: list[tuple[float, dict[str, object]]] = []
-        for row in rows:
+        for candidate_order, row in enumerate(rows):
             chunk_content = str(row["content"])
             document_content = str(row["document_content"])
             chunk_hash = self._digest(chunk_content)
@@ -330,6 +330,7 @@ class KnowledgeRepository:
             candidates.append(
                 (
                     lexical_rank,
+                    candidate_order,
                     {
                         "chunk_id": row["chunk_id"],
                         "document_id": row["document_id"],
@@ -363,9 +364,9 @@ class KnowledgeRepository:
         worst_rank = max(ranks)
         rank_span = worst_rank - best_rank
         ranked: list[
-            tuple[float, float, float, float, str, int, str, dict[str, object]]
+            tuple[float, float, float, float, int, dict[str, object]]
         ] = []
-        for lexical_rank, record in candidates:
+        for lexical_rank, candidate_order, record in candidates:
             lexical_score = (
                 1.0
                 if rank_span <= 1e-12
@@ -410,9 +411,7 @@ class KnowledgeRepository:
                     lexical_score,
                     owner_reviewed_score,
                     owner_freshness_score,
-                    str(record["document_id"]),
-                    int(record["chunk_index"]),
-                    str(record["chunk_id"]),
+                    candidate_order,
                     record,
                 )
             )
@@ -424,11 +423,9 @@ class KnowledgeRepository:
                 -item[2],
                 -item[3],
                 item[4],
-                item[5],
-                item[6],
             )
         )
-        return [item[7] for item in ranked[:bounded_limit]]
+        return [item[5] for item in ranked[:bounded_limit]]
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         with self.tasks._connection() as connection:
