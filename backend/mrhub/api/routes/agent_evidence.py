@@ -138,7 +138,7 @@ def _load_owned_plan(plan_id: UUID, owner_user_id: str, database_path):
             status_code=409,
             detail="Persisted plan failed schema validation",
         ) from exc
-    return record, work_order
+    return record, work_order, plan
 
 
 def _build_work_order_snapshot(plan_id: UUID, work_order: WorkOrder) -> WorkOrderSnapshot:
@@ -166,6 +166,7 @@ def _workflow_step_verifier(
     *,
     repository: WorkflowRecoveryRepository,
     owner_user_id: str,
+    planned_step_ids: frozenset[str],
 ) -> EvidenceVerification:
     """Verify only the explicitly typed 'workflow step succeeded' criterion."""
     criterion_match = _CRITERION_PATTERN.fullmatch(criterion.description)
@@ -178,6 +179,11 @@ def _workflow_step_verifier(
 
     expected_step_key = criterion_match.group(1)
     workflow_text, source_step_key = source_match.groups()
+    if expected_step_key not in planned_step_ids:
+        return EvidenceVerification(
+            VerifierStatus.UNKNOWN,
+            reason_code="criterion_step_not_in_plan",
+        )
     if source_step_key != expected_step_key:
         return EvidenceVerification(
             VerifierStatus.UNKNOWN,
@@ -276,9 +282,21 @@ def evaluate_plan_evidence(
     settings = get_settings()
     tasks = TaskRepository(settings.database_path)
     tasks.initialize()
-    record, work_order = _load_owned_plan(
+    record, work_order, plan = _load_owned_plan(
         plan_id, current_user.user_id, settings.database_path
     )
+    declared_criteria = set(work_order.acceptance_criteria)
+    planned_criteria = {
+        criterion
+        for step in plan.steps
+        for criterion in step.verifies_criteria
+    }
+    if planned_criteria != declared_criteria:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted plan does not cover the WorkOrder acceptance criteria",
+        )
+    planned_step_ids = frozenset(step.step_id for step in plan.steps)
     snapshot = _build_work_order_snapshot(plan_id, work_order)
 
     references = tuple(
@@ -295,6 +313,7 @@ def evaluate_plan_evidence(
             criterion,
             repository=workflow_repository,
             owner_user_id=current_user.user_id,
+            planned_step_ids=planned_step_ids,
         ),
     )
     try:
@@ -324,6 +343,9 @@ def evaluate_plan_evidence(
         "plan_id": record.plan_id,
         "report": report.as_dict(),
         "verifier_contract": "hub.workflow_step.v1",
+        "decision_scope": "declared_work_order_acceptance_criteria_only",
+        "goal_completion_claimed": False,
+        "human_review_required_for_goal_completion": True,
         "verification_scope": (
             "Only an exact criterion formatted as "
             "'workflow_step_succeeded:<step_key>' can be independently checked "
