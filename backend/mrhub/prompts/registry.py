@@ -133,6 +133,14 @@ class PromptRegistry:
 
     def resolve(self, name: str, version: int) -> PromptTemplate:
         """Resolve an exact revision; never silently fall back to another version."""
+        if (
+            not isinstance(name, str)
+            or _NAME_PATTERN.fullmatch(name) is None
+            or isinstance(version, bool)
+            or not isinstance(version, int)
+            or version < 1
+        ):
+            raise LookupError("Prompt template revision is not registered")
         try:
             return self._templates[(name, version)]
         except (KeyError, TypeError) as exc:
