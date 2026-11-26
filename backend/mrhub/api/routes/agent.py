@@ -1161,6 +1161,13 @@ def _validate_work_order_plan_workflow_binding(
         )
 
     declared_capabilities = set(work_order.required_capabilities)
+    request_capabilities = set(request.required_capabilities)
+    if request_capabilities and request_capabilities != declared_capabilities:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow capability requirements do not match the persisted WorkOrder",
+        )
+
     workflow_capabilities: set[str] = set()
     for step_id, tool in tools_by_id.items():
         planned_step = plan_by_id[step_id]
