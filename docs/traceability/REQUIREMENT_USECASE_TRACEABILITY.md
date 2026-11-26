@@ -26,13 +26,13 @@ This matrix connects each cross-product requirement to the owning technical phas
 | FR-HUB-03 | HUB | H11, X2 | UC-01, UC-02, UC-07, UC-10 | Negative authorization matrix; expiry/revocation and replay tests | Mapped / verification pending |
 | FR-HUB-04 | HUB | H9, H11, H16 | UC-02, UC-11 | Owner isolation, provenance, export/deletion and authorization tests | Mapped / verification pending |
 | FR-HUB-05 | HUB | H14, X6 | UC-02, UC-11 | Adapter contract tests; prove no hidden local-to-cloud fallback | Mapped / verification pending |
-| FR-HUB-06 | HUB | H10, H7, H8, H12 | UC-02, UC-12 | Evidence mismatch, stale/conflicting/unknown evidence tests | Mapped / verification pending |
+| FR-HUB-06 | HUB | H10, H7, H8, H12 | UC-02, UC-12 | Merged evaluator contract tests: `tests/test_work_order_evidence_contract.py` (PR #640); owner-scoped API candidate and tests: `tests/test_agent_work_order_evidence_api.py` (PR #641; CI pending) | Partial implementation evidence / verification pending; production verifiers and E8 consumer contract remain open |
 | FR-HUB-07 | HUB | H15, H17, H18 | UC-12 | Schema/log redaction and operator authorization tests | Mapped / verification pending |
 | FR-ELAI-01 | EL_AI | E2, E13, X8 | UC-03, UC-08 | Runtime routing tests proving private context never enters public requests/replies | Mapped / verification pending |
-| FR-ELAI-02 | EL_AI | E10, E14 | UC-03 | Telegram adapter unit/integration tests; test-bot acceptance is a separate gate | Mapped / owner gate |
+| FR-ELAI-02 | EL_AI | E10, E14 | UC-03 | Outbound invalid-Unicode regression tests in `tests/test_telegram_api.py` (PR #148 merged); full Telegram adapter integration and test-bot acceptance remain separate gates | Partial implementation evidence / owner gate |
 | FR-ELAI-03 | EL_AI + HUB | E1, E5, E13, H11, X2 | UC-03, UC-07 | Pairing, expiry, scope, revocation, replay and client-isolation tests | Mapped / verification pending |
 | FR-ELAI-04 | EL_AI | E10, H8, X9 | UC-04 | State-machine and failure-injection tests; unknown delivery distinct from confirmed delivery | Mapped / verification pending |
-| FR-ELAI-05 | EL_AI | E10, E13 | UC-03 | Type/size/fuzz and invalid-envelope tests | Mapped / verification pending |
+| FR-ELAI-05 | EL_AI | E10, E13 | UC-03 | Outbound text/caption Unicode validation in `tests/test_telegram_api.py` (PR #148 merged); input-envelope size/fuzz and media-bound tests remain open | Partial implementation evidence / verification pending |
 | FR-ELAI-06 | EL_AI | E8, E12, H10 | UC-01, UC-03 | Command authorization and lifecycle integration tests | Mapped / verification pending |
 | FR-ELAI-07 | EL_AI | E1, E2, E13 | UC-03 | Cross-actor negative tests; Business routes remain disabled until acceptance | Mapped / owner gate |
 | FR-AGENT-01 | EL_AGENT | D0, D5, D7, D8 | UC-06 | Offline acceptance with adapters disabled and no network access | Mapped / device gate |
@@ -58,7 +58,7 @@ This matrix connects each cross-product requirement to the owning technical phas
 | Requirement | Owning assurance area | Technical phase(s) | Verification / acceptance evidence | State |
 |---|---|---|---|---|
 | NFR-SEC-01 | All product owners + Security Assurance | H11, E13, D3, A6/A8, X2/X8 | Negative authorization suites across actor, scope and resource ownership | Mapped / verification pending |
-| NFR-SEC-02 | All maintainers | H15, E13, D13, A6/A8, X8 | Secret scan, redacted log fixtures, browser/static artifact scan and review | Mapped / verification pending |
+| NFR-SEC-02 | All maintainers | H15, E13, D2/D13, A6/A8, X8 | EL_AGENT local token-file format/size/regular-file/symlink tests in `tests/test_security.py` (PR #33 merged); cross-product secret scan, redacted log fixtures and browser/static artifact scan remain | Partial implementation evidence / verification pending |
 | NFR-SEC-03 | HUB + EL_AI + EL_AGENT | H11, H14, E3/E13, D3/D6, X8 | Prompt-injection and tool-boundary tests; deterministic authorization | Mapped / verification pending |
 | NFR-PRIV-01 | Product data owners | H9/H11, E2/E13, D10, A5/A6, X3/X8 | Data-flow review, cross-actor negative tests and retention evidence | Mapped / verification pending |
 | NFR-REL-01 | Runtime owners | H1/H7/H8, E10, D4, X9 | Fault injection, bounded retries, idempotency, restart and unknown-outcome tests | Mapped / verification pending |
@@ -95,6 +95,17 @@ This matrix connects each cross-product requirement to the owning technical phas
 3. **Owner confirmation:** actor/audience expansion, named requirement owners and numeric SLO targets require owner review; no values are invented here.
 4. **Cross-repository coverage:** producer and consumer tests must both be linked for shared contracts X1–X10; provider-side tests alone do not complete consumer acceptance.
 5. **Evidence freshness:** every verification link must state the commit SHA and run URL; older CI or runtime evidence is historical, not current acceptance.
+
+## 5.1 Merged implementation evidence — 2026-11-27
+
+| Requirement / slice | Owning product | Source commit / test path | Evidence boundary |
+|---|---|---|---|
+| D2 local API token file safety (subset of NFR-SEC-02) | EL_AGENT | PR #33 merge `de8007bd3a32e636a589d8afb7806725ac55d414`; `src/el_agent/security.py`, `tests/test_security.py` | Linux/Windows Python 3.11/3.12 exact-head tests passed; no Android Keystore or physical-device acceptance claimed |
+| E10 outbound Unicode input validation (subset of FR-ELAI-02/05) | EL_AI | PR #148 merge `bb7239c46556f6fa68841e48740507f31ba58e6c`; `src/el_ai/telegram/api.py`, `tests/test_telegram_api.py` | Python 3.11/3.12 and post-merge security/supply-chain checks passed; no live Telegram E2E claimed |
+| H10 deterministic evaluator contract (FR-HUB-06) | HUB | PR #640 merge `47a8e4fee206ef72e928fa3ce381a52ee4324921`; `tests/test_work_order_evidence_contract.py` | Exact PR-head checks passed; post-merge main validation was separately tracked |
+| H10 owner-scoped API candidate (FR-HUB-06) | HUB | PR #641; `backend/mrhub/api/routes/agent.py`, `tests/test_agent_work_order_evidence_api.py` | Open PR, exact-head CI pending; production registry intentionally has no verifier adapters yet |
+
+These slices update evidence state only. They do not mark the parent requirement or phase Done.
 
 ## 6. G2/G3 exit rule
 
