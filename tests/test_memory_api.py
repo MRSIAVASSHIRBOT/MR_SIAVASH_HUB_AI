@@ -218,19 +218,31 @@ def test_explicit_expired_memory_purge_honors_a_bounded_api_limit() -> None:
         ).fetchone()[0] == 0
 
 
-def test_memory_export_is_owner_scoped_and_contains_expired_entries() -> None:
+def test_memory_export_is_owner_scoped_and_preserves_unpurged_expired_entries() -> None:
     client = authenticated_client()
     created = client.post(
         "/memory",
         json={"category": "export", "content": "portable memory export example"},
     )
     assert created.status_code == 201
+    memory_id = created.json()["memory_id"]
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE memory_entries SET expires_at = ? WHERE memory_id = ?",
+            ("2000-01-01T00:00:00+00:00", memory_id),
+        )
+
     exported = client.get("/memory/export")
     assert exported.status_code == 200
-    assert exported.json()["export_version"] == 1
-    assert [entry["memory_id"] for entry in exported.json()["entries"]] == [
-        created.json()["memory_id"]
-    ]
+    body = exported.json()
+    assert body["export_version"] == 1
+    assert [entry["memory_id"] for entry in body["entries"]] == [memory_id]
+    assert body["entries"][0]["expires_at"] == "2000-01-01T00:00:00+00:00"
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is not None
 
 
 @pytest.mark.parametrize("field", ["content", "provenance"])
