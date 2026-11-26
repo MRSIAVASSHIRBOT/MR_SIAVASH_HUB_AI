@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 from uuid import uuid4
 
 from client_helpers import authenticated_client
@@ -16,6 +17,7 @@ from mrhub.api.routes.agent import _canonical_plan_digest
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
 from mrhub.infrastructure.database import TaskRepository
+from mrhub.security.auth import AuthService, _password_digest
 from mrhub.jobs.payload_envelope import encrypt_plan_payload, load_payload_key
 
 
@@ -184,8 +186,28 @@ def test_work_order_evidence_api_does_not_accept_caller_supplied_status():
 def test_work_order_evidence_api_is_owner_scoped_and_hides_foreign_records():
     owner_client = authenticated_client()
     plan_id, _plan_digest, work_order_digest = _create_owned_plan(owner_client)
-    foreign_client = authenticated_client()
 
+    # Create a second authenticated identity in the SAME database so this
+    # proves owner isolation rather than merely testing a missing record.
+    settings = get_settings()
+    repository = TaskRepository(settings.database_path)
+    salt = secrets.token_bytes(16)
+    repository.create_auth_user(
+        "foreign-user",
+        "foreign",
+        salt.hex(),
+        _password_digest("foreign-test-password-2026", salt).hex(),
+    )
+    foreign_login = AuthService(repository).login("foreign", "foreign-test-password-2026")
+    assert foreign_login is not None
+
+    from fastapi.testclient import TestClient
+    from mrhub.main import create_app
+
+    foreign_client = TestClient(create_app())
+    foreign_client.headers.update(
+        {"Authorization": f"Bearer {foreign_login[0]}"}
+    )
     response = foreign_client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
         json={"evidence": [_reference(work_order_digest)]},
