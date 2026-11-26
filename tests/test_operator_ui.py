@@ -48,6 +48,27 @@ def test_operator_ui_and_assets_are_served_locally_with_strict_csp(tmp_path, mon
     get_settings.cache_clear()
 
 
+
+def test_operator_ui_exposes_owner_controlled_memory_lifecycle_stages():
+    client = TestClient(create_app())
+    page = client.get("/ui/")
+    script = client.get("/ui/app.js")
+
+    assert page.status_code == script.status_code == 200
+    assert 'name="memory_stage"' in page.text
+    assert 'value="working"' in page.text
+    assert 'value="lesson_candidate"' in page.text
+    assert 'value="retained"' in page.text
+    assert 'name="retention_days"' in page.text
+    assert 'name="memory_stage"' in page.text
+    assert "memory_stages: selectedStage ? [selectedStage] : null" in script.text
+    assert 'method: "PATCH"' in script.text
+    assert 'memory_stage: "retained"' in script.text
+    assert 'verification_status: "user_approved"' in script.text
+    assert "retention_days" in script.text
+    assert "item.memory_stage === \"lesson_candidate\"" in script.text
+
+
 def test_operator_ui_assets_are_included_in_installed_package() -> None:
     package = files("mrhub")
     assert package.joinpath("web/index.html").is_file()
