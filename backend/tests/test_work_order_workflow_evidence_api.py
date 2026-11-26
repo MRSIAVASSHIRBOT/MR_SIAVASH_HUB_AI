@@ -218,3 +218,41 @@ def test_plan_binding_rejects_mismatched_step_without_consuming_the_plan():
     assert record is not None
     assert record.status == "active"
     assert record.workflow_id is None
+
+
+def test_non_executable_workflow_cannot_consume_a_persisted_work_order_plan():
+    client = authenticated_client()
+    plan_id, _work_order_digest = _persist_plan(
+        client,
+        criterion="workflow_step_succeeded:step-2",
+        planned_capability="unknown.unregistered",
+    )
+
+    response = client.post(
+        "/agent/workflows",
+        json={
+            "goal": "Verify an exact durable workflow step",
+            "work_order_plan_id": plan_id,
+            "tools": [
+                {
+                    "step_id": "step-2",
+                    "depends_on": [],
+                    "name": "unknown.unregistered",
+                    "payload": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "A persisted WorkOrder plan can only bind to an execution-ready workflow"
+    )
+    record = AgentWorkOrderPlanRepository(get_settings().database_path).get(
+        plan_id,
+        owner_user_id=_owner_id(client),
+    )
+    assert record is not None
+    assert record.status == "active"
+    assert record.workflow_id is None
