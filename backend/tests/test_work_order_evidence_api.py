@@ -1,6 +1,6 @@
-from datetime import UTC, datetime
 import hashlib
 import json
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from client_helpers import authenticated_client, run_worker_once
@@ -238,8 +238,8 @@ def test_plan_evidence_api_is_owner_scoped_and_no_store():
 def test_workflow_evidence_rejects_same_step_id_with_different_tool_capability():
     from mrhub.agents.work_order_evidence import (
         EvidenceReference,
-        WorkOrderCriterion,
         VerifierStatus,
+        WorkOrderCriterion,
     )
     from mrhub.api.routes.agent_evidence import _workflow_step_verifier
 
