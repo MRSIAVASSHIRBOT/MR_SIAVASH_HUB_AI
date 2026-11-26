@@ -163,6 +163,7 @@ def test_dreaming_only_considers_retained_entries():
         _owner_id(MemoryRepository(get_settings().database_path)),
         threshold=0.75,
     )
+    assert result["proposal_count"] >= 1
     assert all(
         proposal["canonical_memory_id"] not in {
             candidate_a.json()["memory_id"],
