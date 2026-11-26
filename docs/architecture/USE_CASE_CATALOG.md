@@ -162,4 +162,6 @@
 
 ## 5. Follow-up artefacts
 
-Detailed sequence diagrams, API examples, UI state transitions, failure matrices and manual test scripts are stored with the owning product's implementation docs and linked back to these UC identifiers.
+- [Logical sequence diagrams for UC-01/02/03/04/05/07/08/10](USE_CASE_SEQUENCE_DIAGRAMS.md) document the trust-boundary, authorization and ambiguous-outcome paths. Reconcile them with real API/adapter names before acceptance.
+- [Requirement/use-case traceability map](../traceability/REQUIREMENT_USECASE_TRACEABILITY.md) links all initial FR/NFR IDs to technical phases and UC identifiers.
+- Detailed API examples, UI state transitions, full failure matrices and manual test scripts remain with each owning product's implementation docs and must link back to these UC identifiers.
