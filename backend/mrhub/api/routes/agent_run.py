@@ -6,12 +6,12 @@ import json
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.context import AgentContextAssembler
 from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
-from mrhub.agents.registry import build_default_agent_registry
+from mrhub.agents.registry import AgentRegistry
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
 from mrhub.config import get_settings
@@ -51,9 +51,13 @@ class AgentRunRequest(BaseModel):
 def run_agent(
     payload: AgentRunRequest,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
+    http_request: Request,
 ) -> dict[str, object]:
     """Run one explicitly bounded model loop; no stub or provider fallback is permitted."""
     settings = get_settings()
+    agent_registry = getattr(http_request.app.state, "agent_registry", None)
+    if not isinstance(agent_registry, AgentRegistry) or not agent_registry.frozen:
+        raise HTTPException(status_code=503, detail="Agent registry is not ready")
     selected_project = None
     if payload.project_id is not None:
         selected_project = get_project_context(payload.project_id)
@@ -127,7 +131,6 @@ def run_agent(
     worker_control = WorkerControlRepository(settings.database_path)
     run_id = str(uuid4())
     tool_registry = build_tool_registry(correlation_id=run_id, owner_user_id=user.user_id)
-    agent_registry = build_default_agent_registry(tool_registry)
     result = AgentOrchestrator(model_router, tool_registry, agent_registry).run(
         request,
         should_cancel=worker_control.is_stopped,
