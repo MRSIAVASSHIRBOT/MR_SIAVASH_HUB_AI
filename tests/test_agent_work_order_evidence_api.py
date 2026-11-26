@@ -7,7 +7,6 @@ from mrhub.agents.awi_planner import ExecutionPlan, PlanStep
 from mrhub.agents.plan_repository import AgentWorkOrderPlanRepository
 from mrhub.agents.work_order import WorkOrder
 from mrhub.agents.work_order_evidence import (
-    EvidenceReference,
     EvidenceVerification,
     EvidenceVerifierRegistry,
     VerifierStatus,
