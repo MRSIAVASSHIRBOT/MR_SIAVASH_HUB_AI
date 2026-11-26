@@ -120,8 +120,25 @@ class MemoryValidationEngine:
                     "memory_id": entry["memory_id"],
                     "category": entry["category"],
                     "memory_type": entry.get("memory_type", "unspecified"),
+                    "memory_stage": entry.get("memory_stage", "retained"),
                     "excerpt": content[:300],
                     "reason": "expired",
+                    "requires_owner_review": True,
+                })
+                continue
+            memory_stage = entry.get("memory_stage", "retained")
+            if memory_stage == "working":
+                continue
+            if memory_stage == "lesson_candidate":
+                review_queue.append({
+                    "memory_id": entry["memory_id"],
+                    "category": entry["category"],
+                    "memory_type": entry.get("memory_type", "unspecified"),
+                    "memory_stage": memory_stage,
+                    "excerpt": content[:300],
+                    "confidence": entry.get("confidence"),
+                    "verification_status": entry.get("verification_status"),
+                    "reasons": ["lesson_candidate_pending_review"],
                     "requires_owner_review": True,
                 })
                 continue
@@ -138,6 +155,7 @@ class MemoryValidationEngine:
                     "memory_id": entry["memory_id"],
                     "category": entry["category"],
                     "memory_type": entry.get("memory_type", "unspecified"),
+                    "memory_stage": memory_stage,
                     "excerpt": content[:300],
                     "confidence": confidence,
                     "verification_status": verification_status,
