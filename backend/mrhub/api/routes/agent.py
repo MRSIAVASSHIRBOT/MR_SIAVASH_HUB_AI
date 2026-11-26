@@ -807,6 +807,7 @@ def evaluate_persisted_work_order_evidence(
         EvidenceReference(
             **item.model_dump(mode="python"),
             owner_user_id=current_user.user_id,
+            plan_id=str(record.plan_id),
         )
         for item in payload.evidence
     )
@@ -1075,6 +1076,96 @@ def _workflow_digest(request: AgentPlanRequest) -> str:
     return AgentWorkflowRunner.request_digest(request)
 
 
+def _validate_work_order_plan_workflow_binding(
+    *,
+    plan_record,
+    request: AgentPlanRequest,
+) -> None:
+    """Require a workflow request to implement the exact persisted WorkOrder/AWI plan."""
+    if request.work_order_plan_id is None:
+        return
+    try:
+        key = load_payload_key()
+        payload = decrypt_plan_payload(
+            plan_record.envelope,
+            plan_id=plan_record.plan_id,
+            owner_user_id=plan_record.owner_user_id,
+            key=key,
+        )
+        required_fields = {"work_order", "plan"}
+        allowed_fields = required_fields | set(_PERSISTED_PLAN_METADATA_FIELDS)
+        if (
+            not required_fields.issubset(payload)
+            or not set(payload).issubset(allowed_fields)
+        ):
+            raise PayloadEnvelopeError("Persisted plan payload shape is invalid")
+        metadata = _extract_persisted_plan_metadata(payload)
+        work_order = WorkOrder.model_validate(payload["work_order"])
+        awi_plan = ExecutionPlan.model_validate(payload["plan"])
+        canonical = {
+            "work_order": work_order.model_dump(mode="json"),
+            "plan": awi_plan.model_dump(mode="json"),
+            **metadata,
+        }
+        digest = _canonical_plan_digest(canonical)
+        if not hmac.compare_digest(digest, plan_record.plan_digest):
+            raise PayloadEnvelopeError("Persisted plan digest does not match its record")
+    except (PayloadEnvelopeError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="WorkOrder plan failed integrity or schema validation",
+        ) from exc
+
+    if work_order.goal != request.goal:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow goal does not match the persisted WorkOrder plan",
+        )
+    if not request.tools or len(awi_plan.steps) != len(request.tools):
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow tools do not cover the persisted AWI plan",
+        )
+
+    tools_by_id: dict[str, object] = {}
+    for position, tool in enumerate(request.tools, start=2):
+        if tool.step_id is None or tool.depends_on is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Plan-linked workflows require explicit step IDs and dependencies",
+            )
+        step_id = request.tool_step_id(position, tool)
+        tools_by_id[step_id] = tool
+
+    plan_by_id = {step.step_id: step for step in awi_plan.steps}
+    if set(plan_by_id) != set(tools_by_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow step identities do not match the persisted AWI plan",
+        )
+
+    declared_capabilities = set(work_order.required_capabilities)
+    workflow_capabilities: set[str] = set()
+    for step_id, tool in tools_by_id.items():
+        planned_step = plan_by_id[step_id]
+        if (
+            len(planned_step.required_capabilities) != 1
+            or planned_step.required_capabilities[0] != tool.name
+            or set(planned_step.depends_on) != set(tool.depends_on or ())
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Workflow step capability or dependency scope does not match the persisted AWI plan",
+            )
+        workflow_capabilities.add(tool.name)
+
+    if workflow_capabilities != declared_capabilities:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow capabilities do not match the persisted WorkOrder",
+        )
+
+
 @router.get("/workflows")
 def list_agent_workflows(
     current_user: Annotated[AuthenticatedUser, Depends(require_user)],
@@ -1230,6 +1321,26 @@ def execute_agent_workflow(
                 )
             idempotency_binding = {"scope": scope, "key": idempotency_key}
 
+        if request.work_order_plan_id is not None:
+            plan_repository = AgentWorkOrderPlanRepository(settings.database_path)
+            plan_record = plan_repository.get(
+                str(request.work_order_plan_id),
+                owner_user_id=current_user.user_id,
+            )
+            if plan_record is None:
+                raise HTTPException(status_code=404, detail="WorkOrder plan record not found")
+            if plan_record.status == "expired":
+                raise HTTPException(status_code=410, detail="WorkOrder plan record has expired")
+            if plan_record.status != "active":
+                raise HTTPException(
+                    status_code=409,
+                    detail="WorkOrder plan is not available for a new workflow",
+                )
+            _validate_work_order_plan_workflow_binding(
+                plan_record=plan_record,
+                request=request,
+            )
+
         raw_steps = plan.get("steps", [])
         if not isinstance(raw_steps, list) or not raw_steps:
             raise HTTPException(status_code=422, detail="Workflow plan contains no executable steps")
@@ -1251,6 +1362,11 @@ def execute_agent_workflow(
                     "ciphertext_b64": encrypted.ciphertext_b64,
                 },
                 idempotency_binding=idempotency_binding,
+                work_order_plan_id=(
+                    str(request.work_order_plan_id)
+                    if request.work_order_plan_id is not None
+                    else None
+                ),
             )
         except sqlite3.IntegrityError as exc:
             if idempotency_key is not None:
