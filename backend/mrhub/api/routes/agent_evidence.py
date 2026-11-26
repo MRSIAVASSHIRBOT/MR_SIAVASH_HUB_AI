@@ -350,7 +350,10 @@ def evaluate_plan_evidence(
             },
         )
     except sqlite3.Error as exc:
-        raise HTTPException(status_code=503, detail="Evidence audit storage is unavailable") from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Evidence audit storage is unavailable",
+        ) from exc
 
     return {
         "plan_id": record.plan_id,
