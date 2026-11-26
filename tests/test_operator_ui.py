@@ -56,7 +56,8 @@ def test_operator_ui_exposes_owner_controlled_memory_lifecycle_stages():
 
     assert page.status_code == script.status_code == 200
     assert 'name="memory_stage"' in page.text
-    assert 'value="working"' in page.text
+    assert 'value="working" selected' in page.text
+    assert "پیش‌فرض" in page.text
     assert 'value="lesson_candidate"' in page.text
     assert 'value="retained"' in page.text
     assert 'name="retention_days"' in page.text
