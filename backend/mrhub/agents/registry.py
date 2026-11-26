@@ -68,7 +68,7 @@ class AgentRegistry:
         if type(profile.max_turns) is not int or not 1 <= profile.max_turns <= 3:
             raise ValueError("Agent turn limit must be between 1 and 3")
         if not isinstance(profile.allowed_tools, frozenset):
-            raise ValueError("Agent tool scope must be an immutable set")
+            raise TypeError("Agent tool scope must be an immutable set")
         if len(profile.allowed_tools) > 10:
             raise ValueError("Agent tool scope exceeds the supported limit")
         if any(
@@ -80,7 +80,7 @@ class AgentRegistry:
             raise ValueError("Agent is already registered")
         # Registration is allowed only during trusted application composition.
         if not isinstance(self._agents, dict):
-            raise RuntimeError("Agent registry is not mutable")
+            raise TypeError("Agent registry storage must remain a mutable mapping before freeze")
         self._agents[profile.name] = profile
 
     def get(self, name: str) -> AgentProfile:
