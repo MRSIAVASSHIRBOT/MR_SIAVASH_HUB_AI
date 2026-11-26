@@ -1,5 +1,15 @@
 # Specialist agent registry
 
+## Phase mapping
+
+This change delivers the specialist-registry work item in the requested
+H0–H32 execution sequence. The repository's current
+`docs/roadmap/ECOSYSTEM_73_PHASE_BASELINE.md` assigns the corresponding
+multi-agent registry/delegation domain to canonical H13, while canonical H20
+is advanced research and bounded self-improvement. The PR is therefore a
+scoped registry capability slice, not a claim that either complete phase has
+been accepted.
+
 The authenticated `GET /agent/registry` endpoint exposes a metadata-only
 manifest of server-reviewed specialist profiles.
 
