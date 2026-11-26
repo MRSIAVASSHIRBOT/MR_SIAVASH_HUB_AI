@@ -53,9 +53,17 @@ class AgentRegistry:
             raise ValueError("Invalid agent name")
         if type(profile.version) is not int or not 1 <= profile.version <= 2_147_483_647:
             raise ValueError("Agent profile version must be a positive integer")
-        if not isinstance(profile.description, str) or not profile.description.strip() or len(profile.description) > 200:
+        if (
+            not isinstance(profile.description, str)
+            or not profile.description.strip()
+            or len(profile.description) > 200
+        ):
             raise ValueError("Agent description must contain 1 to 200 characters")
-        if not isinstance(profile.instructions, str) or not profile.instructions.strip() or len(profile.instructions) > 1_200:
+        if (
+            not isinstance(profile.instructions, str)
+            or not profile.instructions.strip()
+            or len(profile.instructions) > 1_200
+        ):
             raise ValueError("Agent instructions must contain 1 to 1200 characters")
         if type(profile.max_turns) is not int or not 1 <= profile.max_turns <= 3:
             raise ValueError("Agent turn limit must be between 1 and 3")
