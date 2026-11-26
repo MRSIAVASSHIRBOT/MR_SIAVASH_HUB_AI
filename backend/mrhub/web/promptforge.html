@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#11121a">
+<title>PromptForge Studio | MR_SIAVASH</title>
+<link rel="stylesheet" href="/ui/promptforge.css">
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+ <div class="brand"><div class="logo">PF</div><div><h1>PromptForge Studio</h1><p>AI Prompt Engineering Workbench · MR_SIAVASH</p></div></div>
+ <div class="top-actions">
+  <button class="btn" id="exportAll">خروجی پشتیبان</button><button class="btn" id="importBtn">ورود پشتیبان</button><input type="file" id="importFile" accept=".json,application/json" class="hidden">
+  <button class="btn primary" id="saveCurrent">ذخیره پروژه</button>
+ </div>
+</header>
+<div class="layout">
+<aside class="sidebar">
+ <div class="nav-label">WORKSPACE</div>
+ <button class="nav active" data-tab="builder"><span class="ico">✦</span> سازنده پرامپت</button>
+ <button class="nav" data-tab="video"><span class="ico">▶</span> پرامپت ویدئو</button>
+ <button class="nav" data-tab="text"><span class="ico">⌘</span> پرامپت متنی و ایجنت</button>
+ <button class="nav" data-tab="templates"><span class="ico">▦</span> الگوهای آماده</button>
+ <button class="nav" data-tab="library"><span class="ico">◷</span> کتابخانه و تاریخچه</button>
+ <button class="nav" data-tab="guide"><span class="ico">ⓘ</span> راهنما و ارزیابی</button>
+ <div class="side-note">نسخه مستقل و آفلاین<br>پروژه‌ها در حافظه همین مرورگر ذخیره می‌شوند.</div>
+</aside>
+<main class="content">
+<section class="hero">
+ <h2>از ایده خام تا پرامپت مهندسی‌شده</h2>
+ <p>برای تصویر، ویدئو، متن و عامل‌های هوشمند. جزئیات را کنترل کن، نسخه‌های مختلف بساز، خروجی بگیر و پرامپت‌هایت را مدیریت کن.</p>
+ <div class="chips"><span class="chip">Image</span><span class="chip">Video</span><span class="chip">Text & Agent</span><span class="chip">Templates</span><span class="chip">Local Library</span><span class="chip">Export / Import</span></div>
+</section>
+
+<section class="tabpage active" id="tab-builder">
+<div class="panel">
+ <div class="panel-head"><h3>۱. مشخصات پایه تصویر</h3><span class="sub">Image Prompt Builder</span></div>
+ <div class="grid">
+  <div class="field"><label>نام پروژه / عنوان</label><input id="p_title" placeholder="مثلاً پوستر معرفی محصول"></div>
+  <div class="field"><label>مدل یا پلتفرم مقصد</label><select id="p_model"><option value="Universal">عمومی / Universal</option><option>Midjourney</option><option>Stable Diffusion / SDXL</option><option>FLUX</option><option>DALL·E</option><option>Adobe Firefly</option><option>Leonardo AI</option><option>Ideogram</option><option>Google Imagen</option><option>ChatGPT Image</option></select></div>
+  <div class="field full"><label>ایده خام خودت</label><textarea id="p_idea" placeholder="با زبان طبیعی توضیح بده چه تصویری می‌خواهی..."></textarea></div>
+  <div class="field"><label>سوژه اصلی (Subject)</label><input id="p_subject" placeholder="شخص، محصول، مکان یا مفهوم"></div>
+  <div class="field"><label>تعداد سوژه‌ها و رابطه آن‌ها</label><input id="p_entities" placeholder="یک شخصیت در مرکز، دو شیء در پس‌زمینه"></div>
+  <div class="field full"><label>ویژگی‌ها و جزئیات سوژه</label><textarea id="p_details" placeholder="شکل، جنس، رنگ، سن تقریبی شخصیت خیالی، بافت، ویژگی‌های متمایز..."></textarea></div>
+  <div class="field"><label>کنش / حالت (Action)</label><input id="p_action" placeholder="در حال انجام چه کاری است؟"></div>
+  <div class="field"><label>حالت و احساس (Mood)</label><input id="p_mood" placeholder="آرام، پرانرژی، مرموز، رسمی..."></div>
+  <div class="field full"><label>محیط و پس‌زمینه (Environment)</label><textarea id="p_env" placeholder="مکان، زمان، فصل، عناصر پس‌زمینه و عمق محیط..."></textarea></div>
+ </div>
+</div>
+<div class="panel">
+ <div class="panel-head"><h3>۲. زبان بصری و کارگردانی</h3><span class="sub">Art Direction</span></div>
+ <div class="grid three">
+  <div class="field"><label>سبک هنری</label><select id="p_style"><option>Photorealistic</option><option>Cinematic realism</option><option>Stylized 3D render</option><option>3D animated character</option><option>Isometric 3D</option><option>Editorial illustration</option><option>Anime illustration</option><option>Watercolor</option><option>Oil painting</option><option>Minimal vector</option><option>Product photography</option><option>Architectural visualization</option><option>Pixel art</option><option>Cyberpunk</option><option>Vintage film</option><option>Surrealism</option></select></div>
+  <div class="field"><label>ترکیب‌بندی</label><select id="p_comp"><option>Balanced cinematic composition</option><option>Centered composition</option><option>Rule of thirds</option><option>Symmetrical composition</option><option>Dynamic diagonal composition</option><option>Negative space for typography</option><option>Close-up detail</option><option>Wide establishing shot</option><option>Over-the-shoulder</option><option>Flat lay</option></select></div>
+  <div class="field"><label>زاویه دوربین</label><select id="p_angle"><option>Eye-level</option><option>Low angle</option><option>High angle</option><option>Bird's-eye view</option><option>Worm's-eye view</option><option>Three-quarter view</option><option>Top-down view</option><option>Isometric view</option><option>Macro view</option></select></div>
+  <div class="field"><label>نوع لنز</label><select id="p_lens"><option>35mm lens</option><option>24mm wide-angle lens</option><option>50mm standard lens</option><option>85mm portrait lens</option><option>100mm macro lens</option><option>Telephoto lens</option><option>Fisheye lens</option><option>Orthographic camera</option><option>Not specified</option></select></div>
+  <div class="field"><label>عمق میدان</label><select id="p_dof"><option>Shallow depth of field</option><option>Deep depth of field</option><option>Selective focus</option><option>Soft background blur / bokeh</option><option>Not specified</option></select></div>
+  <div class="field"><label>نورپردازی</label><select id="p_light"><option>Soft natural window light</option><option>Cinematic dramatic lighting</option><option>Golden hour lighting</option><option>Blue hour lighting</option><option>Studio three-point lighting</option><option>Soft diffused lighting</option><option>Hard directional light</option><option>Rim lighting</option><option>Volumetric lighting</option><option>Neon lighting</option><option>Low-key lighting</option><option>High-key lighting</option></select></div>
+  <div class="field"><label>پالت رنگی</label><select id="p_palette"><option>Neutral cinematic palette</option><option>Monochrome</option><option>Warm amber and cream</option><option>Cool blue and silver</option><option>Purple and cyan</option><option>Black, violet and ice blue</option><option>Red, black and white</option><option>Pastel colors</option><option>Earth tones</option><option>Custom palette (describe below)</option></select></div>
+  <div class="field"><label>کیفیت / جزئیات</label><select id="p_quality"><option>High detail, coherent textures</option><option>Ultra-detailed material textures</option><option>Clean minimal details</option><option>Photographic detail and natural imperfections</option><option>Stylized, simplified details</option></select></div>
+  <div class="field"><label>نسبت تصویر</label><select id="p_ratio"><option>9:16 vertical</option><option>4:5 portrait</option><option>3:4 portrait</option><option>1:1 square</option><option>4:3 landscape</option><option>3:2 landscape</option><option>16:9 landscape</option><option>21:9 ultrawide</option></select></div>
+  <div class="field"><label>رنگ سفارشی / توضیح پالت</label><input id="p_customcolor" placeholder="مثلاً charcoal, lavender, silver"></div>
+  <div class="field"><label>میزان واقع‌گرایی</label><select id="p_realism"><option>Balanced</option><option>Highly realistic</option><option>Stylized</option><option>Dreamlike / surreal</option><option>Graphic and illustrative</option></select></div>
+  <div class="field"><label>تراکم جزئیات</label><select id="p_density"><option>Moderate visual complexity</option><option>Rich intricate details</option><option>Minimal and uncluttered</option><option>Dense, layered composition</option></select></div>
+ </div>
+</div>
+<div class="panel">
+ <div class="panel-head"><h3>۳. کنترل خروجی و محدودیت‌ها</h3><span class="sub">Constraints</span></div>
+ <div class="grid">
+  <div class="field"><label>عناصر ضروری (Must include)</label><textarea id="p_must" placeholder="مواردی که حتماً باید در خروجی باشند"></textarea></div>
+  <div class="field"><label>عناصر ممنوع (Negative prompt)</label><textarea id="p_negative" placeholder="مثلاً blurry, distorted anatomy, watermark, text"></textarea></div>
+  <div class="field"><label>متن دقیق داخل تصویر (در صورت نیاز)</label><textarea id="p_text" placeholder="متن دقیق و زبان آن را وارد کن؛ در غیر این صورت خالی بگذار"></textarea></div>
+  <div class="field"><label>دستورهای تکمیلی</label><textarea id="p_extra" placeholder="محدودیت‌ها، اولویت‌ها، مواردی که نباید تغییر کنند..."></textarea></div>
+ </div>
+ <div class="grid three" style="margin-top:12px">
+  <label class="check"><input type="checkbox" id="p_noText" checked> از متن ناخواسته اجتناب شود</label>
+  <label class="check"><input type="checkbox" id="p_noLogo" checked> بدون لوگو یا واترمارک</label>
+  <label class="check"><input type="checkbox" id="p_coherent" checked> حفظ انسجام ساختاری</label>
+ </div>
+ <div class="toolbar"><button class="btn primary" id="buildImage">ساخت پرامپت تصویر</button><button class="btn" id="clearImage">پاک‌کردن فرم</button><button class="btn cyan" id="makeVariants">ساخت ۳ نسخه جایگزین</button></div>
+</div>
+<div class="panel">
+ <div class="output-head"><h3>۴. خروجی نهایی</h3><div class="metrics"><span class="metric">کلمات: <b id="wordCount">0</b></span><span class="metric">کاراکتر: <b id="charCount">0</b></span></div></div>
+ <div class="output" id="imageOutput">ایده‌ات را وارد کن و «ساخت پرامپت تصویر» را بزن.</div>
+ <div class="toolbar"><button class="btn primary" id="copyImage">کپی پرامپت</button><button class="btn" id="downloadImage">دانلود TXT</button><button class="btn" id="saveImage">ذخیره در کتابخانه</button></div>
+ <div id="variants" class="hidden" style="margin-top:15px"></div>
+</div>
+</section>
+
+<section class="tabpage" id="tab-video">
+<div class="panel">
+ <div class="panel-head"><h3>سازنده پرامپت ویدئو</h3><span class="sub">Video / Motion Design</span></div>
+ <div class="grid">
+  <div class="field full"><label>ایده کلی ویدئو</label><textarea id="v_idea" placeholder="چه اتفاقی در ویدئو می‌افتد؟"></textarea></div>
+  <div class="field"><label>سوژه و مشخصات</label><textarea id="v_subject" placeholder="سوژه اصلی و ظاهر آن"></textarea></div>
+  <div class="field"><label>محیط</label><input id="v_env" placeholder="محل وقوع صحنه"></div>
+  <div class="field"><label>حرکت سوژه</label><input id="v_motion" placeholder="مثلاً slowly turns toward camera"></div>
+  <div class="field"><label>حرکت دوربین</label><select id="v_camera"><option>Slow cinematic dolly-in</option><option>Dolly-out</option><option>Pan left to right</option><option>Pan right to left</option><option>Tilt up</option><option>Tracking shot</option><option>Orbit around subject</option><option>Crane / jib movement</option><option>Static locked camera</option><option>Handheld documentary camera</option><option>FPV fly-through</option></select></div>
+  <div class="field"><label>مدت زمان</label><select id="v_duration"><option>5 seconds</option><option>8 seconds</option><option>10 seconds</option><option>15 seconds</option><option>20 seconds</option><option>30 seconds</option><option>60 seconds</option></select></div>
+  <div class="field"><label>نسبت تصویر</label><select id="v_ratio"><option>9:16 vertical</option><option>16:9 landscape</option><option>1:1 square</option><option>4:5 portrait</option></select></div>
+  <div class="field"><label>فریم‌ریت</label><select id="v_fps"><option>24 fps cinematic</option><option>25 fps</option><option>30 fps</option><option>60 fps smooth motion</option></select></div>
+  <div class="field"><label>سبک بصری</label><select id="v_style"><option>Cinematic realism</option><option>Stylized 3D animation</option><option>Product commercial</option><option>Documentary</option><option>Motion graphics</option><option>Anime</option><option>Isometric 3D</option></select></div>
+  <div class="field"><label>نور و رنگ</label><input id="v_light" value="cinematic soft lighting, controlled contrast"></div>
+  <div class="field"><label>صدا</label><select id="v_audio"><option>No dialogue, ambient sound only</option><option>Persian voice-over</option><option>English voice-over</option><option>Dialogue between characters</option><option>Music and sound effects</option><option>Silent video</option></select></div>
+  <div class="field"><label>پیوستگی بین فریم‌ها</label><select id="v_continuity"><option>Consistent subject, clothing, props and environment</option><option>Continuous single take</option><option>Multi-shot sequence with consistent characters</option><option>Seamless looping motion</option></select></div>
+  <div class="field full"><label>تقسیم‌بندی صحنه‌ها / زمان‌بندی</label><textarea id="v_scenes" placeholder="0-3s: معرفی سوژه؛ 3-7s: حرکت اصلی؛ 7-10s: نمای پایانی..."></textarea></div>
+  <div class="field full"><label>موارد ممنوع / خطاهای ناخواسته</label><textarea id="v_avoid" placeholder="flicker, jitter, morphing, inconsistent face, extra objects..."></textarea></div>
+ </div>
+ <div class="toolbar"><button class="btn primary" id="buildVideo">ساخت پرامپت ویدئو</button><button class="btn" id="copyVideo">کپی</button><button class="btn" id="downloadVideo">دانلود TXT</button></div>
+ <div class="output" id="videoOutput" style="margin-top:12px">پرامپت ویدئوی تو اینجا ساخته می‌شود.</div>
+ <div class="notice">مدت، فریم‌ریت و قابلیت‌های واقعی به مدل ویدئوساز وابسته‌اند. این ابزار متن دستور را آماده می‌کند و خودش ویدئو رندر نمی‌کند.</div>
+</div>
+</section>
+
+<section class="tabpage" id="tab-text">
+<div class="panel">
+ <div class="panel-head"><h3>سازنده پرامپت متنی و ایجنت</h3><span class="sub">LLM / Agent Instructions</span></div>
+ <div class="grid">
+  <div class="field"><label>نوع کاربرد</label><select id="t_type"><option>General assistant</option><option>Research assistant</option><option>Software engineer</option><option>AI agent</option><option>Teacher / tutor</option><option>Data analyst</option><option>Writing assistant</option><option>Cybersecurity assistant (defensive)</option><option>Product manager</option></select></div>
+  <div class="field"><label>زبان پاسخ</label><select id="t_lang"><option>Persian (Farsi)</option><option>English</option><option>Match the user's language</option><option>Persian with English technical terms</option></select></div>
+  <div class="field full"><label>هدف اصلی (Goal)</label><textarea id="t_goal" placeholder="این دستیار یا ایجنت باید چه نتیجه‌ای ایجاد کند؟"></textarea></div>
+  <div class="field full"><label>نقش و تخصص (Role)</label><textarea id="t_role" placeholder="چه نقش‌ها و دانش‌هایی داشته باشد؟"></textarea></div>
+  <div class="field"><label>مخاطب هدف</label><input id="t_audience" placeholder="مبتدی، متخصص، تیم فنی..."></div>
+  <div class="field"><label>سطح جزئیات</label><select id="t_detail"><option>Clear and concise</option><option>Detailed and structured</option><option>Deep technical analysis</option><option>Beginner-friendly step by step</option></select></div>
+  <div class="field full"><label>مراحل کاری (Workflow)</label><textarea id="t_workflow" placeholder="تحلیل → برنامه‌ریزی → اجرا → تست → گزارش"></textarea></div>
+  <div class="field full"><label>ابزارها و دسترسی‌ها</label><textarea id="t_tools" placeholder="ابزارهای مجاز و محدوده دسترسی"></textarea></div>
+  <div class="field full"><label>قوانین، محدودیت‌ها و امنیت</label><textarea id="t_rules" placeholder="موارد ممنوع، حریم خصوصی، تأیید لازم، عدم جعل نتیجه..."></textarea></div>
+  <div class="field full"><label>قالب خروجی مورد انتظار</label><textarea id="t_format" placeholder="مثلاً خلاصه، مراحل، کد، تست‌ها، محدودیت‌ها و کارهای باقی‌مانده"></textarea></div>
+ </div>
+ <div class="toolbar"><button class="btn primary" id="buildText">ساخت System Prompt</button><button class="btn" id="copyText">کپی</button><button class="btn" id="downloadText">دانلود TXT</button></div>
+ <div class="output" id="textOutput" style="margin-top:12px">با تکمیل فرم، دستور سیستم ساخته می‌شود.</div>
+</div>
+</section>
+
+<section class="tabpage" id="tab-templates">
+<div class="panel"><div class="panel-head"><h3>الگوهای شروع سریع</h3><span class="sub">با یک کلیک، فرم را پر کن</span></div>
+ <div class="template-grid" id="templateGrid"></div>
+</div>
+</section>
+
+<section class="tabpage" id="tab-library">
+<div class="panel">
+ <div class="panel-head"><h3>کتابخانه محلی</h3><button class="btn danger" id="clearHistory">پاک‌کردن همه</button></div>
+ <p class="sub">موارد ذخیره‌شده فقط در همین مرورگر و دستگاه نگهداری می‌شوند. برای انتقال، از خروجی پشتیبان استفاده کن.</p>
+ <div id="historyList"><p class="sub">هنوز موردی ذخیره نشده است.</p></div>
+</div>
+</section>
+
+<section class="tabpage" id="tab-guide">
+<div class="panel">
+ <h3>ارزیابی ساختاری پرامپت</h3>
+ <p class="sub">این ارزیابی، چک‌لیست ابتکاری و مبتنی بر وجود مؤلفه‌هاست؛ معیار رسمی هیچ مدل هوش مصنوعی نیست و کیفیت خروجی را تضمین نمی‌کند.</p>
+ <div class="score"><strong id="scoreNum">0%</strong><div class="bar"><i id="scoreBar"></i></div></div>
+ <div id="scoreDetails" class="sub" style="margin-top:12px">پس از ساخت پرامپت تصویر، چک‌لیست اینجا نمایش داده می‌شود.</div>
+</div>
+<div class="panel">
+ <h3>روش استفاده حرفه‌ای</h3>
+ <ol>
+  <li>اول هدف و سوژه را دقیق کن؛ صفات تزئینی جای اطلاعات واقعی را نمی‌گیرند.</li>
+  <li>ترکیب‌بندی، زاویه دوربین و نور را جداگانه تعیین کن.</li>
+  <li>عناصر ضروری و موارد ممنوع را روشن بنویس.</li>
+  <li>نسخه‌های مختلف را با تغییر یک متغیر مقایسه کن.</li>
+  <li>پرامپت را متناسب با مستندات مدل مقصد تنظیم کن؛ پارامترهای مدل‌ها یکسان نیستند.</li>
+  <li>خروجی واقعی را بررسی کن و بر اساس خطاهای دیده‌شده اصلاح انجام بده.</li>
+ </ol>
+ <div class="notice">محدودیت نسخه فعلی: بدون اتصال API یا مدل محلی، امکان تولید تصویر/ویدئو، ترجمه ماشینی واقعی، جست‌وجوی وب، تحلیل خودکار تصویر ورودی یا بهینه‌سازی مبتنی بر پاسخ مدل وجود ندارد. ابزار در عوض پرامپت ساختاریافته می‌سازد و مدیریت می‌کند.</div>
+</div>
+</section>
+<div class="footer">PromptForge Studio · ساخته‌شده برای MR_SIAVASH · نسخه مستقل مرورگری</div>
+</main>
+</div>
+</div>
+<script src="/ui/promptforge.js" defer></script>
+</body>
+</html>
