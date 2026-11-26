@@ -93,6 +93,7 @@ class AgentRegistry:
         return [
             {
                 "name": profile.name,
+                "version": profile.version,
                 "description": profile.description,
                 "allowed_tools": sorted(profile.allowed_tools),
                 "max_turns": profile.max_turns,
