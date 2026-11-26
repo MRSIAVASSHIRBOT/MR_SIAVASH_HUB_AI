@@ -101,3 +101,10 @@ def test_registry_rejects_duplicate_bad_versions_invalid_templates_and_unknown_v
         )
     with pytest.raises(LookupError):
         registry.render("sample.prompt", version=2, variables={"goal": "safe"})
+    # bool is an int subclass in Python; it must never alias version 1.
+    with pytest.raises(LookupError):
+        registry.resolve("sample.prompt", True)
+    with pytest.raises(LookupError):
+        registry.resolve("sample.prompt", 0)
+    with pytest.raises(LookupError):
+        registry.resolve("invalid name", 1)
