@@ -3,7 +3,7 @@
 - **Baseline date:** 2026-11-27
 - **Status:** Active planning baseline; phase acceptance is evidence-driven and must be refreshed from exact mainline heads.
 - **Governance prerequisite:** [G0–G12](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md)
-- **Portfolio authority:** [ADR-0047](../architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md)
+- **Portfolio authority:** [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 - **Requirement catalogue:** [G2 requirements](../requirements/ECOSYSTEM_REQUIREMENTS.md)
 - **Use cases:** [G3 use-case catalogue](../architecture/USE_CASE_CATALOG.md)
 - **Ownership:** [G5 RACI](../governance/OWNERSHIP_RACI.md)
@@ -165,7 +165,7 @@ A code branch, PR, green CI, historical checklist or proposed architecture alone
 
 ## 10. Initial priority queue
 
-1. Merge and apply ADR-0047 and the G0–G12 governance artifacts.
+1. Merge and apply ADR-0051 and the G0–G12 governance artifacts.
 2. Finish G2/G3 traceability and G5 ownership review.
 3. Reconcile each product's mainline implementation against H/E/D/A/X phase acceptance criteria.
 4. Prioritize H10 evidence-verification gaps, EL_AI E10 Telegram runtime/delivery acceptance, EL_AGENT D3/D7–D14 local/device acceptance and Website A12–A14 release gates.
