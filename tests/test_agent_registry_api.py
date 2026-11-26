@@ -45,3 +45,12 @@ def test_agent_run_fails_closed_when_shared_registry_is_unavailable():
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Agent registry is not ready"
+
+
+def test_agent_registry_endpoint_requires_owner_authentication():
+    client = authenticated_client()
+    client.headers.pop("Authorization", None)
+
+    response = client.get("/agent/registry")
+
+    assert response.status_code == 401
