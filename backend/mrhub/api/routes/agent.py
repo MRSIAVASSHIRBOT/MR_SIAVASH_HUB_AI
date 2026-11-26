@@ -54,6 +54,7 @@ from mrhub.jobs.payload_envelope import (
     load_payload_key,
 )
 from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
+from mrhub.prompts.registry import DEFAULT_PROMPT_REGISTRY
 from mrhub.providers.base import ProviderError
 from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
@@ -274,6 +275,7 @@ _PERSISTED_PLAN_METADATA_FIELDS = (
     "decision_analysis",
     "planning_assessment",
     "model_selection",
+    "prompt_templates",
 )
 
 
@@ -288,6 +290,12 @@ def _extract_persisted_plan_metadata(payload: dict[str, object]) -> dict[str, ob
             raise PayloadEnvelopeError("Persisted plan assessment metadata is invalid")
         metadata[field] = value
     return metadata
+
+
+@router.get("/prompts")
+def list_prompt_templates() -> dict[str, object]:
+    """Return exact prompt version metadata without exposing template source."""
+    return DEFAULT_PROMPT_REGISTRY.catalog()
 
 
 @router.post("/work-orders/analyze")
@@ -377,6 +385,13 @@ def create_goal_work_order_plan(
             detail="Audit storage is unavailable",
         ) from exc
 
+    prompt_templates: dict[str, object] = {"renders": []}
+
+    def record_prompt_render(rendered) -> None:
+        renders = prompt_templates["renders"]
+        if isinstance(renders, list):
+            renders.append(rendered.metadata())
+
     try:
         # GPI/AWI planning is local-only in the zero-cost runtime profile.
         # Paid providers remain available only through their dedicated, explicit endpoints.
@@ -388,7 +403,11 @@ def create_goal_work_order_plan(
         selection = model_router.select(
             ModelRequest(requires_text=True, prefer_local=True)
         )
-        work_order = generate_work_order(request.goal, model_router)
+        work_order = generate_work_order(
+            request.goal,
+            model_router,
+            prompt_observer=record_prompt_render,
+        )
         decision_analysis = analyze_goal(request.goal, work_order=work_order)
         if work_order.risk_class.value == "prohibited":
             try:
@@ -409,7 +428,11 @@ def create_goal_work_order_plan(
                 status_code=422,
                 detail="The requested goal is outside the supported safety policy",
             )
-        plan = generate_execution_plan(work_order, model_router)
+        plan = generate_execution_plan(
+            work_order,
+            model_router,
+            prompt_observer=record_prompt_render,
+        )
     except (WorkOrderGenerationError, PlanningError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except LookupError as exc:
@@ -467,6 +490,7 @@ def create_goal_work_order_plan(
             "local": selection.local,
             "rationale": selection.rationale,
         },
+        "prompt_templates": prompt_templates,
         "capability_assessment": {
             **assessment.as_dict(),
             "authorization_checked": False,
@@ -647,7 +671,11 @@ def get_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
-        **{key: value for key, value in plan_metadata.items() if key == "model_selection"},
+        **{
+            key: value
+            for key, value in plan_metadata.items()
+            if key in {"model_selection", "prompt_templates"}
+        },
         "decision_analysis": decision_analysis.model_dump(mode="json"),
         "planning_assessment": planning_assessment.as_dict(),
         "capability_assessment": {
