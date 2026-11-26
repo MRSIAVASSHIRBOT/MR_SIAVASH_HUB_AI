@@ -150,6 +150,7 @@ class WorkflowRecoveryRepository:
         payload_envelope: dict[str, object] | None = None,
         workflow_id: UUID | None = None,
         idempotency_binding: dict[str, str] | None = None,
+        work_order_plan_id: str | None = None,
     ) -> UUID:
         """Atomically create workflow/job, encrypted payload, and optional idempotency binding."""
         self._validate_digest(request_digest, "Request digest")
@@ -232,6 +233,14 @@ class WorkflowRecoveryRepository:
 
         workflow_id = workflow_id or uuid4()
         now = self._now()
+        normalized_work_order_plan_id = None
+        if work_order_plan_id is not None:
+            try:
+                normalized_work_order_plan_id = str(UUID(work_order_plan_id))
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise WorkflowRecoveryError("WorkOrder plan identifier must be a UUID") from exc
+            if normalized_work_order_plan_id != work_order_plan_id or not owner_user_id:
+                raise WorkflowRecoveryError("WorkOrder plan binding requires a canonical ID and owner")
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if task is not None:
@@ -272,6 +281,27 @@ class WorkflowRecoveryRepository:
                     definition_version, now, now, owner_user_id,
                 ),
             )
+            if normalized_work_order_plan_id is not None:
+                bound = connection.execute(
+                    """
+                    UPDATE agent_work_order_plans
+                    SET status = 'consumed', consumed_at = ?, workflow_id = ?
+                    WHERE plan_id = ? AND owner_user_id = ?
+                      AND status = 'active' AND expires_at > ?
+                    """,
+                    (
+                        now,
+                        str(workflow_id),
+                        normalized_work_order_plan_id,
+                        owner_user_id,
+                        now,
+                    ),
+                )
+                if bound.rowcount != 1:
+                    raise WorkflowRecoveryError(
+                        "WorkOrder plan is unavailable, expired, or already bound to a workflow"
+                    )
+
             if idempotency_binding is not None:
                 scope = idempotency_binding.get("scope")
                 key = idempotency_binding.get("key")

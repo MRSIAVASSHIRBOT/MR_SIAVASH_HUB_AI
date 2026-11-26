@@ -53,6 +53,9 @@ def test_orchestrator_completes_with_final_answer_without_tools():
     assert result["answer"] == "Completed safely."
     assert result["tool_calls"] == 0
     assert result["selected_provider"]["provider"] == "scripted"
+    assert result["prompt_template"]["name"] == "agent.orchestrator"
+    assert result["prompt_template"]["version"] == 1
+    assert "rendered_digest" not in result["prompt_template"]
     assert len(provider.requests) == 1
 
 
