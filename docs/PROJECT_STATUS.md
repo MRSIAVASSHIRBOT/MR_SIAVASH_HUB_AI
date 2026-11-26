@@ -1,4 +1,68 @@
-## Coordinated source, CI and dependency checkpoint — 2026-11-25
+## Coordinated source, CI and dependency checkpoint — 2026-11-26
+
+This is the latest GitHub source/CI checkpoint. It supersedes older repository-head and open-PR statements below where they conflict. It does not claim a fresh Cloudflare, Render, Telegram, staging or physical-device acceptance.
+
+### Main branch and exact-head evidence
+
+- **Hub `main`:** `f2943e4b68aa95051bba02a53aacf6b3de461521`. PR [#635](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/635) corrected the H15 traceability contract and was merged after all five observed exact-head workflow runs succeeded. The new post-merge main run set was still in progress at capture: Workflow Security Audit, OpenSSF Scorecard and Defensive Python Scan succeeded; CI, Backend CI, Video Render Integration and Windows Launcher Validation were still running. Do not call current main fully green until all seven complete. [Current main Actions](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/45809663901).
+- **Website `main`:** `4578392422fa5a2430caec0007e4ba6cf5fd596c`. Six observed main workflow runs succeeded: Quality/Pages, Gateway CI, Production and Preview Runtime Smoke, Workflow Security Audit and OpenSSF Scorecard. This does not prove the current source is active in Cloudflare traffic.
+- **EL_AI `main`:** `6e3e6199ba0a506e40fe2f850e6fe5ce625e3c08`. Three observed main workflow runs succeeded: CI, Workflow Security Audit and OpenSSF Scorecard. The Telegram Edge Worker workflow is separately defined and was not among those three main push runs.
+
+GitHub reports `main.protected=false` for all three repositories. No branch-protection, ruleset, collaborator, secret or access-control setting was changed.
+
+### H10 — WorkOrder evidence foundation
+
+Commit `7cbfaf2150a1d6330d824020e550bb6a372584d9` added:
+
+- `backend/mrhub/agents/work_order_evidence.py`
+- `backend/tests/test_work_order_evidence.py`
+- `docs/architecture/adr-0046-workorder-evidence-evaluation.md`
+- `docs/operations/h10-workorder-evidence-v1.md`
+
+The module has 13 focused tests and is a deterministic, read-only evidence aggregator bound to a WorkOrder ID, revision and SHA-256 digest. Only an exact source/verifier pair registered by trusted server-side code can confirm an evidence digest. Missing, unknown, stale, conflicting or malformed evidence cannot be treated as acceptance.
+
+The H10 commit passed the seven observed main workflow runs on that commit. The current implementation is a foundation only: no production verifier adapter, public evaluation route, canonical WorkOrder digest in a versioned planning response, or EL_AI consumer integration is enabled. It cannot execute tools, retry tasks, mutate grants or approve actions.
+
+### H15 / X7 — traceability boundary
+
+PR [#635](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/635) is merged as the current main checkpoint. The corrected contract states that the Hub's current `trace_id` is the server-generated task UUID; workflow, step, attempt and registered tool events attach to that task. HTTP `request_id` is separate. X7 correlation metadata remains diagnostic only and is not authorization, ownership or idempotency.
+
+Remaining H15/X7 work includes Bridge-job-to-Hub-task correlation across service boundaries, a decision on separate top-level operation identity, bounded retention/export/alerting, and isolated concurrent/failure/cancellation tests.
+
+### Open pull requests and deployment dependency
+
+- Hub [PR #618](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/pull/618) remains Draft. Its recorded base SHA is `46287169cfc0b1825c722e5acba4fac59d371697`, older than current main, and its Render worker pins EL_AI `57b8289fddbc53c4e7ee1709066939467770f3a0`, older than current EL_AI main `6e3e6199ba0a506e40fe2f850e6fe5ce625e3c08`.
+- PR #618 proposes two paid Starter services and persistent disks. Keep it unprovisioned until the source/base and immutable pin are reviewed and retested, the owner approves the full recurring cost, and Render Workspace Blueprint Auto Sync is independently confirmed disabled.
+- Website PR #317 updates the security policy from the 2026-11-23 read-only Cloudflare audit; EL_AI PR #142 adds the 2026-11-26 coordinated checkpoint. Both were open and awaiting CI at capture.
+
+### Contract and security boundaries
+
+The Hub canonical `contracts/hybrid/v1/manifest.json` and EL_AI consumer fixture `tests/fixtures/hub-hybrid-manifest-v1.json` have identical Git blob SHA `e6c7ab219ccf0d9fd0613d09f8c12b2c8d1fdcdd`.
+
+Hub remains authoritative for private memory, task state, policy, approvals, grants and audit. EL_AI owns Telegram transport, identity mapping and user-facing delivery. Website remains public-only. No shared database, ambient trust or browser-held Hub credential is introduced. Correlation IDs are diagnostic metadata only.
+
+Hub root dependencies are Python >=3.11, FastAPI, Uvicorn, Pydantic, HTTPX and cryptography; dev extras include pytest, pytest-cov, Ruff, pip-audit, Bandit and MCP. Seven GitHub workflow files were inspected. The current Render blueprint still defines one paid Hub web service with one persistent SQLite disk; the separate EL_AI worker exists only in Draft PR #618.
+
+### Live-service evidence boundary
+
+The latest recorded Cloudflare/D1 read-only audit is dated **2026-11-23 15:48 UTC**, not 2026-11-26. It recorded Production Worker v14, Preview Worker v10, Preview query-string redaction disabled, and only migrations 0001–0005 in the then-observed Production/Preview ledgers. These are historical observations and require fresh control-plane/D1 readback before any release.
+
+No Cloudflare deployment, D1 migration/write, Render provisioning, Telegram webhook change, production message, credential change or device operation was performed in this checkpoint.
+
+### Prioritized next work
+
+1. Finish all seven current post-merge Hub main workflow runs and resolve any failures before further code integration.
+2. Keep PR #618 Draft; update its base and EL_AI pin only after review, then require explicit owner cost and Auto Sync approval before any manual Render sync.
+3. Implement trusted H10 verifier adapters, canonical WorkOrder digest/revision, owner-scoped read-only evaluation and a versioned backward-compatible planning extension before EL_AI consumes semantic evidence.
+4. Complete isolated Hub–EL_AI pairing, scope, expiry/revocation, Bridge pull/complete, idempotency and sanitized-failure acceptance.
+5. Perform a fresh Cloudflare Preview/Production and D1 readback; do not deploy or migrate Production without documented approval, backup/restore and rollback evidence.
+6. Have the owner/admin enforce current-head PR/CI branch protection; add reproducible Python dependency locks as follow-up work.
+
+---
+
+## Historical coordinated source, CI and dependency checkpoint — 2026-11-25
+
+This addendum is historical and is superseded by the 2026-11-26 checkpoint above where repository heads, PR state, CI results or cross-project pins differ.
 
 This addendum supersedes older repository-head and open-PR statements below where they conflict. It records GitHub source, repository metadata, file contents and exact-commit Actions check-runs observed during this checkpoint. It is not a live Cloudflare, Render, Telegram, Hub-staging or physical-device acceptance report.
 
