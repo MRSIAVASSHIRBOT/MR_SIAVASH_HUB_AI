@@ -6,6 +6,7 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
@@ -16,7 +17,7 @@ class MemoryRepository:
 
     MEMORY_TYPES = frozenset({"unspecified", "episodic", "semantic", "procedural"})
     MEMORY_STAGES = frozenset({"working", "lesson_candidate", "retained"})
-    MEMORY_STAGE_MAX_TTL_SECONDS = {
+    MEMORY_STAGE_MAX_TTL_SECONDS: ClassVar[dict[str, int]] = {
         "working": 7 * 24 * 60 * 60,
         "lesson_candidate": 30 * 24 * 60 * 60,
     }
@@ -257,7 +258,7 @@ class MemoryRepository:
             values.append(self._now())
             values.extend((str(memory_id), owner_user_id))
             cursor = connection.execute(
-                f"UPDATE memory_entries SET {', '.join(assignments)} "
+                f"UPDATE memory_entries SET {', '.join(assignments)} "  # nosec B608 -- column identifiers come only from the fixed allowlist; values are bound.
                 "WHERE memory_id = ? AND owner_user_id = ?",
                 tuple(values),
             )
