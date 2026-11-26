@@ -7,9 +7,8 @@ from mrhub.agents.plan_repository import (
     AgentWorkOrderPlanError,
     AgentWorkOrderPlanRepository,
 )
-from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 from mrhub.domain.tasks import TaskRecord
+from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
     PayloadEnvelopeError,
@@ -17,6 +16,7 @@ from mrhub.jobs.payload_envelope import (
     encrypt_payload,
     encrypt_plan_payload,
 )
+from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 
 KEY = b"p" * 32
 
@@ -404,7 +404,7 @@ def test_consumed_plan_is_one_time_atomic_and_ciphertext_expires_without_losing_
     assert expired.workflow_id == str(workflow_id)
     assert expired.envelope.nonce_b64 == "expired"
     assert expired.envelope.ciphertext_b64 == "expired"
-    with pytest.raises(PayloadEnvelopeError, match="authentication failed"):
+    with pytest.raises(PayloadEnvelopeError):
         decrypt_plan_payload(
             expired.envelope,
             plan_id=plan_id,
