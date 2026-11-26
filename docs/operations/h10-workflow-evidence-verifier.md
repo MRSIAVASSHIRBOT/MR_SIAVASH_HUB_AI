@@ -2,14 +2,15 @@
 
 ## Phase mapping
 
-This is an extension of the canonical H10 WorkOrder evidence-evaluation API. It does not complete H10. The remaining H10 gates include first-class WorkOrder revision/digest persistence, additional independently reviewed evidence adapters, the full negative evidence matrix, and EL_AI E8 consumer integration.
+This is an extension of the existing H10 WorkOrder evidence-evaluation API and a scoped implementation slice across the active H0–H32 sequence:
 
-This work does **not** satisfy:
-- H17 — operator/control center;
-- H18 — async performance, quotas, concurrency and load management;
-- H19 — quality, security, regression, CI/CD and release governance.
+- **H10 — Task Lifecycle Engine:** evaluate evidence against the encrypted, owner-scoped persisted GPI/AWI plan.
+- **H18 — Evaluation & Verification:** verify a durable workflow step using trusted server-owned evidence adapters, exact plan bindings, and fail-closed UNKNOWN/REVIEW_REQUIRED outcomes.
+- **H19 — Self-Correction & Replanning:** produce digest-bound, read-only correction proposals for explicit owner review.
 
-The canonical phase definitions are in `docs/roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md`. PR titles/branch labels do not redefine those definitions.
+It does not complete H10, H18, or H19. Remaining H10 gates include broader WorkOrder revision lifecycle support, additional independently reviewed evidence adapters, the complete negative evidence matrix, and EL_AI E8 consumer integration. H18 still needs broader evaluation coverage and production acceptance across relevant workflows. H19 still needs an owner-approved correction-to-replan lifecycle with independently verified outcomes; this slice intentionally does not execute a correction or retry.
+
+The repository also contains an older 73-phase baseline with different numbering. It remains historical input for a later crosswalk and does not override this active H0–H32 sequence.
 
 ## Scope
 
