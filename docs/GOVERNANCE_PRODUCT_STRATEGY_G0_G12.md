@@ -178,22 +178,25 @@ All four current `main` branches report `protected=false`. Existing owner/admin 
 
 No branch protection was changed by this baseline. The owner/admin must configure and independently verify required checks, PR review policy, force-push/deletion restrictions and any appropriate bypass rules. CI success does not compensate for unprotected main branches.
 
-## 7. Initial portfolio risk and dependency register
+## 7. G9 risk summary — detailed register is authoritative
 
-The following summary is retained for quick orientation. The [canonical G9 register](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) contains the expanded risk ratings, dependency IDs, evidence, accountable roles, mitigation and closure criteria; keep both views aligned.
+The canonical G9 record is the [Ecosystem Risk & Dependency Register](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md). It owns stable risk IDs, likelihood/impact ratings, priorities, accountable roles, mitigation, cross-product dependencies and closure evidence. The summary below intentionally uses the same IDs and titles as that register; do not create a second competing risk ID space.
 
-| ID | Risk / dependency | Severity | Owner | Mitigation / next gate |
-|---|---|---|---|---|
-| R-01 | Conflicting active scope: ADR-0046 and old roadmaps assign Telegram/Bridge work to EL_IR_BOT and place EL_AGENT outside the active count | HIGH | HUB architecture / portfolio owner | ADR-0047 supersedes old active scope; update all current entry points and create a new four-product phase inventory |
-| R-02 | All four `main` branches are unprotected | HIGH | Repository owner/admin | Resolve the four existing branch-protection issues and verify exact required checks on each repo |
-| R-03 | Green CI can be mistaken for live readiness | HIGH | Each product operational owner | Keep CI, integration, Telegram, Windows/Android, Cloudflare/D1, Render and production deployment evidence distinct |
-| R-04 | Cross-product identity and private-data boundaries can drift | HIGH | HUB + EL_AI + EL_AGENT + Website | Preserve HUB authority, EL_AI scoped pairing, EL_AGENT local policy and Website public-only boundary; add negative contract tests |
-| R-05 | Portfolio requirements and use cases are distributed across many documents | MEDIUM | Product/requirements owner | Complete G2/G3 traceability with stable IDs, owners and verification links |
-| R-06 | Legacy 73-phase and PAIOS execution documents can direct work into the excluded repository | HIGH | Portfolio owner | Label those documents historical/superseded for active scope; do not execute B0–B11 under the new portfolio |
-| R-07 | Dependency reproducibility and repository-wide standard enforcement are not consistently evidenced | MEDIUM | Maintainers of each repository | Inventory actual dependency managers and lockfiles; adopt one reproducible lock strategy per runtime without speculative dependency changes |
-| R-08 | Legal, privacy, cost and production responsibilities need owner-level review | HIGH | Ecosystem owner; qualified adviser where needed | Record licenses/IP, privacy/terms, data processing, operational ownership, incident response and paid-service approvals before release |
+| ID | Risk summary | Priority / status | Next control |
+|---|---|---|---|
+| R-01 | Main-branch governance is not enforced across the four repositories | P1 / OWNER GATE | Owner/admin configures and independently verifies rulesets and exact required checks |
+| R-02 | Four-product scope correction is not yet canonical on main | P1 / MITIGATING | Review and merge ADR-0047/G0–G12 and align current entry points |
+| R-03 | CI evidence can be mistaken for live/runtime/production acceptance | P1 / OPEN | Keep source, CI, integration, device, external provider and deployment evidence distinct |
+| R-04 | Cross-product identity, authorization or private-data boundaries can drift | P1 / OPEN | Maintain versioned least-privilege contracts and negative security tests |
+| R-05 | Paid infrastructure may be provisioned before cost approval | P1 / OWNER GATE | Keep paid infrastructure draft/unprovisioned until explicit billing-owner approval |
+| R-06 | Telegram end-to-end behavior remains short of live acceptance | P1 / OWNER GATE | Complete isolated E10 tests, then use a controlled non-production bot acceptance |
+| R-07 | Windows/Android physical-device acceptance is not established by CI alone | P1 / OWNER GATE | Record supported device/OS matrix and physical acceptance evidence |
+| R-08 | Legal/IP/privacy readiness is not independently approved | P1 / OWNER GATE | Obtain written owner/qualified-adviser review; do not claim legal compliance |
+| R-09–R-14 | Workflow encryption-key recovery, reproducibility, evidence freshness, Work Order ownership, requirement traceability and ADR consistency | P1/P2 / OPEN or MITIGATING | Follow the detailed per-item mitigation and closure criteria in the canonical register |
 
-Dependencies across products are contract-based: EL_AI depends on HUB for private shared intelligence and authorized durable work; EL_AGENT may integrate with HUB but must remain standalone; MR_SIAVASH_AI is public-facing and must not depend on private HUB access. Telegram bot implementation belongs to EL_AI.
+The detailed register also defines dependencies D-01 through D-10. A mitigation PR or passing CI does not close a risk; closure requires its specified evidence and a dated review decision.
+
+
 
 ## 8. Delivery and change-control rules
 
