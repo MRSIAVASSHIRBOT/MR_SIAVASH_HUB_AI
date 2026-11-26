@@ -15,7 +15,7 @@ This document defines the long-lived architecture for the four canonical MR_SIAV
 3. `MR_SIAVASH_EL_AGENT` — independent Windows/Android device agent.
 4. `MR_SIAVASH_AI` — public digital identity, website/PWA, learning experience and public gateway.
 
-`MR_SIAVASH_EL_IR_BOT` is outside the current portfolio and execution scope. The ecosystem Telegram bot is owned and developed inside `MR_SIAVASH_EL_AI`; no separate legacy Bridge repository, transport service or migration dependency is assumed. See [ADR-0047](decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md).
+`MR_SIAVASH_EL_IR_BOT` is outside the current portfolio and execution scope. The ecosystem Telegram bot is owned and developed inside `MR_SIAVASH_EL_AI`; no separate legacy Bridge repository, transport service or migration dependency is assumed. See [ADR-0051](decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md).
 
 The target is not a speculative 2030 stack. The target is an architecture that can replace models, agent harnesses, transports, storage engines, frameworks and deployment topology without replacing the whole ecosystem.
 
@@ -437,7 +437,7 @@ This document records architectural conclusions drawn from public material; it d
 
 ## 20. Owner-approved portfolio and logical-layer update — 2026-11-27
 
-[ADR-0047](decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md) and [the G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) supersede any conflicting portfolio or legacy-Bridge assumptions in this v1 document. The active products are HUB, EL_AI, EL_AGENT and MR_SIAVASH_AI. EL_IR_BOT is out of scope; the Telegram bot belongs inside EL_AI.
+[ADR-0051](decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md) and [the G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) supersede any conflicting portfolio or legacy-Bridge assumptions in this v1 document. The active products are HUB, EL_AI, EL_AGENT and MR_SIAVASH_AI. EL_IR_BOT is out of scope; the Telegram bot belongs inside EL_AI.
 
 The current logical layer model is:
 
