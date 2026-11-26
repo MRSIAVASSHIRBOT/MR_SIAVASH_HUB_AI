@@ -64,14 +64,14 @@ The current implementation candidate adds:
 - Verifiers resolve only from the server-side EvidenceVerifierRegistry initialized by the application composition root. The registry currently starts empty. Until trusted production adapters are registered, unknown/unregistered references return review_required; nothing is accepted from client claims.
 - Each evaluation writes an allow-listed audit event with decision, bounded counts and report digest. Raw source references, evidence payloads and WorkOrder text are not written to audit.
 
-**Status:** Candidate implementation in PR #641; not yet merged or accepted by mainline CI. This is progress toward the owner-scoped API gate, not full H10 completion.
+**Status:** Merged in HUB PR #641 at `4f684b8a8494ffe263db6769b312f884cd6df311`. Exact PR-head validation passed before merge; post-merge HUB main CI is tracked separately. This is an integrated H10 API slice, not full H10 completion.
 
 ### Remaining H10 gates
 
 1. Persist a first-class WorkOrder revision/digest alongside the plan in a backward-compatible versioned planning response; the current API computes the WorkOrder-only digest at read time and binds it to the parent plan record.
 2. Implement and independently review production verifier adapters for approved evidence sources.
 3. Add consumer-driven contract fixtures and an E8 integration in EL_AI; until that passes, E8 must remain execution-coverage-only and goal satisfaction not evaluated.
-4. Run exact-head CI, post-merge CI and any required live integration acceptance.
+4. Confirm exact-main post-merge CI on `4f684b8a8494ffe263db6769b312f884cd6df311`; add consumer-driven E8 contract tests and any required live evidence-source acceptance.
 
 ## Owner-scoped API candidate — PR #641 (2026-11-27)
 
