@@ -1,7 +1,7 @@
 # Ecosystem Work Order Registry — G11
 
 - **Baseline:** 2026-11-27
-- **Portfolio authority:** [ADR-0047](../architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md)
+- **Portfolio authority:** [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 - **Delivery policy:** [Delivery Management Standard](DELIVERY_MANAGEMENT_STANDARD.md)
 - **Reusable schema:** [Work Order Template](WORK_ORDER_TEMPLATE.md)
 - **Risk authority:** [G9 Risk & Dependency Register](../governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md)
@@ -11,7 +11,7 @@
 
 | ID | Phase | Outcome | Owning repository / accountable role | Priority | Status | Dependencies / risks | Acceptance evidence |
 |---|---|---|---|---|---|---|---|
-| WO-GOV-001 | G0/G1/G4/G8 | Establish and accept the four-product scope, portfolio roles and ADR-0047 | HUB / ecosystem owner + architecture | P1 | REVIEW | D-01; R-02 | Reviewed/merged ADR-0047 and G0–G12 baseline; current repository entry points and active roadmaps agree |
+| WO-GOV-001 | G0/G1/G4/G8 | Establish and accept the four-product scope, portfolio roles and ADR-0051 | HUB / ecosystem owner + architecture | P1 | REVIEW | D-01; R-02 | Reviewed/merged ADR-0051 and G0–G12 baseline; current repository entry points and active roadmaps agree |
 | WO-GOV-002 | G7 | Enforce protected main branches and required review/check policy | All four repositories / repository owner-admin | P1 | BLOCKED | D-02; R-01 | Effective rules read back from GitHub for HUB, EL_AI, EL_AGENT and Website; required checks run on exact PR heads |
 | WO-GOV-003 | G6 | Complete per-repository baseline inventory at current exact main SHAs | Each repository / product maintainer | P1 | READY | D-09; R-03, R-10, R-11 | Code/module map, manifests/lockfiles, config, tests, CI, secrets boundary, deployment and live-evidence distinction recorded per repo |
 | WO-GOV-004 | G2/G3 | Link requirements and use cases to owning product, Work Order and executable verification | HUB coordinates / product owners | P2 | READY | R-12, R-13 | Stable requirement/use-case IDs map to owner → implementation path → test/acceptance evidence; unimplemented requirements remain explicit |
