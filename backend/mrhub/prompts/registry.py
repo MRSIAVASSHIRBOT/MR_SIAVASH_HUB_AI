@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-import re
 from string import Template
 
 MAX_TEMPLATE_CHARS = 20_000
@@ -49,7 +49,6 @@ class PromptRender:
             "name": self.name,
             "version": self.version,
             "template_digest": self.template_digest,
-            "rendered_digest": self.rendered_digest,
             "rendered_chars": self.rendered_chars,
             "placeholders": list(self.placeholders),
         }
