@@ -57,3 +57,12 @@ timestamps, and short prefixes of persisted input/output SHA-256 digests.
 The UI does not display raw prompts, tool payloads, provider responses, or
 step outputs. The digests are correlation evidence only; they are not a
 signature or proof that the output is correct.
+
+
+## Memory lifecycle review
+
+- Create owner-scoped memory as `working`, `lesson_candidate`, or `retained`.
+- The UI calculates a timezone-aware expiry for temporary stages and validates the stage-specific maximum before submission; the API independently enforces the same limits.
+- Search can filter by lifecycle stage.
+- Lesson candidates remain untrusted, expiring review items. The UI offers an explicit owner-confirmed transition to `retained`, clears expiry and records the owner-attested `user_approved` state. This is an owner attestation, not independent verification.
+- The UI does not automatically promote, consolidate, or execute memory candidates.
