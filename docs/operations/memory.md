@@ -20,9 +20,10 @@ All endpoints require the local owner's bearer session.
 - Every record has a foreign-key owner and the only enabled scope is `private`; unknown or shared scopes are not accepted.
 - Owner filtering is part of the SQL query, before ranking. Record identifiers do not grant access to another owner's entry.
 - The FTS5 index is maintained transactionally by SQLite triggers on insert, update, and delete.
-- Expired entries are excluded from list, read, and search. On owner-scoped create, read, list, search, and update operations, the repository lazily deletes up to 100 expired records for that owner. SQLite delete triggers remove corresponding FTS rows in the same transaction.
-- Lazy cleanup is access-driven, not a background scheduler: an owner who never accesses Memory may leave expired rows on disk until a later access or explicit purge. The explicit `DELETE /memory/expired?limit=...` route accepts limits from 1 to 500 and deletes one bounded batch per request.
-- `GET /memory/export` does not trigger cleanup and includes expired records that still exist at export time. Records already physically removed by lazy cleanup or explicit purge cannot be recovered from that export; backup retention remains separate.
+- Expired entries are excluded from list, read, and search immediately. These read/retrieval paths remain side-effect free, including Dreaming and Validation previews.
+- Owner-scoped memory create/update writes lazily delete up to 100 expired entries for that owner. SQLite delete triggers remove matching FTS rows in the same transaction. This is access-driven write-time cleanup, not a background scheduler; an inactive owner may retain expired rows until a later write or explicit purge.
+- The explicit `DELETE /memory/expired?limit=500` route deletes one bounded batch per request. Limits from 1 to 500 are accepted; repeat the request while the returned `deleted` count equals the requested limit.
+- `GET /memory/export` does not trigger cleanup and includes expired records that still exist at export time. Records already physically removed by a later owner write or explicit purge cannot be recovered from that export; backup retention remains separate.
 - Create/update audit events include operation metadata only; memory text and search queries are not copied into audit logs.
 - The API rejects several common credential/token patterns. This is a defense-in-depth heuristic, not a complete secret detector: never submit credentials, API keys, private keys, or authentication tokens as memory content.
 - Retrieved text is untrusted evidence, not instructions or authorization. The initial slice does not connect memory search to model context or tool execution.
