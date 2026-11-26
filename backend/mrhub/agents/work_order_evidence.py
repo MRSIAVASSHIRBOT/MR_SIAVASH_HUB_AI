@@ -87,6 +87,8 @@ class EvidenceReference:
     # Internal server context; this field is not part of the HTTP request schema
     # or report serialization and is always injected from the authenticated actor.
     owner_user_id: str | None = None
+    # Injected by the authenticated evaluation route; never accepted from HTTP.
+    plan_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
