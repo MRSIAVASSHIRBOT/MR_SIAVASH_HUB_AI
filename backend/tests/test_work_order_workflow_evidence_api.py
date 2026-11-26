@@ -1,6 +1,4 @@
 from datetime import UTC, datetime
-import hashlib
-import json
 from uuid import uuid4
 
 from client_helpers import authenticated_client, run_worker_once
@@ -10,7 +8,6 @@ from mrhub.agents.work_order import WorkOrder
 from mrhub.api.routes.agent import _canonical_plan_digest
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass
-from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.payload_envelope import encrypt_plan_payload, load_payload_key
 
 
