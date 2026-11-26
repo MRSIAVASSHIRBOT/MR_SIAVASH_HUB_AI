@@ -174,6 +174,15 @@ A code branch, PR, green CI, historical checklist or proposed architecture alone
 7. Begin the next phase only when its own dependency gates and source ownership are clear.
 
 
+## 11. Exact implementation evidence links — 2026-11-27
+
+| Phase / requirement slice | Owning repository | Exact merged source / tests | Evidence state | Not covered by this slice |
+|---|---|---|---|---|
+| D2 local token-file security (subset of FR-AGENT-02/NFR-SEC-02) | EL_AGENT | PR #33 merge `de8007bd3a32e636a589d8afb7806725ac55d414`; `src/el_agent/security.py`, `tests/test_security.py` | Exact PR-head Python 3.11/3.12 Linux+Windows matrix passed; post-merge exact-main matrix passed on the recorded SHA | Android Keystore, physical device, system-level session lock/revoke and full device identity acceptance |
+| E10 outbound Unicode validation (subset of FR-ELAI-02/05) | EL_AI | PR #148 merge `bb7239c46556f6fa68841e48740507f31ba58e6c`; `src/el_ai/telegram/api.py`, `tests/test_telegram_api.py` | Python 3.11/3.12, Workflow Security Audit, post-merge Security Audit and Scorecard passed | Full update intake and delivery state machine, live test-bot, webhook and unknown-outcome E2E |
+| H10 evaluator regression contract (FR-HUB-06) | HUB | PR #640 merge `47a8e4fee206ef72e928fa3ce381a52ee4324921`; `tests/test_work_order_evidence_contract.py` | Exact PR-head validation checks passed before merge | Owner-scoped API and trusted production evidence adapters |
+| H10 owner-scoped evaluation API (FR-HUB-06) | HUB | PR #641 current candidate; `backend/mrhub/api/routes/agent.py`, `backend/mrhub/agents/work_order_evidence.py`, `tests/test_agent_work_order_evidence_api.py` | Open PR; CI pending at this snapshot; candidate rechecks encrypted plan digest and binds a separate canonical WorkOrder digest | Production verifiers, persisted WorkOrder revision/digest, E8 consumer integration and exact-main acceptance |
+
 ## 11. Merged implementation slices and open acceptance — 2026-11-27
 
 This table records narrow implementation slices; it does not promote the owning phase to DONE.
