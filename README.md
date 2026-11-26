@@ -13,6 +13,8 @@ MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabiliti
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
 **Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).
+**Governance & product strategy:** [G0–G12 baseline, four-product ownership, layered architecture, current evidence and risks](docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md).  
+**Accepted portfolio decision:** [ADR-0047 — four-product scope and EL_AI Telegram ownership](docs/architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md).
 
 
 **Operational capabilities:** [AWI, GPI, CGI, PAIOS, gap detection, planning, self-evaluation, quality and security requirements](docs/OPERATIONAL_CAPABILITIES.md).
