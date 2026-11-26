@@ -38,6 +38,14 @@ The verifier checks:
 
 Only a succeeded step with a matching digest can pass this criterion. A failed step produces a digest-bound failure result. Missing, foreign, non-terminal, mismatched, or unverifiable evidence remains UNKNOWN / REVIEW_REQUIRED.
 
+### One-to-one persisted plan binding
+
+A workflow can be bound to a persisted GPI/AWI plan by supplying its `work_order_plan_id` to the existing `POST /agent/workflows` request. The server decrypts and validates the owner-scoped plan, then requires an exact match for the WorkOrder goal, every stable tool-step ID, declared dependencies, one-tool capability mapping, and full acceptance-criterion coverage.
+
+The workflow row and plan consumption are committed in the same SQLite transaction. The plan transitions from `active` to `consumed` and records that exact `workflow_id`; a plan can never be consumed by a second workflow. A failed binding rolls back workflow/task creation. An ordinary workflow without this association is not accepted as evidence for a persisted plan, even when the owner, step ID, and tool name happen to match.
+
+Evidence evaluation rechecks the owner-scoped consumed-plan/workflow association. Consumed plans retain only the association metadata after their original TTL; encrypted plan content is erased at expiry, and evidence evaluation is rejected after that deadline.
+
 Other natural-language criterion descriptions are deliberately not accepted by this first verifier. A successful tool call alone is not proof that the overall semantic goal was completed.
 
 ## Read-only correction proposal
