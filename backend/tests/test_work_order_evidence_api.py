@@ -229,3 +229,56 @@ def test_plan_evidence_api_is_owner_scoped_and_no_store():
         json={"evidence": []},
     )
     assert missing.status_code == 404
+
+
+def test_workflow_evidence_rejects_same_step_id_with_different_tool_capability():
+    from mrhub.agents.work_order_evidence import (
+        EvidenceReference,
+        WorkOrderCriterion,
+        VerifierStatus,
+    )
+    from mrhub.api.routes.agent_evidence import _workflow_step_verifier
+
+    workflow_id = "123e4567-e89b-12d3-a456-426614174000"
+
+    class FakeWorkflowRepository:
+        def get_run(self, workflow_id_value, *, owner_user_id):
+            assert str(workflow_id_value) == workflow_id
+            assert owner_user_id == "owner-a"
+            return {
+                "steps": [
+                    {
+                        "step_key": "step-2",
+                        "step_name": "different.tool",
+                        "status": "succeeded",
+                        "output_digest": "a" * 64,
+                    }
+                ]
+            }
+
+    reference = EvidenceReference(
+        evidence_id="evidence_mismatch",
+        criterion_id="ac_001",
+        source_type="agent_workflow_step",
+        source_ref=f"{workflow_id}/step-2",
+        evidence_digest="a" * 64,
+        work_order_digest="b" * 64,
+        work_order_revision=1,
+        observed_at=datetime.now(UTC).isoformat(),
+        verifier_id="hub.workflow_step.v1",
+    )
+    criterion = WorkOrderCriterion(
+        criterion_id="ac_001",
+        description="workflow_step_succeeded:step-2",
+    )
+
+    result = _workflow_step_verifier(
+        reference,
+        criterion,
+        repository=FakeWorkflowRepository(),
+        owner_user_id="owner-a",
+        planned_step_capabilities={"step-2": frozenset({"text.echo"})},
+    )
+
+    assert result.status is VerifierStatus.UNKNOWN
+    assert result.reason_code == "workflow_step_capability_mismatch"
