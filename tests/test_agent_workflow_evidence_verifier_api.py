@@ -82,6 +82,18 @@ def _execute_text_echo_workflow(
     if work_order_plan_id is not None:
         request_body["work_order_plan_id"] = work_order_plan_id
     submitted = client.post("/agent/workflows", json=request_body)
+    assert submitted.status_code == 200
+    workflow_id = submitted.json()["workflow"]["workflow_id"]
+    assert run_worker_once() is not None
+    workflow_response = client.get(f"/agent/workflows/{workflow_id}")
+    assert workflow_response.status_code == 200
+    workflow = workflow_response.json()
+    step = next(
+        item for item in workflow["steps"]
+        if item["step_key"] == "step-2"
+    )
+    assert step["status"] == "succeeded"
+    return workflow_id, step
 
 
 def _evidence(work_order_digest: str, workflow_id: str, step: dict[str, object]):
