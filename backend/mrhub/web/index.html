@@ -796,11 +796,28 @@
         </div>
         <form id="memory-form" class="form-grid">
           <label>دسته‌بندی<input name="category" required maxlength="80" placeholder="مثلاً project"></label>
+          <label>مرحلهٔ حافظه
+            <select name="memory_stage">
+              <option value="working" selected>موقت — حداکثر ۷ روز (پیش‌فرض)</option>
+              <option value="lesson_candidate">پیشنهاد یادگیری — حداکثر ۳۰ روز</option>
+              <option value="retained">پایدار — بدون تاریخ انقضا (انتخاب صریح مالک)</option>
+            </select>
+          </label>
+          <label>مدت نگه‌داری (روز)<input name="retention_days" type="number" min="1" max="30" value="7"></label>
           <label class="field-wide">یادداشت<textarea name="content" rows="2" required maxlength="2000"></textarea></label>
+          <p id="memory-retention-help" class="muted field-wide">یادداشت‌های موقت و پیشنهادهای یادگیری تاریخ انقضای اجباری دارند؛ نگه‌داری پایدار بدون انقضا فقط با انتخاب و تأیید مالک انجام می‌شود.</p>
           <button class="button button-primary" type="submit">ذخیرهٔ یادداشت</button>
         </form>
         <form id="memory-search-form" class="search-form">
           <label>جست‌وجوی حافظه<input name="query" required maxlength="200" placeholder="عبارت جست‌وجو"></label>
+          <label>فیلتر مرحله
+            <select name="memory_stage">
+              <option value="">همهٔ مراحل</option>
+              <option value="working">موقت</option>
+              <option value="lesson_candidate">پیشنهاد یادگیری</option>
+              <option value="retained">پایدار</option>
+            </select>
+          </label>
           <button class="button button-secondary" type="submit">جست‌وجو</button>
           <button id="memory-list-button" class="button button-quiet" type="button">نمایش همه</button>
         </form>
