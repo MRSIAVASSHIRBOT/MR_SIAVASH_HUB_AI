@@ -125,9 +125,9 @@ Status values:
 | G6 | Repository Baseline | PARTIAL | Current main heads, root inventories, open PRs and latest mainline Actions observations were inspected for all four repositories | Complete per-repository code/architecture/dependency/configuration/test/deployment/live-runtime inventories and record evidence freshness |
 | G7 | Engineering Standards | PARTIAL | HUB `AGENTS.md`, continuous execution standard, per-repository CI and security workflows exist | Apply and verify required branch protection/rulesets; align contribution, testing, review, dependency-lock and release standards across four repositories |
 | G8 | Architecture Decisions | IN_PROGRESS | ADRs 0041–0046 and Website decisions 0001/0003/0004 exist; ADR-0047 records the owner-approved scope correction in this branch | Merge ADR-0047; record future cross-product contract, data-ownership and deployment decisions before implementation |
-| G9 | Risk & Dependency Register | PARTIAL | Risks and dependencies appear across the 73-phase baseline, status ledger, release checkpoints and security docs | Maintain one current portfolio register with severity, likelihood, owner, mitigation, due gate and evidence link |
+| G9 | Risk & Dependency Register | IN_PROGRESS | Initial actionable register with stable risk/dependency IDs, likelihood, impact, accountable roles, mitigations and closure evidence in [ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) | Reconcile owners and ratings against fresh evidence; maintain P0/P1 review and record explicit accept/close decisions |
 | G10 | Product Portfolio | IN_PROGRESS | 76-phase four-product technical inventory in [FOUR_PRODUCT_TECHNICAL_PHASES.md](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | Audit each technical phase against exact mainline code/tests and publish prioritized Work Orders |
-| G11 | Delivery Management | IN_PROGRESS | Technical phase dependency gates and global DoD in [FOUR_PRODUCT_TECHNICAL_PHASES.md](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md); operating standards in `docs/management/CONTINUOUS_EXECUTION_STANDARD.md` | Create repository-level work orders/milestones and add phase/evidence tracking to release checkpoints |
+| G11 | Delivery Management | IN_PROGRESS | [Delivery lifecycle and release gates](management/DELIVERY_MANAGEMENT_STANDARD.md), [Work Order template](management/WORK_ORDER_TEMPLATE.md), and [initial governance Work Order registry](management/ECOSYSTEM_WORK_ORDERS.md), alongside the technical phase DoD | Adopt the lifecycle across repositories; assign named maintainers; create repository-level milestones and link exact-SHA evidence/release checkpoints |
 | G12 | Legal & Operational Readiness | OWNER ACTION REQUIRED | Repository copyright/security documents and operational runbooks exist; several deployment and live-acceptance gates are explicitly separate from CI | Owner/legal review of IP, licenses, privacy/terms and data handling; confirm operational ownership, backup/incident plans, provider costs and live acceptance before production use |
 
 ### G-phase exit rule
@@ -142,7 +142,10 @@ A phase advances only when its deliverables are linked to source-of-truth artifa
 | G2 | [Requirements Catalogue](requirements/ECOSYSTEM_REQUIREMENTS.md) | Cross-product functional and non-functional requirements with IDs and verification gates |
 | G3 | [Use-Case Catalogue](architecture/USE_CASE_CATALOG.md) | Actors, primary flows, exceptions, privacy boundaries and acceptance conditions |
 | G5 | [Ownership RACI](governance/OWNERSHIP_RACI.md) | Product capability ownership, reserved owner decisions and independent assurance |
+| G9 | [Risk & Dependency Register](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) | Stable risk/dependency IDs, ratings, accountable roles, mitigations and closure gates |
 | G10/G11 | [Four-Product Technical Phase Inventory](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | 76 technical phases, dependencies, evidence posture and global Definition of Done |
+| G11 | [Delivery Management Standard](management/DELIVERY_MANAGEMENT_STANDARD.md) | Work Order lifecycle, priority, milestone model, release gates and progress evidence |
+| G11 | [Work Order Template](management/WORK_ORDER_TEMPLATE.md) and [Work Order Registry](management/ECOSYSTEM_WORK_ORDERS.md) | Reusable Work Order schema and initial owned governance backlog |
 
 The technical inventory contains 21 HUB phases (H0–H20), 15 EL_AI phases (E0–E14), 15 EL_AGENT phases (D0–D14), 15 Website phases (A0–A14) and 10 shared phases (X1–X10). Governance phases G0–G12 are separately tracked. The inventory deliberately declares no phase globally DONE until its specific acceptance criteria and exact-mainline evidence are reconciled.
 
@@ -176,6 +179,8 @@ No branch protection was changed by this baseline. The owner/admin must configur
 
 ## 7. Initial portfolio risk and dependency register
 
+The following summary is retained for quick orientation. The [canonical G9 register](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) contains the expanded risk ratings, dependency IDs, evidence, accountable roles, mitigation and closure criteria; keep both views aligned.
+
 | ID | Risk / dependency | Severity | Owner | Mitigation / next gate |
 |---|---|---|---|---|
 | R-01 | Conflicting active scope: ADR-0046 and old roadmaps assign Telegram/Bridge work to EL_IR_BOT and place EL_AGENT outside the active count | HIGH | HUB architecture / portfolio owner | ADR-0047 supersedes old active scope; update all current entry points and create a new four-product phase inventory |
@@ -190,6 +195,8 @@ No branch protection was changed by this baseline. The owner/admin must configur
 Dependencies across products are contract-based: EL_AI depends on HUB for private shared intelligence and authorized durable work; EL_AGENT may integrate with HUB but must remain standalone; MR_SIAVASH_AI is public-facing and must not depend on private HUB access. Telegram bot implementation belongs to EL_AI.
 
 ## 8. Delivery and change-control rules
+
+The executable delivery workflow, milestone/release gates and Work Order fields are defined in the [G11 Delivery Management Standard](management/DELIVERY_MANAGEMENT_STANDARD.md), [Work Order Template](management/WORK_ORDER_TEMPLATE.md), and [Work Order Registry](management/ECOSYSTEM_WORK_ORDERS.md). These are the operational detail behind the concise rules below.
 
 1. Read current repository instructions, mainline status, open PRs and relevant contracts before every change.
 2. Make a focused change on a dedicated branch. Do not edit `main` directly.
@@ -208,8 +215,8 @@ Dependencies across products are contract-based: EL_AI depends on HUB for privat
 2. **Reconcile architecture docs:** apply the logical-layer model and ensure the PAIOS target architecture no longer treats EL_IR_BOT as an active component.
 3. **Retire stale active-roadmap assumptions:** preserve the old 73-phase/legacy roadmap as historical evidence, but do not execute its B0–B11 or legacy migration tasks.
 4. **Complete G0–G3:** approve measurable vision/product outcomes, requirements and actor-based use cases.
-5. **Complete G6–G9:** deepen repository inventory, align engineering standards, record architecture decisions and centralize risks/dependencies.
-6. **Rebuild G10–G11:** publish a four-product technical phase inventory that includes an EL_AGENT workstream and keeps Telegram work within EL_AI.
+5. **Complete G6–G8:** deepen per-repository inventories, align and verify engineering standards, and review/record architecture decisions before dependent implementation.
+6. **Operate G9–G11:** maintain the canonical risk register, reconcile the 76 technical phases against exact mainline evidence, and adopt the Work Order/milestone/release lifecycle across the four repositories.
 7. **Close G12 owner actions:** legal/privacy/cost/operational review and real environment/device acceptance before any production-impacting release.
 
 ## 10. Evidence limitations
