@@ -13,7 +13,6 @@ from enum import StrEnum
 
 from mrhub.agents.work_order_evidence import (
     CriterionEvidenceStatus,
-    WorkOrderDecision,
     WorkOrderEvidenceReport,
 )
 
