@@ -1615,8 +1615,8 @@ MIGRATIONS = (
         59,
         "bounded_owner_scoped_memory_expiry_cleanup",
         (
-            "CREATE INDEX idx_memory_owner_expiry "
-            "ON memory_entries(owner_user_id, expires_at, memory_id)",
+            ("CREATE INDEX idx_memory_owner_expiry "
+             "ON memory_entries(owner_user_id, expires_at, memory_id)"),
         ),
     ),
 )
