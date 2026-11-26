@@ -38,6 +38,12 @@ Source links:
 - [EL_AGENT main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions)
 - [Website main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions)
 
+### H10 API merge — post-merge exact-main checkpoint — 2026-11-27
+
+HUB `main` now points to `4f684b8a8494ffe263db6769b312f884cd6df311`, which integrates PR #641 (owner-scoped, read-only WorkOrder evidence evaluation API). At the latest read, GitHub reported 10 check-runs on this exact SHA: 5 succeeded, 3 were in progress and 2 were queued; no failed checks had been observed. Do not treat this snapshot as fully green until all ten conclude successfully.
+
+The PR-head validation suite passed before merge. The post-merge runtime smoke, Windows FFmpeg, backup/device and full test results remain separately tracked on the exact main SHA.
+
 ## 3. Repository details
 
 ### 3.1 HUB
