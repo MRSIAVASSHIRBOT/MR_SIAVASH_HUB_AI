@@ -1,83 +1,73 @@
-# H9 — Execution Traceability Contract
+# H15 / X7 — Execution Traceability: implementation status
 
-Status: design/acceptance proposal, not implementation evidence.
-Scope: observability linking task, agent run, workflow, step, tool attempt, retry, and recovery events.
+Status: **Hub-local task-bound traceability is implemented and covered by tests. Cross-project distributed trace correlation remains partial.**
 
-## Current verified baseline
-- Authenticated task and agent workflow APIs exist.
-- `/jobs/summary` exposes queue counts and worker mode.
-- `/jobs/control` exposes durable worker dispatch stop state.
-- `/health` and `/ready` provide process and readiness/worker-heartbeat signals.
-- The UI system panel reads health, readiness, providers, tasks, job summary, and agent workflows.
-- Persisted task/workflow records and audit events exist.
-- The baseline does not establish a consistent trace identifier linking all execution layers.
+Historical note: This document was previously titled H9 under an older phase map. The current 73-phase roadmap assigns observability to **H15** and shared observability contracts to **X7**. Older phase labels do not redefine the current roadmap.
 
-## Goal
-Make one user-requested operation observable from initial task/run through every workflow step, tool invocation, retry, recovery, and terminal result—without logging secrets, raw prompts, or tool payloads by default.
+## Verified implementation on Hub main
 
-## Proposed identifier contract
-- `trace_id`: generated server-side for each top-level request/task/run; UUID, immutable.
-- `task_id`, `agent_run_id`, `workflow_id`: existing entity IDs remain primary identifiers and are never replaced by trace IDs.
-- `step_id`: stable workflow step identity (already supported by H1).
-- `attempt_id`: unique identifier for each execution/retry attempt.
-- `parent_event_id`: optional event parent for causal ordering; nullable for root events.
-- `event_id`: unique ID for each emitted event.
-- `occurred_at`: UTC timestamp.
-- `event_type`: allow-listed, bounded string.
-- `status` and `duration_ms`: sanitized operational fields when known.
-- `provider/tool`: bounded names from registered identifiers only; never include credentials.
+The Hub has a server-generated, owner-scoped execution trace for one task and its task-linked workflow:
 
-## Event lifecycle
-1. Request accepted or rejected (include trace ID in response where safe).
-2. Task/agent run created or idempotency replay resolved.
-3. Workflow created; plan digest and schema version recorded (not full plan text).
-4. Step queued, claimed, started, succeeded/failed/blocked/cancelled.
-5. Tool attempt started and completed/failed/unknown; retries have separate attempt IDs.
-6. Recovery decision: stale claim, lease/fencing outcome, reconciliation required, or resume skipped/completed.
-7. Evaluation and correction/replanning proposal created; review state remains separate from authorization.
-8. Final outcome emitted with bounded reason code and trace ID.
+- Task submission creates the task UUID on the server and returns it as X-Trace-ID. An idempotent replay returns the same task/trace identity.
+- The current trace identity is intentionally the task UUID: trace_id == task_id. It is not a separate top-level operation UUID.
+- AgentWorkflowRunner carries that trace identity through workflow lifecycle events, provider/step attempts, registered tool lifecycle events, resume, interruption, and terminal outcomes.
+- Trace event metadata is allow-listed and bounded. Verified fields include task/trace identity, workflow ID, step ID, attempt ID/number, registered tool name, status, and bounded reason code. Raw prompts, tool inputs/outputs, credentials, and arbitrary provider payloads are not part of the trace contract.
+- GET /agent/traces/{trace_id} checks ownership server-side and returns a bounded, cursor-paginated task-linked event timeline. Request IDs remain distinct from execution trace IDs.
+- The operator workflow dashboard exposes a read-only Timeline view and paginates events.
+- Trace persistence is written through the existing audit-event storage. Observability failure is handled separately from workflow execution and must not cause a completed side effect to be replayed.
 
-## Privacy and security
-- Never store raw prompts, tool inputs/outputs, tokens, secrets, file contents, or personal data in telemetry by default.
-- Use allow-listed event fields and strict schema validation; reject unknown event types/fields.
-- Keep audit records distinct from operational traces and metrics.
-- Apply owner scoping to trace queries and verify authorization server-side.
-- Retention must be configurable and bounded; provide deletion/purge behavior.
-- Event write failure must not cause a completed external action to be repeated. Trace writes are best-effort or transactionally coupled only where safe.
-- Trace IDs are correlation identifiers, not access credentials.
+## Source and test evidence
 
-## Storage and query plan
-- Add a versioned migration for a trace-event table with indexed `trace_id`, entity IDs, `event_type`, and time.
-- Define bounded event schemas and a repository API before wiring emitters.
-- Keep event payloads compact and metadata-only; redact or omit sensitive fields.
-- Add pagination, time bounds, and hard limits to trace retrieval.
-- Owner-scoped API endpoints should return summaries and timeline pages, not unbounded event history.
+The implementation is covered by tests/test_agent_traceability.py, including:
 
-## UI acceptance
-- Provide a trace search/detail view reachable from a task or agent run.
-- Show ordered event timeline with stage, status, time/duration, attempt number, and safe reason code.
-- Clearly distinguish tool failure, retry, recovery, unknown outcome, and reconciliation-required states.
-- Filter by status/event type and paginate.
-- UI must never expose raw tool payloads or secrets.
+- server-generated trace identity and the X-Trace-ID response header;
+- owner isolation for trace reads;
+- allow-listed workflow/step/attempt/tool metadata;
+- cursor pagination and timestamp normalization;
+- the dashboard Timeline and safe DOM rendering;
+- suppressing trace lookup when a workflow has no valid task ID.
 
-## Implementation sequence
-1. Establish schema, event validation, and repository tests.
-2. Add server-side trace ID creation and propagate through task/run/workflow boundaries.
-3. Instrument workflow/step/attempt/retry/recovery/evaluation events.
-4. Add owner-authorized paginated API.
-5. Add UI timeline and task/run links.
-6. Add end-to-end tests for propagation, access control, privacy, event ordering, pagination, and failures.
+Relevant implementation paths:
 
-## Acceptance criteria
-- One trace ID links a single top-level operation across task/run/workflow/step/tool attempts.
-- IDs are generated by server, immutable, and do not substitute existing entity IDs.
-- Event schema rejects malformed/unknown fields and bounds sizes/counts.
-- Trace reads enforce owner scope and pagination/time limits.
-- Sensitive payloads are not present in stored events or responses.
-- Retry and recovery event ordering can be reconstructed deterministically enough for operator review.
-- Instrumentation failure never triggers a duplicate side effect.
-- UI is read-only and cannot authorize or execute tools.
+- backend/mrhub/api/routes/tasks.py
+- backend/mrhub/api/routes/agent.py
+- backend/mrhub/agents/workflow_runner.py
+- backend/mrhub/infrastructure/database.py
+- backend/mrhub/security/audit.py
+- backend/mrhub/web/app.js
+- backend/mrhub/web/app.css
 
-## Non-goals
-- This contract does not implement distributed tracing exporters, telemetry vendor integration, or automatic permission grants.
-- It does not certify existing logging or tracing as complete.
+This section records source/test evidence, not production deployment or fleet-wide acceptance.
+
+## Current identity and correlation contract
+
+- trace_id: server-generated task UUID; immutable for that task and stable across idempotent replay.
+- task_id: the same UUID as trace_id in the current Hub implementation.
+- workflow_id: durable workflow entity ID linked to the task.
+- step_id: stable workflow step identifier.
+- attempt_id: unique execution attempt identifier; retry attempts retain distinct attempt identities.
+- request_id: identifies one HTTP request and is distinct from trace_id.
+- correlation_id: diagnostic metadata for cross-service/request correlation; it is not an authentication, authorization, ownership, or idempotency credential.
+
+Do not describe the current Hub trace as an independent request-level UUID with a parent-event graph. The current verified scope is one task and its task-linked workflow.
+
+## Remaining H15 / X7 work
+
+1. Define and test a versioned cross-project correlation contract that joins the EL_AI Bridge job, Hub task, Hub workflow, and Telegram delivery lifecycle without conflating entity IDs.
+2. Decide whether a separate top-level operation ID is required for workflows that create multiple tasks or span services. Preserve the current task UUID semantics for v1 compatibility.
+3. Propagate and validate correlation metadata at each service boundary; prove concurrent task isolation and cleanup on success, exception, timeout, and cancellation.
+4. Add owner-scoped cross-service lookup only after the identity mapping and authorization model are explicit.
+5. Extend metrics beyond process-local snapshots where deployment architecture supports it; add bounded retention, export, alerting, and operational runbooks as separate release-gated changes.
+6. Capture live-service and deployment evidence separately from unit tests and GitHub Actions.
+
+## Boundaries
+
+- A correlation ID is diagnostic metadata, never a capability or permission grant.
+- Trace queries must remain owner-scoped, bounded, and paginated.
+- Telemetry must not contain raw prompts, message bodies, secrets, credentials, file contents, or arbitrary tool payloads by default.
+- Do not infer successful delivery, production deployment, fleet-wide observability, or live Telegram/Cloudflare acceptance from source tests.
+- This document does not authorize production migration, external telemetry spend, or service provisioning.
+
+## Rollback
+
+This is an implementation-status and contract-document correction only. Reverting the document restores the earlier proposal text and does not change runtime behavior, database schema, or deployed services.
