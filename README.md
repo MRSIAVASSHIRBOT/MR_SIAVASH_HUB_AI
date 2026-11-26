@@ -12,7 +12,8 @@ An integrated, modular AI workspace designed for local-first and hybrid executio
 MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabilities for agents, memory, workflows, developer assistance, content production, integrations, and defensive security.
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
-**Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).
+**Ecosystem goal reference:** [Canonical goals, ownership, integration boundaries, and staged roadmap for all four MR_SIAVASH projects](docs/PROJECT_GOALS_ECOSYSTEM.md).  
+**Governance and delivery reference:** [G0–G12 governance baseline](docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md), [G9 risk register](docs/governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md), and [G11 delivery controls](docs/management/DELIVERY_MANAGEMENT_STANDARD.md).
 **Governance & product strategy:** [G0–G12 baseline, four-product ownership, layered architecture, current evidence and risks](docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md).  
 **Accepted portfolio decision:** [ADR-0047 — four-product scope and EL_AI Telegram ownership](docs/architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md).
 **Product strategy:** [G0/G1 vision, mission, values and outcomes](docs/product/PRODUCT_STRATEGY_G0_G1.md).  
