@@ -128,7 +128,7 @@ Status values:
 | G9 | Risk & Dependency Register | IN_PROGRESS | Initial actionable register with stable risk/dependency IDs, likelihood, impact, accountable roles, mitigations and closure evidence in [ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) | Reconcile owners and ratings against fresh evidence; maintain P0/P1 review and record explicit accept/close decisions |
 | G10 | Product Portfolio | IN_PROGRESS | 76-phase four-product technical inventory in [FOUR_PRODUCT_TECHNICAL_PHASES.md](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | Audit each technical phase against exact mainline code/tests and publish prioritized Work Orders |
 | G11 | Delivery Management | IN_PROGRESS | [Delivery lifecycle and release gates](management/DELIVERY_MANAGEMENT_STANDARD.md), [Work Order template](management/WORK_ORDER_TEMPLATE.md), and [initial governance Work Order registry](management/ECOSYSTEM_WORK_ORDERS.md), alongside the technical phase DoD | Adopt the lifecycle across repositories; assign named maintainers; create repository-level milestones and link exact-SHA evidence/release checkpoints |
-| G12 | Legal & Operational Readiness | OWNER ACTION REQUIRED | Repository copyright/security documents and operational runbooks exist; several deployment and live-acceptance gates are explicitly separate from CI | Owner/legal review of IP, licenses, privacy/terms and data handling; confirm operational ownership, backup/incident plans, provider costs and live acceptance before production use |
+| G12 | Legal & Operational Readiness | OWNER ACTION REQUIRED | [G12 legal/operational readiness checklist](governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md), HUB copyright notice and operational runbooks are available; several deployment/live-acceptance gates remain separate from CI | Appropriate owner/legal review of IP, licenses, privacy/terms and data handling; confirm named operators, backup/incident plans, provider costs and live acceptance before production use |
 
 ### G-phase exit rule
 
@@ -147,6 +147,7 @@ A phase advances only when its deliverables are linked to source-of-truth artifa
 | G10/G11 | [Four-Product Technical Phase Inventory](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | 76 technical phases, dependencies, evidence posture and global Definition of Done |
 | G11 | [Delivery Management Standard](management/DELIVERY_MANAGEMENT_STANDARD.md) | Work Order lifecycle, priority, milestone model, release gates and progress evidence |
 | G11 | [Work Order Template](management/WORK_ORDER_TEMPLATE.md) and [Work Order Registry](management/ECOSYSTEM_WORK_ORDERS.md) | Reusable Work Order schema and initial owned governance backlog |
+| G12 | [Legal & Operational Readiness Checklist](governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) | Track IP/licensing, privacy/data handling, operations, backup/recovery, cost and live acceptance owner gates |
 
 The technical inventory contains 21 HUB phases (H0–H20), 15 EL_AI phases (E0–E14), 15 EL_AGENT phases (D0–D14), 15 Website phases (A0–A14) and 10 shared phases (X1–X10). Governance phases G0–G12 are separately tracked. The inventory deliberately declares no phase globally DONE until its specific acceptance criteria and exact-mainline evidence are reconciled.
 
