@@ -798,9 +798,9 @@
           <label>دسته‌بندی<input name="category" required maxlength="80" placeholder="مثلاً project"></label>
           <label>مرحلهٔ حافظه
             <select name="memory_stage">
-              <option value="retained">پایدار — بدون تاریخ انقضا</option>
-              <option value="working">موقت — حداکثر ۷ روز</option>
+              <option value="working" selected>موقت — حداکثر ۷ روز (پیش‌فرض)</option>
               <option value="lesson_candidate">پیشنهاد یادگیری — حداکثر ۳۰ روز</option>
+              <option value="retained">پایدار — بدون تاریخ انقضا (انتخاب صریح مالک)</option>
             </select>
           </label>
           <label>مدت نگه‌داری (روز)<input name="retention_days" type="number" min="1" max="30" value="7"></label>
