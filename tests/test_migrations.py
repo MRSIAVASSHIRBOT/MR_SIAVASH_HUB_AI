@@ -1429,7 +1429,7 @@ def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path, monkeypa
     monkeypatch.setattr(
         migrations_module,
         "MIGRATIONS",
-        migrations_module.MIGRATIONS[:-1],
+        migrations_module.MIGRATIONS[:-2],
     )
     SchemaMigrator(connection).migrate()
 
