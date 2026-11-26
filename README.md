@@ -8,7 +8,7 @@ An integrated, modular AI workspace designed for local-first and hybrid executio
 
 ## Product direction
 
-**Current coordinated source/CI checkpoint:** [2026-11-25 repository status and integration gates](docs/PROJECT_STATUS.md).
+**Current coordinated source/CI checkpoint:** [2026-11-26 repository status and integration gates](docs/PROJECT_STATUS.md).
 MR_SIAVASH_HUB_AI combines a shared intelligence core with specialist capabilities for agents, memory, workflows, developer assistance, content production, integrations, and defensive security.
 
 The initial release is designed for one primary user while keeping clean boundaries for future multi-user support.
