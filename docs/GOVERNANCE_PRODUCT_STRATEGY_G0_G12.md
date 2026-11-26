@@ -140,9 +140,10 @@ A phase advances only when its deliverables are linked to source-of-truth artifa
 |---|---|---|
 | G0/G1 | [Product Strategy](product/PRODUCT_STRATEGY_G0_G1.md) | Proposed mission, values, outcomes, product positioning and metric definitions |
 | G2 | [Requirements Catalogue](requirements/ECOSYSTEM_REQUIREMENTS.md) and [Traceability Map](traceability/REQUIREMENT_USECASE_TRACEABILITY.md) | Cross-product FR/NFR IDs linked to technical phases, use cases and verification methods |
+| G6 | [Repository Baseline](governance/REPOSITORY_BASELINE_G6.md) | Four-product runtime, manifest, CI and deployment inventory with explicit evidence gaps |
+| G7 | [Engineering Standards Matrix](governance/ENGINEERING_STANDARDS_MATRIX_G7.md) | Cross-product CI, test/lint, dependency, supply-chain, review and release standards |
 | G8 | [ADR Template](architecture/decisions/ADR_TEMPLATE.md) | Consistent architecture-decision context, options, owner approval, security/data-flow impact and verification record |
 | G8 | [ADR Index](architecture/ADR_INDEX.md) | Cross-product decision register, status/supersession and documented historical identifier collisions |
-| G12 | [Legal & Operational Readiness Checklist](governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) | Owner/legal review checklist; records evidence without claiming compliance or granting release authorization |
 | G3 | [Use-Case Catalogue](architecture/USE_CASE_CATALOG.md) and [Sequence Diagrams](architecture/USE_CASE_SEQUENCE_DIAGRAMS.md) | Actors, primary/exception flows, trust-boundary sequences and acceptance invariants |
 | G5 | [Ownership RACI](governance/OWNERSHIP_RACI.md) | Product capability ownership, reserved owner decisions and independent assurance |
 | G9 | [Risk & Dependency Register](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) | Stable risk/dependency IDs, ratings, accountable roles, mitigations and closure gates |
