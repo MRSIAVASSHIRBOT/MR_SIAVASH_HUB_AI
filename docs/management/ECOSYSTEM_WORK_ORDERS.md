@@ -15,10 +15,10 @@
 | WO-GOV-002 | G7 | Enforce protected main branches and required review/check policy | All four repositories / repository owner-admin | P1 | BLOCKED | D-02; R-01 | Effective rules read back from GitHub for HUB, EL_AI, EL_AGENT and Website; required checks run on exact PR heads |
 | WO-GOV-003 | G6 | Complete per-repository baseline inventory at current exact main SHAs | Each repository / product maintainer | P1 | READY | D-09; R-03, R-10, R-11 | Code/module map, manifests/lockfiles, config, tests, CI, secrets boundary, deployment and live-evidence distinction recorded per repo |
 | WO-GOV-004 | G2/G3 | Link requirements and use cases to owning product, Work Order and executable verification | HUB coordinates / product owners | P2 | READY | R-12, R-13 | Stable requirement/use-case IDs map to owner → implementation path → test/acceptance evidence; unimplemented requirements remain explicit |
-| WO-GOV-005 | G8 | Establish ADR quality and cross-product contract decision traceability | HUB / architecture owner | P2 | IN_PROGRESS | D-03, D-09; R-04, R-14 | Shared [ADR template](../architecture/decisions/ADR_TEMPLATE.md) adopted; decision index includes status/supersession, owner, security/data-flow impact and verification; no implementation precedes required decision |
+| WO-GOV-005 | G8 | Establish ADR quality and cross-product contract decision traceability | HUB / architecture owner | P1 | IN_PROGRESS | D-03, D-09; R-04, R-14 | Shared [ADR template](../architecture/decisions/ADR_TEMPLATE.md) adopted; decision index includes status/supersession, owner, security/data-flow impact and verification; no implementation precedes required decision |
 | WO-GOV-006 | G9 | Operate the centralized portfolio risk/dependency register | HUB / delivery coordinator + product risk owners | P1 | IN_PROGRESS | D-01…D-10; R-12 | Every active P0/P1 risk has accountable owner, mitigation, dependency, evidence, status and explicit accept/close decision |
 | WO-GOV-007 | G11 | Adopt Work Order, milestone, release and evidence lifecycle | HUB / delivery coordinator + product maintainers | P1 | IN_PROGRESS | R-01, R-03, R-11, R-12 | Template and delivery standard adopted; linked Work Orders and milestones maintained; exact-SHA evidence and owner gates recorded |
-| WO-GOV-008 | G12 | Complete licensing, privacy, operational ownership, backup and incident readiness review | Ecosystem owner + qualified adviser + product operators | P1 | OWNER GATE | D-04…D-08; R-05…R-09 | Written review outcome, approved notices/terms, named operators, restore drill, incident/rollback plan and explicit cost/live-service decisions |
+| WO-GOV-008 | G12 | Complete licensing, privacy, operational ownership, backup and incident readiness review | Ecosystem owner + qualified adviser + product operators | P1 | OWNER GATE | D-04…D-08; R-05…R-09 | [G12 readiness checklist](../governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) completed with written legal/privacy review, named operators, restore drill, incident/rollback plan and explicit cost/live-service decisions |
 
 ## 2. Work Order operating rules
 
@@ -39,7 +39,7 @@
 3. Run WO-GOV-003 against fresh exact-main snapshots, then update G6 and the dependency pins from observed facts.
 4. Execute WO-GOV-004/005 against current product requirements, APIs and tests; create consumer-side acceptance work where required.
 5. Maintain WO-GOV-006/007 as ongoing controls; reconcile G9 risks and G11 milestones on every checkpoint.
-6. Keep WO-GOV-008 behind the owner/legal/operations gate; do not invent legal or production acceptance.
+6. Keep WO-GOV-008 behind the owner/legal/operations gate; complete the [G12 checklist](../governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) with accountable reviewers and do not invent legal or production acceptance.
 
 ## 4. Status change log
 
