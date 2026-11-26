@@ -725,9 +725,12 @@ def evaluate_persisted_work_order_evidence(
         raise HTTPException(status_code=404, detail="Plan record not found")
     if record.status == "expired":
         raise HTTPException(status_code=410, detail="Plan record has expired")
-    # Consumed records remain readable only for evaluating their bound workflow.
+    # Consumed records remain readable only for evaluating their bound workflow,
+    # and never beyond the original encrypted-plan retention window.
     if record.status not in {"active", "consumed"}:
         raise HTTPException(status_code=409, detail="Plan record is not available")
+    if record.expires_at <= datetime.now(UTC).isoformat():
+        raise HTTPException(status_code=410, detail="Plan record has expired")
 
     try:
         key = load_payload_key()
