@@ -4,7 +4,7 @@
 - **Portfolio:** four canonical products
 - **Canonical home:** `MR_SIAVASH_HUB_AI`
 - **Status:** Initial evidence-based governance baseline; G0–G12 are not collectively complete
-- **Decision reference:** [ADR-0047 — Four-product ecosystem scope and Telegram ownership](architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md)
+- **Decision reference:** [ADR-0051 — Four-product ecosystem scope and Telegram ownership](architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 
 ## 1. Purpose and authority
 
@@ -12,7 +12,7 @@ This document establishes the governance and product-strategy layer that must pr
 
 This is a living governance baseline, not a claim that every product requirement, legal condition, runtime integration or release gate is already satisfied. Repository source, exact-commit CI, contract tests, live operational evidence and owner decisions remain separate sources of truth. A plan, branch, open PR or green CI run is not proof of production readiness.
 
-The active portfolio and Telegram ownership are governed by ADR-0047. ADR-0046 is retained as historical evidence and is superseded for current and future portfolio scope.
+The active portfolio and Telegram ownership are governed by ADR-0051. ADR-0046 is retained as historical evidence and is superseded for current and future portfolio scope.
 
 ## 2. Canonical ecosystem vision
 
@@ -120,11 +120,11 @@ Status values:
 | G1 | Product Strategy | IN_PROGRESS | Draft positioning, primary actors, value propositions, non-goals and metric definitions in [Product Strategy G0/G1](product/PRODUCT_STRATEGY_G0_G1.md) | Owner approval of audience expansion, portfolio priorities and numeric success targets |
 | G2 | Requirements Engineering | IN_PROGRESS | Initial FR/NFR catalogue, priorities, owners and verification methods in [ECOSYSTEM_REQUIREMENTS.md](requirements/ECOSYSTEM_REQUIREMENTS.md) | Decompose each requirement into repository issues/Work Orders and verify implementation traceability |
 | G3 | Use Case Architecture | IN_PROGRESS | Actor model and 12 primary/exception use cases in [USE_CASE_CATALOG.md](architecture/USE_CASE_CATALOG.md) | Add sequence diagrams and product-specific executable acceptance scenarios linked to tests |
-| G4 | Ecosystem Architecture | IN_PROGRESS | PAIOS target architecture, logical module boundaries and integration contracts exist; ADR-0047 and this layer model update the portfolio boundary | Reconcile the target architecture and active roadmap with the four-product model; approve contract and data-flow diagrams |
+| G4 | Ecosystem Architecture | IN_PROGRESS | PAIOS target architecture, logical module boundaries and integration contracts exist; ADR-0051 and this layer model update the portfolio boundary | Reconcile the target architecture and active roadmap with the four-product model; approve contract and data-flow diagrams |
 | G5 | Project Ownership | IN_PROGRESS | Product capability owners and reserved owner decisions in [OWNERSHIP_RACI.md](governance/OWNERSHIP_RACI.md) | Owner validates named maintainers and release operators; mirror ownership into repo issue/PR templates |
 | G6 | Repository Baseline | PARTIAL | Current main heads, root inventories, open PRs and latest mainline Actions observations were inspected for all four repositories | Complete per-repository code/architecture/dependency/configuration/test/deployment/live-runtime inventories and record evidence freshness |
 | G7 | Engineering Standards | PARTIAL | HUB `AGENTS.md`, continuous execution standard, per-repository CI and security workflows exist | Apply and verify required branch protection/rulesets; align contribution, testing, review, dependency-lock and release standards across four repositories |
-| G8 | Architecture Decisions | IN_PROGRESS | ADRs 0041–0047 and Website decisions 0001/0003/0004 exist; shared structure in [ADR_TEMPLATE.md](architecture/decisions/ADR_TEMPLATE.md) is now available | Review/merge ADR-0047; maintain a cross-product ADR index and record contract, data-ownership, security and deployment decisions before implementation |
+| G8 | Architecture Decisions | IN_PROGRESS | ADRs 0041–0047 and Website decisions 0001/0003/0004 exist; shared structure in [ADR_TEMPLATE.md](architecture/decisions/ADR_TEMPLATE.md) is now available | Review/merge ADR-0051; maintain a cross-product ADR index and record contract, data-ownership, security and deployment decisions before implementation |
 | G9 | Risk & Dependency Register | IN_PROGRESS | Initial actionable register with stable risk/dependency IDs, likelihood, impact, accountable roles, mitigations and closure evidence in [ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md](governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) | Reconcile owners and ratings against fresh evidence; maintain P0/P1 review and record explicit accept/close decisions |
 | G10 | Product Portfolio | IN_PROGRESS | 76-phase four-product technical inventory in [FOUR_PRODUCT_TECHNICAL_PHASES.md](roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md) | Audit each technical phase against exact mainline code/tests and publish prioritized Work Orders |
 | G11 | Delivery Management | IN_PROGRESS | [Delivery lifecycle and release gates](management/DELIVERY_MANAGEMENT_STANDARD.md), [Work Order template](management/WORK_ORDER_TEMPLATE.md), and [initial governance Work Order registry](management/ECOSYSTEM_WORK_ORDERS.md), alongside the technical phase DoD | Adopt the lifecycle across repositories; assign named maintainers; create repository-level milestones and link exact-SHA evidence/release checkpoints |
@@ -185,7 +185,7 @@ The canonical G9 record is the [Ecosystem Risk & Dependency Register](governance
 | ID | Risk summary | Priority / status | Next control |
 |---|---|---|---|
 | R-01 | Main-branch governance is not enforced across the four repositories | P1 / OWNER GATE | Owner/admin configures and independently verifies rulesets and exact required checks |
-| R-02 | Four-product scope correction is not yet canonical on main | P1 / MITIGATING | Review and merge ADR-0047/G0–G12 and align current entry points |
+| R-02 | Four-product scope correction is not yet canonical on main | P1 / MITIGATING | Review and merge ADR-0051/G0–G12 and align current entry points |
 | R-03 | CI evidence can be mistaken for live/runtime/production acceptance | P1 / OPEN | Keep source, CI, integration, device, external provider and deployment evidence distinct |
 | R-04 | Cross-product identity, authorization or private-data boundaries can drift | P1 / OPEN | Maintain versioned least-privilege contracts and negative security tests |
 | R-05 | Paid infrastructure may be provisioned before cost approval | P1 / OWNER GATE | Keep paid infrastructure draft/unprovisioned until explicit billing-owner approval |
@@ -215,7 +215,7 @@ The executable delivery workflow, milestone/release gates and Work Order fields 
 
 ## 9. Immediate execution queue
 
-1. **Merge the scope correction:** review ADR-0047 and this G0–G12 baseline; then make the four-product boundary the canonical portfolio source.
+1. **Merge the scope correction:** review ADR-0051 and this G0–G12 baseline; then make the four-product boundary the canonical portfolio source.
 2. **Reconcile architecture docs:** apply the logical-layer model and ensure the PAIOS target architecture no longer treats EL_IR_BOT as an active component.
 3. **Retire stale active-roadmap assumptions:** preserve the old 73-phase/legacy roadmap as historical evidence, but do not execute its B0–B11 or legacy migration tasks.
 4. **Complete G0–G3:** approve measurable vision/product outcomes, requirements and actor-based use cases.
