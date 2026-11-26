@@ -129,11 +129,11 @@ class AgentRegistry:
         return {
             "schema_version": "agent_registry_manifest.v1",
             "registry_frozen": self._frozen,
-            "registry_mutable": False,
+            "registry_mutable": not self._frozen,
             "agent_count": len(agents),
             "agents": agents,
             "instructions_exposed": False,
-            "runtime_registration_enabled": False,
+            "runtime_registration_enabled": not self._frozen,
             "execution_authorized": False,
         }
 
