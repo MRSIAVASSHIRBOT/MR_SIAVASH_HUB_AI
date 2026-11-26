@@ -53,10 +53,12 @@ class WorkOrderDecision(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class WorkOrderCriterion:
-    """Stable criterion identity within one immutable WorkOrder revision."""
+    """Stable criterion identity and server-derived verification constraints."""
 
     criterion_id: str
     required: bool = True
+    description: str = ""
+    step_capability_bindings: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,9 @@ class EvidenceReference:
     work_order_revision: int
     observed_at: str
     verifier_id: str
+    # Internal server context; this field is not part of the HTTP request schema
+    # or report serialization and is always injected from the authenticated actor.
+    owner_user_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,6 +267,31 @@ def _validate_snapshot(snapshot: WorkOrderSnapshot) -> dict[str, WorkOrderCriter
             raise EvidenceInputError("WorkOrder criterion ID is invalid")
         if type(criterion.required) is not bool:
             raise EvidenceInputError("WorkOrder criterion required flag must be boolean")
+        if (
+            not isinstance(criterion.description, str)
+            or len(criterion.description) > 300
+        ):
+            raise EvidenceInputError("WorkOrder criterion description is invalid")
+        if (
+            not isinstance(criterion.step_capability_bindings, tuple)
+            or len(criterion.step_capability_bindings) > MAX_WORK_ORDER_CRITERIA
+        ):
+            raise EvidenceInputError("WorkOrder criterion step/capability bindings are invalid")
+        seen_step_ids: set[str] = set()
+        for binding in criterion.step_capability_bindings:
+            if (
+                not isinstance(binding, tuple)
+                or len(binding) != 2
+                or not isinstance(binding[0], str)
+                or re.fullmatch(r"^[a-z][a-z0-9_-]{0,39}$", binding[0]) is None
+                or binding[0] in seen_step_ids
+                or not isinstance(binding[1], tuple)
+                or len(binding[1]) > MAX_WORK_ORDER_CRITERIA
+            ):
+                raise EvidenceInputError("WorkOrder criterion step/capability binding is invalid")
+            seen_step_ids.add(binding[0])
+            for capability in binding[1]:
+                _validate_identifier(capability, "WorkOrder criterion capability")
         if criterion.criterion_id in by_id:
             raise EvidenceInputError("WorkOrder criterion IDs must be unique")
         by_id[criterion.criterion_id] = criterion
@@ -308,6 +338,12 @@ def _validate_reference(
     ):
         raise EvidenceInputError("Evidence WorkOrder revision is invalid")
     _validate_timestamp(reference.observed_at)
+    if reference.owner_user_id is not None and (
+        not isinstance(reference.owner_user_id, str)
+        or not reference.owner_user_id.strip()
+        or len(reference.owner_user_id) > 200
+    ):
+        raise EvidenceInputError("Evidence owner context is invalid")
 
 
 def _normalize_verification(
