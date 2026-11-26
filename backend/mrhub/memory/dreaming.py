@@ -63,7 +63,11 @@ class MemoryDreamingEngine:
                 "Similarity threshold must be a finite number between 0.75 and 1.0"
             )
 
-        entries = self.repository.list_entries(owner_user_id, limit=limit)
+        # Only retained memories enter consolidation proposals. Working context and
+        # unreviewed lesson candidates are deliberately excluded from deduplication.
+        entries = self.repository.list_entries(
+            owner_user_id, limit=limit, memory_stages=("retained",)
+        )
         prepared: list[tuple[dict[str, object], set[str]]] = []
         for entry in entries:
             content = entry.get("content")

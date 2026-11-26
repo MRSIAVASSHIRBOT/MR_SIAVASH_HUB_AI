@@ -1600,6 +1600,17 @@ MIGRATIONS = (
             "CREATE INDEX idx_tool_approvals_owner_action ON tool_invocation_approvals(owner_user_id, tool_name, payload_digest)",
         ),
     ),
+    Migration.build(
+        58,
+        "owner_scoped_memory_lifecycle_stages",
+        (
+            """ALTER TABLE memory_entries
+               ADD COLUMN memory_stage TEXT NOT NULL DEFAULT 'retained'
+               CHECK (memory_stage IN ('working', 'lesson_candidate', 'retained'))""",
+            ("CREATE INDEX idx_memory_owner_stage_expiry "
+             "ON memory_entries(owner_user_id, memory_stage, expires_at, updated_at)"),
+        ),
+    ),
 )
 
 

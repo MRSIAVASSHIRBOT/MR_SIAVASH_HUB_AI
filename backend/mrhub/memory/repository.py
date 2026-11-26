@@ -6,6 +6,7 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 from mrhub.infrastructure.database import TaskRepository
@@ -15,6 +16,11 @@ class MemoryRepository:
     """Store explicit memory records and search only the authenticated owner's data."""
 
     MEMORY_TYPES = frozenset({"unspecified", "episodic", "semantic", "procedural"})
+    MEMORY_STAGES = frozenset({"working", "lesson_candidate", "retained"})
+    MEMORY_STAGE_MAX_TTL_SECONDS: ClassVar[dict[str, int]] = {
+        "working": 7 * 24 * 60 * 60,
+        "lesson_candidate": 30 * 24 * 60 * 60,
+    }
 
     _SECRET_PATTERNS = (
         re.compile(r"(?i)\b(?:password|passwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret)\s*[:=]\s*\S+"),
@@ -69,6 +75,37 @@ class MemoryRepository:
             raise ValueError("Expiry timestamps must include a timezone")
         return value.astimezone(UTC).isoformat()
 
+    @classmethod
+    def _validate_lifecycle_expiry(
+        cls, memory_stage: object, expires_at: object | None
+    ) -> str | None:
+        """Validate ephemeral-stage retention without allowing indefinite drafts."""
+        if not isinstance(memory_stage, str) or memory_stage not in cls.MEMORY_STAGES:
+            raise ValueError("Unsupported memory lifecycle stage")
+        if expires_at is None:
+            if memory_stage != "retained":
+                raise ValueError("Working memory and lesson candidates require an expiry")
+            return None
+        if isinstance(expires_at, datetime):
+            parsed = expires_at
+        elif isinstance(expires_at, str):
+            try:
+                parsed = datetime.fromisoformat(expires_at)
+            except ValueError as exc:
+                raise ValueError("Expiry timestamp is invalid") from exc
+        else:
+            raise TypeError("Expiry timestamp must be a datetime or ISO-8601 string")
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("Expiry timestamps must include a timezone")
+        parsed = parsed.astimezone(UTC)
+        if memory_stage in cls.MEMORY_STAGE_MAX_TTL_SECONDS:
+            remaining = (parsed - datetime.now(UTC)).total_seconds()
+            if remaining <= 0:
+                raise ValueError("Ephemeral memory expiry must be in the future")
+            if remaining > cls.MEMORY_STAGE_MAX_TTL_SECONDS[memory_stage]:
+                raise ValueError("Ephemeral memory retention exceeds its stage limit")
+        return parsed.isoformat()
+
     @staticmethod
     def _record(row) -> dict[str, object]:
         return {
@@ -76,6 +113,7 @@ class MemoryRepository:
             "owner_user_id": row["owner_user_id"],
             "scope": row["scope"],
             "memory_type": row["memory_type"],
+            "memory_stage": row["memory_stage"],
             "category": row["category"],
             "content": row["content"],
             "provenance": row["provenance"],
@@ -92,22 +130,25 @@ class MemoryRepository:
         memory_type = values.get("memory_type", "unspecified")
         if not isinstance(memory_type, str) or memory_type not in self.MEMORY_TYPES:
             raise ValueError("Unsupported memory type")
+        memory_stage = values.get("memory_stage", "retained")
         confidence = self._validate_confidence(values.get("confidence", 0.7))
         memory_id = str(uuid4())
         now = self._now()
-        expires_at = self._serialize_expiry(values.get("expires_at"))  # type: ignore[arg-type]
+        expires_at = self._validate_lifecycle_expiry(memory_stage, values.get("expires_at"))
         with self.tasks._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO memory_entries (
-                    memory_id, owner_user_id, scope, memory_type, category, content, provenance,
-                    confidence, verification_status, created_at, updated_at, expires_at
-                ) VALUES (?, ?, 'private', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    memory_id, owner_user_id, scope, memory_type, memory_stage,
+                    category, content, provenance, confidence, verification_status,
+                    created_at, updated_at, expires_at
+                ) VALUES (?, ?, 'private', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     memory_id,
                     owner_user_id,
                     memory_type,
+                    memory_stage,
                     values["category"],
                     values["content"],
                     values.get("provenance", "user-authored"),
@@ -136,7 +177,12 @@ class MemoryRepository:
         return self._record(row) if row is not None else None
 
     def list_entries(
-        self, owner_user_id: str, limit: int = 50, *, include_expired: bool = False
+        self,
+        owner_user_id: str,
+        limit: int = 50,
+        *,
+        include_expired: bool = False,
+        memory_stages: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> list[dict[str, object]]:
         bounded_limit = max(1, min(limit, 100))
         query = "SELECT * FROM memory_entries WHERE owner_user_id = ?"
@@ -144,6 +190,15 @@ class MemoryRepository:
         if not include_expired:
             query += " AND (expires_at IS NULL OR expires_at > ?)"
             params += (self._now(),)
+        if memory_stages is not None:
+            selected = tuple(sorted(set(memory_stages)))
+            if not selected:
+                return []
+            if any(not isinstance(stage, str) or stage not in self.MEMORY_STAGES for stage in selected):
+                raise ValueError("Unsupported memory lifecycle stage")
+            encoded = json.dumps(selected, separators=(",", ":"))
+            query += " AND memory_stage IN (SELECT value FROM json_each(?))"
+            params += (encoded,)
         query += " ORDER BY updated_at DESC LIMIT ?"
         params += (bounded_limit,)
         with self.tasks._connection() as connection:
@@ -157,6 +212,7 @@ class MemoryRepository:
         self.validate_memory_text(changes.get("provenance"))
         allowed = {
             "memory_type",
+            "memory_stage",
             "category",
             "content",
             "provenance",
@@ -164,29 +220,45 @@ class MemoryRepository:
             "verification_status",
             "expires_at",
         }
-        assignments: list[str] = []
-        values: list[object] = []
-        for key, value in changes.items():
-            if key not in allowed:
-                raise ValueError("Unsupported memory field")
-            if key == "memory_type" and (
-                not isinstance(value, str) or value not in self.MEMORY_TYPES
-            ):
-                raise ValueError("Unsupported memory type")
-            if key == "confidence":
-                value = self._validate_confidence(value)
-            if key == "expires_at":
-                value = self._serialize_expiry(value)  # type: ignore[arg-type]
-            assignments.append(f"{key} = ?")
-            values.append(value)
-        if not assignments:
+        if not changes:
             raise ValueError("At least one field must be updated")
-        assignments.append("updated_at = ?")
-        values.append(self._now())
-        values.extend((str(memory_id), owner_user_id))
+        if any(key not in allowed for key in changes):
+            raise ValueError("Unsupported memory field")
+
         with self.tasks._connection() as connection:
+            current = connection.execute(
+                "SELECT memory_stage, expires_at FROM memory_entries "
+                "WHERE memory_id = ? AND owner_user_id = ?",
+                (str(memory_id), owner_user_id),
+            ).fetchone()
+            if current is None:
+                return None
+            target_stage = changes.get("memory_stage", current["memory_stage"])
+            target_expiry = changes.get("expires_at", current["expires_at"])
+            validated_expiry = self._validate_lifecycle_expiry(target_stage, target_expiry)
+
+            assignments: list[str] = []
+            values: list[object] = []
+            for key, value in changes.items():
+                if key == "memory_type" and (
+                    not isinstance(value, str) or value not in self.MEMORY_TYPES
+                ):
+                    raise ValueError("Unsupported memory type")
+                if key == "memory_stage" and (
+                    not isinstance(value, str) or value not in self.MEMORY_STAGES
+                ):
+                    raise ValueError("Unsupported memory lifecycle stage")
+                if key == "confidence":
+                    value = self._validate_confidence(value)
+                if key == "expires_at":
+                    value = validated_expiry
+                assignments.append(f"{key} = ?")
+                values.append(value)
+            assignments.append("updated_at = ?")
+            values.append(self._now())
+            values.extend((str(memory_id), owner_user_id))
             cursor = connection.execute(
-                f"UPDATE memory_entries SET {', '.join(assignments)} "  # nosec B608 -- identifiers come only from the fixed allowlist; values are bound.
+                f"UPDATE memory_entries SET {', '.join(assignments)} "  # nosec B608 -- column identifiers come only from the fixed allowlist; values are bound.
                 "WHERE memory_id = ? AND owner_user_id = ?",
                 tuple(values),
             )
@@ -236,6 +308,7 @@ class MemoryRepository:
         limit: int = 10,
         *,
         memory_types: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
+        memory_stages: list[str] | tuple[str, ...] | set[str] | frozenset[str] | None = None,
     ) -> list[dict[str, object]]:
         """Rerank owner-scoped lexical candidates with typed filtering and trust signals.
 
@@ -264,9 +337,24 @@ class MemoryRepository:
             if any(memory_type not in self.MEMORY_TYPES for memory_type in selected_types):
                 raise ValueError("Unsupported memory type")
 
+        selected_stages: tuple[str, ...] | None = None
+        if memory_stages is not None:
+            if any(not isinstance(stage, str) for stage in memory_stages):
+                raise ValueError("Unsupported memory lifecycle stage")
+            selected_stages = tuple(sorted(set(memory_stages)))
+            if not selected_stages:
+                return []
+            if any(stage not in self.MEMORY_STAGES for stage in selected_stages):
+                raise ValueError("Unsupported memory lifecycle stage")
+
         type_filter_json = (
             json.dumps(selected_types, separators=(",", ":"))
             if selected_types is not None
+            else None
+        )
+        stage_filter_json = (
+            json.dumps(selected_stages, separators=(",", ":"))
+            if selected_stages is not None
             else None
         )
         now = datetime.now(UTC)
@@ -276,6 +364,8 @@ class MemoryRepository:
             now.isoformat(),
             type_filter_json,
             type_filter_json,
+            stage_filter_json,
+            stage_filter_json,
             candidate_limit,
         )
 
@@ -291,6 +381,10 @@ class MemoryRepository:
                   AND (
                       ? IS NULL
                       OR m.memory_type IN (SELECT value FROM json_each(?))
+                  )
+                  AND (
+                      ? IS NULL
+                      OR m.memory_stage IN (SELECT value FROM json_each(?))
                   )
                 ORDER BY lexical_rank ASC, m.updated_at DESC, m.memory_id ASC LIMIT ?
                 """,
