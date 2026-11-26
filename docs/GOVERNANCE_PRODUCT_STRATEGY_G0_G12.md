@@ -140,6 +140,8 @@ A phase advances only when its deliverables are linked to source-of-truth artifa
 |---|---|---|
 | G0/G1 | [Product Strategy](product/PRODUCT_STRATEGY_G0_G1.md) | Proposed mission, values, outcomes, product positioning and metric definitions |
 | G2 | [Requirements Catalogue](requirements/ECOSYSTEM_REQUIREMENTS.md) and [Traceability Map](traceability/REQUIREMENT_USECASE_TRACEABILITY.md) | Cross-product FR/NFR IDs linked to technical phases, use cases and verification methods |
+| G6 | [Repository Baseline](governance/REPOSITORY_BASELINE_G6.md) | Four-product source, manifest, workflow and release-boundary inventory with exact-head refresh |
+| G7 | [Engineering Standards Matrix](governance/ENGINEERING_STANDARDS_MATRIX_G7.md) | Cross-repository coding, testing, review, CI, dependency, documentation and release standards |
 | G3 | [Use-Case Sequence Diagrams](architecture/USE_CASE_SEQUENCE_DIAGRAMS.md) | Eight logical actor/trust-boundary sequences; operation names and executable acceptance remain to be reconciled |
 | G6 | [Repository Baseline](governance/REPOSITORY_BASELINE_G6.md) | Four-product runtime, manifest, CI and deployment inventory with explicit evidence gaps |
 | G7 | [Engineering Standards Matrix](governance/ENGINEERING_STANDARDS_MATRIX_G7.md) | Cross-product CI, test/lint, dependency, supply-chain, review and release standards |
@@ -159,12 +161,14 @@ The technical inventory contains 21 HUB phases (H0â€“H20), 15 EL_AI phases (E0â€
 
 This is a GitHub source/CI snapshot. It does not establish live service, physical-device or production acceptance.
 
-| Repository | Observed `main` SHA | Open PRs observed | Latest exact-main Actions observation |
+| Repository | Current `main` SHA | Open PRs observed | Exact-head Actions evidence |
 |---|---|---:|---|
-| HUB | `235d44c900540e193b9116bc982fe244400d9e66` | #637, #636, #618 (Draft) | 7 observed workflows succeeded: CI, Backend CI, Video Render Integration, Windows Launcher Validation, Workflow Security Audit, Defensive Python Scan and OpenSSF Scorecard |
-| EL_AI | `234b81b6521413661799d3044c34697724016d8f` | 0 | CI, Workflow Security Audit and OpenSSF Scorecard succeeded |
-| EL_AGENT | `9d830ef05468db90da39cf8572f73192bec00e0b` | 0 | CI and Android workflows succeeded |
-| MR_SIAVASH_AI | `e55d4a04dd9d59e54c8c1fa13ef864117fae6c4c` | 0 | Quality/Pages, Gateway CI, Production and Preview Runtime Smoke, Workflow Security Audit and OpenSSF Scorecard succeeded |
+| HUB | `47a8e4fee206ef72e928fa3ce381a52ee4324921` | #641 H10 API, #639 governance, #637 PromptForge, #636 portfolio status, #618 Draft Render isolation | 14 successful checks; one duplicate scan run cancelled after the successful scan; no pending/failing checks |
+| EL_AI | `368cbdf808f9bde672edee4f8fef6ad3fe8e8577` | 0 | 4/4 checks succeeded |
+| EL_AGENT | `d98aaff9593b7ffac996e0841c1232bae1dee4df` | 0 | 5/5 checks succeeded |
+| MR_SIAVASH_AI | `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a` | #318 Dependabot workflow-action update | 8/8 checks succeeded |
+
+All four `main` branches still report `protected=false`; passing CI does not replace owner/admin branch governance.
 
 Exact workflow run pages:
 - [HUB mainline checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions)
