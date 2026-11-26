@@ -47,3 +47,22 @@ server policy.
 Changing reviewed profile instructions changes the profile digest. Updating a
 profile therefore remains a source-controlled code review and release action,
 not a model-generated mutation.
+
+
+## Bounded multi-agent handoff
+
+The existing supervisor loop can hand work to at most two registered specialists
+sequentially. Each child receives the supplied evidence context, a reviewed
+role instruction, a narrower tool registry, and a share of the remaining input,
+tool-call, and runtime budgets. Children cannot delegate recursively.
+
+Each child result returns to the supervisor as an explicitly untrusted
+observation. The supervisor remains responsible for the final synthesis;
+specialist output does not authorize tools, change permissions, or prove goal
+completion. Regression tests cover two distinct specialist handoffs and ensure
+conflicting assessments remain visible to the parent.
+
+This is bounded sequential coordination, not parallel execution, a peer-to-peer
+agent channel, or a formal consensus protocol. The system does not claim that
+two specialist opinions are independent proofs or that conflicts are
+automatically resolved.
