@@ -13,14 +13,16 @@ All endpoints require the local owner's bearer session.
 - `DELETE /memory/{memory_id}` — delete one owned entry.
 - `POST /memory/search` — lexical SQLite FTS5 search, with a query up to 200 characters and at most 25 results.
 - `GET /memory/export` — export all owned entries, including expired entries, as JSON.
-- `DELETE /memory/expired` — permanently delete expired entries owned by the caller.
+- `DELETE /memory/expired?limit=500` — explicitly delete up to 500 expired entries owned by the caller in one bounded batch. Repeat while the returned `deleted` count equals the requested limit.
 
 ## Security and data handling
 
 - Every record has a foreign-key owner and the only enabled scope is `private`; unknown or shared scopes are not accepted.
 - Owner filtering is part of the SQL query, before ranking. Record identifiers do not grant access to another owner's entry.
 - The FTS5 index is maintained transactionally by SQLite triggers on insert, update, and delete.
-- Expired entries are excluded from list, read, and search. They remain available in the owner's export until explicitly purged.
+- Expired entries are excluded from list, read, and search. On owner-scoped create, read, list, search, and update operations, the repository lazily deletes up to 100 expired records for that owner. SQLite delete triggers remove corresponding FTS rows in the same transaction.
+- Lazy cleanup is access-driven, not a background scheduler: an owner who never accesses Memory may leave expired rows on disk until a later access or explicit purge. The explicit `DELETE /memory/expired?limit=...` route accepts limits from 1 to 500 and deletes one bounded batch per request.
+- `GET /memory/export` does not trigger cleanup and includes expired records that still exist at export time. Records already physically removed by lazy cleanup or explicit purge cannot be recovered from that export; backup retention remains separate.
 - Create/update audit events include operation metadata only; memory text and search queries are not copied into audit logs.
 - The API rejects several common credential/token patterns. This is a defense-in-depth heuristic, not a complete secret detector: never submit credentials, API keys, private keys, or authentication tokens as memory content.
 - Retrieved text is untrusted evidence, not instructions or authorization. The initial slice does not connect memory search to model context or tool execution.
