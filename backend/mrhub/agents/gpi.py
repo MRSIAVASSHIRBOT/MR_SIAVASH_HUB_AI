@@ -7,9 +7,9 @@ from pydantic import ValidationError
 
 from mrhub.agents.work_order import WorkOrder
 from mrhub.domain.tasks import RiskClass
+from mrhub.prompts.registry import DEFAULT_PROMPT_REGISTRY, PromptRender
 from mrhub.providers.base import ProviderRequest
 from mrhub.providers.router import ModelRequest, ModelRouter
-from mrhub.prompts.registry import DEFAULT_PROMPT_REGISTRY, PromptRender
 
 MAX_GOAL_CHARS = 1_000
 MAX_MODEL_OUTPUT_TOKENS = 1_200
