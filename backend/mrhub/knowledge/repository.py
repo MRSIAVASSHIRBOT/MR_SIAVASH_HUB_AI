@@ -301,7 +301,7 @@ class KnowledgeRepository:
                 (expression, owner_user_id, candidate_limit),
             ).fetchall()
 
-        candidates: list[tuple[float, dict[str, object]]] = []
+        candidates: list[tuple[float, int, dict[str, object]]] = []
         for candidate_order, row in enumerate(rows):
             chunk_content = str(row["content"])
             document_content = str(row["document_content"])
