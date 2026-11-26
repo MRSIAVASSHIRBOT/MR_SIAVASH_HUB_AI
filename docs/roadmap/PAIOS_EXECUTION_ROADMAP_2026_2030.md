@@ -1,6 +1,8 @@
 # PAIOS Execution Roadmap — 2026–2030
 
 **Status:** Proposed execution baseline derived from `PAIOS_TARGET_ARCHITECTURE_2027.md`.  
+
+> **Historical scope notice — 2026-11-27:** This roadmap predates [ADR-0047](../architecture/decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md). Its EL_IR_BOT migration source, separate Telegram Bridge, and related tasks are superseded for active work. Do not execute B0–B11 or legacy-Bridge migration from this document. The active portfolio is HUB, EL_AI, EL_AGENT and MR_SIAVASH_AI; Telegram bot work belongs inside EL_AI. Use [G0–G12 governance](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) as the current prerequisite baseline while a revised four-product technical phase inventory is prepared.
 **Prepared:** 2026-11-26  
 **Rule:** A phase is not complete because code exists or a PR is open. Completion requires its acceptance evidence and the required mainline integration.
 
