@@ -260,7 +260,7 @@ def _insert_memory_row(
 
 
 def test_memory_access_deletes_expired_rows_in_owner_scoped_batches():
-    client = authenticated_client()
+    authenticated_client()
     repository = MemoryRepository(get_settings().database_path)
     owner_id = _owner_id(repository)
     other_owner_id = "expiry-cleanup-other-owner"
@@ -327,7 +327,7 @@ def test_memory_access_deletes_expired_rows_in_owner_scoped_batches():
 
 
 def test_memory_expiry_cleanup_respects_a_strict_batch_limit():
-    client = authenticated_client()
+    authenticated_client()
     repository = MemoryRepository(get_settings().database_path)
     owner_id = _owner_id(repository)
     expired_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
@@ -357,7 +357,7 @@ def test_memory_expiry_cleanup_respects_a_strict_batch_limit():
 
 
 def test_expired_memory_cannot_be_revived_by_an_owner_update():
-    client = authenticated_client()
+    authenticated_client()
     repository = MemoryRepository(get_settings().database_path)
     owner_id = _owner_id(repository)
     expired_at = (datetime.now(UTC) - timedelta(days=1)).isoformat()
