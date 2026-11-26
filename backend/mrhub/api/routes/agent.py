@@ -1145,6 +1145,18 @@ def _validate_work_order_plan_workflow_binding(
             detail="Workflow step identities do not match the persisted AWI plan",
         )
 
+    declared_criteria = set(work_order.acceptance_criteria)
+    covered_criteria = {
+        criterion
+        for step in awi_plan.steps
+        for criterion in step.verifies_criteria
+    }
+    if covered_criteria != declared_criteria:
+        raise HTTPException(
+            status_code=409,
+            detail="Persisted AWI plan does not cover every WorkOrder acceptance criterion",
+        )
+
     declared_capabilities = set(work_order.required_capabilities)
     workflow_capabilities: set[str] = set()
     for step_id, tool in tools_by_id.items():
