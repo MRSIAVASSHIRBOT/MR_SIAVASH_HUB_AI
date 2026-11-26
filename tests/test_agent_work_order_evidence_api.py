@@ -140,7 +140,7 @@ def test_work_order_evidence_api_returns_review_required_without_trusted_verifie
 
 def test_work_order_evidence_api_accepts_only_server_registered_verifier():
     client = authenticated_client()
-    plan_id, plan_digest = _create_owned_plan(client)
+    plan_id, _plan_digest, work_order_digest = _create_owned_plan(client)
     registry = EvidenceVerifierRegistry()
     registry.register(
         source_type="test.fixture",
@@ -155,7 +155,7 @@ def test_work_order_evidence_api_accepts_only_server_registered_verifier():
 
     response = client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
-        json={"evidence": [_reference(plan_digest)]},
+        json={"evidence": [_reference(work_order_digest)]},
     )
 
     assert response.status_code == 200
@@ -169,8 +169,8 @@ def test_work_order_evidence_api_accepts_only_server_registered_verifier():
 
 def test_work_order_evidence_api_does_not_accept_caller_supplied_status():
     client = authenticated_client()
-    plan_id, plan_digest = _create_owned_plan(client)
-    evidence = _reference(plan_digest)
+    plan_id, _plan_digest, work_order_digest = _create_owned_plan(client)
+    evidence = _reference(work_order_digest)
     evidence["status"] = "passed"
 
     response = client.post(
@@ -188,7 +188,7 @@ def test_work_order_evidence_api_is_owner_scoped_and_hides_foreign_records():
 
     response = foreign_client.post(
         f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
-        json={"evidence": [_reference(plan_digest)]},
+        json={"evidence": [_reference(work_order_digest)]},
     )
 
     assert response.status_code == 404
@@ -196,8 +196,8 @@ def test_work_order_evidence_api_is_owner_scoped_and_hides_foreign_records():
 
 def test_work_order_evidence_api_rejects_malformed_digest():
     client = authenticated_client()
-    plan_id, plan_digest = _create_owned_plan(client)
-    evidence = _reference(plan_digest)
+    plan_id, _plan_digest, work_order_digest = _create_owned_plan(client)
+    evidence = _reference(work_order_digest)
     evidence["evidence_digest"] = "not-a-digest"
 
     response = client.post(
