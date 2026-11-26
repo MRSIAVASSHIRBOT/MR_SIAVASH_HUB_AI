@@ -3,7 +3,7 @@
 - **Date:** 2026-11-27
 - **Status:** Initial actor and journey baseline; detailed UI/API sequence diagrams are implementation follow-ups.
 - **Portfolio:** HUB, EL_AI, EL_AGENT, MR_SIAVASH_AI
-- **Authority:** [ADR-0047](decisions/ADR-0047-four-product-ecosystem-scope-and-telegram-ownership.md)
+- **Authority:** [ADR-0051](decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 
 ## 1. Actors
 
