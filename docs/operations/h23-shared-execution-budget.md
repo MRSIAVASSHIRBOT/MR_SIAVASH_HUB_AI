@@ -1,6 +1,6 @@
 # H23 — Shared Agent Execution Budget
 
-- **Status:** Implementation branch opened; PR and exact-head verification pending.
+- **Status:** Core shared-run budget merged in HUB PR #658. Exact-head PR validation passed before merge; post-merge mainline CI and the remaining H23 resource/cost gates are tracked separately. H23 remains PARTIAL.
 - **Owner:** `MR_SIAVASH_HUB_AI`
 - **Expanded phase:** H23 Resource & Budget Management
 - **Related compact phases:** H7 execution, H8 recovery, H13 model routing, H18 performance, H20–H22 agent orchestration
@@ -12,7 +12,7 @@ The HUB model-driven orchestrator already bounded a single run by runtime, input
 
 A maximum per provider call is not the same as a maximum for the entire parent/child execution tree.
 
-## Implementation in this branch
+## Merged implementation — HUB PR #658
 
 - A shared `ExecutionBudget` is created once for the root run and passed to every delegated specialist.
 - Root and child prompts debit the same total input-character budget.
@@ -50,10 +50,11 @@ The values are safety ceilings, not estimates of cost or guaranteed provider bil
 
 ## Acceptance still required
 
-- CI on the exact branch head, including Backend CI, general CI, security scans and Windows/video integration workflows.
-- Review of the budget contract and actual provider usage behavior.
-- Post-merge exact-main CI.
+- Continue monitoring the exact current mainline CI after PR #658 and subsequent merges; PR-head checks passed before merge.
+- Extend accounting to external provider/API quotas and rate-limit windows.
+- Extend resource accounting to compute, storage and cross-product costs without conflating estimates with provider billing.
+- Add representative concurrency/load and fairness benchmarks before H23 can be declared DONE.
 - Extension of the same accounting to durable job workers, external API quotas, compute/storage costs and cross-product accounting.
 - Representative load and fairness tests before H23 can be declared DONE.
 
-This change does not claim token billing accuracy, hard interruption of arbitrary synchronous provider code, or a complete cross-product cost-accounting system. External provider adapters still need to honor their own timeout contracts.
+The merged implementation does not claim token billing accuracy, durable resource accounting across process restarts, hard interruption of arbitrary synchronous provider code, provider quota enforcement, or a complete cross-product cost-accounting system. External provider adapters still need to honor their own timeout contracts. Durable Worker task retry semantics remain separately fail-closed for ambiguous model/tool outcomes; this document does not assert that a generic persistent retry budget has been delivered.
