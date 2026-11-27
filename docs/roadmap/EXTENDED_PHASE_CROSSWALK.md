@@ -52,9 +52,9 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 | H5 | Tool, skill and plugin intelligence | Compact H6 and X5; tool manifest, validation, lifecycle and grants | EVIDENCE / ACCEPTANCE PENDING |
 | H6 | GPI intelligence engine | Compact H3; intent, context and WorkOrder generation | EVIDENCE / ACCEPTANCE PENDING |
 | H7 | AWI planning engine | Compact H2; DAG planning, dependency checks and plan revision | EVIDENCE / ACCEPTANCE PENDING |
-| H8 | Decision intelligence | Compact H5; planning readiness and policy-aware selection. PR #657 is open and must not be duplicated | PARTIAL |
+| H8 | Decision intelligence | Compact H5; planning readiness consistency and blocker-aware policy selection merged in HUB PR #657 | PARTIAL |
 | H9 | Workflow engine | Compact H1; durable DAG execution, checkpoint and state transitions | EVIDENCE / ACCEPTANCE PENDING |
-| H10 | Task lifecycle engine | Compact H1/H7; durable task identity, transitions, cancellation and history | EVIDENCE / ACCEPTANCE PENDING |
+| H10 | Task lifecycle engine | Compact H1/H7; owner-scoped task list/detail/result/history/cancel APIs merged in PR #661; priority and timezone-aware deadline scheduling with migration 60 merged in PR #663 | PARTIAL — first-class owner column/backfill, editing, SLA/overdue policy and running-worker cancellation remain |
 | H11 | Execution engine | Compact H7; pull worker, leases, fencing and bounded registered handlers | EVIDENCE / ACCEPTANCE PENDING |
 | H12 | Recovery and fault tolerance | Compact H8; idempotency, retry, leases, recovery and unknown-outcome handling | EVIDENCE / ACCEPTANCE PENDING |
 | H13 | Model intelligence and routing | Compact H14; provider registry, local/remote routing and adapter boundaries | EVIDENCE / ACCEPTANCE PENDING |
@@ -62,12 +62,12 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 | H15 | Knowledge and RAG intelligence | Compact H9; ingestion, chunk integrity, retrieval and owner-declared reranking (PR #655 merged) | PARTIAL |
 | H16 | Memory intelligence | Compact H9; owner-scoped memory CRUD/search and lifecycle; bounded owner-scoped expiry cleanup merged in PR #656 | PARTIAL |
 | H17 | Memory governance and consolidation | Memory review/deduplication/contradiction proposals; selective cross-project ACL remains incomplete | PARTIAL |
-| H18 | Evaluation and verification | Compact H10; digest-bound evidence evaluator and owner-scoped read-only API merged; production verifier coverage remains | PARTIAL |
+| H18 | Evaluation and verification | Compact H10; encrypted WorkOrder/plan revision and canonical digest binding plus owner-scoped read-only evaluation merged in PR #660; production verifier adapters and E8 consumer contract remain | PARTIAL |
 | H19 | Self-correction and replanning | Compact H10; bounded review-only plan revisions exist; end-to-end correction and approved learning remain | PARTIAL |
 | H20 | Agent registry and lifecycle | Frozen specialist registry, profile fingerprints, authenticated discovery and traceable profile versions on HUB main | EVIDENCE / ACCEPTANCE PENDING |
 | H21 | Multi-agent orchestration | Bounded specialist handoff and shared-context/result aggregation in the orchestrator | PARTIAL |
 | H22 | Agent coordination and conflict resolution | Two-specialist handoff and disagreement preservation are tested; broader coordination and quality metrics remain | PARTIAL |
-| H23 | Resource and budget management | Existing per-run limits plus this branch's shared input/output/model-call/tool/delegation/deadline ledger; PR acceptance pending | IN_PROGRESS |
+| H23 | Resource and budget management | Shared root/specialist input/output/model-call/tool/delegation/deadline budget merged in PR #658; provider quota and compute/storage/cross-product cost accounting plus load/fairness validation remain | PARTIAL |
 | H24 | Scheduler and event-driven automation | Durable jobs/workers and content scheduling exist; generalized recurring/event-triggered workflows need a unified contract | PARTIAL |
 | H25 | Observability and operations | Compact H15; health/readiness, logs, metrics and task/audit records exist; end-to-end trace coverage remains | PARTIAL |
 | H26 | Admin and control center | Compact H17; operator APIs/UI exist in slices; unified authorized control-center acceptance remains | PARTIAL |
@@ -92,8 +92,8 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 | E5 | Context and personal knowledge interface | Compact E7 and HUB scoped memory/knowledge APIs; full selective context controls remain | PARTIAL |
 | E6 | Planning and task experience | Compact E4/E5; dependency-aware plan preview and durable task submission | EVIDENCE / ACCEPTANCE PENDING |
 | E7 | Agent delegation interface | Compact E5; HUB task submission exists; user-visible specialist routing/hand-off UX remains limited | PARTIAL |
-| E8 | Tool and skill interface | Compact E6; capability discovery and policy-aware tool access are partial | PARTIAL |
-| E9 | Telegram bot platform | Compact E10; update intake, polling and typed Telegram APIs; open Draft EL_AI PR #149 adds durable outbox and ambiguous-reply quarantine; full delivery E2E remains open | PARTIAL |
+| E8 | Tool and skill interface | Compact E6; versioned read-only Telegram tool catalog merged in HUB PR #662 and owner-only EL_AI /tools command in PR #151; tools:read does not authorize invocation | PARTIAL — governed invocation UX and broader skill lifecycle remain |
+| E9 | Telegram bot platform | Compact E10; update intake, polling and typed Telegram APIs; durable outbox and ambiguous-reply quarantine merged in EL_AI PR #149; full test-bot/production delivery E2E remains an owner/environment gate | PARTIAL |
 | E10 | Telegram session and interaction | Compact E2/E10; sessions, commands, callbacks and progress are implemented in slices | PARTIAL |
 | E11 | Multimodal intelligence | Telegram media/file normalization and media routes exist; end-to-end multimodal reasoning remains incomplete | PARTIAL |
 | E12 | Voice and speech interface | No complete EL_AI-owned voice conversation path established; do not count EL_AGENT local voice as EL_AI completion | PLANNED / GATED |
@@ -247,9 +247,9 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 
 Do not start every phase in parallel. Use dependency-first slices and keep one active implementation workstream at a time.
 
-1. **Close the current HUB core review queue:** inspect and accept/revise open H8 PR #657; H15 PR #655 and bounded H16 expiry cleanup PR #656 have merged. Do not recreate their work.
-2. **H23 shared budget:** finish the shared run budget implementation, tests, exact-head CI and merge; then extend the same resource-accounting contract to durable jobs, provider/API quota accounting and cross-product consumers.
-3. **H18/H19 evidence loop:** connect WorkOrder digest/revision, trusted verifiers, evaluator, correction plan and EL_AI E8 consumer tests.
+1. **Close the current HUB core review queue:** H8 PR #657, H23 PR #658, H18 PR #660, H10 owner-lifecycle PR #661, E8 PR #662 and H10 scheduling PR #663 are merged. H15 PR #655 and bounded H16 expiry cleanup PR #656 are also merged. Do not recreate their work.
+2. **H23 resource accounting:** the shared per-run budget is merged; extend owner-scoped provider/API quota enforcement to all applicable inference paths, then compute/storage/cross-product resource accounting and representative load/fairness tests.
+3. **H18/H19 evidence loop:** WorkOrder digest/revision persistence and the read-only evaluator API are merged; add trusted production verifiers, plan supersede/revision lifecycle, the EL_AI E8 consumer contract and the complete negative evidence matrix.
 4. **G2/G3/G6/G7/G9/G10/G11:** complete requirement traceability, source/test mappings, repository standards, risk register, portfolio priorities and Work Orders.
 5. **EL_AI E9/E10:** finish Telegram delivery outbox, unknown-outcome handling, duplicate/update and rate-limit matrix; keep test-bot and production acceptance gated.
 6. **EL_AGENT L4–L19:** complete Windows/Android physical-device, pairing, policy, offline and release acceptance; do not make it a mandatory HUB client.
@@ -261,4 +261,4 @@ Do not start every phase in parallel. Use dependency-first slices and keep one a
 
 This crosswalk is a planning and audit index. It does not claim that all expanded phases are implemented, merged, deployed or production-ready. It intentionally records missing acceptance as PARTIAL or PLANNED rather than promoting phases from source-code presence alone.
 
-For the first H23 implementation slice, see [H23 shared execution budget](../operations/h23-shared-execution-budget.md). Its status remains IN_PROGRESS until exact-head tests, code review, merge and current-main checks pass.
+For the merged H23 shared execution-budget slice, see [H23 shared execution budget](../operations/h23-shared-execution-budget.md). The core per-run budget is merged; H23 remains PARTIAL until provider quotas, resource/cost accounting and load/fairness gates are accepted.
