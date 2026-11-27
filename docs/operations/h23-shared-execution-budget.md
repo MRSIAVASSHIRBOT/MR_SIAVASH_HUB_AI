@@ -23,6 +23,7 @@ A maximum per provider call is not the same as a maximum for the entire parent/c
 - Model calls, tool calls and specialist delegations use shared global ceilings.
 - Child agents use the same absolute monotonic deadline as the root run.
 - Every result exposes aggregate resource usage metadata without adding prompt contents or secrets.
+- The authenticated Agent API exposes a per-run aggregate output-token ceiling; a strict audit allow-list stores only numeric usage summaries, never prompts or response text.
 
 ## Current bounded defaults
 
