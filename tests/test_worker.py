@@ -2,13 +2,13 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from threading import Event
 
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
 from mrhub.jobs.idempotency import IdempotencyRepository
 from mrhub.jobs.leases import LeaseManager, WorkerLease
 from mrhub.jobs.recovery import WorkflowRecoveryRepository
-from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine
+from mrhub.jobs.worker import RetryableWorkerError, WorkerEngine, action_fingerprint
 
 
 def make_worker(tmp_path, clock=None):
@@ -789,3 +789,111 @@ def test_worker_fails_closed_when_heartbeat_raises_database_error(tmp_path, monk
     worker._heartbeat_loop(lease, Event(), lease_lost)
 
     assert lease_lost.is_set()
+
+
+def test_worker_orders_by_priority_then_nearest_deadline(tmp_path):
+    now = datetime(2026, 11, 27, 20, 0, tzinfo=UTC)
+    repository, worker = make_worker(tmp_path, clock=lambda: now)
+    late_deadline = now + timedelta(hours=4)
+    early_deadline = now + timedelta(hours=1)
+
+    normal = TaskRecord(
+        task_type="demo.echo",
+        description="normal first by creation time",
+        priority=TaskPriority.NORMAL,
+        created_at=now - timedelta(minutes=5),
+    )
+    high_late = TaskRecord(
+        task_type="demo.echo",
+        description="high with later deadline",
+        priority=TaskPriority.HIGH,
+        deadline_at=late_deadline,
+    )
+    high_early = TaskRecord(
+        task_type="demo.echo",
+        description="high with earlier deadline",
+        priority=TaskPriority.HIGH,
+        deadline_at=early_deadline,
+    )
+    urgent = TaskRecord(
+        task_type="demo.echo",
+        description="urgent task",
+        priority=TaskPriority.URGENT,
+        deadline_at=late_deadline,
+    )
+    for task in (normal, high_late, high_early, urgent):
+        repository.create(task)
+
+    completed = [worker.run_once() for _ in range(4)]
+    assert [item.task_id for item in completed if item is not None] == [
+        urgent.task_id,
+        high_early.task_id,
+        high_late.task_id,
+        normal.task_id,
+    ]
+
+
+def test_worker_priority_aging_prevents_indefinite_low_priority_starvation(tmp_path):
+    now = datetime(2026, 11, 27, 20, 0, tzinfo=UTC)
+    repository, worker = make_worker(tmp_path, clock=lambda: now)
+    aged_low = TaskRecord(
+        task_type="demo.echo",
+        description="old low-priority task",
+        priority=TaskPriority.LOW,
+        created_at=now - timedelta(hours=4),
+        updated_at=now - timedelta(hours=4),
+    )
+    fresh_urgent = TaskRecord(
+        task_type="demo.echo",
+        description="new urgent task",
+        priority=TaskPriority.URGENT,
+        created_at=now,
+        updated_at=now,
+    )
+    repository.create(fresh_urgent)
+    repository.create(aged_low)
+
+    completed = worker.run_once()
+    assert completed is not None
+    assert completed.task_id == aged_low.task_id
+
+
+def test_action_fingerprint_binds_non_default_task_scheduling_metadata():
+    task = TaskRecord(
+        task_type="external.publish",
+        description="reviewed content",
+        risk_class=RiskClass.HIGH,
+    )
+    baseline = action_fingerprint(task)
+    assert action_fingerprint(task.model_copy(
+        update={"priority": TaskPriority.URGENT}
+    )) != baseline
+    assert action_fingerprint(task.model_copy(
+        update={"deadline_at": datetime(2026, 11, 28, tzinfo=UTC)}
+    )) != baseline
+
+
+def test_default_task_scheduling_metadata_preserves_legacy_action_fingerprint():
+    import hashlib
+    import json
+
+    task = TaskRecord(
+        task_type="external.publish",
+        description="reviewed content",
+        risk_class=RiskClass.HIGH,
+    )
+    legacy_payload = {
+        "task_id": str(task.task_id),
+        "task_type": task.task_type,
+        "risk_class": task.risk_class.value,
+        "description": task.description,
+    }
+    expected = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    assert action_fingerprint(task) == expected
+
