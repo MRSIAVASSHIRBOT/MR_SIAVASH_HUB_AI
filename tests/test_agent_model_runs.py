@@ -114,7 +114,6 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     class RecordingLimiter:
         def consume(self, owner_id):
             consumed_owners.append(owner_id)
-            return None
 
     monkeypatch.setattr(models, "_get_kimi_request_limiter", lambda: RecordingLimiter())
     quota_gate(ModelSelection(
