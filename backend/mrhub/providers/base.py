@@ -17,6 +17,22 @@ class ProviderError(Exception):
     code = "provider_error"
 
 
+class ProviderRateLimitError(ProviderError):
+    """A shared owner/provider request window rejected a pre-inference call."""
+
+    code = "provider_rate_limited"
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        if (
+            isinstance(retry_after_seconds, bool)
+            or not isinstance(retry_after_seconds, int)
+            or retry_after_seconds < 1
+        ):
+            raise ValueError("Provider retry-after must be a positive integer")
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(self.code)
+
+
 class ProviderUnavailableError(ProviderError):
     code = "provider_unavailable"
 
