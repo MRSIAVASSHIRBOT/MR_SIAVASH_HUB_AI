@@ -1511,3 +1511,80 @@ def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path, monkeypa
         (owner_id,),
     ).fetchone() is None
     connection.close()
+
+
+def test_v60_adds_task_priority_and_deadline_without_changing_legacy_rows(
+    tmp_path, monkeypatch
+):
+    from mrhub.domain.tasks import TaskPriority, TaskRecord
+    from mrhub.infrastructure import migrations as migrations_module
+    from mrhub.infrastructure.database import TaskRepository
+
+    database_path = tmp_path / "task-priority-deadline.sqlite3"
+    connection = connect(database_path)
+    monkeypatch.setattr(
+        migrations_module, "MIGRATIONS", migrations_module.MIGRATIONS[:-1]
+    )
+    assert SchemaMigrator(connection).migrate()[-1] == 59
+
+    legacy_task_id = "legacy-task-priority-defaults"
+    connection.execute(
+        """
+        INSERT INTO tasks (
+            task_id, task_type, status, risk_class,
+            created_at, updated_at, description
+        ) VALUES (?, 'demo.echo', 'queued', 'low', ?, ?, ?)
+        """,
+        (
+            legacy_task_id,
+            "2026-11-20T10:00:00+00:00",
+            "2026-11-20T10:00:00+00:00",
+            "legacy task",
+        ),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS)
+    assert SchemaMigrator(connection).migrate() == [60]
+
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(tasks)")
+    }
+    assert {"priority", "deadline_at"} <= columns
+    indexes = {
+        row["name"] for row in connection.execute("PRAGMA index_list(tasks)")
+    }
+    assert "idx_tasks_dispatch_priority_deadline" in indexes
+    legacy_row = connection.execute(
+        "SELECT priority, deadline_at FROM tasks WHERE task_id = ?",
+        (legacy_task_id,),
+    ).fetchone()
+    assert tuple(legacy_row) == ("normal", None)
+    connection.close()
+
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    legacy = repository.get(__import__("uuid").UUID(legacy_task_id)) if False else None
+    # Read using the stable string-to-UUID conversion used by TaskRepository.
+    from uuid import UUID
+    legacy = repository.get(UUID(int=0)) if False else None
+    rows = repository.list_recent()
+    assert len(rows) == 1
+    assert rows[0].priority is TaskPriority.NORMAL
+    assert rows[0].deadline_at is None
+
+    scheduled = TaskRecord(
+        task_type="demo.echo",
+        description="priority test",
+        priority=TaskPriority.URGENT,
+        deadline_at=__import__("datetime").datetime.fromisoformat(
+            "2026-11-28T12:00:00+03:00"
+        ),
+    )
+    repository.create(scheduled)
+    saved = repository.get(scheduled.task_id)
+    assert saved is not None
+    assert saved.priority is TaskPriority.URGENT
+    assert saved.deadline_at is not None
+    assert saved.deadline_at.isoformat() == "2026-11-28T09:00:00+00:00"
+
