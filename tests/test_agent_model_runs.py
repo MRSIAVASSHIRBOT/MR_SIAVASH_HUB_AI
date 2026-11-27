@@ -234,6 +234,11 @@ def test_durable_worker_stops_before_kimi_when_owner_quota_is_exhausted(monkeypa
     assert idempotency is not None
     assert idempotency.status == "completed"
 
+    # A recorded quota rejection is a terminal, non-replayable result for this
+    # durable model/tool loop. A later worker poll must not send it again.
+    assert run_worker_once() is None
+    assert provider_calls == {"health": 0, "generate": 0}
+
 
 def test_queued_model_run_cancellation_is_owner_scoped_and_removes_request_ciphertext(monkeypatch):
     client = authenticated_client()
