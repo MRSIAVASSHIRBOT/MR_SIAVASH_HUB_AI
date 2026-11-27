@@ -32,28 +32,30 @@ A milestone is an outcome and exit gate, not a calendar promise. It can contain 
 
 ## 3. Current evidence checkpoint — 2026-11-27
 
-This is a source/PR/CI checkpoint observed on 2026-11-27. PR titles and branch names are not phase evidence: each implementation is mapped to the canonical phase definition before status is updated. It is not a production, provider, Telegram or physical-device readback. The HUB main head is `5dc62f70eb6bdc562283d357fd5508976b02312b`; fresh default-branch commit queries and open-PR queries were also run for EL_AI, EL_AGENT and Website.
+This checkpoint records source and exact-head CI state observed on 2026-11-27. PR labels and branch names are not phase acceptance. This is not a production, provider, Telegram, or physical-device readback. The HUB main head is `06b31147d47886c9ad2c87c3130983931808ef69`; separate default-branch checks were also performed for EL_AI, EL_AGENT and Website.
 
 ### HUB
 
-- **main at this checkpoint:** `5dc62f70eb6bdc562283d357fd5508976b02312b` (PR #648 memory lifecycle slice; the implementation label `H17` in that PR title does not satisfy roadmap H17, which is the operator/control-center phase).
+- **main at this checkpoint:** `06b31147d47886c9ad2c87c3130983931808ef69`.
 - **PR #639:** merged as `3fbe372922c9e3885917bcaf3b1157889ed862b2`; portfolio authority and G0–G12 baseline integrated.
-- **PR #641:** merged to main as `4f684b8a8494ffe263db6769b312f884cd6df311`; owner-scoped read-only H10 evidence API slice.
-- **PR #648:** merged; adds bounded memory lifecycle stages and retained-only Dreaming behavior. This is a memory/data-lifecycle slice supporting H9/H16; it does **not** complete roadmap H17 (operator/control center). The PR title's H17 label is not treated as phase acceptance.
-- **PR #652:** open draft; extends the H10 evaluator with one fixed server-side workflow-step verifier and digest-bound, read-only correction proposals. It is an H10 extension, not H18/H19 completion; E8 consumer integration and the rest of H10 acceptance remain open. The previous #646 attempt failed Ruff import ordering and was stale; #652 is its corrected fresh-main replacement, stacked on #651.
-- **PR #644:** merged as `2e911058f6f23fc2b2dbc193d63479314daebecb`; G0–G12/H10 phase evidence reconciliation is integrated.
-- **PR #651:** open draft; immutable versioned prompt-template registry integrated into GPI/AWI/Agent planning. This is a cross-cutting prompt-template foundation and is **not** evidence that roadmap H14 (model/provider registry, capability routing and local/cloud policy) is complete. CI was in progress at the observation point; exact-head acceptance is pending.
-- **PR #653:** open draft H17 operator-UI slice; exposes owner-controlled memory lifecycle stages, expiry-aware create, stage-filtered search and explicit review-to-retained action. It does not complete H17 and must pass UI/backend CI.
-- **EL_AI PR #150:** open draft on current EL_AI main; fixes Bridge worker shutdown/lease acknowledgement race and validates Telegram `sendMessage` chat IDs before network I/O. First exact-head CI exposed two worker test regressions; implementation has been narrowed and a fresh CI run is required. This does not alter the legacy Telegram bot repository.
-- **PR #650:** open documentation PR with G10/G11 catalogue and refreshed source snapshot; its G11 wording explicitly separates PR labels from roadmap phase acceptance. PR #647 is the superseded stale G10/G11 draft. PRs #637 and #636 remain separate open workstreams. PR #618 remains a paid Render proposal and must not be provisioned without explicit billing/auto-sync authorization.
+- **PR #641:** merged as `4f684b8a8494ffe263db6769b312f884cd6df311`; owner-scoped read-only H10 evidence API slice.
+- **PR #644:** merged as `2e911058f6f23fc2b2dbc193d63479314daebecb`; G0–G12/H10 phase evidence reconciliation.
+- **PR #648:** merged; adds bounded memory lifecycle stages and retained-only Dreaming behavior. This is a memory/data-lifecycle slice supporting H9/H16; it does **not** complete roadmap H17 (operator/control center).
+- **PR #653:** merged as `6059ac71021e7e0fa78e8cf7cd8d910def0c71e4`; adds an owner-reviewed Operator UI slice for memory lifecycle controls. It does not complete H17.
+- **PR #652:** merged as `06b31147d47886c9ad2c87c3130983931808ef69`; extends the existing H10 plan/evidence path with atomic one-to-one WorkOrder-plan/Workflow binding, a trusted workflow-step verifier, and read-only correction proposals. It also integrates the versioned Prompt Registry foundation. This is a scoped H10/H14/H18/H19 increment, not completion of those phases; E8 consumer integration and broader evidence/replanning acceptance remain open.
+- **PR #651:** closed as superseded by #652; no parallel Prompt Registry implementation remains open.
+- **PR #654:** open draft on current main; scoped H20–H22 slice for frozen/versioned specialist profiles, metadata-only registry discovery, bounded sequential handoff, and explicit preservation of conflicting specialist assessments. Exact-head checks on `e3c95d39d667c42da9dd93738f2c78b21c254c39` are in progress; no phase is marked complete.
+- **PR #655:** open draft on current main; H15 increment to the existing FTS5 knowledge search using bounded owner-declared metadata reranking. Exact-head checks on `b1006c94bc1698a8ddced37ce8c03fb7048990f2` are in progress. This remains lexical retrieval, not semantic/vector hybrid RAG.
+- **PR #656:** open draft; H16/H17 memory-retention increment with bounded owner-scoped expiry cleanup, read-only retrieval/preview, and explicit purge. Exact-head checks on `f5af4079f2fc723535c791e3ccecd9f3d54fec9d` are in progress after two test corrections; no acceptance is claimed yet.
+- **PR #650:** this G10/G11 documentation refresh; its checkpoint will be revalidated against the latest source and exact-head CI before merge. PR #647 is the superseded stale G10/G11 draft. PRs #637 and #636 remain separate workstreams. PR #618 remains a paid Render proposal and must not be provisioned without explicit billing/auto-sync authorization.
 
 ### EL_AI, EL_AGENT and Website
 
-- Exact current default-branch heads rechecked for this checkpoint: EL_AI `368cbdf808f9bde672edee4f8fef6ad3fe8e8577`; EL_AGENT `d98aaff9593b7ffac996e0841c1232bae1dee4df`; Website `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a`.
-- EL_AI PR #149 is open (`feat/telegram-delivery-outbox-20261127`), based on the recorded EL_AI main SHA; Python 3.11/Ruff/tests and Workflow Security Audit passed on exact head `b96f0bfd59b20bc3415153eb8a7ba28832236515`; Python 3.12 is still queued. This is an inbound-reply local-polling slice only, not full E10 acceptance.
-- EL_AI E10 remains partial: PR #149 adds persistent per-chunk state, digest-only metadata, safe resume of known-pending chunks and quarantine after ambiguous/interrupted sends. It does not cover background task/plan notifications, the legacy Bridge code path, full media/rate-limit acceptance or a live controlled test-bot round trip. No live test-bot operation was performed.
-- EL_AGENT D2 has a merged local token-file hardening slice, but physical Windows/Android acceptance and the D14 release gate remain open; no physical-device operation was performed in this checkpoint.
-- Website A14 remains dependent on fresh live Preview/Production/D1 evidence and authorized release/rollback review; no deployment or live environment mutation was performed in this checkpoint.
+- Default-branch heads last checked for this checkpoint: EL_AI `368cbdf808f9bde672edee4f8fef6ad3fe8e8577`; EL_AGENT `d98aaff9593b7ffac996e0841c1232bae1dee4df`; Website `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a`.
+- EL_AI PR #149 remains an inbound-reply local-polling delivery-outbox slice. It does not satisfy full E10 acceptance: background task/plan notifications, the legacy Bridge path, full media/rate-limit coverage and a controlled live test-bot round trip remain separate gates. No live test-bot operation is claimed.
+- EL_AGENT D2 has a merged local token-file hardening slice, but physical Windows/Android acceptance and the D14 release gate remain open; no physical-device operation is claimed.
+- Website A14 remains dependent on fresh live Preview/Production/D1 evidence and authorized release/rollback review; no deployment or live environment mutation is claimed.
+
 
 ## 4. Dependency graph and execution sequence
 
