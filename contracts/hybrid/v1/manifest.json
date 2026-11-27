@@ -1,7 +1,7 @@
 {
   "contract_id": "mr-siavash-hybrid-integration",
-  "contract_version": "1.0.0",
-  "status": "approved",
+  "contract_version": "1.1.0",
+  "status": "proposed",
   "owners": {
     "hub": "private-state-policy-and-agent-control-plane",
     "el_ai": "telegram-transport-identity-and-command-routing",
@@ -21,6 +21,7 @@
       "tasks:create",
       "tasks:read",
       "tasks:result",
+      "tools:read",
       "video:analyze",
       "video:cancel",
       "video:read",
@@ -76,6 +77,13 @@
         "auth_mode": "paired_bearer",
         "required_scope": "status:read",
         "purpose": "Return the authenticated paired client's status and granted scopes."
+      },
+      {
+        "method": "GET",
+        "path": "/integrations/telegram/tools",
+        "auth_mode": "paired_bearer",
+        "required_scope": "tools:read",
+        "purpose": "Return a bounded, non-secret, versioned tool catalog; does not expose schemas or invoke tools."
       },
       {
         "method": "GET",
