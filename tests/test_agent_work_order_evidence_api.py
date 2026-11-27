@@ -193,6 +193,69 @@ def test_work_order_evidence_api_accepts_only_server_registered_verifier():
     assert report["permissions_changed"] is False
 
 
+def test_plan_creation_persists_revision_metadata_in_encrypted_record(monkeypatch):
+    client = authenticated_client()
+    work_order = WorkOrder(
+        goal="Review one local build result",
+        intent="verify a bounded local build",
+        scope="one non-production repository check",
+        acceptance_criteria=["The expected local build check is successful"],
+        verification_steps=["Read the exact check-run conclusion"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        steps=[
+            PlanStep(
+                step_id="review-build",
+                description="Read one exact build result",
+                verifies_criteria=["The expected local build check is successful"],
+                verification="Confirm the trusted check-run result",
+            )
+        ],
+        rationale="A single deterministic read-only verification step",
+    )
+    planned = {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+        "decision_analysis": {},
+        "planning_assessment": {},
+        "model_selection": {},
+        "prompt_templates": {},
+        "capability_assessment": {},
+    }
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.create_goal_work_order_plan",
+        lambda request, current_user: planned,
+    )
+
+    created = client.post(
+        "/agent/work-orders/plans",
+        json={"goal": "Review one local build result"},
+    )
+
+    assert created.status_code == 200
+    body = created.json()
+    expected_digest = _canonical_plan_digest(
+        {"work_order": work_order.model_dump(mode="json")}
+    )
+    assert body["work_order_revision"] == 1
+    assert body["plan_revision"] == 1
+    assert body["work_order_digest"] == expected_digest
+
+    evaluated = client.post(
+        f"/agent/work-orders/plans/{body['plan_id']}/evidence/evaluate",
+        json={"evidence": []},
+    )
+
+    assert evaluated.status_code == 200
+    evidence_body = evaluated.json()
+    assert evidence_body["work_order_revision"] == 1
+    assert evidence_body["plan_revision"] == 1
+    assert evidence_body["work_order_digest"] == expected_digest
+    assert evidence_body["report"]["work_order_revision"] == 1
+    assert evidence_body["report"]["work_order_digest"] == expected_digest
+
+
 def test_work_order_evidence_api_uses_persisted_non_default_revisions():
     client = authenticated_client()
     plan_id, _plan_digest, work_order_digest = _create_owned_plan(
