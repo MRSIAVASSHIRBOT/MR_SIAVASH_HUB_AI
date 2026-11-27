@@ -172,6 +172,58 @@ def test_telegram_scope_limits_tasks_and_memory_capabilities(tmp_path, monkeypat
     get_settings.cache_clear()
 
 
+def test_telegram_tool_catalog_requires_explicit_read_scope_and_never_authorizes_execution(
+    tmp_path, monkeypatch
+):
+    client, _ = _owner_client(tmp_path, monkeypatch)
+    default_payload, default_challenge = _create_pairing(client)
+    default_tokens = _exchange(client, default_payload, default_challenge).json()
+
+    denied = client.get(
+        "/integrations/telegram/tools",
+        headers=_bot_headers(default_tokens),
+    )
+    assert denied.status_code == 403
+
+    payload, challenge = _create_pairing(
+        client,
+        telegram_user_id=223344556,
+        scopes=["tools:read"],
+    )
+    tokens = _exchange(client, payload, challenge).json()
+    response = client.get(
+        "/integrations/telegram/tools",
+        headers=_bot_headers(tokens, 223344556),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    body = response.json()
+    assert body["contract_version"] == "telegram_tool_catalog.v1"
+    assert body["execution_authorized"] is False
+    assert body["count"] == len(body["tools"])
+    assert body["count"] >= 1
+    echo = next(tool for tool in body["tools"] if tool["name"] == "text.echo")
+    assert echo["risk_class"] == "low"
+    assert echo["required_permissions"] == []
+    assert echo["external_side_effect"] is False
+    assert echo["replay_safety"] == "retry_safe"
+    assert "input_schema" not in echo
+    assert "output_schema" not in echo
+
+    # The read-only catalog grant does not silently grant task submission.
+    task_denied = client.post(
+        "/integrations/telegram/tasks",
+        json={"task_type": "demo.echo", "description": "must remain denied"},
+        headers={
+            **_bot_headers(tokens, 223344556),
+            "Idempotency-Key": "tools-catalog-deny-001",
+        },
+    )
+    assert task_denied.status_code == 403
+    get_settings.cache_clear()
+
+
 def test_telegram_task_creation_is_idempotent_and_policy_checked(tmp_path, monkeypatch):
     client, _ = _owner_client(tmp_path, monkeypatch)
     payload, challenge = _create_pairing(client, scopes=["tasks:create", "tasks:read"])
