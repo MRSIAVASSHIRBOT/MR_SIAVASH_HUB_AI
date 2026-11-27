@@ -172,6 +172,9 @@ def run_agent(
             "output_tokens_unreported_reservation": safe_resource_usage.get(
                 "output_tokens_unreported_reservation"
             ),
+            "output_tokens_invalid_usage_reservation": safe_resource_usage.get(
+                "output_tokens_invalid_usage_reservation"
+            ),
             "delegations": safe_resource_usage.get("delegations"),
             "context_passage_count": context.get("passage_count", 0),
             **({"project_id": payload.project_id} if payload.project_id else {}),
