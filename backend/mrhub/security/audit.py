@@ -44,6 +44,7 @@ class AuditLogger:
         "input_chars_used",
         "output_tokens_used_or_reserved",
         "output_tokens_unreported_reservation",
+        "output_tokens_invalid_usage_reservation",
         "delegations",
         "context_passage_count",
         "tool_name",
