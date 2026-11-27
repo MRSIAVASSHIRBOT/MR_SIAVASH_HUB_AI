@@ -138,6 +138,10 @@ def test_missing_scope_assumptions_dependencies_and_capability_gaps_are_reported
         "required_capabilities_unavailable",
     )
     assert result.tool_decision is ToolDecision.BLOCKED_BY_CAPABILITY_GAPS
+    assert result.planning_readiness == "blocked_by_capability_gaps"
+    payload = result.as_dict()
+    assert payload["planning_readiness"] == "blocked_by_capability_gaps"
+    assert "required_capabilities_unavailable" in payload["planning_readiness_reasons"]
 
 
 def test_all_registered_capabilities_still_do_not_imply_authorization():
