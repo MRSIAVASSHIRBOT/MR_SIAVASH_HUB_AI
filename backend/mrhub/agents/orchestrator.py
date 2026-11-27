@@ -297,6 +297,7 @@ class AgentOrchestrator:
                     "turn": turn,
                     "type": "delegation_observation",
                     "agent": profile.name,
+                    "agent_version": profile.version,
                     "observation": observation_json[:MAX_OBSERVATION_CHARS],
                     "observation_is_untrusted_data": True,
                 })
