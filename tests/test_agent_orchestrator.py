@@ -743,7 +743,7 @@ def test_provider_usage_above_reserved_output_budget_is_rejected():
 
 
 def test_unreported_provider_usage_consumes_the_full_output_reservation():
-    orchestrator, provider = make_orchestrator(
+    orchestrator, _provider = make_orchestrator(
         [json.dumps({"type": "final", "answer": "Completed with unknown usage."})]
     )
     result = orchestrator.run(
