@@ -1,5 +1,7 @@
 """Capability-aware model selection and explicit provider dispatch."""
 
+from typing import Callable
+
 from pydantic import BaseModel, ConfigDict
 
 from mrhub.providers.base import (
@@ -35,11 +37,17 @@ class ModelSelection(BaseModel):
 class ModelRouter:
     """Selects registered descriptors; dispatch occurs only via explicit adapters."""
 
-    def __init__(self, registry: ProviderRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ProviderRegistry | None = None,
+        *,
+        before_generate: Callable[[ModelSelection], None] | None = None,
+    ) -> None:
         self._providers: dict[tuple[str, str], ModelDescriptor] = {}
         # Preserve the caller's registry as the single adapter authority,
         # including registry implementations that intentionally evaluate false.
         self.registry = registry if registry is not None else ProviderRegistry()
+        self.before_generate = before_generate
         # A pre-populated injected registry is authoritative; hydrate the
         # capability catalog so selection and dispatch see the same adapters.
         for provider in self.registry.providers():
@@ -104,6 +112,9 @@ class ModelRouter:
         health = validate_provider_health(provider.health(timeout_seconds=2.0))
         if not health.available:
             raise LookupError("Selected provider is unavailable")
+
+        if self.before_generate is not None:
+            self.before_generate(selection)
 
         response = provider.generate(payload)
         if not isinstance(response, ProviderResponse):
