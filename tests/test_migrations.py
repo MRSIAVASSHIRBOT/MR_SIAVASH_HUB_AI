@@ -1444,7 +1444,7 @@ def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path, monkeypa
     monkeypatch.setattr(
         migrations_module,
         "MIGRATIONS",
-        tuple(item for item in migrations_module.MIGRATIONS if item.version < 57),
+        tuple(item for item in migrations_module.MIGRATIONS if item.version <= 57),
     )
     SchemaMigrator(connection).migrate()
 
