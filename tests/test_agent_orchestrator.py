@@ -657,3 +657,103 @@ def test_orchestrator_hands_off_to_two_specialists_and_preserves_their_disagreem
     assert "Act as an independent quality evaluator" in provider.requests[3].input_text
     assert "untrusted_agent_output" in provider.requests[2].input_text
     assert "untrusted_agent_output" in provider.requests[4].input_text
+
+def test_root_and_delegated_agents_share_one_output_and_input_budget():
+    orchestrator, provider = make_orchestrator(
+        [
+            json.dumps({
+                "type": "delegate",
+                "agent": "knowledge_synthesizer",
+                "goal": "Summarize the supplied evidence.",
+            }),
+            json.dumps({"type": "final", "answer": "Specialist summary."}),
+            json.dumps({"type": "final", "answer": "Integrated answer."}),
+        ],
+        with_agents=True,
+    )
+    original_generate = provider.generate
+    usage = iter([100, 400, 80])
+    requested_output_limits = []
+
+    def generate_with_usage(request):
+        requested_output_limits.append(request.max_output_tokens)
+        response = original_generate(request)
+        return ProviderResponse(
+            provider=response.provider,
+            model=response.model,
+            output_text=response.output_text,
+            output_tokens=next(usage),
+        )
+
+    provider.generate = generate_with_usage
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Analyze evidence using one shared resource budget.",
+            max_turns=3,
+            max_output_tokens=512,
+            max_total_output_tokens=600,
+            max_total_input_chars=20_000,
+            max_tool_calls=2,
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert result["answer"] == "Integrated answer."
+    assert requested_output_limits == [512, 500, 100]
+    assert result["resource_usage"]["model_calls"] == 3
+    assert result["resource_usage"]["delegations"] == 1
+    assert result["resource_usage"]["output_tokens_reported"] == 580
+    assert result["resource_usage"]["output_tokens_unreported_reservation"] == 0
+    assert result["resource_usage"]["output_tokens_remaining"] == 20
+    assert result["resource_usage"]["input_chars_used"] == sum(
+        len(request.input_text) for request in provider.requests
+    )
+    assert result["resource_usage"]["input_chars_used"] <= 20_000
+
+
+def test_provider_usage_above_reserved_output_budget_is_rejected():
+    orchestrator, provider = make_orchestrator(
+        [json.dumps({"type": "final", "answer": "Must not be accepted."})]
+    )
+    original_generate = provider.generate
+
+    def generate_with_excess_usage(request):
+        response = original_generate(request)
+        return ProviderResponse(
+            provider=response.provider,
+            model=response.model,
+            output_text=response.output_text,
+            output_tokens=request.max_output_tokens + 1,
+        )
+
+    provider.generate = generate_with_excess_usage
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Reject provider usage beyond the reserved budget.",
+            max_output_tokens=100,
+            max_total_output_tokens=100,
+        )
+    )
+
+    assert result["status"] == "provider_budget_violation"
+    assert result["error_code"] == "provider_output_tokens_exceeded_reservation"
+    assert "answer" not in result
+    assert result["resource_usage"]["output_tokens_used_or_reserved"] == 100
+    assert result["resource_usage"]["output_tokens_remaining"] == 0
+
+
+def test_unreported_provider_usage_consumes_the_full_output_reservation():
+    orchestrator, provider = make_orchestrator(
+        [json.dumps({"type": "final", "answer": "Completed with unknown usage."})]
+    )
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Treat unreported token usage conservatively.",
+            max_output_tokens=256,
+            max_total_output_tokens=256,
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert result["resource_usage"]["output_tokens_unreported_reservation"] == 256
+    assert result["resource_usage"]["output_tokens_remaining"] == 0
