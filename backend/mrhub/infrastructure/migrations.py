@@ -1619,6 +1619,18 @@ MIGRATIONS = (
              "ON memory_entries(owner_user_id, expires_at, memory_id)"),
         ),
     ),
+    Migration.build(
+        60,
+        "task_priority_and_deadlines",
+        (
+            """ALTER TABLE tasks
+               ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'
+               CHECK (priority IN ('low', 'normal', 'high', 'urgent'))""",
+            "ALTER TABLE tasks ADD COLUMN deadline_at TEXT",
+            ("CREATE INDEX idx_tasks_dispatch_priority_deadline "
+             "ON tasks(status, priority, deadline_at, created_at, task_id)"),
+        ),
+    ),
 )
 
 
