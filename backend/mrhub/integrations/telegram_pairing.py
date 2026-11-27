@@ -29,6 +29,7 @@ class TelegramClientIdentity:
 class TelegramPairingRepository:
     ALLOWED_SCOPES = frozenset({
         "status:read",
+        "tools:read",
         "tasks:read",
         "tasks:result",
         "tasks:create",
