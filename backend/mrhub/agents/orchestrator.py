@@ -165,6 +165,7 @@ class AgentLoopRequest(BaseModel):
         default=MAX_TOTAL_OUTPUT_TOKENS,
         ge=1,
         le=MAX_TOTAL_OUTPUT_TOKENS,
+        strict=True,
     )
     max_total_input_chars: int = Field(
         default=MAX_TOTAL_INPUT_CHARS, ge=1, le=MAX_TOTAL_INPUT_CHARS
