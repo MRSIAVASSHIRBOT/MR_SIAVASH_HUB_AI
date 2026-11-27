@@ -7,6 +7,7 @@ from mrhub.agents.plan_repository import (
     AgentWorkOrderPlanError,
     AgentWorkOrderPlanRepository,
 )
+from mrhub.domain.tasks import TaskRecord
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.payload_envelope import (
     EncryptedPayload,
@@ -15,6 +16,7 @@ from mrhub.jobs.payload_envelope import (
     encrypt_payload,
     encrypt_plan_payload,
 )
+from mrhub.jobs.recovery import WorkflowRecoveryError, WorkflowRecoveryRepository
 
 KEY = b"p" * 32
 
@@ -341,3 +343,71 @@ def test_revoke_does_not_change_an_expired_plan_to_revoked(tmp_path):
     assert record.status == "expired"
     assert record.envelope.ciphertext_b64 == "expired"
 
+
+
+
+def test_consumed_plan_is_one_time_atomic_and_ciphertext_expires_without_losing_binding(tmp_path):
+    database = TaskRepository(tmp_path / "consumed-plan.sqlite3")
+    owner = create_owner(database)
+    clock = MutableClock()
+    plans = AgentWorkOrderPlanRepository(database.database_path, clock=clock)
+    recovery = WorkflowRecoveryRepository(database.database_path, clock=clock)
+    plan_id = str(uuid4())
+    payload, envelope = encrypted_plan(plan_id, owner)
+    plan_digest = "9" * 64
+    plans.create(
+        plan_id=plan_id,
+        owner_user_id=owner,
+        plan_digest=plan_digest,
+        envelope=envelope,
+        ttl_seconds=900,
+    )
+
+    workflow_id = recovery.create_run(
+        "a" * 64,
+        [{"step_number": 1, "kind": "tool", "name": "text.echo", "step_key": "step-2"}],
+        task=TaskRecord(task_type="agent.workflow", description="Bound plan workflow"),
+        owner_user_id=owner,
+        work_order_plan_id=plan_id,
+    )
+    consumed = plans.get(plan_id, owner_user_id=owner)
+    assert consumed is not None
+    assert consumed.status == "consumed"
+    assert consumed.workflow_id == str(workflow_id)
+    assert decrypt_plan_payload(
+        consumed.envelope,
+        plan_id=plan_id,
+        owner_user_id=owner,
+        key=KEY,
+    ) == payload
+
+    with pytest.raises(WorkflowRecoveryError, match="already bound"):
+        recovery.create_run(
+            "b" * 64,
+            [{"step_number": 1, "kind": "tool", "name": "text.echo", "step_key": "step-2"}],
+            task=TaskRecord(task_type="agent.workflow", description="Duplicate plan workflow"),
+            owner_user_id=owner,
+            work_order_plan_id=plan_id,
+        )
+
+    with database._connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM workflow_runs"
+        ).fetchone()[0]
+    assert count == 1
+
+    clock.current += timedelta(seconds=901)
+    assert plans.expire_due(limit=10) == 1
+    expired = plans.get(plan_id, owner_user_id=owner)
+    assert expired is not None
+    assert expired.status == "consumed"
+    assert expired.workflow_id == str(workflow_id)
+    assert expired.envelope.nonce_b64 == "expired"
+    assert expired.envelope.ciphertext_b64 == "expired"
+    with pytest.raises(PayloadEnvelopeError):
+        decrypt_plan_payload(
+            expired.envelope,
+            plan_id=plan_id,
+            owner_user_id=owner,
+            key=KEY,
+        )

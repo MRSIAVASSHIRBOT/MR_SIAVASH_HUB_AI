@@ -12,7 +12,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from mrhub.agents.work_order_evidence import EvidenceVerifierRegistry
+from mrhub.agents.registry import build_default_agent_registry
+from mrhub.agents.workflow_evidence import build_default_work_order_evidence_verifiers
 from mrhub.api.errors import (
     API_ERROR_RESPONSES,
     http_exception_handler,
@@ -23,6 +24,7 @@ from mrhub.api.routes.agent import router as agent_router
 from mrhub.api.routes.agent_context import router as agent_context_router
 from mrhub.api.routes.agent_model_runs import router as agent_model_runs_router
 from mrhub.api.routes.agent_proposals import router as agent_proposals_router
+from mrhub.api.routes.agent_registry import router as agent_registry_router
 from mrhub.api.routes.agent_run import router as agent_run_router
 from mrhub.api.routes.approvals import router as approvals_router
 from mrhub.api.routes.auth import router as auth_router
@@ -76,8 +78,12 @@ def create_app() -> FastAPI:
 
     app.state.login_attempt_limiter = LoginAttemptLimiter()
     app.state.request_metrics = RequestMetrics()
+    # The server-defined specialist catalog is frozen once at application composition.
+    app.state.agent_registry = build_default_agent_registry()
     # Trusted adapters register only in server composition code; no HTTP route can register verifiers.
-    app.state.work_order_evidence_verifiers = EvidenceVerifierRegistry()
+    app.state.work_order_evidence_verifiers = (
+        build_default_work_order_evidence_verifiers(settings.database_path)
+    )
 
     # Preserve legacy 'detail' fields while exposing a stable error envelope.
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -196,6 +202,7 @@ def create_app() -> FastAPI:
     include_api_router(tools_router)
     include_api_router(video_intelligence_router)
     include_api_router(agent_router)
+    include_api_router(agent_registry_router)
     include_api_router(agent_context_router)
     include_api_router(agent_run_router)
     include_api_router(agent_model_runs_router)
