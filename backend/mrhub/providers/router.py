@@ -1,6 +1,6 @@
 """Capability-aware model selection and explicit provider dispatch."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict
 
