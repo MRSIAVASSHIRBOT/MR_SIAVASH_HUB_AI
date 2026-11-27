@@ -6,11 +6,11 @@ Status: implementation slice under review. This document follows the v6 H10 Task
 
 Each Task now carries:
 
-- \`priority\`: \`low\`, \`normal\`, \`high\`, or \`urgent\`. The default is \`normal\`.
-- \`deadline_at\`: optional timezone-aware timestamp. Naive timestamps are rejected; persisted values are normalized to UTC.
+- `priority`: `low`, `normal`, `high`, or `urgent`. The default is `normal`.
+- `deadline_at`: optional timezone-aware timestamp. Naive timestamps are rejected; persisted values are normalized to UTC.
 - Existing task identity, risk class, status, created/updated timestamps and description remain unchanged.
 
-Migration 60 adds the \`priority\` and \`deadline_at\` columns and a dispatch-oriented index. Existing rows retain their data and receive the safe defaults \`normal\` and NULL. Earlier migration definitions are not modified.
+Migration 60 adds the `priority` and `deadline_at` columns and a dispatch-oriented index. Existing rows retain their data and receive the safe defaults `normal` and NULL. Earlier migration definitions are not modified.
 
 ## Scheduling order
 
@@ -21,7 +21,7 @@ The pull-driven worker selects eligible queued tasks using this order:
 3. Deadline, ascending, with tasks that have a deadline ahead of tasks without one when effective priority is equal.
 4. Creation time and task ID for deterministic FIFO tie-breaking.
 
-This is scheduling precedence, not a policy override. A task in \`waiting_approval\` is not eligible for the worker queue, and a priority label does not grant tool permissions, waive review, or alter the risk class.
+This is scheduling precedence, not a policy override. A task in `waiting_approval` is not eligible for the worker queue, and a priority label does not grant tool permissions, waive review, or alter the risk class.
 
 ## Approval and idempotency compatibility
 
