@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -49,6 +50,28 @@ class CapabilityValidationError(CapabilityCatalogError, ValueError):
 
 class CapabilityNotFound(CapabilityCatalogError, LookupError):
     """A candidate does not exist in the local catalog."""
+
+
+@dataclass(frozen=True)
+class CapabilityRuntimeBinding:
+    """Owner-recorded metadata link to a server-owned, already registered tool."""
+
+    binding_id: str
+    candidate_id: str
+    capability_name: str
+    tool_name: str
+    bound_by_user_id: str
+    created_at: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "binding_id": self.binding_id,
+            "candidate_id": self.candidate_id,
+            "capability_name": self.capability_name,
+            "tool_name": self.tool_name,
+            "bound_by_user_id": self.bound_by_user_id,
+            "created_at": self.created_at,
+        }
 
 
 @dataclass(frozen=True)
@@ -261,6 +284,140 @@ class CapabilityRegistry:
                 ).fetchall()
         return [self._row_to_candidate(row) for row in rows]
 
+    @staticmethod
+    def _row_to_runtime_binding(row: sqlite3.Row) -> CapabilityRuntimeBinding:
+        return CapabilityRuntimeBinding(
+            binding_id=row["binding_id"],
+            candidate_id=row["candidate_id"],
+            capability_name=row["capability_name"],
+            tool_name=row["tool_name"],
+            bound_by_user_id=row["bound_by_user_id"],
+            created_at=row["created_at"],
+        )
+
+    def bind_runtime_tool(
+        self,
+        candidate_id: str,
+        *,
+        capability_name: str,
+        tool_name: str,
+        bound_by_user_id: str,
+        available_tool_names: frozenset[str] | set[str],
+    ) -> CapabilityRuntimeBinding:
+        """Record a reviewed capability-to-tool link without enabling or invoking it."""
+        normalized_capability = self._normalize_text(
+            capability_name, "Capability name", self.MAX_CAPABILITY_LENGTH
+        )
+        normalized_tool = self._normalize_text(tool_name, "Tool name", 80)
+        if re.fullmatch(r"[a-z][a-z0-9_.-]{0,79}", normalized_capability) is None:
+            raise CapabilityValidationError("Capability name must be a stable lowercase identifier")
+        if re.fullmatch(r"[a-z][a-z0-9_.-]{0,79}", normalized_tool) is None:
+            raise CapabilityValidationError("Tool name must be a registered tool identifier")
+        if (
+            not isinstance(available_tool_names, (set, frozenset))
+            or normalized_tool not in available_tool_names
+        ):
+            raise CapabilityValidationError("Runtime tool is not registered by the Hub")
+        actor = self._normalize_text(bound_by_user_id, "Binding actor", 200)
+        if not isinstance(candidate_id, str) or not candidate_id.strip():
+            raise CapabilityValidationError("Capability candidate identifier is invalid")
+
+        binding_id = str(uuid4())
+        now = self._now()
+        try:
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT status, capabilities_json FROM capability_candidates "
+                    "WHERE candidate_id = ?",
+                    (candidate_id,),
+                ).fetchone()
+                if row is None:
+                    raise CapabilityNotFound("Capability candidate not found")
+                if row["status"] != "approved":
+                    raise CapabilityValidationError(
+                        "Only an approved capability candidate can bind to a runtime tool"
+                    )
+                declared_capabilities = json.loads(row["capabilities_json"])
+                if normalized_capability not in declared_capabilities:
+                    if len(declared_capabilities) >= self.MAX_CAPABILITIES:
+                        raise CapabilityValidationError(
+                            "Candidate capability declaration limit has been reached"
+                        )
+                    declared_capabilities.append(normalized_capability)
+                    connection.execute(
+                        "UPDATE capability_candidates SET capabilities_json = ?, updated_at = ? "
+                        "WHERE candidate_id = ? AND status = 'approved'",
+                        (
+                            json.dumps(declared_capabilities, ensure_ascii=False),
+                            now,
+                            candidate_id,
+                        ),
+                    )
+                connection.execute(
+                    """INSERT INTO capability_runtime_bindings (
+                        binding_id, candidate_id, capability_name, tool_name,
+                        bound_by_user_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        binding_id,
+                        candidate_id,
+                        normalized_capability,
+                        normalized_tool,
+                        actor,
+                        now,
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise CapabilityValidationError(
+                "A runtime binding already exists for this candidate capability"
+            ) from exc
+        return self.get_runtime_binding(candidate_id, binding_id)
+
+    def get_runtime_binding(
+        self, candidate_id: str, binding_id: str
+    ) -> CapabilityRuntimeBinding:
+        self.get(candidate_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM capability_runtime_bindings "
+                "WHERE candidate_id = ? AND binding_id = ?",
+                (candidate_id, binding_id),
+            ).fetchone()
+        if row is None:
+            raise CapabilityNotFound("Capability runtime binding not found")
+        return self._row_to_runtime_binding(row)
+
+    def list_runtime_bindings(
+        self, candidate_id: str
+    ) -> list[CapabilityRuntimeBinding]:
+        self.get(candidate_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM capability_runtime_bindings "
+                "WHERE candidate_id = ? ORDER BY created_at, binding_id",
+                (candidate_id,),
+            ).fetchall()
+        return [self._row_to_runtime_binding(row) for row in rows]
+
+    def remove_runtime_binding(
+        self,
+        candidate_id: str,
+        binding_id: str,
+        *,
+        requested_by_user_id: str,
+    ) -> bool:
+        actor = self._normalize_text(requested_by_user_id, "Binding actor", 200)
+        self.get(candidate_id)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                "DELETE FROM capability_runtime_bindings "
+                "WHERE candidate_id = ? AND binding_id = ? AND bound_by_user_id = ?",
+                (candidate_id, binding_id, actor),
+            )
+        return cursor.rowcount == 1
+
     def transition(
         self,
         candidate_id: str,
@@ -315,4 +472,11 @@ class CapabilityRegistry:
             )
             if cursor.rowcount != 1:
                 raise CapabilityCatalogError("Candidate changed concurrently; reload before retrying")
+            if status != "approved":
+                # Leaving the approved state revokes every runtime association.
+                # Re-approval requires an explicit new binding operation.
+                connection.execute(
+                    "DELETE FROM capability_runtime_bindings WHERE candidate_id = ?",
+                    (candidate_id,),
+                )
         return self.get(candidate_id)
