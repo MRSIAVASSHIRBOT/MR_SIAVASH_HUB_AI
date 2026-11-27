@@ -109,12 +109,14 @@ class ModelRouter:
     def generate(self, request: ModelRequest, payload: ProviderRequest) -> ProviderResponse:
         selection = self.select(request)
         provider = self.registry.get(selection.provider, selection.model)
+        # Reserve provider capacity before any outbound provider call, including
+        # the per-request health probe, so a rejected request performs no network I/O.
+        if self.before_generate is not None:
+            self.before_generate(selection)
+
         health = validate_provider_health(provider.health(timeout_seconds=2.0))
         if not health.available:
             raise LookupError("Selected provider is unavailable")
-
-        if self.before_generate is not None:
-            self.before_generate(selection)
 
         response = provider.generate(payload)
         if not isinstance(response, ProviderResponse):
