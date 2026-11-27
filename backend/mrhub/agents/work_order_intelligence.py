@@ -111,6 +111,15 @@ class WorkOrderIntelligenceAssessment:
     missing_capabilities: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
+        readiness_reasons = list(self.information_gaps)
+        if self.missing_information or self.clarification_questions:
+            readiness_reasons.append("clarification_required")
+        if self.research_decision is ResearchDecision.REQUIRED:
+            readiness_reasons.append("research_required")
+        if not readiness_reasons:
+            readiness_reasons.append("ready_for_review")
+        readiness_reasons = list(dict.fromkeys(readiness_reasons))
+
         return {
             "complexity": {
                 "level": self.complexity.value,
@@ -154,6 +163,7 @@ class WorkOrderIntelligenceAssessment:
             },
             "declared_work_order_readiness": self.declared_work_order_readiness,
             "planning_readiness": self.planning_readiness,
+            "planning_readiness_reasons": readiness_reasons,
             "planning_only": True,
             "authorization_checked": False,
             "tools_executed": False,
@@ -321,10 +331,14 @@ def assess_work_order_intelligence(
         tool_decision = ToolDecision.CAPABILITIES_PRESENT_AUTHORIZATION_SEPARATE
 
     planning_readiness = (
-        "needs_clarification"
+        "blocked_by_capability_gaps"
+        if capability_report.missing
+        else "needs_clarification"
         if work_order.needs_clarification
         else "needs_research"
         if research_decision is ResearchDecision.REQUIRED
+        else "review_required"
+        if information_gaps
         else "ready_for_review"
     )
 
