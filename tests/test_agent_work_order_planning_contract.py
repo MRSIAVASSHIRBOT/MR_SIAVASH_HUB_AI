@@ -87,6 +87,14 @@ def test_goal_to_work_order_plan_and_capability_assessment_are_review_only(monke
     assert len(provider.requests) == 2
     assert provider.outputs == []
     assert body["work_order"]["risk_class"] == "low"
+    prompt_renders = body["prompt_templates"]["renders"]
+    assert [(item["name"], item["version"]) for item in prompt_renders] == [
+        ("gpi.work_order", 1),
+        ("awi.execution_plan", 1),
+    ]
+    assert all(len(item["template_digest"]) == 64 for item in prompt_renders)
+    assert all("rendered_digest" not in item for item in prompt_renders)
+    assert "source" not in str(body["prompt_templates"])
     assert body["plan"]["steps"][0]["required_capabilities"] == ["text.echo"]
     assert body["capability_assessment"]["complete"] is True
     assert body["capability_assessment"]["missing"] == []
@@ -113,3 +121,18 @@ def test_prohibited_goal_is_rejected_before_provider_selection(monkeypatch):
     )
 
     assert response.status_code == 422
+
+
+def test_prompt_registry_endpoint_exposes_metadata_without_template_source():
+    response = authenticated_client().get("/agent/prompts")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["registry_frozen"] is True
+    assert body["template_source_exposed"] is False
+    assert {item["name"] for item in body["templates"]} == {
+        "gpi.work_order",
+        "awi.execution_plan",
+        "agent.orchestrator",
+    }
+    assert all("source" not in item for item in body["templates"])

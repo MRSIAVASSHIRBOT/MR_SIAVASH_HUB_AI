@@ -81,6 +81,8 @@ class AgentPlanRequest(BaseModel):
     prefer_local: bool = False
     tools: list[AgentToolRequest] = Field(default_factory=list, max_length=5)
     required_capabilities: list[str] = Field(default_factory=list, max_length=50)
+    # Optional one-time association with an encrypted, owner-scoped GPI/AWI plan.
+    work_order_plan_id: UUID | None = None
 
     @field_validator("goal")
     @classmethod
