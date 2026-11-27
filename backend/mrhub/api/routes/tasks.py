@@ -49,7 +49,7 @@ def get_engine() -> JobEngine:
 
 
 def _encode_task_event_cursor(created_at: str, event_id: str) -> str:
-    payload = f"{created_at}\n{event_id}".encode("utf-8")
+    payload = f"{created_at}\n{event_id}".encode()
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
 
