@@ -37,6 +37,52 @@ def test_task_create_and_read(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+def test_task_api_persists_priority_and_normalizes_timezone_aware_deadline(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "task-scheduling-api.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        headers = {"Idempotency-Key": "task-schedule-key-001"}
+        body = {
+            "task_type": "demo.echo",
+            "description": "scheduled task metadata",
+            "priority": "high",
+            "deadline_at": "2026-11-28T12:00:00+03:00",
+        }
+        created = client.post("/tasks", json=body, headers=headers)
+        assert created.status_code == 201
+        task = created.json()
+        assert task["priority"] == "high"
+        assert task["deadline_at"] == "2026-11-28T09:00:00Z" or task["deadline_at"] == (
+            "2026-11-28T09:00:00+00:00"
+        )
+
+        replay = client.post("/tasks", json=body, headers=headers)
+        assert replay.status_code == 200
+        assert replay.json()["task_id"] == task["task_id"]
+
+        changed = client.post(
+            "/tasks",
+            json={**body, "priority": "urgent"},
+            headers=headers,
+        )
+        assert changed.status_code == 409
+        assert changed.json()["detail"] == "Idempotency key conflict"
+
+        naive = client.post(
+            "/tasks",
+            json={
+                "task_type": "demo.echo",
+                "deadline_at": "2026-11-28T12:00:00",
+            },
+        )
+        assert naive.status_code == 422
+    finally:
+        get_settings.cache_clear()
+
+
 def test_task_type_validation() -> None:
     client = authenticated_client()
     response = client.post("/tasks", json={"task_type": "bad task name"})
