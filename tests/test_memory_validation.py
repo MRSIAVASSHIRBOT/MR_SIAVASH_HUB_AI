@@ -79,14 +79,14 @@ def test_validation_supports_persian_negation_and_category_separation(tmp_path: 
 
 
 def test_validation_reports_expired_and_unverified_entries(tmp_path: Path) -> None:
-    repository = MemoryRepository(tmp_path / "validation.sqlite3")
+    database = tmp_path / "validation.sqlite3"
+    repository = MemoryRepository(database)
     _owner(repository, "owner-a")
-    repository.create(
+    expired_entry = repository.create(
         "owner-a",
         {
             "category": "temporary",
             "content": "Temporary project context should expire",
-            "expires_at": datetime.now(UTC) - timedelta(days=1),
         },
     )
     repository.create(
@@ -98,11 +98,25 @@ def test_validation_reports_expired_and_unverified_entries(tmp_path: Path) -> No
         },
     )
 
-    result = MemoryValidationEngine(tmp_path / "validation.sqlite3").preview("owner-a")
+    # Simulate an unpurged legacy expired row. New owner writes normally clean
+    # expired rows; validation preview stays read-only and can still report this.
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE memory_entries SET expires_at = ? "
+            "WHERE memory_id = ? AND owner_user_id = ?",
+            (
+                (datetime.now(UTC) - timedelta(days=1)).isoformat(),
+                expired_entry["memory_id"],
+                "owner-a",
+            ),
+        )
+
+    result = MemoryValidationEngine(database).preview("owner-a")
     assert result["expired_count"] == 1
     assert result["unverified_count"] == 1
     assert result["expired_entries"][0]["reason"] == "expired"
     assert result["state_changed"] is False
+
 
 
 def test_validation_is_owner_scoped_and_bounds_are_enforced(tmp_path: Path) -> None:
