@@ -740,6 +740,8 @@ def test_provider_usage_above_reserved_output_budget_is_rejected():
     assert "answer" not in result
     assert result["resource_usage"]["output_tokens_used_or_reserved"] == 100
     assert result["resource_usage"]["output_tokens_remaining"] == 0
+    assert result["resource_usage"]["output_tokens_reported"] == 0
+    assert result["resource_usage"]["output_tokens_invalid_usage_reservation"] == 100
 
 
 def test_invalid_provider_usage_contract_fails_closed_and_charges_reservation():
