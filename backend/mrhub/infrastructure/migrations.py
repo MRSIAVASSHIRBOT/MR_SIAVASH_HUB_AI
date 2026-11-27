@@ -1619,6 +1619,29 @@ MIGRATIONS = (
              "ON memory_entries(owner_user_id, expires_at, memory_id)"),
         ),
     ),
+    Migration.build(
+        60,
+        "approved_capability_runtime_tool_bindings",
+        (
+            """CREATE TABLE capability_runtime_bindings (
+                binding_id TEXT PRIMARY KEY CHECK (length(binding_id) = 36),
+                candidate_id TEXT NOT NULL
+                    REFERENCES capability_candidates(candidate_id) ON DELETE CASCADE,
+                capability_name TEXT NOT NULL CHECK (
+                    length(capability_name) BETWEEN 1 AND 80
+                ),
+                tool_name TEXT NOT NULL CHECK (length(tool_name) BETWEEN 1 AND 80),
+                bound_by_user_id TEXT NOT NULL
+                    REFERENCES auth_users(user_id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL,
+                UNIQUE(candidate_id, capability_name)
+            )""",
+            "CREATE INDEX idx_capability_runtime_bindings_tool "
+            "ON capability_runtime_bindings(tool_name, created_at DESC)",
+            "CREATE INDEX idx_capability_runtime_bindings_actor "
+            "ON capability_runtime_bindings(bound_by_user_id, created_at DESC)",
+        ),
+    ),
 )
 
 
