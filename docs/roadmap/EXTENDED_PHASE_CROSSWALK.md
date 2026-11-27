@@ -60,7 +60,7 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 | H13 | Model intelligence and routing | Compact H14; provider registry, local/remote routing and adapter boundaries | EVIDENCE / ACCEPTANCE PENDING |
 | H14 | Prompt and context intelligence | Prompt registry, versioned templates and bounded context assembly | PARTIAL |
 | H15 | Knowledge and RAG intelligence | Compact H9; ingestion, chunk integrity, retrieval and owner-declared reranking (PR #655 merged) | PARTIAL |
-| H16 | Memory intelligence | Compact H9; owner-scoped memory CRUD/search and lifecycle; bounded expiry cleanup PR #656 is open | PARTIAL |
+| H16 | Memory intelligence | Compact H9; owner-scoped memory CRUD/search and lifecycle; bounded owner-scoped expiry cleanup merged in PR #656 | PARTIAL |
 | H17 | Memory governance and consolidation | Memory review/deduplication/contradiction proposals; selective cross-project ACL remains incomplete | PARTIAL |
 | H18 | Evaluation and verification | Compact H10; digest-bound evidence evaluator and owner-scoped read-only API merged; production verifier coverage remains | PARTIAL |
 | H19 | Self-correction and replanning | Compact H10; bounded review-only plan revisions exist; end-to-end correction and approved learning remain | PARTIAL |
@@ -247,7 +247,7 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 
 Do not start every phase in parallel. Use dependency-first slices and keep one active implementation workstream at a time.
 
-1. **Close the current HUB core review queue:** inspect and accept/revise open H8 and H16 PRs; H15 has already merged. Do not recreate their work.
+1. **Close the current HUB core review queue:** inspect and accept/revise open H8 PR #657; H15 PR #655 and bounded H16 expiry cleanup PR #656 have merged. Do not recreate their work.
 2. **H23 shared budget:** finish the shared run budget implementation, tests, exact-head CI and merge; then extend the same resource-accounting contract to durable jobs, provider/API quota accounting and cross-product consumers.
 3. **H18/H19 evidence loop:** connect WorkOrder digest/revision, trusted verifiers, evaluator, correction plan and EL_AI E8 consumer tests.
 4. **G2/G3/G6/G7/G9/G10/G11:** complete requirement traceability, source/test mappings, repository standards, risk register, portfolio priorities and Work Orders.
