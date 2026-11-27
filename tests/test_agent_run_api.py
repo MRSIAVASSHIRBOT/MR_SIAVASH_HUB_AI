@@ -687,6 +687,7 @@ def test_agent_run_stops_before_kimi_inference_when_owner_quota_is_exhausted(
     client = authenticated_client()
     captured = {}
     provider_calls = []
+    health_calls = []
 
     class MoonshotProvider:
         descriptor = ModelDescriptor(
@@ -699,6 +700,7 @@ def test_agent_run_stops_before_kimi_inference_when_owner_quota_is_exhausted(
         )
 
         def health(self, timeout_seconds=2.0):
+            health_calls.append(timeout_seconds)
             return ProviderHealth(available=True, reason_code="ready")
 
         def generate(self, request):
@@ -751,6 +753,7 @@ def test_agent_run_stops_before_kimi_inference_when_owner_quota_is_exhausted(
     assert body["retry_after_seconds"] == 42
     assert response.headers["Retry-After"] == "42"
     assert provider_calls == []
+    assert health_calls == []
     assert callable(captured["before_generate"])
 
 
