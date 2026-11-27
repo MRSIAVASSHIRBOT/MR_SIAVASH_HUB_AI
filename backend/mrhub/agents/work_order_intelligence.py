@@ -111,15 +111,14 @@ class WorkOrderIntelligenceAssessment:
     missing_capabilities: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
-        readiness_reasons: list[str] = []
+        readiness_reasons = list(self.information_gaps)
         if self.missing_information or self.clarification_questions:
             readiness_reasons.append("clarification_required")
-        if self.missing_capabilities:
-            readiness_reasons.append("required_capabilities_unavailable")
         if self.research_decision is ResearchDecision.REQUIRED:
             readiness_reasons.append("research_required")
         if not readiness_reasons:
             readiness_reasons.append("ready_for_review")
+        readiness_reasons = list(dict.fromkeys(readiness_reasons))
 
         return {
             "complexity": {
@@ -338,6 +337,8 @@ def assess_work_order_intelligence(
         if work_order.needs_clarification
         else "needs_research"
         if research_decision is ResearchDecision.REQUIRED
+        else "review_required"
+        if information_gaps
         else "ready_for_review"
     )
 
