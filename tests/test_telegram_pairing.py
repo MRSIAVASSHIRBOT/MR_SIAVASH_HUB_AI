@@ -177,13 +177,29 @@ def test_telegram_task_creation_is_idempotent_and_policy_checked(tmp_path, monke
     payload, challenge = _create_pairing(client, scopes=["tasks:create", "tasks:read"])
     tokens = _exchange(client, payload, challenge).json()
     headers = {**_bot_headers(tokens), "Idempotency-Key": "telegram-create-task-001"}
-    body = {"task_type": "demo.echo", "description": "safe test task"}
+    body = {
+        "task_type": "demo.echo",
+        "description": "safe test task",
+        "priority": "high",
+        "deadline_at": "2026-11-28T12:00:00+03:00",
+    }
 
     first = client.post("/integrations/telegram/tasks", json=body, headers=headers)
     replay = client.post("/integrations/telegram/tasks", json=body, headers=headers)
     assert first.status_code == 201
     assert replay.status_code == 200
     assert replay.json()["task_id"] == first.json()["task_id"]
+    assert first.json()["priority"] == "high"
+    assert first.json()["deadline_at"] in {
+        "2026-11-28T09:00:00Z",
+        "2026-11-28T09:00:00+00:00",
+    }
+    changed_priority = client.post(
+        "/integrations/telegram/tasks",
+        json={**body, "priority": "urgent"},
+        headers=headers,
+    )
+    assert changed_priority.status_code == 409
 
     high_risk = client.post(
         "/integrations/telegram/tasks",
