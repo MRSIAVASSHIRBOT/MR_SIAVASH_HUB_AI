@@ -14,6 +14,7 @@ The preflight analyser adds a deterministic, bounded interpretation layer before
 - `information_gaps` and `clarification_recommended`, including missing outcome, missing action scope and unresolved assumptions.
 - Required input modalities (text, vision, audio) and whether the registered tool catalog is relevant.
 - Machine-readable reason codes and explicit non-authorization/non-execution flags.
+- Planning readiness is derived from the same assessment: missing required capabilities produce `blocked_by_capability_gaps`; clarification and required research are retained as separate reason codes in `planning_readiness_reasons`. A scalar status never hides simultaneous blockers.
 
 The score is a transparent routing heuristic, not a learned prediction, guaranteed estimate of effort, or acceptance criterion. The analysis is reproducible for the same inputs.
 
