@@ -319,15 +319,15 @@ def test_memory_write_deletes_expired_rows_in_owner_scoped_batches():
         remaining = {
             row["memory_id"]
             for row in connection.execute(
-                "SELECT memory_id FROM memory_entries WHERE memory_id IN (?, ?, ?)",
-                (expired_owner_id, active_owner_id, expired_other_id),
+                "SELECT memory_id FROM memory_entries WHERE memory_id IN (?, ?, ?, ?)",
+                (expired_owner_id, active_owner_id, expired_other_id, created_id),
             )
         }
         fts_rows = {
             row["memory_id"]
             for row in connection.execute(
-                "SELECT memory_id FROM memory_entries_fts WHERE memory_id IN (?, ?, ?)",
-                (expired_owner_id, active_owner_id, expired_other_id),
+                "SELECT memory_id FROM memory_entries_fts WHERE memory_id IN (?, ?, ?, ?)",
+                (expired_owner_id, active_owner_id, expired_other_id, created_id),
             )
         }
 
