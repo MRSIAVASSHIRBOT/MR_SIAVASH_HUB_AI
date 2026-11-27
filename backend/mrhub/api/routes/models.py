@@ -2,7 +2,8 @@
 
 import math
 from time import perf_counter
-from typing import Annotated, Any, Callable, Literal
+from collections.abc import Callable
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -15,9 +16,9 @@ from mrhub.diagnostics.resource_advisor import assess_model_resources
 from mrhub.infrastructure.request_limits import KimiRequestRateLimitRepository
 from mrhub.providers.base import (
     ProviderConfigurationError,
-    ProviderRateLimitError,
     ProviderContractError,
     ProviderError,
+    ProviderRateLimitError,
     ProviderRequest,
     validate_provider_health,
 )
