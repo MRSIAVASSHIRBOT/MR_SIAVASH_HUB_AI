@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -263,11 +264,18 @@ class KnowledgeRepository:
     def search(
         self, owner_user_id: str, query: str, limit: int = 10
     ) -> list[dict[str, object]]:
+        """Retrieve integrity-checked FTS5 chunks with bounded owner-metadata reranking.
+
+        The source trust and freshness fields are owner-declared metadata. They may
+        influence ordering slightly, but are not independent verification, truth,
+        authorization, or a reason to suppress otherwise relevant results.
+        """
         terms = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
         if not terms:
             return []
         expression = " AND ".join(f'"{term}"' for term in terms[:12])
         bounded_limit = max(1, min(limit, 25))
+        candidate_limit = min(100, max(bounded_limit * 4, bounded_limit))
         with self.tasks._connection() as connection:
             rows = connection.execute(
                 """
@@ -277,7 +285,7 @@ class KnowledgeRepository:
                        d.content_hash AS document_hash, s.content_hash AS source_hash,
                        s.canonical_origin, s.trust_classification,
                        s.sensitivity_classification, s.freshness_status,
-                       s.freshness_checked_at
+                       s.freshness_checked_at, bm25(knowledge_chunks_fts) AS lexical_rank
                 FROM knowledge_chunks_fts
                 JOIN knowledge_chunks c
                   ON c.chunk_id = knowledge_chunks_fts.chunk_id
@@ -287,13 +295,14 @@ class KnowledgeRepository:
                   AND c.owner_user_id = ?
                   AND s.scope = 'private'
                   AND s.sensitivity_classification = 'private'
-                ORDER BY bm25(knowledge_chunks_fts) ASC, c.chunk_index ASC
+                ORDER BY lexical_rank ASC, c.chunk_index ASC
                 LIMIT ?
                 """,
-                (expression, owner_user_id, bounded_limit),
+                (expression, owner_user_id, candidate_limit),
             ).fetchall()
-        results: list[dict[str, object]] = []
-        for row in rows:
+
+        candidates: list[tuple[float, int, dict[str, object]]] = []
+        for candidate_order, row in enumerate(rows):
             chunk_content = str(row["content"])
             document_content = str(row["document_content"])
             chunk_hash = self._digest(chunk_content)
@@ -303,12 +312,14 @@ class KnowledgeRepository:
             stored_source_hash = str(row["source_hash"])
             start_offset = int(row["start_offset"])
             end_offset = int(row["end_offset"])
+            lexical_rank = float(row["lexical_rank"])
 
             # Hashes and offsets are checked before a chunk crosses into Agent
             # context. This detects inconsistent/tampered local records; it is
             # not an independent check of the original external source.
             if not (
-                hmac.compare_digest(chunk_hash, stored_chunk_hash)
+                math.isfinite(lexical_rank)
+                and hmac.compare_digest(chunk_hash, stored_chunk_hash)
                 and hmac.compare_digest(document_hash, stored_document_hash)
                 and hmac.compare_digest(document_hash, stored_source_hash)
                 and 0 <= start_offset <= end_offset <= len(document_content)
@@ -316,31 +327,105 @@ class KnowledgeRepository:
             ):
                 continue
 
-            results.append(
-                {
-                    "chunk_id": row["chunk_id"],
-                    "document_id": row["document_id"],
-                    "source_id": row["source_id"],
-                    "title": row["title"],
-                    "language": row["language"],
-                    "source_ref": row["canonical_origin"],
-                    "trust_classification": row["trust_classification"],
-                    "sensitivity_classification": row["sensitivity_classification"],
-                    "freshness_status": row["freshness_status"],
-                    "freshness_checked_at": row["freshness_checked_at"],
-                    "content": chunk_content,
-                    "start_offset": start_offset,
-                    "end_offset": end_offset,
-                    "chunk_hash": stored_chunk_hash,
-                    "document_hash": stored_document_hash,
-                    "content_integrity_verified": True,
-                    "chunk_index": row["chunk_index"],
-                    "citation_ref": (
-                        f"knowledge://documents/{row['document_id']}#chunk-{row['chunk_index']}"
-                    ),
-                }
+            candidates.append(
+                (
+                    lexical_rank,
+                    candidate_order,
+                    {
+                        "chunk_id": row["chunk_id"],
+                        "document_id": row["document_id"],
+                        "source_id": row["source_id"],
+                        "title": row["title"],
+                        "language": row["language"],
+                        "source_ref": row["canonical_origin"],
+                        "trust_classification": row["trust_classification"],
+                        "sensitivity_classification": row["sensitivity_classification"],
+                        "freshness_status": row["freshness_status"],
+                        "freshness_checked_at": row["freshness_checked_at"],
+                        "content": chunk_content,
+                        "start_offset": start_offset,
+                        "end_offset": end_offset,
+                        "chunk_hash": stored_chunk_hash,
+                        "document_hash": stored_document_hash,
+                        "content_integrity_verified": True,
+                        "chunk_index": row["chunk_index"],
+                        "citation_ref": (
+                            f"knowledge://documents/{row['document_id']}#chunk-{row['chunk_index']}"
+                        ),
+                    },
+                )
             )
-        return results
+
+        if not candidates:
+            return []
+
+        ranks = [item[0] for item in candidates]
+        best_rank = min(ranks)
+        worst_rank = max(ranks)
+        rank_span = worst_rank - best_rank
+        ranked: list[
+            tuple[float, float, float, float, int, dict[str, object]]
+        ] = []
+        for lexical_rank, candidate_order, record in candidates:
+            lexical_score = (
+                1.0
+                if rank_span <= 1e-12
+                else (worst_rank - lexical_rank) / rank_span
+            )
+            owner_reviewed_score = (
+                1.0 if record["trust_classification"] == "user_reviewed" else 0.0
+            )
+            freshness_status = record["freshness_status"]
+            owner_freshness_score = (
+                1.0
+                if freshness_status == "owner_reviewed_current"
+                else 0.5
+                if freshness_status == "unknown"
+                else 0.0
+            )
+            # Lexical relevance remains dominant. The two small secondary
+            # signals are explicitly owner-declared and never imply truth.
+            total_score = (
+                0.85 * lexical_score
+                + 0.10 * owner_reviewed_score
+                + 0.05 * owner_freshness_score
+            )
+            record["retrieval"] = {
+                "scheme": "fts5_owner_declared_metadata_rerank_v1",
+                "score": round(total_score, 6),
+                "signals": {
+                    "lexical_relevance": round(lexical_score, 6),
+                    "owner_reviewed": round(owner_reviewed_score, 6),
+                    "owner_declared_freshness": round(owner_freshness_score, 6),
+                },
+                "weights": {
+                    "lexical_relevance": 0.85,
+                    "owner_reviewed": 0.10,
+                    "owner_declared_freshness": 0.05,
+                },
+                "metadata_is_independent_verification": False,
+            }
+            ranked.append(
+                (
+                    total_score,
+                    lexical_score,
+                    owner_reviewed_score,
+                    owner_freshness_score,
+                    candidate_order,
+                    record,
+                )
+            )
+
+        ranked.sort(
+            key=lambda item: (
+                -item[0],
+                -item[1],
+                -item[2],
+                -item[3],
+                item[4],
+            )
+        )
+        return [item[5] for item in ranked[:bounded_limit]]
 
     def export(self, owner_user_id: str) -> dict[str, object]:
         with self.tasks._connection() as connection:

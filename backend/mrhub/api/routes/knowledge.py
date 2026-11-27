@@ -187,9 +187,9 @@ def search_knowledge(
 ) -> dict[str, object]:
     repository = _repository()
     results = repository.search(user.user_id, payload.query, payload.limit)
-    _audit(repository, user, "knowledge.searched", None, "lexical_search")
+    _audit(repository, user, "knowledge.searched", None, "fts5_owner_metadata_rerank")
     return {
-        "method": "sqlite_fts5",
+        "method": "fts5_owner_declared_metadata_rerank_v1",
         "results": results,
         "count": len(results),
         "warning": (

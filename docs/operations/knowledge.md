@@ -10,7 +10,7 @@ All endpoints require the authenticated owner's bearer session.
 - `GET /knowledge/documents?limit=50` — list owned document metadata.
 - `GET /knowledge/documents/{document_id}` — read an owned document.
 - `DELETE /knowledge/documents/{document_id}` — delete the source, document, chunks, and FTS rows.
-- `POST /knowledge/search` — lexical search with up to 25 results and citation references.
+- `POST /knowledge/search` — FTS5 lexical retrieval with bounded owner-declared metadata reranking, up to 25 results and citation references.
 - `GET /knowledge/export` — export all owned documents with their source references and content.
 
 ## Ingestion and provenance
@@ -24,9 +24,12 @@ All endpoints require the authenticated owner's bearer session.
 
 ## Retrieval and safety
 
-- SQLite FTS5 provides local lexical search; terms are normalized before constructing the query to avoid accepting caller-supplied FTS operators.
+- SQLite FTS5 provides local lexical candidate retrieval; terms are normalized before constructing the query to avoid accepting caller-supplied FTS operators.
+- The service retrieves a bounded candidate pool (up to 100 chunks), verifies content hashes and offsets, then reranks the valid candidates. The deterministic score weights are 0.85 lexical relevance, 0.10 owner-declared `user_reviewed` status, and 0.05 owner-declared freshness.
+- When reranking signals tie, the original FTS5 result order is preserved. The score is query-local and intended only to order this result set.
 - Owner and private-scope filters are applied in SQL before ranking. Shared scope is not enabled.
-- Each result includes source/document IDs, a stable `knowledge://documents/{id}#chunk-{index}` citation reference, character offsets, chunk/document hashes, and trust metadata.
+- Each result includes source/document IDs, a stable `knowledge://documents/{id}#chunk-{index}` citation reference, character offsets, chunk/document hashes, trust metadata, and a versioned retrieval score with its component signals.
+- `user_reviewed` and `owner_reviewed_current` are owner-attested metadata. They are small ranking signals, not independent checks of truth, source authenticity, or currentness. The API explicitly reports that metadata ranking is not independent verification.
 - Retrieved text is untrusted evidence. It cannot authorize tools, change policy, or approve actions.
 - Search queries and document text are not copied into audit events; only operation names and minimal reason codes are recorded.
 - Agent-context integration is intentionally disabled until the project adds a synthetic retrieval evaluation set, source-attribution checks, prompt-injection regressions, and context-size bounds.
@@ -34,7 +37,7 @@ All endpoints require the authenticated owner's bearer session.
 
 ## Current limits
 
-This slice supports text submitted through the authenticated API, not arbitrary local filesystem paths, automatic URL retrieval, PDF/OCR, vector search, cloud indexing, or automatic agent memory writes. Future ingestion formats must use explicit bounded adapters and preserve source provenance.
+This slice supports text submitted through the authenticated API, not arbitrary local filesystem paths, automatic URL retrieval, PDF/OCR, semantic embeddings/vector search, cloud indexing, or automatic agent memory writes. This is lexical retrieval with metadata reranking, not a semantic or vector hybrid RAG implementation. Future ingestion formats must use explicit bounded adapters and preserve source provenance.
 
 
 ## Manual source freshness metadata

@@ -307,9 +307,10 @@ def preview_memory_validation(
 
 @router.delete("/expired")
 def delete_expired_memory(
-    user: Annotated[AuthenticatedUser, Depends(require_user)]
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=500, ge=1, le=500),
 ) -> dict[str, int]:
-    deleted = _repository().delete_expired(user.user_id)
+    deleted = _repository().delete_expired(user.user_id, limit=limit)
     _audit(user, "memory.expired_deleted", None, "expired_memory_deleted")
     return {"deleted": deleted}
 

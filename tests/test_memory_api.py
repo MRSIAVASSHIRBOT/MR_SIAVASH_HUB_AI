@@ -119,7 +119,7 @@ def test_memory_rejects_obvious_credentials_and_requires_authentication() -> Non
     assert unauthenticated.get("/memory").status_code in (401, 403)
 
 
-def test_expiry_filters_retrieval_and_purge_removes_fts_rows() -> None:
+def test_expiry_filters_retrieval_and_lazy_cleanup_removes_fts_rows() -> None:
     client = authenticated_client()
     future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     created = client.post(
@@ -142,28 +142,107 @@ def test_expiry_filters_retrieval_and_purge_removes_fts_rows() -> None:
 
     assert client.get(f"/memory/{memory_id}").status_code == 404
     assert client.post("/memory/search", json={"query": "comet retention"}).json()["results"] == []
-    purge = client.delete("/memory/expired")
-    assert purge.status_code == 200
-    assert purge.json()["deleted"] == 1
+    # Read/search are side-effect free; the expired row remains until an owner write or purge.
     with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is not None
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries_fts WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is not None
+
+    cleanup_trigger = client.post(
+        "/memory",
+        json={"category": "retention", "content": "new owner memory write cleanup trigger"},
+    )
+    assert cleanup_trigger.status_code == 201
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is None
         assert connection.execute(
             "SELECT 1 FROM memory_entries_fts WHERE memory_id = ?", (memory_id,)
         ).fetchone() is None
 
+    # The owner write already performed lazy cleanup; explicit purge is now a no-op.
+    purge = client.delete("/memory/expired")
+    assert purge.status_code == 200
+    assert purge.json()["deleted"] == 0
 
-def test_memory_export_is_owner_scoped_and_contains_expired_entries() -> None:
+
+def test_explicit_expired_memory_purge_honors_a_bounded_api_limit() -> None:
+    client = authenticated_client()
+    future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    created = [
+        client.post(
+            "/memory",
+            json={
+                "category": "retention",
+                "content": f"purge batch marker {index}",
+                "expires_at": future,
+            },
+        )
+        for index in range(2)
+    ]
+    assert all(response.status_code == 201 for response in created)
+    memory_ids = [response.json()["memory_id"] for response in created]
+
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.executemany(
+            "UPDATE memory_entries SET expires_at = ? WHERE memory_id = ?",
+            [("2000-01-01T00:00:00+00:00", memory_id) for memory_id in memory_ids],
+        )
+
+    purge = client.delete("/memory/expired?limit=1")
+    assert purge.status_code == 200
+    assert purge.json()["deleted"] == 1
+    with repository.tasks._connection() as connection:
+        remaining = connection.execute(
+            "SELECT COUNT(*) FROM memory_entries WHERE memory_id IN (?, ?)",
+            memory_ids,
+        ).fetchone()[0]
+    assert remaining == 1
+
+    second_purge = client.delete("/memory/expired?limit=1")
+    assert second_purge.status_code == 200
+    assert second_purge.json()["deleted"] == 1
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM memory_entries WHERE memory_id IN (?, ?)",
+            memory_ids,
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM memory_entries_fts WHERE memory_id IN (?, ?)",
+            memory_ids,
+        ).fetchone()[0] == 0
+
+
+def test_memory_export_is_owner_scoped_and_preserves_unpurged_expired_entries() -> None:
     client = authenticated_client()
     created = client.post(
         "/memory",
         json={"category": "export", "content": "portable memory export example"},
     )
     assert created.status_code == 201
+    memory_id = created.json()["memory_id"]
+    repository = MemoryRepository(get_settings().database_path)
+    with repository.tasks._connection() as connection:
+        connection.execute(
+            "UPDATE memory_entries SET expires_at = ? WHERE memory_id = ?",
+            ("2000-01-01T00:00:00+00:00", memory_id),
+        )
+
     exported = client.get("/memory/export")
     assert exported.status_code == 200
-    assert exported.json()["export_version"] == 1
-    assert [entry["memory_id"] for entry in exported.json()["entries"]] == [
-        created.json()["memory_id"]
-    ]
+    body = exported.json()
+    assert body["export_version"] == 1
+    assert [entry["memory_id"] for entry in body["entries"]] == [memory_id]
+    assert body["entries"][0]["expires_at"] == "2000-01-01T00:00:00+00:00"
+    with repository.tasks._connection() as connection:
+        assert connection.execute(
+            "SELECT 1 FROM memory_entries WHERE memory_id = ?", (memory_id,)
+        ).fetchone() is not None
 
 
 @pytest.mark.parametrize("field", ["content", "provenance"])
