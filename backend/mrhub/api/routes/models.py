@@ -1,8 +1,8 @@
 """Authenticated model catalog and explicitly enabled local inference endpoint."""
 
 import math
-from time import perf_counter
 from collections.abc import Callable
+from time import perf_counter
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
