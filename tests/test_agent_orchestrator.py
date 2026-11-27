@@ -742,6 +742,35 @@ def test_provider_usage_above_reserved_output_budget_is_rejected():
     assert result["resource_usage"]["output_tokens_remaining"] == 0
 
 
+def test_invalid_provider_usage_contract_fails_closed_and_charges_reservation():
+    orchestrator, provider = make_orchestrator(
+        [json.dumps({"type": "final", "answer": "Must not be accepted."})]
+    )
+
+    def generate_invalid_usage(request):
+        return ProviderResponse(
+            provider="scripted",
+            model="scripted-test",
+            output_text=json.dumps({"type": "final", "answer": "Must not be accepted."}),
+            output_tokens=-1,
+        )
+
+    provider.generate = generate_invalid_usage
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Reject invalid provider usage metadata.",
+            max_output_tokens=100,
+            max_total_output_tokens=100,
+        )
+    )
+
+    assert result["status"] == "provider_error"
+    assert result["error_code"] == "provider_unavailable_or_failed"
+    assert "answer" not in result
+    assert result["resource_usage"]["output_tokens_unreported_reservation"] == 100
+    assert result["resource_usage"]["output_tokens_remaining"] == 0
+
+
 def test_unreported_provider_usage_consumes_the_full_output_reservation():
     orchestrator, _provider = make_orchestrator(
         [json.dumps({"type": "final", "answer": "Completed with unknown usage."})]
