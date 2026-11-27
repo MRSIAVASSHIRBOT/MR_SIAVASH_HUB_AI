@@ -465,7 +465,6 @@ class AgentOrchestrator:
                     "observation": observation_json[:MAX_OBSERVATION_CHARS],
                     "observation_is_untrusted_data": True,
                 })
-                delegations += 1
                 if child_result.get("status") == "cancelled":
                     return finish(
                         "cancelled", transcript, selection, turn, tool_calls,
