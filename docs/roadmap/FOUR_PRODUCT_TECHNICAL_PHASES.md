@@ -1,6 +1,6 @@
 # Four-Product Technical Phase Inventory
 
-- **Baseline date:** 2026-11-27
+- **Baseline date:** 2026-11-28
 - **Status:** Active planning baseline; phase acceptance is evidence-driven and must be refreshed from exact mainline heads.
 - **Governance prerequisite:** [G0–G12](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md)
 - **Portfolio authority:** [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
@@ -49,7 +49,7 @@ At this baseline no phase is globally declared DONE by this inventory. The repos
 | H7 | Worker execution, step dispatch, context and resource budgets | H1, H11, H12, H16 | Evidence exists | Bounded execution, isolation, cancellation and trusted results |
 | H8 | Retry, idempotency, checkpoints, recovery and unknown-outcome handling | H7, H11, H16 | Evidence exists | Fault-injection and crash/restart tests; no unsafe replay |
 | H9 | Private memory, knowledge, retrieval, provenance and selective sharing | H11, H16, X3 | Evidence exists | Owner isolation, export/delete, provenance and retrieval-quality acceptance |
-| H10 | Evidence evaluator, completion, correction, replanning and lessons | H7, H8, H9, H12 | Partial — evaluator contract tests and owner-scoped read-only API merged (HUB PRs #640/#641) | Merge/API acceptance, canonical WorkOrder digest/revision persistence, production verifier adapters, E8 consumer integration and negative evidence matrix |
+| H10 | Evidence evaluator, completion, correction, replanning and lessons | H7, H8, H9, H12 | Partial — evaluator contract tests (#640), owner-scoped read-only API (#641) and encrypted WorkOrder/plan revision plus canonical digest persistence (#660) merged | Production verifier adapters, plan supersede/edit lifecycle, E8 consumer contract and complete negative evidence matrix |
 | H11 | Identity, authentication, authorization, policy, approvals, grants and audit | H0, X1, X2 | Evidence exists | Negative auth, expiry, revocation, replay and audit tests |
 | H12 | Versioned APIs, contract validation, errors, rate limits and compatibility | H7, H8, H11, X1 | Evidence exists | OpenAPI/schema validation and consumer compatibility across supported versions |
 | H13 | Specialist agents, delegation, handoff, aggregation and conflict handling | H3, H4, H7, H8, H11, H14 | Partial | Delegation remains budgeted, bounded, attributable and measurably useful |
@@ -57,7 +57,7 @@ At this baseline no phase is globally declared DONE by this inventory. The repos
 | H15 | Logs, metrics, traces, health/readiness, alerts and execution analytics | H0, X7 | Evidence exists | Correlation across API/worker/task, redaction, health semantics and alert tests |
 | H16 | Data schemas, migrations, transactions, integrity, retention and backups | H0, X1 | Evidence exists | Additive migration tests, integrity checks and restore/recovery drill |
 | H17 | Operator/control center for tasks, agents, tools, memory, policy and operations | H12, H13, H15 | Partial | Authorized workflows and UI/API contract tests; no hidden admin access |
-| H18 | Async performance, quotas, concurrency and load management | H7, H8, H15 | Partial | Representative load baseline, queue saturation and fairness tests |
+| H18 | Async performance, quotas, concurrency and load management | H7, H8, H15 | Partial — shared root/specialist Agent execution budget merged in expanded H23 PR #658; a durable per-owner Kimi rolling-window limiter exists on selected API paths | Provider quota enforcement across all inference paths/Workers, durable compute/storage cost accounting, representative load baseline, queue saturation and fairness tests |
 | H19 | Quality, security, regression, E2E, CI/CD and release governance | Critical H phases | Evidence exists | Exact-head CI, protected main, release/rollback evidence and security review |
 | H20 | Research, adaptive planning, simulation and bounded self-improvement | H19 | Planned / gated | Benchmark benefit, sandbox, owner approval, rollback and no self-acceptance |
 
@@ -182,7 +182,7 @@ A code branch, PR, green CI, historical checklist or proposed architecture alone
 | D2 local token-file security (subset of FR-AGENT-02/NFR-SEC-02) | EL_AGENT | PR #33 merge `de8007bd3a32e636a589d8afb7806725ac55d414`; `src/el_agent/security.py`, `tests/test_security.py` | Exact PR-head Python 3.11/3.12 Linux+Windows matrix passed; post-merge exact-main matrix passed on the recorded SHA | Android Keystore, physical device, system-level session lock/revoke and full device identity acceptance |
 | E10 outbound Unicode validation (subset of FR-ELAI-02/05) | EL_AI | PR #148 merge `bb7239c46556f6fa68841e48740507f31ba58e6c`; `src/el_ai/telegram/api.py`, `tests/test_telegram_api.py` | Python 3.11/3.12, Workflow Security Audit, post-merge Security Audit and Scorecard passed | Full update intake and delivery state machine, live test-bot, webhook and unknown-outcome E2E |
 | H10 evaluator regression contract (FR-HUB-06) | HUB | PR #640 merge `47a8e4fee206ef72e928fa3ce381a52ee4324921`; `tests/test_work_order_evidence_contract.py` | Exact PR-head validation checks passed before merge | Owner-scoped API and trusted production evidence adapters |
-| H10 owner-scoped evaluation API (FR-HUB-06) | HUB | PR #641 merged as `4f684b8a8494ffe263db6769b312f884cd6df311`; `backend/mrhub/api/routes/agent.py`, `backend/mrhub/agents/work_order_evidence.py`, `tests/test_agent_work_order_evidence_api.py` | Exact PR-head validation suite passed before merge; post-merge HUB main checks queued at this evidence refresh | Trusted production verifiers, first-class persisted WorkOrder revision/digest, E8 consumer integration and post-merge main acceptance |
+| H10 owner-scoped evaluation and persisted revision binding (FR-HUB-06) | HUB | PR #641 merged as `4f684b8a8494ffe263db6769b312f884cd6df311`; revision/digest follow-up PR #660 merged; `backend/mrhub/api/routes/agent.py`, `backend/mrhub/agents/work_order_evidence.py`, `docs/operations/h18-workorder-evidence-v1.md`, `tests/test_agent_work_order_evidence_api.py` | Both exact PR-head validation suites passed before merge; current post-merge HUB main CI is tracked separately in G6 | Trusted production verifiers, plan supersede/edit lifecycle, E8 consumer contract and live evidence-source acceptance |
 
 ## 11. Merged implementation slices and open acceptance — 2026-11-27
 
@@ -192,6 +192,6 @@ This table records narrow implementation slices; it does not promote the owning 
 |---|---|---|---|
 | D2 | EL_AGENT PR #33, merge `de8007bd3a32e636a589d8afb7806725ac55d414`; `src/el_agent/security.py`, `tests/test_security.py` | Exact PR-head Linux/Windows × Python 3.11/3.12 passed; post-merge main checks passed on that source snapshot | Android Keystore and physical Windows/Android credential lifecycle acceptance |
 | E10 | EL_AI PR #148, merge `bb7239c46556f6fa68841e48740507f31ba58e6c`; `src/el_ai/telegram/api.py`, `tests/test_telegram_api.py` | Python 3.11/3.12, Workflow Security Audit and post-merge Scorecard/security checks passed | Real test-bot E2E, update intake, delivery state reconciliation, duplicate/retry/rate-limit/media/unknown-outcome acceptance |
-| H10 | HUB PR #640 evaluator tests (merge `47a8e4fee206ef72e928fa3ce381a52ee4324921`) and PR #641 owner-scoped read-only API (merge `4f684b8a8494ffe263db6769b312f884cd6df311`) | Both exact PR-head validation suites passed before merge; post-merge HUB main matrix queued at this refresh | Trusted production verifiers, first-class persisted WorkOrder revision/digest, E8 consumer contract and live evidence-source acceptance |
+| H10 | HUB PR #640 evaluator tests, PR #641 owner-scoped read-only API, and PR #660 encrypted revision/digest binding | All exact PR-head validation suites passed before merge; current post-merge HUB main matrix is separately tracked in G6 | Trusted production verifiers, plan revision lifecycle, E8 consumer contract and live evidence-source acceptance |
 | G0–G12 | HUB PR #639 — open, not yet merged | Python 3.11/3.12 and final CI checks still running at latest read | Review ADR-0051, resolve one-commit main divergence, complete exact-head CI and merge; owner/legal/admin gates remain |
 
