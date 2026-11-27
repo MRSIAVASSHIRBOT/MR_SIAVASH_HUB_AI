@@ -142,6 +142,29 @@ def test_missing_scope_assumptions_dependencies_and_capability_gaps_are_reported
     payload = result.as_dict()
     assert payload["planning_readiness"] == "blocked_by_capability_gaps"
     assert "required_capabilities_unavailable" in payload["planning_readiness_reasons"]
+    assert "scope_not_specified" in payload["planning_readiness_reasons"]
+    assert "assumptions_require_confirmation" in payload["planning_readiness_reasons"]
+    assert "declared_dependencies_require_validation" in payload["planning_readiness_reasons"]
+
+
+def test_unresolved_assumptions_and_dependencies_require_review_readiness():
+    order = make_work_order(
+        assumptions=["Confirm the supported provider version"],
+        dependencies=["The target account must exist"],
+    )
+    result = assess_work_order_intelligence(order, make_plan(), report())
+
+    assert result.information_gaps == (
+        "assumptions_require_confirmation",
+        "declared_dependencies_require_validation",
+    )
+    assert result.planning_readiness == "review_required"
+    payload = result.as_dict()
+    assert payload["information"]["status"] == "review_required"
+    assert payload["planning_readiness_reasons"] == [
+        "assumptions_require_confirmation",
+        "declared_dependencies_require_validation",
+    ]
 
 
 def test_all_registered_capabilities_still_do_not_imply_authorization():
