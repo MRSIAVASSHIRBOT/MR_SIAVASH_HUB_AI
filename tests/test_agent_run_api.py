@@ -73,11 +73,14 @@ def test_agent_run_uses_owner_scoped_context_and_returns_freshness_citations(mon
             "include_knowledge": True,
             "max_turns": 2,
             "max_output_tokens": 128,
+            "max_total_output_tokens": 256,
         },
     )
     assert response.status_code == 200
     body = response.json()
     assert body["execution"]["status"] == "completed"
+    assert body["execution"]["resource_usage"]["output_tokens_limit"] == 256
+    assert body["execution"]["resource_usage"]["model_calls"] == 1
     assert citation in body["execution"]["answer"]
     source = next(item for item in body["context_sources"] if item["reference"] == citation)
     assert source["freshness_status"] == "stale"
@@ -96,6 +99,12 @@ def test_agent_run_uses_owner_scoped_context_and_returns_freshness_citations(mon
     metadata = json.loads(audit["metadata_json"])
     assert metadata == {
         "context_passage_count": 1,
+        "delegations": 0,
+        "input_chars_used": len(provider.requests[0].input_text),
+        "model_calls": 1,
+        "output_tokens_unreported_reservation": 128,
+        "output_tokens_invalid_usage_reservation": 0,
+        "output_tokens_used_or_reserved": 128,
         "provider_mode": "local",
         "selected_provider": "test-local",
         "status": "completed",
@@ -667,3 +676,24 @@ def test_agent_run_maps_remote_mode_to_registered_kimi_provider(monkeypatch):
         "include_stub": False,
         "max_timeout_seconds": 30.0,
     }
+
+def test_agent_run_rejects_aggregate_output_budget_above_server_limit():
+    client = authenticated_client()
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Reject a request that exceeds the aggregate output budget ceiling.",
+            "max_total_output_tokens": 4_097,
+        },
+    )
+
+    assert response.status_code == 422
+
+    boolean_budget = client.post(
+        "/agent/run",
+        json={
+            "goal": "Reject boolean values instead of coercing them to an integer budget.",
+            "max_total_output_tokens": True,
+        },
+    )
+    assert boolean_budget.status_code == 422
