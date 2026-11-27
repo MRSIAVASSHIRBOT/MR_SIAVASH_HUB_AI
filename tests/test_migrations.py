@@ -1516,6 +1516,8 @@ def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path, monkeypa
 def test_v60_adds_task_priority_and_deadline_without_changing_legacy_rows(
     tmp_path, monkeypatch
 ):
+    from datetime import datetime
+
     from mrhub.domain.tasks import TaskPriority, TaskRecord
     from mrhub.infrastructure import migrations as migrations_module
     from mrhub.infrastructure.database import TaskRepository
@@ -1527,7 +1529,7 @@ def test_v60_adds_task_priority_and_deadline_without_changing_legacy_rows(
     )
     assert SchemaMigrator(connection).migrate()[-1] == 59
 
-    legacy_task_id = "legacy-task-priority-defaults"
+    legacy_task_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     connection.execute(
         """
         INSERT INTO tasks (
@@ -1564,10 +1566,10 @@ def test_v60_adds_task_priority_and_deadline_without_changing_legacy_rows(
 
     repository = TaskRepository(database_path)
     repository.initialize()
-    legacy = repository.get(__import__("uuid").UUID(legacy_task_id)) if False else None
-    # Read using the stable string-to-UUID conversion used by TaskRepository.
     from uuid import UUID
-    legacy = repository.get(UUID(int=0)) if False else None
+
+    legacy = repository.get(UUID(legacy_task_id))
+    assert legacy is not None
     rows = repository.list_recent()
     assert len(rows) == 1
     assert rows[0].priority is TaskPriority.NORMAL
@@ -1577,7 +1579,7 @@ def test_v60_adds_task_priority_and_deadline_without_changing_legacy_rows(
         task_type="demo.echo",
         description="priority test",
         priority=TaskPriority.URGENT,
-        deadline_at=__import__("datetime").datetime.fromisoformat(
+        deadline_at=datetime.fromisoformat(
             "2026-11-28T12:00:00+03:00"
         ),
     )
