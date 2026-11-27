@@ -48,6 +48,7 @@ class ExecutionBudget:
     output_tokens_used: int = 0
     output_tokens_reserved: int = 0
     output_tokens_unreported: int = 0
+    output_tokens_invalid_usage: int = 0
     model_calls: int = 0
     tool_calls: int = 0
     delegations: int = 0
@@ -110,6 +111,7 @@ class ExecutionBudget:
             return True
         if type(actual) is not int or actual < 0 or actual > reserved:
             self.output_tokens_used += reserved
+            self.output_tokens_invalid_usage += reserved
             return False
         self.output_tokens_used += actual
         return True
@@ -127,8 +129,13 @@ class ExecutionBudget:
             "input_chars_remaining": self.remaining_input_chars,
             "input_chars_rejected": self.input_chars_rejected,
             "output_tokens_used_or_reserved": self.output_tokens_used + self.output_tokens_reserved,
-            "output_tokens_reported": self.output_tokens_used - self.output_tokens_unreported,
+            "output_tokens_reported": (
+                self.output_tokens_used
+                - self.output_tokens_unreported
+                - self.output_tokens_invalid_usage
+            ),
             "output_tokens_unreported_reservation": self.output_tokens_unreported,
+            "output_tokens_invalid_usage_reservation": self.output_tokens_invalid_usage,
             "output_tokens_limit": self.max_output_tokens,
             "output_tokens_remaining": self.remaining_output_tokens,
             "model_calls": self.model_calls,
