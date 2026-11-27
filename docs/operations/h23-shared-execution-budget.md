@@ -19,6 +19,7 @@ A maximum per provider call is not the same as a maximum for the entire parent/c
 - Each provider call reserves from the same total output-token budget before inference.
 - Reported provider token usage reconciles the reservation and refunds unused reserved capacity.
 - When output usage is unavailable, the full reservation is charged conservatively.
+- Invalid or over-reservation provider usage is rejected and counted separately from trusted reported usage.
 - Provider usage above the reservation is rejected before parsing or acting on the response.
 - Model calls, tool calls and specialist delegations use shared global ceilings.
 - Child agents use the same absolute monotonic deadline as the root run.
