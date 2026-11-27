@@ -10,10 +10,10 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 from mrhub.api.dependencies import require_user
-from mrhub.domain.tasks import TaskRecord, TaskStatus
+from mrhub.domain.tasks import TaskPriority, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.idempotency import (
@@ -33,6 +33,8 @@ policy = PolicyEngine()
 class CreateTaskRequest(BaseModel):
     task_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
     description: str = Field(default="", max_length=500)
+    priority: TaskPriority = TaskPriority.NORMAL
+    deadline_at: AwareDatetime | None = None
 
 
 def get_repository() -> TaskRepository:
@@ -99,6 +101,8 @@ def create_task(
         task_type=payload.task_type,
         description=payload.description,
         risk_class=risk_class,
+        priority=payload.priority,
+        deadline_at=payload.deadline_at,
         status=(
             TaskStatus.WAITING_APPROVAL
             if decision.decision is PolicyDecision.REQUIRE_APPROVAL
@@ -113,6 +117,16 @@ def create_task(
                 "description": task.description,
                 "risk_class": task.risk_class.value,
                 "status": task.status.value,
+                **(
+                    {"priority": task.priority.value}
+                    if task.priority is not TaskPriority.NORMAL
+                    else {}
+                ),
+                **(
+                    {"deadline_at": task.deadline_at.isoformat()}
+                    if task.deadline_at is not None
+                    else {}
+                ),
             },
             ensure_ascii=False,
             sort_keys=True,

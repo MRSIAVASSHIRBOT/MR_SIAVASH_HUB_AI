@@ -625,7 +625,9 @@ def test_v40_rebuild_preserves_content_versions_and_schedules_and_allows_reels(t
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59]
+    assert SchemaMigrator(connection).migrate() == [
+        item.version for item in all_migrations[39:]
+    ]
     preserved_draft = connection.execute(
         "SELECT title, content_type FROM content_drafts WHERE draft_id = 'draft-1'"
     ).fetchone()
@@ -757,7 +759,9 @@ def test_v44_backfills_owner_scoped_research_source_registry_and_enforces_links(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59]
+    assert SchemaMigrator(connection).migrate() == [
+        item.version for item in all_migrations[43:]
+    ]
     evidence = connection.execute(
         "SELECT owner_user_id, source_id FROM research_evidence ORDER BY owner_user_id, evidence_id"
     ).fetchall()
@@ -1094,7 +1098,9 @@ def test_v52_expands_tool_permission_grants_and_preserves_existing_owner_grants(
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [52, 53, 54, 55, 56, 57, 58, 59]
+    assert SchemaMigrator(connection).migrate() == [
+        item.version for item in all_migrations[51:]
+    ]
 
     existing = connection.execute(
         "SELECT permission, granted_at, expires_at FROM tool_permission_grants "
@@ -1169,7 +1175,9 @@ def test_v53_persists_non_sensitive_video_generation_output_contract(tmp_path, m
     ]
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [53, 54, 55, 56, 57, 58, 59]
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[52:]
+    ]
     columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(video_generation_jobs)")
@@ -1230,7 +1238,9 @@ def test_v54_backfills_stable_step_keys_and_legacy_sequential_dependencies(tmp_p
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", all_migrations)
-    assert SchemaMigrator(connection).migrate() == [54, 55, 56, 57, 58, 59]
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in all_migrations[53:]
+    ]
 
     steps = connection.execute(
         """
@@ -1357,7 +1367,10 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
     from mrhub.infrastructure import migrations as migrations_module
 
     connection = connect(tmp_path / "typed-memory.sqlite3")
-    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS[:-3])
+    monkeypatch.setattr(
+        migrations_module, "MIGRATIONS",
+        tuple(item for item in MIGRATIONS if item.version <= 56),
+    )
     assert SchemaMigrator(connection).migrate()[-1] == 56
 
     owner_id = "typed-memory-legacy-owner"
@@ -1397,7 +1410,9 @@ def test_v56_adds_typed_memory_column_without_losing_legacy_entries(tmp_path, mo
     connection.commit()
 
     monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS)
-    assert SchemaMigrator(connection).migrate() == [57, 58, 59]
+    assert SchemaMigrator(connection).migrate() == [
+        migration.version for migration in MIGRATIONS if migration.version >= 57
+    ]
 
     expiry_indexes = {
         row["name"] for row in connection.execute("PRAGMA index_list(memory_entries)")
@@ -1429,7 +1444,7 @@ def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path, monkeypa
     monkeypatch.setattr(
         migrations_module,
         "MIGRATIONS",
-        migrations_module.MIGRATIONS[:-2],
+        tuple(item for item in migrations_module.MIGRATIONS if item.version <= 57),
     )
     SchemaMigrator(connection).migrate()
 
@@ -1511,3 +1526,82 @@ def test_v57_creates_owner_scoped_action_bound_tool_approvals(tmp_path, monkeypa
         (owner_id,),
     ).fetchone() is None
     connection.close()
+
+
+def test_v60_adds_task_priority_and_deadline_without_changing_legacy_rows(
+    tmp_path, monkeypatch
+):
+    from datetime import datetime
+
+    from mrhub.domain.tasks import TaskPriority, TaskRecord
+    from mrhub.infrastructure import migrations as migrations_module
+    from mrhub.infrastructure.database import TaskRepository
+
+    database_path = tmp_path / "task-priority-deadline.sqlite3"
+    connection = connect(database_path)
+    monkeypatch.setattr(
+        migrations_module, "MIGRATIONS", migrations_module.MIGRATIONS[:-1]
+    )
+    assert SchemaMigrator(connection).migrate()[-1] == 59
+
+    legacy_task_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    connection.execute(
+        """
+        INSERT INTO tasks (
+            task_id, task_type, status, risk_class,
+            created_at, updated_at, description
+        ) VALUES (?, 'demo.echo', 'queued', 'low', ?, ?, ?)
+        """,
+        (
+            legacy_task_id,
+            "2026-11-20T10:00:00+00:00",
+            "2026-11-20T10:00:00+00:00",
+            "legacy task",
+        ),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(migrations_module, "MIGRATIONS", MIGRATIONS)
+    assert SchemaMigrator(connection).migrate() == [60]
+
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(tasks)")
+    }
+    assert {"priority", "deadline_at"} <= columns
+    indexes = {
+        row["name"] for row in connection.execute("PRAGMA index_list(tasks)")
+    }
+    assert "idx_tasks_dispatch_priority_deadline" in indexes
+    legacy_row = connection.execute(
+        "SELECT priority, deadline_at FROM tasks WHERE task_id = ?",
+        (legacy_task_id,),
+    ).fetchone()
+    assert tuple(legacy_row) == ("normal", None)
+    connection.close()
+
+    repository = TaskRepository(database_path)
+    repository.initialize()
+    from uuid import UUID
+
+    legacy = repository.get(UUID(legacy_task_id))
+    assert legacy is not None
+    rows = repository.list_recent()
+    assert len(rows) == 1
+    assert rows[0].priority is TaskPriority.NORMAL
+    assert rows[0].deadline_at is None
+
+    scheduled = TaskRecord(
+        task_type="demo.echo",
+        description="priority test",
+        priority=TaskPriority.URGENT,
+        deadline_at=datetime.fromisoformat(
+            "2026-11-28T12:00:00+03:00"
+        ),
+    )
+    repository.create(scheduled)
+    saved = repository.get(scheduled.task_id)
+    assert saved is not None
+    assert saved.priority is TaskPriority.URGENT
+    assert saved.deadline_at is not None
+    assert saved.deadline_at.isoformat() == "2026-11-28T09:00:00+00:00"
+
