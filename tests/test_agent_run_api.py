@@ -688,3 +688,12 @@ def test_agent_run_rejects_aggregate_output_budget_above_server_limit():
     )
 
     assert response.status_code == 422
+
+    boolean_budget = client.post(
+        "/agent/run",
+        json={
+            "goal": "Reject boolean values instead of coercing them to an integer budget.",
+            "max_total_output_tokens": True,
+        },
+    )
+    assert boolean_budget.status_code == 422
