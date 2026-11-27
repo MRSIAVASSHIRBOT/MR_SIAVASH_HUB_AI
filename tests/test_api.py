@@ -124,7 +124,7 @@ def test_task_history_rejects_malformed_cursor(tmp_path, monkeypatch) -> None:
 
         malformed = client.get(f"/tasks/{task_id}/events?cursor=not-valid!")
         assert malformed.status_code == 422
-        assert malformed.json()["detail"] == "Invalid task history cursor"
+        assert malformed.json()["detail"] == "The request failed validation or domain checks."
     finally:
         get_settings.cache_clear()
 
