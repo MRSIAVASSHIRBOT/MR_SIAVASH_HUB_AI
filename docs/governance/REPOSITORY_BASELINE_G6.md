@@ -1,6 +1,6 @@
 # Repository Baseline — G6
 
-- **Baseline date:** 2026-11-27
+- **Baseline date:** 2026-11-28
 - **Scope:** HUB, EL_AI, EL_AGENT, MR_SIAVASH_AI
 - **Portfolio authority:** [ADR-0051](../architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md)
 - **Governance:** [G0–G12](../GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md)
@@ -21,31 +21,35 @@ The recursive path scan covers the complete source trees and common dependency-l
 | [MR_SIAVASH_EL_AGENT](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) | Standalone local/device runtime for Windows and Android | Python 3.11+ for Windows/local runtime; Android Gradle/Kotlin module | Python 3.11/3.12 on Ubuntu and Windows; PowerShell syntax validation; Android debug build/unit test workflow | Hosted CI is not physical Windows/Android acceptance; README says Hub Staging and physical-device acceptance remain pending |
 | [MR_SIAVASH_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI) | Public digital identity, static website, learning workspace and public Gateway | Static Persian-first web app; Cloudflare Worker Gateway package using Node.js | Gateway CI uses Node.js 22, syntax checks and Node test runner under `cloudflare/gateway`; static site quality/Pages has separate deployment evidence | Public/Preview/Production source and D1 state require fresh control-plane readback; historical notes are not current release authorization |
 
-### Fresh exact-main source, tree and Actions checkpoint — 2026-11-27 18:32 UTC
+### Fresh exact-main source, tree and Actions checkpoint — 2026-11-28
 
-This checkpoint supersedes the earlier 16:15 UTC inventory. It was refreshed after HUB PR #657 (H8 readiness consistency) and EL_AI PR #149 (durable Telegram outbox) merged. All four recursive Git trees returned \`truncated=false\`; blob counts below are actual file counts, excluding directory entries. All check-runs listed below were completed successfully on the exact current \`main\` SHA at the time of this read.
+This checkpoint supersedes the 2026-11-27 18:32 UTC inventory. It was refreshed after the H8, H23, H18, H10 owner-lifecycle, E8 Hub catalog, E8 EL_AI command and H10 priority/deadline merges. Every recursive Git tree returned truncated=false. File counts below count blobs only and exclude directory entries. Actions results are tied to the exact main SHA in each row.
 
-| Repository | Exact \`main\` SHA | Recursive files | Exact-head Actions | Open PRs observed |
+| Repository | Exact main SHA | Recursive files | Exact-head Actions | Open PRs observed |
 |---|---|---:|---:|---:|
-| HUB | \`d44334a053e3fd3a33799e140d5bae032984f40f\` | 550; complete | 14/14 successful | 6 |
-| EL_AI | \`dce1e816c685c296ec875831b5225a3e11d961a9\` | 105; complete | 4/4 successful | 0 |
-| EL_AGENT | \`d98aaff9593b7ffac996e0841c1232bae1dee4df\` | 85; complete | 5/5 successful | 0 |
-| MR_SIAVASH_AI | \`2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a\` | 193; complete | 8/8 successful | 1 |
+| HUB | 69f569e1314fc17e2d3edbc03ec838c329852970 | 555; complete | 7/10 successful; 3 in progress; 0 failed | 5 |
+| EL_AI | 3d44520117c6d032dd6ea95bff4ab318bb1fb017 | 106; complete | 6/6 successful | 1 |
+| EL_AGENT | d98aaff9593b7ffac996e0841c1232bae1dee4df | 85; complete | 5/5 successful | 0 |
+| MR_SIAVASH_AI | 2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a | 193; complete | 8/8 successful | 1 |
 
 Exact-head workflow references:
-- HUB: [Backend CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531445), [CI / Python matrix and Windows wheel smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531298), [Defensive scan](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531337), [Workflow security audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531344), [OpenSSF Scorecard](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531317), [Windows/runtime regression](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531313), [FFmpeg integration](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46035531411).
-- EL_AI: [Python 3.11/3.12 CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/46035539925), [Workflow security audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/46035539928), [OpenSSF Scorecard](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/46035539940).
-- EL_AGENT: [Python/Linux/Windows CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/45896743567), [Android debug build and unit tests](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/45896743467).
-- MR_SIAVASH_AI: [Gateway/static-site CI and Pages deployment](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518955), [Preview runtime smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518971), [Gateway runtime smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518550), [Workflow security audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518989), [OpenSSF Scorecard](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896519002).
+- HUB: [Backend CI — running at checkpoint](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46080287696), [Windows launcher validation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46080287884), [FFmpeg Linux/Windows integration](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46080287760), [Defensive Python scan](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46080287823), [Workflow security audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46080287685), [Supply-chain security posture](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46080287744). At this read, Backend CI, Windows backup/device regression and Windows FFmpeg were still in progress; no failed check was present.
+- EL_AI: [Python 3.11/3.12 CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/46080141251), [Supply-chain security posture](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/46080063817), [Workflow security audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/46080063808).
+- EL_AGENT: [Python Linux/Windows matrix](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/45896743567), [Android debug build and unit tests](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/45896743467).
+- MR_SIAVASH_AI: [Static-site/Gateway CI and Pages](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518955), [Preview runtime smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518971), [Gateway runtime smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518550), [Workflow security audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518989), [OpenSSF Scorecard](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896519002).
 
 Current open work observed:
-- HUB: #659 (G6 baseline refresh), #658 (H23 shared execution budget), #650 (G10/G11 portfolio catalogue), #637 (PromptForge integration), #636 (portfolio status refresh), and #618 (Draft Render infrastructure proposal).
-- EL_AI and EL_AGENT: no open PRs observed. EL_AI #149 is merged into the exact current \`main\` SHA above.
+- HUB: #659 (this G6 baseline refresh), #650 (G10/G11 portfolio catalogue), #637 (PromptForge integration), #636 (portfolio status refresh), and #618 (Draft Render infrastructure proposal).
+- EL_AI: #153 (guarded opt-in for Telegram Business updates).
+- EL_AGENT: no open PRs observed.
 - MR_SIAVASH_AI: #318 (Dependabot update for OpenSSF Scorecard action).
 
-HUB #657 and EL_AI #149 are merged mainline changes, not pending PRs. The H23 change in HUB #658 remains a draft and is not accepted yet; the latest H23 branch still requires all exact-head checks to pass. The G6 document itself is being refreshed in #659 and is not merged yet.
+Mainline changes since the earlier snapshot:
+- HUB: H8 readiness consistency (#657), shared Agent execution budget (#658), WorkOrder evidence revision binding (#660), owner-scoped Task lifecycle routes/history (#661), E8 read-only Telegram tool catalog (#662), and H10 priority/deadline scheduling (#663) are merged.
+- EL_AI: durable Telegram outbox (#149) and the owner-only /tools catalog command (#151) are merged.
+- The exact-current-main HUB CI was still running when this checkpoint was written. Individual feature PRs passed their exact-head gates before merge; post-merge main checks remain a separate acceptance item until all current runs finish.
 
-The branch-protection endpoint could not be read through the current GitHub integration (403). Therefore this checkpoint does not assert current protection state. The prior G0–G12 snapshot recorded \`protected=false\`; an administrator must freshly verify effective rules before release.
+The latest branch-protection endpoint remains unavailable through the current GitHub integration (403). Therefore this checkpoint does not assert effective branch protection. The G0–G12 baseline recorded protected=false on 2026-11-27; that is a historical snapshot, not proof of the current state. A repository administrator must freshly verify rulesets and required checks before release.
  
 ### Recursive tree and build-input findings
 
@@ -60,9 +64,16 @@ The check covered common Python lock/constraints files (`uv.lock`, `poetry.lock`
 
 The file counts and artifact-name scan are repository-tree evidence only. They do not replace a source-level audit of every module or prove a clean-room reproducible build. In particular, the lack of a Gradle Wrapper in EL_AGENT means local Android build tooling is less self-contained than a wrapper-pinned project.
 
-### H10 API merge — post-merge exact-main checkpoint — 2026-11-27
+### H10, H18, H23 and E8 implementation status — 2026-11-28
 
-HUB `main` has advanced beyond the H10 API merge commit `4f684b8a8494ffe263db6769b312f884cd6df311` and now points to `d44334a053e3fd3a33799e140d5bae032984f40f`, which also includes H8 PR #657. The exact-current-main checkpoint above records 14/14 successful check-runs, including backend tests, CI matrix, Windows packaging, runtime smoke, security scans and FFmpeg integration. This validates the hosted workflows on that commit; it does not prove production deployment, live Telegram operation or physical-device acceptance.
+The merged changes are implementation slices, not claims that their full expanded phases are DONE:
+
+- **H10 Task Lifecycle:** owner-scoped task detail/result/list/history/cancel routes are merged; priority and timezone-aware deadline fields are persisted through additive migration 60; worker dispatch uses priority aging, deadline ordering and deterministic tie-breakers. Remaining work includes a first-class task owner column/backfill, post-create rescheduling/reprioritization, overdue/SLA notifications, configurable fairness and cooperative cancellation of running workers. Deadline expiry does not change lifecycle state or auto-cancel a task.
+- **H18 Evaluation & Verification:** encrypted WorkOrder plan records now bind explicit WorkOrder/plan revisions and a canonical WorkOrder digest; the owner-scoped evidence evaluation path stays read-only and fails closed on stale or mismatched digests. Production evidence adapters, a plan supersede/edit lifecycle and an EL_AI E8 consumer contract remain pending.
+- **H23 Resource & Budget Management:** one in-memory execution budget is shared across root Agent runs and delegated specialists, with aggregate input/output reservations, model/tool/delegation ceilings and a shared deadline. Provider quota enforcement, durable compute/storage accounting, cross-product cost accounting and representative load/fairness validation remain pending.
+- **E8 Tool & Skill Interface:** a versioned, read-only telegram_tool_catalog.v1 endpoint and owner-only EL_AI /tools command are merged. The explicit tools:read scope exposes metadata only; it does not invoke tools or grant execution permissions. Full tool/skill invocation remains separately permission- and approval-gated.
+
+The HUB exact-main workflow set in the checkpoint above had 7/10 successful checks and 3 in progress at the time of the read. Feature-PR success before merge is not a substitute for completing this post-merge check set. None of these CI results proves production deployment, live Telegram operation, provider billing accuracy or physical-device acceptance.
 
 ## 3. Repository details
 
