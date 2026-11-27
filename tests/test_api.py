@@ -37,6 +37,98 @@ def test_task_create_and_read(tmp_path, monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+def test_task_lifecycle_routes_are_owner_scoped_and_history_is_paginated(
+    tmp_path, monkeypatch
+) -> None:
+    from mrhub.domain.tasks import TaskRecord, TaskStatus
+    from mrhub.infrastructure.database import TaskRepository
+    from mrhub.security.audit import AuditLogger
+
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "task-owner-scope.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post(
+            "/tasks",
+            json={"task_type": "demo.echo", "description": "my task"},
+        )
+        assert created.status_code == 201
+        own_task_id = created.json()["task_id"]
+
+        repository = TaskRepository(get_settings().database_path)
+        repository.initialize()
+        foreign = repository.create(
+            TaskRecord(task_type="demo.echo", description="another owner's task")
+        )
+        AuditLogger(repository).record(
+            event_type="task.submitted",
+            outcome="queued",
+            subject_type="task",
+            subject_id=str(foreign.task_id),
+            actor_type="user",
+            actor_id="different-owner",
+            metadata={"task_type": foreign.task_type, "risk_class": foreign.risk_class.value},
+        )
+
+        listed = client.get("/tasks?limit=100")
+        assert listed.status_code == 200
+        assert [item["task_id"] for item in listed.json()] == [own_task_id]
+
+        assert client.get(f"/tasks/{own_task_id}").status_code == 200
+        assert client.get(f"/tasks/{foreign.task_id}").status_code == 404
+        assert client.get(f"/tasks/{foreign.task_id}/result").status_code == 404
+        assert client.get(f"/tasks/{foreign.task_id}/events").status_code == 404
+        assert client.post(f"/tasks/{foreign.task_id}/cancel").status_code == 404
+        assert repository.get(foreign.task_id).status is TaskStatus.QUEUED
+
+        cancelled = client.post(f"/tasks/{own_task_id}/cancel")
+        assert cancelled.status_code == 200
+        assert cancelled.json()["status"] == "cancelled"
+        assert client.post(f"/tasks/{own_task_id}/cancel").status_code == 409
+
+        first_page = client.get(f"/tasks/{own_task_id}/events?limit=1")
+        assert first_page.status_code == 200
+        first_body = first_page.json()
+        assert first_body["count"] == 1
+        assert first_body["has_more"] is True
+        assert first_body["next_cursor"]
+
+        second_page = client.get(
+            f"/tasks/{own_task_id}/events?limit=1&cursor={first_body['next_cursor']}"
+        )
+        assert second_page.status_code == 200
+        assert second_page.json()["count"] == 1
+        assert second_page.json()["events"][0]["event_id"] != (
+            first_body["events"][0]["event_id"]
+        )
+        all_events = client.get(f"/tasks/{own_task_id}/events?limit=50").json()
+        assert {event["event_type"] for event in all_events["events"]} >= {
+            "task.submitted",
+            "task.status_changed",
+            "task.cancelled",
+        }
+    finally:
+        get_settings.cache_clear()
+
+
+def test_task_history_rejects_malformed_cursor(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MRH_DATABASE_PATH", str(tmp_path / "task-history-cursor.sqlite3"))
+    get_settings.cache_clear()
+    try:
+        client = authenticated_client()
+        created = client.post(
+            "/tasks",
+            json={"task_type": "demo.echo", "description": "cursor validation"},
+        )
+        task_id = created.json()["task_id"]
+
+        malformed = client.get(f"/tasks/{task_id}/events?cursor=not-valid!")
+        assert malformed.status_code == 422
+        assert malformed.json()["detail"] == "The request failed validation or domain checks."
+    finally:
+        get_settings.cache_clear()
+
+
 def test_task_api_persists_priority_and_normalizes_timezone_aware_deadline(
     tmp_path, monkeypatch
 ) -> None:
@@ -764,6 +856,17 @@ def test_task_list_filters_internal_scene_jobs_before_applying_limit(tmp_path, m
 
     visible = repository.create(
         TaskRecord(task_type="demo.echo", description="visible dashboard task")
+    )
+    from mrhub.security.audit import AuditLogger
+
+    AuditLogger(repository).record(
+        event_type="task.submitted",
+        outcome="queued",
+        subject_type="task",
+        subject_id=str(visible.task_id),
+        actor_type="user",
+        actor_id="local-owner",
+        metadata={"task_type": visible.task_type, "risk_class": visible.risk_class.value},
     )
     with repository._connection() as connection:
         connection.execute(
