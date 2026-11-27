@@ -1,7 +1,11 @@
 """Task API routes for the shared job lifecycle."""
 
+import base64
+import binascii
 import hashlib
 import json
+import re
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -11,7 +15,7 @@ from pydantic import BaseModel, Field
 from mrhub.api.dependencies import require_user
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
-from mrhub.jobs.engine import JobEngine
+from mrhub.jobs.engine import InvalidTaskTransition, JobEngine
 from mrhub.jobs.idempotency import (
     IdempotencyConflict,
     IdempotencyError,
@@ -41,6 +45,34 @@ def get_repository() -> TaskRepository:
 
 def get_engine() -> JobEngine:
     return JobEngine(get_repository())
+
+
+
+def _encode_task_event_cursor(created_at: str, event_id: str) -> str:
+    payload = f"{created_at}\n{event_id}".encode()
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_task_event_cursor(cursor: str) -> tuple[str, str]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,512}", cursor):
+        raise ValueError("Invalid task history cursor")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = base64.b64decode(
+            cursor + padding, altchars=b"-_", validate=True
+        ).decode("utf-8")
+        created_at, event_id = payload.split("\n", 1)
+        if not created_at or len(created_at) > 64:
+            raise ValueError("Invalid task history cursor")
+        parsed_at = datetime.fromisoformat(created_at)
+        if parsed_at.tzinfo is None or parsed_at.utcoffset() is None:
+            raise ValueError("Invalid task history cursor")
+        parsed_id = UUID(event_id)
+        if str(parsed_id) != event_id:
+            raise ValueError("Invalid task history cursor")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        raise ValueError("Invalid task history cursor") from None
+    return created_at, event_id
 
 
 @router.post("", response_model=TaskRecord, status_code=201)
@@ -128,18 +160,93 @@ def create_task(
     return saved
 
 
+@router.get("/{task_id}/events")
+def get_task_history(
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = None,
+) -> dict[str, object]:
+    """Return one bounded, stable history page for the authenticated task owner."""
+    before = None
+    if cursor is not None:
+        try:
+            before = _decode_task_event_cursor(cursor)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid task history cursor") from None
+    page = get_repository().list_task_audit_event_page_for_user(
+        task_id,
+        user.user_id,
+        limit,
+        before=before,
+    )
+    if page is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    events = page["events"]
+    next_cursor = None
+    if page["has_more"] and events:
+        last = events[-1]
+        next_cursor = _encode_task_event_cursor(
+            str(last["created_at"]), str(last["event_id"])
+        )
+    return {
+        "task_id": str(task_id),
+        "events": events,
+        "count": len(events),
+        "has_more": page["has_more"],
+        "next_cursor": next_cursor,
+    }
+
+
+@router.post("/{task_id}/cancel", response_model=TaskRecord)
+def cancel_task(
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> TaskRecord:
+    """Cancel only an owned task that has not started executing."""
+    repository = get_repository()
+    task = repository.get_for_user(user.user_id, task_id)
+    if task is None or task.task_type == "video.scene_detection":
+        raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        cancelled = JobEngine(repository).cancel_pending(task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+    except (InvalidTaskTransition, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail="Task is no longer cancellable") from exc
+    AuditLogger(repository).record(
+        event_type="task.cancelled",
+        outcome="success",
+        subject_type="task",
+        subject_id=str(task_id),
+        actor_type="user",
+        actor_id=user.user_id,
+        metadata={
+            "previous_status": task.status.value,
+            "new_status": cancelled.status.value,
+        },
+    )
+    return cancelled
+
+
 @router.get("/{task_id}", response_model=TaskRecord)
-def get_task(task_id: UUID) -> TaskRecord:
-    task = get_engine().get(task_id)
+def get_task(
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> TaskRecord:
+    task = get_repository().get_for_user(user.user_id, task_id)
     if task is None or task.task_type == "video.scene_detection":
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
 @router.get("/{task_id}/result")
-def get_task_result(task_id: UUID) -> dict[str, object]:
+def get_task_result(
+    task_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+) -> dict[str, object]:
     repository = get_repository()
-    task = repository.get(task_id)
+    task = repository.get_for_user(user.user_id, task_id)
     if task is None or task.task_type == "video.scene_detection":
         raise HTTPException(status_code=404, detail="Task not found")
     result = WorkerEngine(repository).get_result(task_id)
@@ -149,5 +256,8 @@ def get_task_result(task_id: UUID) -> dict[str, object]:
 
 
 @router.get("", response_model=list[TaskRecord])
-def list_tasks(limit: int = Query(default=50, ge=1, le=100)) -> list[TaskRecord]:
-    return list(get_repository().list_recent_for_dashboard(limit))
+def list_tasks(
+    user: Annotated[AuthenticatedUser, Depends(require_user)],
+    limit: int = Query(default=50, ge=1, le=100),
+) -> list[TaskRecord]:
+    return get_repository().list_recent_for_user(user.user_id, limit)
