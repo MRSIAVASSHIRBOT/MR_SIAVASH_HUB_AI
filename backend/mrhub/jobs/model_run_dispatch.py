@@ -10,7 +10,7 @@ from uuid import UUID
 
 from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
 from mrhub.agents.registry import build_default_agent_registry
-from mrhub.api.routes.models import build_model_router
+from mrhub.api.routes.models import build_model_router, build_owner_scoped_kimi_request_gate
 from mrhub.domain.tasks import TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.engine import JobEngine
@@ -107,6 +107,7 @@ class ModelRunWorkerHandler:
                 provider_mode=provider_mode,
                 include_stub=False,
                 max_timeout_seconds=30.0,
+                before_generate=build_owner_scoped_kimi_request_gate(owner_user_id),
             )
             tool_registry = build_tool_registry(
                 correlation_id=str(workflow_id),
