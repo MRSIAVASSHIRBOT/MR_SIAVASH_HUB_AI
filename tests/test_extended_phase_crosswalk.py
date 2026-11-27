@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
 
-
 PHASE_RANGES = {
     "G": 12,
     "H": 32,
