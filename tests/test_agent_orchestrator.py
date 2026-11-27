@@ -225,6 +225,7 @@ def test_orchestrator_delegates_to_a_registered_specialist_with_shared_budgets()
     assert result["tool_calls"] == 0
     assert result["trace"][0]["type"] == "delegation_observation"
     assert result["trace"][0]["agent"] == "knowledge_synthesizer"
+    assert result["trace"][0]["agent_version"] == 1
     assert result["trace"][0]["observation_is_untrusted_data"] is True
     assert "Synthesize only the supplied retrieved evidence" in provider.requests[1].input_text
     assert "untrusted_agent_output" in result["trace"][0]["observation"]
@@ -587,5 +588,72 @@ def test_orchestrator_can_delegate_result_review_to_quality_evaluator():
     assert result["status"] == "completed"
     assert result["trace"][0]["agent"] == "quality_evaluator"
     assert result["trace"][0]["observation_is_untrusted_data"] is True
-    assert "Classify each criterion as passed, failed, not run, or unknown" in provider.requests[1].input_text
+    assert (
+        "Classify each criterion as passed, failed, not run, or unknown"
+        in provider.requests[1].input_text
+    )
 
+
+def test_orchestrator_hands_off_to_two_specialists_and_preserves_their_disagreement():
+    orchestrator, provider = make_orchestrator(
+        [
+            json.dumps({
+                "type": "delegate",
+                "agent": "security_reviewer",
+                "goal": "Review the supplied evidence for trust-boundary risks.",
+            }),
+            json.dumps({
+                "type": "final",
+                "answer": "Security review: provenance is insufficient to establish trust.",
+            }),
+            json.dumps({
+                "type": "delegate",
+                "agent": "quality_evaluator",
+                "goal": "Assess the supplied acceptance evidence independently.",
+            }),
+            json.dumps({
+                "type": "final",
+                "answer": (
+                    "Quality review: the supplied test evidence supports "
+                    "the stated criteria."
+                ),
+            }),
+            json.dumps({
+                "type": "final",
+                "answer": (
+                    "The specialist assessments differ; preserve the uncertainty and "
+                    "request owner review rather than asserting completion."
+                ),
+            }),
+        ],
+        with_agents=True,
+    )
+
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Review this result using independent specialist perspectives.",
+            retrieved_context="A test report is supplied without provenance metadata.",
+            max_turns=3,
+            max_tool_calls=0,
+            max_total_input_chars=40_000,
+        )
+    )
+
+    assert result["status"] == "completed"
+    assert "assessments differ" in result["answer"]
+    assert result["tool_calls"] == 0
+    assert len(provider.requests) == 5
+    handoffs = [
+        item for item in result["trace"]
+        if item["type"] == "delegation_observation"
+    ]
+    assert [item["agent"] for item in handoffs] == [
+        "security_reviewer",
+        "quality_evaluator",
+    ]
+    assert [item["agent_version"] for item in handoffs] == [1, 1]
+    assert all(item["observation_is_untrusted_data"] is True for item in handoffs)
+    assert "Act as a defensive security reviewer" in provider.requests[1].input_text
+    assert "Act as an independent quality evaluator" in provider.requests[3].input_text
+    assert "untrusted_agent_output" in provider.requests[2].input_text
+    assert "untrusted_agent_output" in provider.requests[4].input_text
