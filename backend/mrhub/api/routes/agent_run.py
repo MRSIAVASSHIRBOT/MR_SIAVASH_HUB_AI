@@ -53,6 +53,7 @@ class AgentRunRequest(BaseModel):
         default=MAX_TOTAL_OUTPUT_TOKENS,
         ge=1,
         le=MAX_TOTAL_OUTPUT_TOKENS,
+        strict=True,
     )
 
 
