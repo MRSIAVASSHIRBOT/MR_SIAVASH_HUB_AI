@@ -2,7 +2,7 @@ import json
 
 from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
 from mrhub.agents.registry import build_default_agent_registry
-from mrhub.providers.base import ProviderHealth, ProviderRequest, ProviderResponse
+from mrhub.providers.base import ProviderHealth, ProviderRateLimitError, ProviderRequest, ProviderResponse
 from mrhub.providers.router import ModelCapability, ModelDescriptor, ModelRouter
 from mrhub.tools.builtins import build_tool_registry
 
@@ -788,3 +788,33 @@ def test_unreported_provider_usage_consumes_the_full_output_reservation():
     assert result["status"] == "completed"
     assert result["resource_usage"]["output_tokens_unreported_reservation"] == 256
     assert result["resource_usage"]["output_tokens_remaining"] == 0
+
+
+def test_orchestrator_refunds_output_reservation_when_provider_quota_rejects_call():
+    provider = ScriptedProvider(
+        [json.dumps({"type": "final", "answer": "must not be accepted"})]
+    )
+
+    def reject_before_inference(_selection):
+        raise ProviderRateLimitError(29)
+
+    router = ModelRouter(before_generate=reject_before_inference)
+    router.register_provider(provider)
+    orchestrator = AgentOrchestrator(router, build_tool_registry())
+
+    result = orchestrator.run(
+        AgentLoopRequest(
+            goal="Stop before a provider call when the owner quota is exhausted.",
+            max_output_tokens=128,
+            max_total_output_tokens=128,
+        )
+    )
+
+    assert result["status"] == "budget_exhausted"
+    assert result["error_code"] == "provider_rate_limited"
+    assert result["retry_after_seconds"] == 29
+    assert provider.requests == []
+    assert result["resource_usage"]["output_tokens_remaining"] == 128
+    assert result["resource_usage"]["output_tokens_unreported_reservation"] == 0
+    assert result["resource_usage"]["model_calls"] == 1
+
