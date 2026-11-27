@@ -101,8 +101,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
-            priority=TaskPriority(row["priority"]),
-            deadline_at=row["deadline_at"],
+                priority=TaskPriority(row["priority"]),
+                deadline_at=row["deadline_at"],
             )
             for row in rows
         ]
@@ -132,8 +132,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
-            priority=TaskPriority(row["priority"]),
-            deadline_at=row["deadline_at"],
+                priority=TaskPriority(row["priority"]),
+                deadline_at=row["deadline_at"],
             )
             for row in rows
         ]
@@ -199,8 +199,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
-            priority=TaskPriority(row["priority"]),
-            deadline_at=row["deadline_at"],
+                priority=TaskPriority(row["priority"]),
+                deadline_at=row["deadline_at"],
             )
             for row in page
         ], has_more, cursor_after
