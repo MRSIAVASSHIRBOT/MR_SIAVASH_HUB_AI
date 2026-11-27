@@ -150,7 +150,10 @@ def test_goal_plan_endpoint_returns_plan_and_missing_capabilities(monkeypatch):
     assert "needs_clarification" not in result["work_order"]
     assert "tool_use_required" not in result["work_order"]
     assert "planning_readiness" not in result["work_order"]
-    assert result["planning_assessment"]["planning_readiness"] == "needs_clarification"
+    assert result["planning_assessment"]["planning_readiness"] == "blocked_by_capability_gaps"
+    assert "clarification_required" in result["planning_assessment"]["planning_readiness_reasons"]
+    assert "required_capabilities_unavailable" in result["planning_assessment"]["planning_readiness_reasons"]
+    assert "research_required" in result["planning_assessment"]["planning_readiness_reasons"]
     assert result["planning_assessment"]["complexity"]["model_estimate"] == "high"
     assert result["planning_assessment"]["information"]["status"] == "needs_clarification"
     assert result["planning_assessment"]["information"]["missing_information"] == [
