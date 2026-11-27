@@ -21,7 +21,7 @@ def test_hybrid_contract_declares_supported_version_and_owners():
     contract = _contract()
 
     assert contract["contract_id"] == "mr-siavash-hybrid-integration"
-    assert contract["contract_version"] == "1.0.0"
+    assert contract["contract_version"] == "1.1.0"
     assert contract["owners"] == {
         "hub": "private-state-policy-and-agent-control-plane",
         "el_ai": "telegram-transport-identity-and-command-routing",
@@ -57,6 +57,19 @@ def test_telegram_endpoint_manifest_matches_generated_openapi():
         f"missing_from_contract={sorted(implemented_endpoints - declared_endpoints)}, "
         f"missing_from_openapi={sorted(declared_endpoints - implemented_endpoints)}"
     )
+
+
+def test_telegram_tools_catalog_is_read_only_and_explicitly_scoped():
+    contract = _contract()["hub_telegram"]
+    endpoint = next(
+        item for item in contract["endpoints"]
+        if item["path"] == "/integrations/telegram/tools"
+    )
+    assert endpoint["method"] == "GET"
+    assert endpoint["required_scope"] == "tools:read"
+    assert "does not" in endpoint["purpose"]
+    assert "tools:read" in contract["scopes"]
+    assert "tools:read" not in contract["default_scopes"]
 
 
 def test_telegram_scopes_and_default_scope_match_implementation():
