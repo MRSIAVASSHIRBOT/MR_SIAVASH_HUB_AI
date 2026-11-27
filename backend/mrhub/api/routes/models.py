@@ -2,7 +2,7 @@
 
 import math
 from time import perf_counter
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -15,6 +15,7 @@ from mrhub.diagnostics.resource_advisor import assess_model_resources
 from mrhub.infrastructure.request_limits import KimiRequestRateLimitRepository
 from mrhub.providers.base import (
     ProviderConfigurationError,
+    ProviderRateLimitError,
     ProviderContractError,
     ProviderError,
     ProviderRequest,
@@ -22,7 +23,7 @@ from mrhub.providers.base import (
 )
 from mrhub.providers.kimi import KimiProvider
 from mrhub.providers.ollama import OllamaProvider
-from mrhub.providers.router import ModelRequest, ModelRouter
+from mrhub.providers.router import ModelRequest, ModelRouter, ModelSelection
 from mrhub.providers.stub import StubProvider
 from mrhub.security.auth import AuthenticatedUser
 
@@ -41,6 +42,23 @@ def _get_kimi_request_limiter() -> KimiRequestRateLimitRepository:
     ):
         _KIMI_REQUEST_LIMITER = KimiRequestRateLimitRepository(database_path)
     return _KIMI_REQUEST_LIMITER
+
+
+def build_owner_scoped_kimi_request_gate(
+    owner_id: str,
+) -> Callable[[ModelSelection], None]:
+    """Return a pre-inference gate using the durable per-owner Kimi request window."""
+    if not isinstance(owner_id, str) or not owner_id or len(owner_id) > 200:
+        raise ValueError("Provider quota owner identifier is invalid")
+
+    def reserve(selection: ModelSelection) -> None:
+        if selection.provider != "moonshot":
+            return
+        retry_after = _get_kimi_request_limiter().consume(owner_id)
+        if retry_after is not None:
+            raise ProviderRateLimitError(retry_after)
+
+    return reserve
 
 
 def _enforce_kimi_request_limit(owner_id: str) -> None:
@@ -62,6 +80,7 @@ def build_model_router(
     provider_mode: Literal["all", "local", "kimi"] = "all",
     include_stub: bool = True,
     max_timeout_seconds: float | None = None,
+    before_generate: Callable[[ModelSelection], None] | None = None,
 ) -> ModelRouter:
     """Build an explicit provider set; constrained modes never silently fall back."""
     if max_timeout_seconds is not None:
@@ -76,7 +95,7 @@ def build_model_router(
         if not finite_timeout or not 1 <= max_timeout_seconds <= 300:
             raise ValueError("Provider timeout cap must be between 1 and 300 seconds")
     settings = get_settings()
-    model_router = ModelRouter()
+    model_router = ModelRouter(before_generate=before_generate)
     if include_stub and provider_mode == "all":
         model_router.register_provider(StubProvider())
     if provider_mode in {"all", "local"} and settings.local_inference_enabled and settings.local_inference_model:
