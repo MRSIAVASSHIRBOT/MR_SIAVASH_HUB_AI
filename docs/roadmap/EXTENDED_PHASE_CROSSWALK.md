@@ -93,7 +93,7 @@ The existing [G0–G12 governance baseline](../GOVERNANCE_PRODUCT_STRATEGY_G0_G1
 | E6 | Planning and task experience | Compact E4/E5; dependency-aware plan preview and durable task submission | EVIDENCE / ACCEPTANCE PENDING |
 | E7 | Agent delegation interface | Compact E5; HUB task submission exists; user-visible specialist routing/hand-off UX remains limited | PARTIAL |
 | E8 | Tool and skill interface | Compact E6; capability discovery and policy-aware tool access are partial | PARTIAL |
-| E9 | Telegram bot platform | Compact E10; update intake, polling and typed Telegram APIs; full delivery E2E remains open | PARTIAL |
+| E9 | Telegram bot platform | Compact E10; update intake, polling and typed Telegram APIs; open Draft EL_AI PR #149 adds durable outbox and ambiguous-reply quarantine; full delivery E2E remains open | PARTIAL |
 | E10 | Telegram session and interaction | Compact E2/E10; sessions, commands, callbacks and progress are implemented in slices | PARTIAL |
 | E11 | Multimodal intelligence | Telegram media/file normalization and media routes exist; end-to-end multimodal reasoning remains incomplete | PARTIAL |
 | E12 | Voice and speech interface | No complete EL_AI-owned voice conversation path established; do not count EL_AGENT local voice as EL_AI completion | PLANNED / GATED |
