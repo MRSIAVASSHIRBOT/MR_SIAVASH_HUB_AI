@@ -588,7 +588,10 @@ def test_orchestrator_can_delegate_result_review_to_quality_evaluator():
     assert result["status"] == "completed"
     assert result["trace"][0]["agent"] == "quality_evaluator"
     assert result["trace"][0]["observation_is_untrusted_data"] is True
-    assert "Classify each criterion as passed, failed, not run, or unknown" in provider.requests[1].input_text
+    assert (
+        "Classify each criterion as passed, failed, not run, or unknown"
+        in provider.requests[1].input_text
+    )
 
 
 def test_orchestrator_hands_off_to_two_specialists_and_preserves_their_disagreement():
