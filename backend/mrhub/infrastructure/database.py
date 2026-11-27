@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 
 
 class TaskRepository:
@@ -49,8 +49,8 @@ class TaskRepository:
                 """
                 INSERT INTO tasks (
                     task_id, task_type, status, risk_class,
-                    created_at, updated_at, description
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, description, priority, deadline_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(task.task_id),
@@ -60,6 +60,8 @@ class TaskRepository:
                     task.created_at.isoformat(),
                     task.updated_at.isoformat(),
                     task.description,
+                    task.priority.value,
+                    task.deadline_at.isoformat() if task.deadline_at is not None else None,
                 ),
             )
         return task
@@ -79,6 +81,8 @@ class TaskRepository:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
         )
 
     def list_recent(self, limit: int = 50) -> Iterable[TaskRecord]:
@@ -97,6 +101,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
             )
             for row in rows
         ]
@@ -126,6 +132,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
             )
             for row in rows
         ]
@@ -191,6 +199,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
             )
             for row in page
         ], has_more, cursor_after
@@ -223,6 +233,8 @@ class TaskRepository:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
         )
 
     def get_owned_task_trace(
