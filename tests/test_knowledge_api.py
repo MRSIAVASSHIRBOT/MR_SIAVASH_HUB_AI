@@ -37,7 +37,7 @@ def test_document_ingestion_chunks_content_and_returns_citation_bearing_search_r
     )
     assert search.status_code == 200
     body = search.json()
-    assert body["method"] == "sqlite_fts5"
+    assert body["method"] == "fts5_owner_declared_metadata_rerank_v1"
     assert "not automatically injected" in body["warning"]
     assert body["results"]
     result = body["results"][0]
@@ -242,3 +242,51 @@ def test_source_freshness_cannot_be_changed_by_another_owner():
         json={"status": "stale"},
     )
     assert response.status_code == 404
+
+
+def test_knowledge_search_reranks_equal_lexical_hits_using_owner_declared_metadata():
+    client = authenticated_client()
+    reviewed = client.post(
+        "/knowledge/documents",
+        json={
+            "title": "Reviewed Reference",
+            "content": "Crimson workflow checkpoint metadata ranking fixture",
+            "trust_classification": "user_reviewed",
+        },
+    )
+    supplied = client.post(
+        "/knowledge/documents",
+        json={
+            "title": "Unreviewed Reference",
+            "content": "Crimson workflow checkpoint metadata ranking fixture",
+            "trust_classification": "user_supplied",
+        },
+    )
+    assert reviewed.status_code == supplied.status_code == 201
+
+    reviewed_source = reviewed.json()["source_id"]
+    supplied_source = supplied.json()["source_id"]
+    assert client.patch(
+        f"/knowledge/sources/{reviewed_source}/freshness",
+        json={"status": "owner_reviewed_current"},
+    ).status_code == 200
+    assert client.patch(
+        f"/knowledge/sources/{supplied_source}/freshness",
+        json={"status": "stale"},
+    ).status_code == 200
+
+    response = client.post(
+        "/knowledge/search",
+        json={"query": "Crimson workflow checkpoint metadata ranking fixture", "limit": 5},
+    )
+    assert response.status_code == 200
+    results = response.json()["results"]
+    assert len(results) == 2
+    assert results[0]["document_id"] == reviewed.json()["document_id"]
+    assert results[0]["retrieval"]["scheme"] == "fts5_owner_declared_metadata_rerank_v1"
+    assert results[0]["retrieval"]["signals"]["owner_reviewed"] == 1.0
+    assert results[0]["retrieval"]["signals"]["owner_declared_freshness"] == 1.0
+    assert results[1]["document_id"] == supplied.json()["document_id"]
+    assert results[1]["retrieval"]["signals"]["owner_reviewed"] == 0.0
+    assert results[1]["retrieval"]["signals"]["owner_declared_freshness"] == 0.0
+    assert results[0]["retrieval"]["metadata_is_independent_verification"] is False
