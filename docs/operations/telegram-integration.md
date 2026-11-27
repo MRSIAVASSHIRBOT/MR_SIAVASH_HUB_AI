@@ -20,8 +20,8 @@ Keep MR_SIAVASH_HUB_AI bound to loopback (default 127.0.0.1). A Telegram client,
 2. Start EL_AI with its local runtime configuration.
 3. In the bot's private chat, run /pairinfo to obtain the Telegram numeric ID and stable EL_AI client UUID.
 4. In the authenticated Hub UI, create a pairing challenge for those exact values.
-5. Keep the default status:read scope unless another capability is needed.
-6. Grant tasks:read, tasks:create, memory:search, memory:write or video:read only after considering the data/action each scope exposes. memory:write is limited to explicit approval of one active memory entry; it does not permit deletion or content edits. Grant video:render only when the bot should submit bounded local FFmpeg renders from prepared owner-owned drafts. Grant video:cancel separately when render or pending-generation cancellation is needed.
+5. Keep the default status:read scope unless another capability is needed. Grant tools:read only when the owner explicitly wants this paired bot to inspect the non-secret tool catalog.
+6. Grant tools:read, tasks:read, tasks:create, memory:search, memory:write or video:read only after considering the data/action each scope exposes. tools:read is catalog-only: it reveals registered tool names, descriptions, risk classes and permission requirements, but does not authorize or invoke a tool. memory:write is limited to explicit approval of one active memory entry; it does not permit deletion or content edits. Grant video:render only when the bot should submit bounded local FFmpeg renders from prepared owner-owned drafts. Grant video:cancel separately when render or pending-generation cancellation is needed.
 7. Transfer the one-time code only to the intended private client channel. The code expires after five minutes and can be used once.
 8. Review the paired-client list and revoke any client that is lost, replaced or no longer trusted.
 
@@ -38,6 +38,7 @@ The Hub API defaults to status-only access when the scopes field is omitted. Cli
 ## API capabilities
 
 - status:read: read minimal authenticated client status.
+- tools:read: read a versioned, non-secret catalog of tools registered for the paired owner's Hub context. The response contains names, descriptions, risk classes, required permissions, external-side-effect classification and replay-safety metadata; it omits input/output schemas and does not authorize execution. Tool invocation remains a separate owner-authenticated operation with current permission grants and action-bound one-time approval where required.
 - tasks:read: list only tasks attributed to the exact paired client; cross-client task history is not returned.
 - tasks:create: submit bounded task requests through the Hub PolicyEngine. High-risk or unregistered task types remain waiting for owner approval.
 - memory:search: search and inspect individual non-expired owner memory entries only when the owner explicitly grants this scope.
@@ -46,7 +47,7 @@ The Hub API defaults to status-only access when the scopes field is omitted. Cli
 - video:render: submit a saved, renderer-compatible owner-owned storyboard revision to the existing immutable-snapshot FFmpeg render queue. This is deterministic local rendering, not generative AI; it does not call a generation provider or transfer media to a remote service.
 - video:cancel: cancel or request cancellation of owner-scoped local FFmpeg renders, and cancel only prepared or queued provider-generation jobs before provider submission. Active or ambiguous external provider work remains non-cancellable through this scope.
 
-No Agent execution, task approval decisions, content publishing or arbitrary tools are exposed through this integration. The only write capability is the separately scoped, explicit approval marker on one active memory entry; it cannot edit or delete memory. Local render cancellation is limited to the paired owner's bounded FFmpeg job; external provider generation remains non-cancellable once active or ambiguous. Existing paired clients do not gain new memory or video scopes automatically; the owner must update the existing client scopes or issue a new pairing challenge with the exact scopes.
+No Agent execution, task approval decisions, content publishing or arbitrary tool invocation are exposed through this integration. The new tools:read scope exposes catalog metadata only; it cannot call ToolRegistry.invoke or grant tasks:create, tool permissions or action approvals. The only write capability is the separately scoped, explicit approval marker on one active memory entry; it cannot edit or delete memory. Local render cancellation is limited to the paired owner's bounded FFmpeg job; external provider generation remains non-cancellable once active or ambiguous. Existing paired clients do not gain new memory or video scopes automatically; the owner must update the existing client scopes or issue a new pairing challenge with the exact scopes.
 
 ## Separate Cloudflare Edge + Local Bridge transport
 

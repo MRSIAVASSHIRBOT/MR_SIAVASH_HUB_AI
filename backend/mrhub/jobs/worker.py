@@ -18,7 +18,7 @@ from typing import ClassVar
 from uuid import UUID, uuid4
 
 from mrhub.content.dispatcher import ContentScheduleDispatcher
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.retry_policy import RetryPolicy, validate_retry_error_code
@@ -73,16 +73,17 @@ class TerminalWorkerError(WorkerError):
 
 
 def action_fingerprint(task: TaskRecord) -> str:
-    canonical = json.dumps(
-        {
-            "task_id": str(task.task_id),
-            "task_type": task.task_type,
-            "risk_class": task.risk_class.value,
-            "description": task.description,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    payload: dict[str, object] = {
+        "task_id": str(task.task_id),
+        "task_type": task.task_type,
+        "risk_class": task.risk_class.value,
+        "description": task.description,
+    }
+    if task.priority is not TaskPriority.NORMAL:
+        payload["priority"] = task.priority.value
+    if task.deadline_at is not None:
+        payload["deadline_at"] = task.deadline_at.isoformat()
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -274,6 +275,8 @@ class WorkerEngine:
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                     description=row["description"],
+                    priority=TaskPriority(row["priority"]),
+                    deadline_at=row["deadline_at"],
                 )
                 workflow = connection.execute(
                     """
@@ -702,9 +705,27 @@ class WorkerEngine:
                 LEFT JOIN worker_executions AS e ON e.task_id = t.task_id
                 WHERE t.status = ?
                   AND (e.next_attempt_at IS NULL OR e.next_attempt_at <= ?)
-                ORDER BY t.created_at LIMIT 1
+                ORDER BY
+                    MIN(
+                        3,
+                        CASE t.priority
+                            WHEN 'urgent' THEN 3
+                            WHEN 'high' THEN 2
+                            WHEN 'normal' THEN 1
+                            ELSE 0
+                        END
+                        + MAX(
+                            0,
+                            CAST((julianday(?) - julianday(t.created_at)) * 24 AS INTEGER)
+                        )
+                    ) DESC,
+                    CASE WHEN t.deadline_at IS NULL THEN 1 ELSE 0 END,
+                    t.deadline_at ASC,
+                    t.created_at ASC,
+                    t.task_id ASC
+                LIMIT 1
                 """,
-                (TaskStatus.QUEUED.value, now),
+                (TaskStatus.QUEUED.value, now, now),
             ).fetchone()
             if row is None:
                 connection.commit()
@@ -718,6 +739,8 @@ class WorkerEngine:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+                priority=TaskPriority(row["priority"]),
+                deadline_at=row["deadline_at"],
             )
             cursor = connection.execute(
                 "UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ? AND status = ?",

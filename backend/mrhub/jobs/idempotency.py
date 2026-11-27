@@ -225,8 +225,8 @@ class IdempotencyRepository:
                 """
                 INSERT INTO tasks (
                     task_id, task_type, status, risk_class,
-                    created_at, updated_at, description
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, description, priority, deadline_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(task.task_id),
@@ -236,6 +236,8 @@ class IdempotencyRepository:
                     task.created_at.isoformat(),
                     task.updated_at.isoformat(),
                     task.description,
+                    task.priority.value,
+                    task.deadline_at.isoformat() if task.deadline_at is not None else None,
                 ),
             )
             if row is None:

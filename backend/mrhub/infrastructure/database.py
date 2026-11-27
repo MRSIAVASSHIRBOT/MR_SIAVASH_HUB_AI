@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 
 
 class TaskRepository:
@@ -49,8 +49,8 @@ class TaskRepository:
                 """
                 INSERT INTO tasks (
                     task_id, task_type, status, risk_class,
-                    created_at, updated_at, description
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    created_at, updated_at, description, priority, deadline_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(task.task_id),
@@ -60,6 +60,8 @@ class TaskRepository:
                     task.created_at.isoformat(),
                     task.updated_at.isoformat(),
                     task.description,
+                    task.priority.value,
+                    task.deadline_at.isoformat() if task.deadline_at is not None else None,
                 ),
             )
         return task
@@ -79,7 +81,163 @@ class TaskRepository:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
         )
+
+    def get_for_user(self, owner_user_id: str, task_id: UUID) -> TaskRecord | None:
+        """Return a task only when its submission audit binds it to this user."""
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT t.*
+                FROM tasks AS t
+                WHERE t.task_id = ?
+                  AND EXISTS (
+                    SELECT 1
+                    FROM audit_events AS a
+                    WHERE a.event_type = 'task.submitted'
+                      AND a.subject_type = 'task'
+                      AND a.subject_id = t.task_id
+                      AND a.actor_type = 'user'
+                      AND a.actor_id = ?
+                  )
+                LIMIT 1
+                """,
+                (str(task_id), owner_user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return TaskRecord(
+            task_id=UUID(row["task_id"]),
+            task_type=row["task_type"],
+            status=TaskStatus(row["status"]),
+            risk_class=RiskClass(row["risk_class"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
+        )
+
+    def list_recent_for_user(
+        self, owner_user_id: str, limit: int = 50
+    ) -> list[TaskRecord]:
+        """List only tasks submitted by the authenticated owner, newest first."""
+        bounded_limit = max(1, min(limit, 100))
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT t.*
+                FROM tasks AS t
+                WHERE t.task_type <> ?
+                  AND EXISTS (
+                    SELECT 1
+                    FROM audit_events AS a
+                    WHERE a.event_type = 'task.submitted'
+                      AND a.subject_type = 'task'
+                      AND a.subject_id = t.task_id
+                      AND a.actor_type = 'user'
+                      AND a.actor_id = ?
+                  )
+                ORDER BY t.created_at DESC, t.task_id DESC
+                LIMIT ?
+                """,
+                ("video.scene_detection", owner_user_id, bounded_limit),
+            ).fetchall()
+        return [
+            TaskRecord(
+                task_id=UUID(row["task_id"]),
+                task_type=row["task_type"],
+                status=TaskStatus(row["status"]),
+                risk_class=RiskClass(row["risk_class"]),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
+            )
+            for row in rows
+        ]
+
+    def list_task_audit_event_page_for_user(
+        self,
+        task_id: UUID,
+        owner_user_id: str,
+        limit: int = 20,
+        *,
+        before: tuple[str, str] | None = None,
+    ) -> dict[str, object] | None:
+        """Return a bounded task history page only after proving task ownership."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise ValueError("Task audit page limit must be between 1 and 50")
+        if before is None:
+            query = """
+                SELECT event.event_id, event.event_type, event.outcome,
+                       event.created_at, event.metadata_json
+                FROM audit_events AS event
+                WHERE event.subject_type = 'task'
+                  AND event.subject_id = ?
+                  AND EXISTS (
+                    SELECT 1
+                    FROM audit_events AS owner_event
+                    WHERE owner_event.event_type = 'task.submitted'
+                      AND owner_event.subject_type = 'task'
+                      AND owner_event.subject_id = event.subject_id
+                      AND owner_event.actor_type = 'user'
+                      AND owner_event.actor_id = ?
+                  )
+                ORDER BY event.created_at DESC, event.event_id DESC
+                LIMIT ?
+            """
+            parameters: tuple[object, ...] = (str(task_id), owner_user_id, limit + 1)
+        else:
+            created_at, event_id = before
+            query = """
+                SELECT event.event_id, event.event_type, event.outcome,
+                       event.created_at, event.metadata_json
+                FROM audit_events AS event
+                WHERE event.subject_type = 'task'
+                  AND event.subject_id = ?
+                  AND (event.created_at < ?
+                       OR (event.created_at = ? AND event.event_id < ?))
+                  AND EXISTS (
+                    SELECT 1
+                    FROM audit_events AS owner_event
+                    WHERE owner_event.event_type = 'task.submitted'
+                      AND owner_event.subject_type = 'task'
+                      AND owner_event.subject_id = event.subject_id
+                      AND owner_event.actor_type = 'user'
+                      AND owner_event.actor_id = ?
+                  )
+                ORDER BY event.created_at DESC, event.event_id DESC
+                LIMIT ?
+            """
+            parameters = (
+                str(task_id), created_at, created_at, event_id,
+                owner_user_id, limit + 1,
+            )
+        with self._connection() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        if not rows:
+            # Distinguish an owned task with no history from a foreign/missing task.
+            if self.get_for_user(owner_user_id, task_id) is None:
+                return None
+            return {"events": [], "has_more": False}
+        page = rows[:limit]
+        return {
+            "events": [
+                {
+                    "event_id": row["event_id"],
+                    "event_type": row["event_type"],
+                    "outcome": row["outcome"],
+                    "created_at": row["created_at"],
+                    "metadata": json.loads(row["metadata_json"]),
+                }
+                for row in page
+            ],
+            "has_more": len(rows) > limit,
+        }
 
     def list_recent(self, limit: int = 50) -> Iterable[TaskRecord]:
         bounded_limit = max(1, min(limit, 100))
@@ -97,6 +255,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
             )
             for row in rows
         ]
@@ -126,6 +286,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
             )
             for row in rows
         ]
@@ -191,6 +353,8 @@ class TaskRepository:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
             )
             for row in page
         ], has_more, cursor_after
@@ -223,6 +387,8 @@ class TaskRepository:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             description=row["description"],
+            priority=TaskPriority(row["priority"]),
+            deadline_at=row["deadline_at"],
         )
 
     def get_owned_task_trace(

@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
@@ -25,7 +25,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.api.telegram_auth import require_telegram_scope
 from mrhub.config import get_settings
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.telegram_pairing import (
     TelegramClientIdentity,
@@ -44,6 +44,7 @@ from mrhub.providers.router import ModelRequest
 from mrhub.security.audit import AuditLogger
 from mrhub.security.auth import AuthenticatedUser
 from mrhub.security.policy import ActionRequest, PolicyDecision, PolicyEngine
+from mrhub.tools.builtins import build_tool_registry
 from mrhub.video_intelligence.generation_jobs import (
     VideoGenerationCancellationConflict,
     VideoGenerationJobRepository,
@@ -75,6 +76,7 @@ router = APIRouter(prefix="/integrations/telegram", tags=["telegram-integration"
 
 TelegramScope = Literal[
     "status:read",
+    "tools:read",
     "tasks:read",
     "tasks:result",
     "tasks:create",
@@ -94,11 +96,11 @@ class PairingChallengeRequest(BaseModel):
     telegram_user_id: int = Field(gt=0)
     client_id: UUID
     label: str = Field(min_length=1, max_length=64)
-    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=10)
+    scopes: list[TelegramScope] = Field(default_factory=lambda: list(DEFAULT_SCOPES), min_length=1, max_length=12)
 
 
 class ClientScopesUpdateRequest(BaseModel):
-    scopes: list[TelegramScope] = Field(min_length=1, max_length=10)
+    scopes: list[TelegramScope] = Field(min_length=1, max_length=12)
 
 
 class PairingChallengeResponse(BaseModel):
@@ -122,6 +124,8 @@ class RefreshRequest(BaseModel):
 class TaskCreateRequest(BaseModel):
     task_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
     description: str = Field(default="", max_length=500)
+    priority: TaskPriority = TaskPriority.NORMAL
+    deadline_at: AwareDatetime | None = None
 
 
 class TelegramAgentPlanPreviewRequest(BaseModel):
@@ -206,6 +210,30 @@ class TelegramAgentPlanPreviewResponse(BaseModel):
     plan_contract: TelegramAgentPlanContract
     execution_started: Literal[False]
     tasks_created: Literal[0]
+
+
+class TelegramToolCatalogItem(BaseModel):
+    """Non-secret, read-only projection of one owner-approved registered tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80, pattern=r"^[a-z][a-z0-9_.-]{0,79}$")
+    description: str = Field(min_length=1, max_length=200)
+    risk_class: Literal["low", "moderate", "high", "prohibited"]
+    required_permissions: list[str] = Field(max_length=32)
+    external_side_effect: bool
+    replay_safety: Literal["retry_safe", "reconcile_required"]
+
+
+class TelegramToolCatalogResponse(BaseModel):
+    """Versioned E8 catalog contract; listing never authorizes or invokes a tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal["telegram_tool_catalog.v1"]
+    tools: list[TelegramToolCatalogItem] = Field(max_length=50)
+    count: int = Field(ge=0, le=50)
+    execution_authorized: Literal[False]
 
 
 class MemorySearchRequest(BaseModel):
@@ -564,6 +592,42 @@ def revoke_telegram_client(
         metadata={"client_id": str(client_id)},
     )
     return {"revoked": True}
+
+
+@router.get("/tools", response_model=TelegramToolCatalogResponse)
+def list_telegram_tools(
+    response: Response,
+    identity: Annotated[
+        TelegramClientIdentity, Depends(require_telegram_scope("tools:read"))
+    ],
+) -> TelegramToolCatalogResponse:
+    """List registered tool metadata without exposing schemas or invoking handlers."""
+    response.headers["Cache-Control"] = "no-store"
+    catalog = build_tool_registry(owner_user_id=identity.owner_user_id).catalog()
+    if len(catalog) > 50:
+        raise HTTPException(
+            status_code=503,
+            detail="Tool catalog exceeds the supported response limit",
+        )
+    items = [
+        TelegramToolCatalogItem.model_validate(
+            {
+                "name": tool["name"],
+                "description": tool["description"],
+                "risk_class": tool["risk_class"],
+                "required_permissions": tool["required_permissions"],
+                "external_side_effect": tool["external_side_effect"],
+                "replay_safety": tool["replay_safety"],
+            }
+        )
+        for tool in catalog
+    ]
+    return TelegramToolCatalogResponse(
+        contract_version="telegram_tool_catalog.v1",
+        tools=items,
+        count=len(items),
+        execution_authorized=False,
+    )
 
 
 @router.get("/status")
@@ -1326,6 +1390,8 @@ def create_telegram_task(
         task_type=payload.task_type,
         description=payload.description,
         risk_class=risk_class,
+        priority=payload.priority,
+        deadline_at=payload.deadline_at,
         status=(
             TaskStatus.WAITING_APPROVAL
             if decision.decision is PolicyDecision.REQUIRE_APPROVAL
@@ -1338,6 +1404,16 @@ def create_telegram_task(
             "description": task.description,
             "risk_class": task.risk_class.value,
             "status": task.status.value,
+            **(
+                {"priority": task.priority.value}
+                if task.priority is not TaskPriority.NORMAL
+                else {}
+            ),
+            **(
+                {"deadline_at": task.deadline_at.isoformat()}
+                if task.deadline_at is not None
+                else {}
+            ),
         },
         ensure_ascii=False,
         sort_keys=True,

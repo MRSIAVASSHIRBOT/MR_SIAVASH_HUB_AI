@@ -10,7 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.context import AgentContextAssembler
-from mrhub.agents.orchestrator import AgentLoopRequest, AgentOrchestrator
+from mrhub.agents.orchestrator import (
+    MAX_TOTAL_OUTPUT_TOKENS,
+    AgentLoopRequest,
+    AgentOrchestrator,
+)
 from mrhub.agents.registry import AgentRegistry
 from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import build_model_router
@@ -45,6 +49,12 @@ class AgentRunRequest(BaseModel):
     max_turns: int = Field(default=3, ge=1, le=3)
     max_output_tokens: int = Field(default=512, ge=1, le=512)
     max_runtime_seconds: int = Field(default=30, ge=1, le=30)
+    max_total_output_tokens: int = Field(
+        default=MAX_TOTAL_OUTPUT_TOKENS,
+        ge=1,
+        le=MAX_TOTAL_OUTPUT_TOKENS,
+        strict=True,
+    )
 
 
 @router.post("/run")
@@ -116,6 +126,7 @@ def run_agent(
             max_turns=payload.max_turns,
             max_output_tokens=payload.max_output_tokens,
             max_runtime_seconds=payload.max_runtime_seconds,
+            max_total_output_tokens=payload.max_total_output_tokens,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Agent input exceeds the supported bounds") from exc
@@ -137,6 +148,8 @@ def run_agent(
         permission_provider=permission_provider,
     )
     outcome = "success" if result.get("status") == "completed" else "failure"
+    resource_usage = result.get("resource_usage")
+    safe_resource_usage = resource_usage if isinstance(resource_usage, dict) else {}
     audit.record(
         event_type="agent.model_run",
         outcome=outcome,
@@ -152,6 +165,18 @@ def run_agent(
             else None,
             "turns": result.get("turns"),
             "tool_calls": result.get("tool_calls"),
+            "model_calls": safe_resource_usage.get("model_calls"),
+            "input_chars_used": safe_resource_usage.get("input_chars_used"),
+            "output_tokens_used_or_reserved": safe_resource_usage.get(
+                "output_tokens_used_or_reserved"
+            ),
+            "output_tokens_unreported_reservation": safe_resource_usage.get(
+                "output_tokens_unreported_reservation"
+            ),
+            "output_tokens_invalid_usage_reservation": safe_resource_usage.get(
+                "output_tokens_invalid_usage_reservation"
+            ),
+            "delegations": safe_resource_usage.get("delegations"),
             "context_passage_count": context.get("passage_count", 0),
             **({"project_id": payload.project_id} if payload.project_id else {}),
         },

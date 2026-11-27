@@ -559,10 +559,18 @@ def test_persisted_plan_endpoint_encrypts_and_stores_the_plan(monkeypatch):
     assert decrypted == {
         "work_order": payload_result["work_order"],
         "plan": payload_result["plan"],
+        "work_order_revision": 1,
+        "plan_revision": 1,
+        "work_order_digest": agent_routes._canonical_plan_digest(
+            {"work_order": payload_result["work_order"]}
+        ),
         "decision_analysis": payload_result["decision_analysis"],
         "planning_assessment": payload_result["planning_assessment"],
         "model_selection": payload_result["model_selection"],
     }
+    assert result["work_order_revision"] == 1
+    assert result["plan_revision"] == 1
+    assert result["work_order_digest"] == decrypted["work_order_digest"]
     assert result["decision_analysis"] == payload_result["decision_analysis"]
     assert result["planning_assessment"] == payload_result["planning_assessment"]
     assert result["model_selection"] == payload_result["model_selection"]

@@ -21,7 +21,14 @@ from mrhub.jobs.payload_envelope import encrypt_plan_payload, load_payload_key
 from mrhub.security.auth import AuthService, _password_digest
 
 
-def _create_owned_plan(client) -> tuple[str, str, str]:
+def _create_owned_plan(
+    client,
+    *,
+    work_order_revision: int = 1,
+    plan_revision: int = 1,
+    persist_revisions: bool = False,
+    stored_work_order_digest: str | None = None,
+) -> tuple[str, str, str]:
     """Persist a minimal encrypted plan for the owner authenticated by this client."""
     authorization = client.headers["Authorization"]
     token = authorization.split(" ", maxsplit=1)[1]
@@ -57,6 +64,16 @@ def _create_owned_plan(client) -> tuple[str, str, str]:
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
     }
+    if persist_revisions:
+        payload.update(
+            {
+                "work_order_revision": work_order_revision,
+                "plan_revision": plan_revision,
+                "work_order_digest": (
+                    stored_work_order_digest or work_order_digest
+                ),
+            }
+        )
     digest = _canonical_plan_digest(payload)
     envelope = encrypt_plan_payload(
         payload,
@@ -74,7 +91,11 @@ def _create_owned_plan(client) -> tuple[str, str, str]:
     return plan_id, digest, work_order_digest
 
 
-def _reference(work_order_digest: str) -> dict[str, object]:
+def _reference(
+    work_order_digest: str,
+    *,
+    work_order_revision: int = 1,
+) -> dict[str, object]:
     return {
         "evidence_id": "evidence-001",
         "criterion_id": "ac_001",
@@ -82,7 +103,7 @@ def _reference(work_order_digest: str) -> dict[str, object]:
         "source_ref": "test-runs/123/checks/1",
         "evidence_digest": "b" * 64,
         "work_order_digest": work_order_digest,
-        "work_order_revision": 1,
+        "work_order_revision": work_order_revision,
         "observed_at": "2026-11-27T00:00:00+00:00",
         "verifier_id": "test.fixture.passed",
     }
@@ -118,7 +139,10 @@ def test_work_order_evidence_api_returns_review_required_without_trusted_verifie
     assert "unregistered_verifier" in report["criteria"][0]["reason_codes"]
     assert body["plan_digest"] == plan_digest
     assert body["work_order_digest"] == work_order_digest
+    assert body["work_order_revision"] == 1
+    assert body["plan_revision"] == 1
     assert body["report"]["work_order_digest"] == work_order_digest
+    assert body["report"]["work_order_revision"] == 1
     assert body["criteria_map"] == {
         "ac_001": "The expected local build check is successful"
     }
@@ -167,6 +191,157 @@ def test_work_order_evidence_api_accepts_only_server_registered_verifier():
     assert report["read_only"] is True
     assert report["execution_started"] is False
     assert report["permissions_changed"] is False
+
+
+def test_plan_creation_persists_revision_metadata_in_encrypted_record(monkeypatch):
+    client = authenticated_client()
+    work_order = WorkOrder(
+        goal="Review one local build result",
+        intent="verify a bounded local build",
+        scope="one non-production repository check",
+        acceptance_criteria=["The expected local build check is successful"],
+        verification_steps=["Read the exact check-run conclusion"],
+        risk_class=RiskClass.LOW,
+    )
+    plan = ExecutionPlan(
+        steps=[
+            PlanStep(
+                step_id="review-build",
+                description="Read one exact build result",
+                verifies_criteria=["The expected local build check is successful"],
+                verification="Confirm the trusted check-run result",
+            )
+        ],
+        rationale="A single deterministic read-only verification step",
+    )
+    planned = {
+        "work_order": work_order.model_dump(mode="json"),
+        "plan": plan.model_dump(mode="json"),
+        "decision_analysis": {},
+        "planning_assessment": {},
+        "model_selection": {},
+        "prompt_templates": {},
+        "capability_assessment": {},
+    }
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent.create_goal_work_order_plan",
+        lambda request, current_user: planned,
+    )
+
+    created = client.post(
+        "/agent/work-orders/plans",
+        json={"goal": "Review one local build result"},
+    )
+
+    assert created.status_code == 200
+    body = created.json()
+    expected_digest = _canonical_plan_digest(
+        {"work_order": work_order.model_dump(mode="json")}
+    )
+    assert body["work_order_revision"] == 1
+    assert body["plan_revision"] == 1
+    assert body["work_order_digest"] == expected_digest
+
+    evaluated = client.post(
+        f"/agent/work-orders/plans/{body['plan_id']}/evidence/evaluate",
+        json={"evidence": []},
+    )
+
+    assert evaluated.status_code == 200
+    evidence_body = evaluated.json()
+    assert evidence_body["work_order_revision"] == 1
+    assert evidence_body["plan_revision"] == 1
+    assert evidence_body["work_order_digest"] == expected_digest
+    assert evidence_body["report"]["work_order_revision"] == 1
+    assert evidence_body["report"]["work_order_digest"] == expected_digest
+
+
+def test_work_order_evidence_api_uses_persisted_non_default_revisions():
+    client = authenticated_client()
+    plan_id, _plan_digest, work_order_digest = _create_owned_plan(
+        client,
+        work_order_revision=3,
+        plan_revision=7,
+        persist_revisions=True,
+    )
+
+    fetched = client.get(f"/agent/work-orders/plans/{plan_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["work_order_revision"] == 3
+    assert fetched.json()["plan_revision"] == 7
+    assert fetched.json()["work_order_digest"] == work_order_digest
+
+    registry = EvidenceVerifierRegistry()
+    registry.register(
+        source_type="test.fixture",
+        verifier_id="test.fixture.passed",
+        verifier=lambda reference, criterion: EvidenceVerification(
+            status=VerifierStatus.PASSED,
+            evidence_digest=reference.evidence_digest,
+            reason_code="trusted_test_verifier",
+        ),
+    )
+    client.app.state.work_order_evidence_verifiers = registry
+    response = client.post(
+        f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
+        json={
+            "evidence": [
+                _reference(work_order_digest, work_order_revision=3)
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["work_order_revision"] == 3
+    assert body["plan_revision"] == 7
+    assert body["report"]["work_order_revision"] == 3
+    assert body["report"]["work_order_digest"] == work_order_digest
+    assert body["report"]["decision"] == "accept"
+
+
+def test_work_order_evidence_api_marks_prior_revision_evidence_stale():
+    client = authenticated_client()
+    plan_id, _plan_digest, work_order_digest = _create_owned_plan(
+        client,
+        work_order_revision=3,
+        plan_revision=7,
+        persist_revisions=True,
+    )
+
+    response = client.post(
+        f"/agent/work-orders/plans/{plan_id}/evidence/evaluate",
+        json={
+            "evidence": [
+                _reference(work_order_digest, work_order_revision=2)
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    report = response.json()["report"]
+    assert report["decision"] == "review_required"
+    assert report["work_order_revision"] == 3
+    assert report["criteria"][0]["status"] == "stale"
+    assert "stale_work_order_reference" in report["criteria"][0]["reason_codes"]
+
+
+def test_work_order_evidence_api_rejects_mismatched_persisted_work_order_digest():
+    client = authenticated_client()
+    plan_id, _plan_digest, _work_order_digest = _create_owned_plan(
+        client,
+        work_order_revision=3,
+        plan_revision=7,
+        persist_revisions=True,
+        stored_work_order_digest="f" * 64,
+    )
+
+    response = client.get(f"/agent/work-orders/plans/{plan_id}")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Plan record failed integrity or schema validation"
+    )
 
 
 def test_work_order_evidence_api_does_not_accept_caller_supplied_status():

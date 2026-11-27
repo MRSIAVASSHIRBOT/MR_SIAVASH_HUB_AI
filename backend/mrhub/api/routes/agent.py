@@ -278,6 +278,10 @@ _PERSISTED_PLAN_METADATA_FIELDS = (
     "model_selection",
     "prompt_templates",
 )
+_PERSISTED_PLAN_REVISION_FIELDS = frozenset(
+    {"work_order_revision", "plan_revision", "work_order_digest"}
+)
+_MAX_PERSISTED_PLAN_REVISION = 2_147_483_647
 
 
 def _extract_persisted_plan_metadata(payload: dict[str, object]) -> dict[str, object]:
@@ -291,6 +295,47 @@ def _extract_persisted_plan_metadata(payload: dict[str, object]) -> dict[str, ob
             raise PayloadEnvelopeError("Persisted plan assessment metadata is invalid")
         metadata[field] = value
     return metadata
+
+
+def _extract_persisted_plan_revisions(
+    payload: dict[str, object],
+    work_order: WorkOrder,
+) -> dict[str, object]:
+    """Validate immutable revisions and the canonical WorkOrder digest.
+
+    Older encrypted records omit these fields and are read as revision 1. New
+    records persist all three fields inside the authenticated encrypted payload.
+    """
+    present_fields = _PERSISTED_PLAN_REVISION_FIELDS.intersection(payload)
+    if present_fields and present_fields != _PERSISTED_PLAN_REVISION_FIELDS:
+        raise PayloadEnvelopeError("Persisted plan revision metadata is incomplete")
+
+    work_order_revision = payload.get("work_order_revision", 1)
+    plan_revision = payload.get("plan_revision", 1)
+    for value in (work_order_revision, plan_revision):
+        if (
+            type(value) is not int
+            or not 1 <= value <= _MAX_PERSISTED_PLAN_REVISION
+        ):
+            raise PayloadEnvelopeError("Persisted plan revision metadata is invalid")
+
+    expected_digest = _canonical_plan_digest(
+        {"work_order": work_order.model_dump(mode="json")}
+    )
+    stored_digest = payload.get("work_order_digest", expected_digest)
+    if (
+        not isinstance(stored_digest, str)
+        or len(stored_digest) != 64
+        or any(character not in "0123456789abcdef" for character in stored_digest)
+        or not hmac.compare_digest(stored_digest, expected_digest)
+    ):
+        raise PayloadEnvelopeError("Persisted WorkOrder digest does not match its content")
+
+    return {
+        "work_order_revision": work_order_revision,
+        "plan_revision": plan_revision,
+        "work_order_digest": stored_digest,
+    }
 
 
 @router.get("/prompts")
@@ -535,9 +580,17 @@ def create_persisted_goal_work_order_plan(
     plan_id = str(uuid4())
     try:
         plan_metadata = _extract_persisted_plan_metadata(planned)
+        revision_metadata = {
+            "work_order_revision": 1,
+            "plan_revision": 1,
+            "work_order_digest": _canonical_plan_digest(
+                {"work_order": planned["work_order"]}
+            ),
+        }
         payload = {
             "work_order": planned["work_order"],
             "plan": planned["plan"],
+            **revision_metadata,
             **plan_metadata,
         }
         envelope = encrypt_plan_payload(
@@ -574,6 +627,7 @@ def create_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": planned["work_order"],
         "plan": planned["plan"],
+        **revision_metadata,
         **plan_metadata,
         "capability_assessment": planned["capability_assessment"],
         "risk_class_is_authoritative": False,
@@ -624,15 +678,25 @@ def get_persisted_goal_work_order_plan(
             key=key,
         )
         required_fields = {"work_order", "plan"}
-        allowed_fields = required_fields | set(_PERSISTED_PLAN_METADATA_FIELDS)
+        allowed_fields = (
+            required_fields
+            | set(_PERSISTED_PLAN_METADATA_FIELDS)
+            | _PERSISTED_PLAN_REVISION_FIELDS
+        )
         if not required_fields.issubset(payload) or not set(payload).issubset(allowed_fields):
             raise PayloadEnvelopeError("Agent plan payload shape is invalid")
         plan_metadata = _extract_persisted_plan_metadata(payload)
         work_order = WorkOrder.model_validate(payload["work_order"])
         plan = ExecutionPlan.model_validate(payload["plan"])
+        revision_metadata = _extract_persisted_plan_revisions(payload, work_order)
         canonical = {
             "work_order": work_order.model_dump(mode="json"),
             "plan": plan.model_dump(mode="json"),
+            **{
+                field: payload[field]
+                for field in _PERSISTED_PLAN_REVISION_FIELDS
+                if field in payload
+            },
             **plan_metadata,
         }
         digest = _canonical_plan_digest(canonical)
@@ -672,6 +736,7 @@ def get_persisted_goal_work_order_plan(
         "expires_at": record.expires_at,
         "work_order": work_order.model_dump(mode="json"),
         "plan": plan.model_dump(mode="json"),
+        **revision_metadata,
         **{
             key: value
             for key, value in plan_metadata.items()
@@ -748,7 +813,11 @@ def evaluate_persisted_work_order_evidence(
             key=key,
         )
         required_fields = {"work_order", "plan"}
-        allowed_fields = required_fields | set(_PERSISTED_PLAN_METADATA_FIELDS)
+        allowed_fields = (
+            required_fields
+            | set(_PERSISTED_PLAN_METADATA_FIELDS)
+            | _PERSISTED_PLAN_REVISION_FIELDS
+        )
         if (
             not required_fields.issubset(stored_payload)
             or not set(stored_payload).issubset(allowed_fields)
@@ -757,9 +826,18 @@ def evaluate_persisted_work_order_evidence(
         plan_metadata = _extract_persisted_plan_metadata(stored_payload)
         work_order = WorkOrder.model_validate(stored_payload["work_order"])
         plan = ExecutionPlan.model_validate(stored_payload["plan"])
+        revision_metadata = _extract_persisted_plan_revisions(
+            stored_payload,
+            work_order,
+        )
         canonical = {
             "work_order": work_order.model_dump(mode="json"),
             "plan": plan.model_dump(mode="json"),
+            **{
+                field: stored_payload[field]
+                for field in _PERSISTED_PLAN_REVISION_FIELDS
+                if field in stored_payload
+            },
             **plan_metadata,
         }
         digest = _canonical_plan_digest(canonical)
@@ -798,12 +876,12 @@ def evaluate_persisted_work_order_evidence(
         )
         for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
     )
-    work_order_digest = _canonical_plan_digest(
-        {"work_order": work_order.model_dump(mode="json")}
-    )
+    work_order_digest = str(revision_metadata["work_order_digest"])
+    work_order_revision = int(revision_metadata["work_order_revision"])
+    plan_revision = int(revision_metadata["plan_revision"])
     snapshot = WorkOrderSnapshot(
         work_order_id=f"plan-{record.plan_id}",
-        revision=1,
+        revision=work_order_revision,
         digest=work_order_digest,
         criteria=criteria,
     )
@@ -856,8 +934,8 @@ def evaluate_persisted_work_order_evidence(
         "plan_id": record.plan_id,
         "plan_digest": record.plan_digest,
         "work_order_digest": work_order_digest,
-        "work_order_revision": 1,
-        "plan_revision": 1,
+        "work_order_revision": work_order_revision,
+        "plan_revision": plan_revision,
         "criteria_map": {
             f"ac_{index:03d}": criterion
             for index, criterion in enumerate(work_order.acceptance_criteria, start=1)
