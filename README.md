@@ -86,6 +86,10 @@ pytest
 
 A read-only, standard-library host report is available for local model planning. From the repository root, run `python -m mrhub.diagnostics.hardware` in the configured project environment. See `docs/operations/hardware-diagnostics.md` for scope and limitations. The report is printed locally and is not uploaded.
 
+## PromptForge Studio
+
+The local operator workspace includes **PromptForge Studio** at `/ui/promptforge.html`, a browser-local workbench for image, video, text, and agent prompt construction, templates, structural evaluation, and local prompt-library backup/import. It is a static first phase: it does not call model providers, generate media, publish content, or synchronize prompt history to Hub memory. See [PromptForge integration notes](docs/features/PROMPTFORGE.md).
+
 ## Initial capability domains
 1. AI Core and Model Router
 2. Agent Orchestrator
