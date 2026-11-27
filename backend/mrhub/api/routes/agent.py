@@ -40,7 +40,7 @@ from mrhub.agents.work_order_intelligence import assess_work_order_intelligence
 from mrhub.agents.workflow_repository import AgentWorkflowRepository
 from mrhub.agents.workflow_runner import AgentWorkflowRunner
 from mrhub.api.dependencies import require_user
-from mrhub.api.routes.models import build_model_router
+from mrhub.api.routes.models import build_model_router, build_owner_scoped_kimi_request_gate
 from mrhub.capabilities.registry import CapabilityRegistry
 from mrhub.config import get_settings
 from mrhub.domain.tasks import RiskClass, TaskRecord
@@ -156,7 +156,9 @@ def _build_owner_agent_core(
             return False
 
     return AgentCore(
-        build_model_router(),
+        build_model_router(
+            before_generate=build_owner_scoped_kimi_request_gate(owner_user_id)
+        ),
         registry,
         permission_provider=lambda: permissions.active_permissions(owner_user_id),
         approval_validator=lambda approval_id, tool_name, payload, grants: resolve_approval(
