@@ -6,7 +6,7 @@ import json
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from mrhub.agents.context import AgentContextAssembler
@@ -62,6 +62,7 @@ def run_agent(
     payload: AgentRunRequest,
     user: Annotated[AuthenticatedUser, Depends(require_user)],
     http_request: Request,
+    response: Response,
 ) -> dict[str, object]:
     """Run one explicitly bounded model loop; no stub or provider fallback is permitted."""
     settings = get_settings()
@@ -148,6 +149,10 @@ def run_agent(
         should_cancel=worker_control.is_stopped,
         permission_provider=permission_provider,
     )
+    if result.get("error_code") == "provider_rate_limited":
+        retry_after = result.get("retry_after_seconds")
+        if type(retry_after) is int and 1 <= retry_after <= 86_400:
+            response.headers["Retry-After"] = str(retry_after)
     outcome = "success" if result.get("status") == "completed" else "failure"
     resource_usage = result.get("resource_usage")
     safe_resource_usage = resource_usage if isinstance(resource_usage, dict) else {}
