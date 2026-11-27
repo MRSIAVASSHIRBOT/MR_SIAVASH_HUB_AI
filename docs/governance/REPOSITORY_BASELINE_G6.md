@@ -21,22 +21,39 @@ The inventory does **not** claim a complete recursive tree listing, exhaustive d
 | [MR_SIAVASH_EL_AGENT](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT) | Standalone local/device runtime for Windows and Android | Python 3.11+ for Windows/local runtime; Android Gradle/Kotlin module | Python 3.11/3.12 on Ubuntu and Windows; PowerShell syntax validation; Android debug build/unit test workflow | Hosted CI is not physical Windows/Android acceptance; README says Hub Staging and physical-device acceptance remain pending |
 | [MR_SIAVASH_AI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI) | Public digital identity, static website, learning workspace and public Gateway | Static Persian-first web app; Cloudflare Worker Gateway package using Node.js | Gateway CI uses Node.js 22, syntax checks and Node test runner under `cloudflare/gateway`; static site quality/Pages has separate deployment evidence | Public/Preview/Production source and D1 state require fresh control-plane readback; historical notes are not current release authorization |
 
-### Latest exact-main source and CI checkpoint — 2026-11-27
+### Fresh exact-main source, tree and Actions checkpoint — 2026-11-27 16:15 UTC
 
-This table supersedes the initial portfolio heads/check-run snapshots above for the current default-branch state observed on 2026-11-27. It remains a GitHub source/Actions snapshot, not live deployment, Telegram or physical-device acceptance.
+This checkpoint supersedes the older SHA/check-run table and is based on the current default-branch refs fetched directly from GitHub. All four recursive Git trees returned `truncated=false`; file counts below are blob counts, not code-line counts.
 
-| Repository | Current `main` SHA | Exact-head check-runs | Pending / failed | Open PRs observed | `main` protection |
-|---|---|---:|---|---|---|
-| HUB | `47a8e4fee206ef72e928fa3ce381a52ee4324921` | 14 success; one duplicate scan run cancelled after a successful scan completed | 0 pending; 0 failures | #641 H10 API, #639 governance, #637 PromptForge, #636 portfolio status, #618 Draft Render isolation | `protected=false` |
-| EL_AI | `368cbdf808f9bde672edee4f8fef6ad3fe8e8577` | 4 success | 0 pending; 0 failures | None | `protected=false` |
-| EL_AGENT | `d98aaff9593b7ffac996e0841c1232bae1dee4df` | 5 success | 0 pending; 0 failures | None | `protected=false` |
-| MR_SIAVASH_AI | `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a` | 8 success | 0 pending; 0 failures | #318 Dependabot workflow-action update | `protected=false` |
+| Repository | Exact `main` SHA | Recursive tree | Exact-head Actions observed | Open PRs observed |
+|---|---|---:|---|---:|
+| HUB | `0c2bf63b5ac55477cd13f12bd0f673e320164392` | 550 files; complete | 7 successful runs; 1 CI run still in progress | 6 |
+| EL_AI | `43765c5749b18e3c29c3987e4ed58884e8a80788` | 103 files; complete | CI, Workflow Security Audit and OpenSSF Scorecard: 3 successful | 1 |
+| EL_AGENT | `d98aaff9593b7ffac996e0841c1232bae1dee4df` | 85 files; complete | Python/Windows/Linux CI and Android workflow: 2 successful | 0 |
+| MR_SIAVASH_AI | `2a37c00d06b34a29c78c8b6b3aa9da3f0dd6d00a` | 193 files; complete | 6 successful: Gateway CI, Preview/Gateway runtime smoke, Workflow Security, OpenSSF, Pages quality/deploy workflow | 0 |
 
-Source links:
-- [HUB main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions)
-- [EL_AI main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions)
-- [EL_AGENT main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions)
-- [Website main checks](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions)
+Exact-head references:
+- HUB: [CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46029627968), [Backend CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46029627894), [Workflow Security Audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46029627908), [Windows validation](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46029627885), [Video integration](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46029627914), [OpenSSF](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_HUB_AI/actions/runs/46029628083). At observation time CI was still in progress; the other listed checks succeeded.
+- EL_AI: [CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45994569039), [Workflow Security Audit](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45994568968), [OpenSSF](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AI/actions/runs/45994569015).
+- EL_AGENT: [CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/45896743567), [Android](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_EL_AGENT/actions/runs/45896743467).
+- MR_SIAVASH_AI: [Gateway CI](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518569), [Preview runtime smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518971), [Gateway runtime smoke](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518550), [Workflow Security](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518989), [OpenSSF](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896519002), [Quality/Pages workflow](https://github.com/MRSIAVASSHIRBOT/MR_SIAVASH_AI/actions/runs/45896518955).
+
+Open work observed on HUB: #657 (H8 readiness consistency), #658 (H23 shared execution budget), #650 (G10/G11 portfolio catalogue), #637 (PromptForge integration), #636 (portfolio status refresh), and #618 (Draft Render proposal). EL_AI has #149 (Telegram local polling delivery outbox). The latter branches are work-in-progress evidence, not merged mainline capability.
+
+The branch-protection endpoint could not be read through the current GitHub integration (403). Therefore this checkpoint does not assert current protection state. The prior G0–G12 snapshot recorded `protected=false`; an administrator must freshly verify effective rules before release.
+
+### Recursive tree and build-input findings
+
+| Repository | Key configuration/manifests found in the complete tree | Lock/constraint artifacts found |
+|---|---|---|
+| HUB | `.env.example`, `pyproject.toml`, `render.yaml`, `cloudflare/gateway/wrangler.toml` | None among the inspected standard lock/constraints filenames |
+| EL_AI | `.env.example`, `pyproject.toml`, `cloudflare/telegram-edge/package.json` | None among the inspected standard lock/constraints filenames |
+| EL_AGENT | `pyproject.toml`, root and Android `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties` | No Python/Gradle lock or wrapper artifacts found; the Android workflow installs Gradle 8.9 directly |
+| MR_SIAVASH_AI | `cloudflare/gateway/package.json` | No Node lockfile found |
+
+The check covered common Python lock/constraints files (`uv.lock`, `poetry.lock`, `Pipfile.lock`, `requirements*.txt`, `constraints*.txt`), Node lockfiles, Go/Cargo lockfiles, Gradle wrapper JAR/properties and Gradle version catalogs. It did not attempt to invent or adopt a new dependency manager. Direct dependencies remain declared in the existing manifests; full transitive resolution is not pinned in the checked tree.
+
+The file counts and artifact-name scan are repository-tree evidence only. They do not replace a source-level audit of every module or prove a clean-room reproducible build. In particular, the lack of a Gradle Wrapper in EL_AGENT means local Android build tooling is less self-contained than a wrapper-pinned project.
 
 ### H10 API merge — post-merge exact-main checkpoint — 2026-11-27
 
