@@ -103,6 +103,7 @@ def test_agent_run_uses_owner_scoped_context_and_returns_freshness_citations(mon
         "input_chars_used": len(provider.requests[0].input_text),
         "model_calls": 1,
         "output_tokens_unreported_reservation": 128,
+        "output_tokens_invalid_usage_reservation": 0,
         "output_tokens_used_or_reserved": 128,
         "provider_mode": "local",
         "selected_provider": "test-local",
