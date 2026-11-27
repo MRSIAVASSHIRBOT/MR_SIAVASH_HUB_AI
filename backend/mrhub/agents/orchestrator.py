@@ -301,7 +301,7 @@ class AgentOrchestrator:
                         max_output_tokens=reserved_output_tokens,
                     ),
                 )
-            except (LookupError, ProviderError):
+            except (LookupError, ProviderError, ValidationError):
                 budget.settle_output(reserved_output_tokens, None)
                 if should_cancel is not None and should_cancel():
                     return finish(
