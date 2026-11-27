@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
 
 from mrhub.agents.awi_planner import PlanningError, generate_execution_plan
@@ -25,7 +25,7 @@ from mrhub.api.dependencies import require_user
 from mrhub.api.routes.models import _enforce_kimi_request_limit, build_model_router
 from mrhub.api.telegram_auth import require_telegram_scope
 from mrhub.config import get_settings
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.integrations.telegram_pairing import (
     TelegramClientIdentity,
@@ -122,6 +122,8 @@ class RefreshRequest(BaseModel):
 class TaskCreateRequest(BaseModel):
     task_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
     description: str = Field(default="", max_length=500)
+    priority: TaskPriority = TaskPriority.NORMAL
+    deadline_at: AwareDatetime | None = None
 
 
 class TelegramAgentPlanPreviewRequest(BaseModel):
@@ -1326,6 +1328,8 @@ def create_telegram_task(
         task_type=payload.task_type,
         description=payload.description,
         risk_class=risk_class,
+        priority=payload.priority,
+        deadline_at=payload.deadline_at,
         status=(
             TaskStatus.WAITING_APPROVAL
             if decision.decision is PolicyDecision.REQUIRE_APPROVAL
@@ -1338,6 +1342,16 @@ def create_telegram_task(
             "description": task.description,
             "risk_class": task.risk_class.value,
             "status": task.status.value,
+            **(
+                {"priority": task.priority.value}
+                if task.priority is not TaskPriority.NORMAL
+                else {}
+            ),
+            **(
+                {"deadline_at": task.deadline_at.isoformat()}
+                if task.deadline_at is not None
+                else {}
+            ),
         },
         ensure_ascii=False,
         sort_keys=True,
