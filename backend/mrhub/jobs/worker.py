@@ -18,7 +18,7 @@ from typing import ClassVar
 from uuid import UUID, uuid4
 
 from mrhub.content.dispatcher import ContentScheduleDispatcher
-from mrhub.domain.tasks import RiskClass, TaskRecord, TaskStatus
+from mrhub.domain.tasks import RiskClass, TaskPriority, TaskRecord, TaskStatus
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.leases import LeaseError, LeaseManager, WorkerLease
 from mrhub.jobs.retry_policy import RetryPolicy, validate_retry_error_code
