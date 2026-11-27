@@ -17,7 +17,7 @@ from mrhub.agents.orchestrator import (
 )
 from mrhub.agents.registry import AgentRegistry
 from mrhub.api.dependencies import require_user
-from mrhub.api.routes.models import build_model_router
+from mrhub.api.routes.models import build_model_router, build_owner_scoped_kimi_request_gate
 from mrhub.config import get_settings
 from mrhub.infrastructure.database import TaskRepository
 from mrhub.jobs.worker_control import WorkerControlRepository
@@ -80,6 +80,7 @@ def run_agent(
         provider_mode=provider_mode,
         include_stub=False,
         max_timeout_seconds=30.0,
+        before_generate=build_owner_scoped_kimi_request_gate(user.user_id),
     )
     try:
         model_router.select(
