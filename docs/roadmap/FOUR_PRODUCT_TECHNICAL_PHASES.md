@@ -7,6 +7,7 @@
 - **Requirement catalogue:** [G2 requirements](../requirements/ECOSYSTEM_REQUIREMENTS.md)
 - **Use cases:** [G3 use-case catalogue](../architecture/USE_CASE_CATALOG.md)
 - **Ownership:** [G5 RACI](../governance/OWNERSHIP_RACI.md)
+- **Expanded owner taxonomy:** [Extended phase crosswalk H0–H32 / E0–E21 / L0–L19 / A0–A22 / X0–X23 / I0–I15 / ML0–ML17](EXTENDED_PHASE_CROSSWALK.md)
 
 ## 1. Scope and phase accounting
 
