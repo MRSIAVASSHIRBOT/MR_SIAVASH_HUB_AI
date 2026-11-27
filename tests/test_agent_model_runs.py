@@ -50,13 +50,22 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     client = authenticated_client()
     provider = ScriptedProvider()
     router = _router(provider)
+    captured_worker_router_options = {}
+
+    def build_worker_router(**kwargs):
+        captured_worker_router_options.update(kwargs)
+        return ModelRouter(
+            registry=router.registry,
+            before_generate=kwargs.get("before_generate"),
+        )
+
     monkeypatch.setattr(
         "mrhub.api.routes.agent_model_runs.build_model_router",
         lambda **kwargs: router,
     )
     monkeypatch.setattr(
         "mrhub.jobs.model_run_dispatch.build_model_router",
-        lambda **kwargs: router,
+        build_worker_router,
     )
 
     payload = {
@@ -92,6 +101,29 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert worker_result is not None
     assert worker_result.status.value == "succeeded"
     assert provider.calls == 1
+    quota_gate = captured_worker_router_options.get("before_generate")
+    assert callable(quota_gate)
+
+    # The worker must bind the quota gate to the durable workflow owner, not
+    # to a global bucket or a task-supplied identifier.
+    from mrhub.api.routes import models
+    from mrhub.providers.router import ModelSelection
+
+    consumed_owners = []
+
+    class RecordingLimiter:
+        def consume(self, owner_id):
+            consumed_owners.append(owner_id)
+            return None
+
+    monkeypatch.setattr(models, "_get_kimi_request_limiter", lambda: RecordingLimiter())
+    quota_gate(ModelSelection(
+        provider="moonshot",
+        model="quota-test",
+        local=False,
+        rationale="test the captured owner-scoped worker gate",
+    ))
+    assert consumed_owners == ["local-owner"]
 
     completed = client.get(f"/agent/model-run-workflows/{accepted['workflow_id']}")
     assert completed.status_code == 200
