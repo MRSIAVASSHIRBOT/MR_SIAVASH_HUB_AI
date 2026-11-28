@@ -748,9 +748,10 @@ def test_agent_run_stops_before_kimi_inference_when_owner_quota_is_exhausted(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "budget_exhausted"
-    assert body["error_code"] == "provider_rate_limited"
-    assert body["retry_after_seconds"] == 42
+    execution = body["execution"]
+    assert execution["status"] == "budget_exhausted"
+    assert execution["error_code"] == "provider_rate_limited"
+    assert execution["retry_after_seconds"] == 42
     assert response.headers["Retry-After"] == "42"
     assert provider_calls == []
     assert health_calls == []
