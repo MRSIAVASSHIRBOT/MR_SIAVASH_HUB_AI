@@ -16,7 +16,7 @@ The initial release is designed for one primary user while keeping clean boundar
 
 **Governance & delivery:** [G0–G12 baseline](docs/GOVERNANCE_PRODUCT_STRATEGY_G0_G12.md) · [ADR-0051](docs/architecture/decisions/ADR-0051-four-product-ecosystem-scope-and-telegram-ownership.md) · [ADR index](docs/architecture/ADR_INDEX.md) · [ADR template](docs/architecture/decisions/ADR_TEMPLATE.md) · [G12 readiness checklist](docs/governance/LEGAL_OPERATIONAL_READINESS_CHECKLIST.md) · [G9 risk register](docs/governance/ECOSYSTEM_RISK_DEPENDENCY_REGISTER.md) · [G11 delivery standard](docs/management/DELIVERY_MANAGEMENT_STANDARD.md) · [Work Order registry](docs/management/ECOSYSTEM_WORK_ORDERS.md) · [Work Order template](docs/management/WORK_ORDER_TEMPLATE.md).
 
-**Product & requirements:** [G0/G1 product strategy](docs/product/PRODUCT_STRATEGY_G0_G1.md) · [FR/NFR requirements](docs/requirements/ECOSYSTEM_REQUIREMENTS.md) · [Use cases](docs/architecture/USE_CASE_CATALOG.md) · [Ownership RACI](docs/governance/OWNERSHIP_RACI.md).
+**Product & requirements:** [G0/G1 product strategy](docs/product/PRODUCT_STRATEGY_G0_G1.md) · [G10 portfolio catalogue](docs/product/PRODUCT_PORTFOLIO_CATALOG_G10.md) · [G11 milestone register](docs/management/PORTFOLIO_MILESTONE_REGISTER_G11.md) · [FR/NFR requirements](docs/requirements/ECOSYSTEM_REQUIREMENTS.md) · [Use cases](docs/architecture/USE_CASE_CATALOG.md) · [Ownership RACI](docs/governance/OWNERSHIP_RACI.md).
 
 **Technical roadmap:** [76-phase four-product inventory](docs/roadmap/FOUR_PRODUCT_TECHNICAL_PHASES.md).
 
