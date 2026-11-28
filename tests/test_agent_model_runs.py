@@ -50,13 +50,22 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     client = authenticated_client()
     provider = ScriptedProvider()
     router = _router(provider)
+    captured_worker_router_options = {}
+
+    def build_worker_router(**kwargs):
+        captured_worker_router_options.update(kwargs)
+        return ModelRouter(
+            registry=router.registry,
+            before_generate=kwargs.get("before_generate"),
+        )
+
     monkeypatch.setattr(
         "mrhub.api.routes.agent_model_runs.build_model_router",
         lambda **kwargs: router,
     )
     monkeypatch.setattr(
         "mrhub.jobs.model_run_dispatch.build_model_router",
-        lambda **kwargs: router,
+        build_worker_router,
     )
 
     payload = {
@@ -92,6 +101,28 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert worker_result is not None
     assert worker_result.status.value == "succeeded"
     assert provider.calls == 1
+    quota_gate = captured_worker_router_options.get("before_generate")
+    assert callable(quota_gate)
+
+    # The worker must bind the quota gate to the durable workflow owner, not
+    # to a global bucket or a task-supplied identifier.
+    from mrhub.api.routes import models
+    from mrhub.providers.router import ModelSelection
+
+    consumed_owners = []
+
+    class RecordingLimiter:
+        def consume(self, owner_id):
+            consumed_owners.append(owner_id)
+
+    monkeypatch.setattr(models, "_get_kimi_request_limiter", lambda: RecordingLimiter())
+    quota_gate(ModelSelection(
+        provider="moonshot",
+        model="quota-test",
+        local=False,
+        rationale="test the captured owner-scoped worker gate",
+    ))
+    assert consumed_owners == ["local-owner"]
 
     completed = client.get(f"/agent/model-run-workflows/{accepted['workflow_id']}")
     assert completed.status_code == 200
@@ -106,6 +137,107 @@ def test_queued_model_run_is_encrypted_idempotent_and_worker_executed(monkeypatc
     assert idempotency is not None
     assert idempotency.status == "completed"
 
+
+
+def test_durable_worker_stops_before_kimi_when_owner_quota_is_exhausted(monkeypatch):
+    from mrhub.api.routes import models
+
+    client = authenticated_client()
+    provider_calls = {"health": 0, "generate": 0}
+
+    class MoonshotProvider:
+        descriptor = ModelDescriptor(
+            provider="moonshot",
+            model="quota-worker-test",
+            capability=ModelCapability(text=True),
+            available=True,
+            local=False,
+            priority=1,
+        )
+
+        def health(self, timeout_seconds=2.0):
+            provider_calls["health"] += 1
+            return ProviderHealth(available=True, reason_code="ready")
+
+        def generate(self, request):
+            provider_calls["generate"] += 1
+            return ProviderResponse(
+                provider="moonshot",
+                model="quota-worker-test",
+                output_text=json.dumps(
+                    {"type": "final", "answer": "must not be generated"}
+                ),
+                output_tokens=3,
+            )
+
+    class ExhaustedOwnerQuota:
+        def consume(self, owner_id):
+            assert owner_id == "local-owner"
+            return 31
+
+    monkeypatch.setattr(
+        models,
+        "_get_kimi_request_limiter",
+        lambda: ExhaustedOwnerQuota(),
+    )
+    base_router = ModelRouter()
+    base_router.register_provider(MoonshotProvider())
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_model_runs.build_model_router",
+        lambda **_kwargs: base_router,
+    )
+
+    def build_worker_router(**kwargs):
+        return ModelRouter(
+            registry=base_router.registry,
+            before_generate=kwargs.get("before_generate"),
+        )
+
+    monkeypatch.setattr(
+        "mrhub.jobs.model_run_dispatch.build_model_router",
+        build_worker_router,
+    )
+
+    submitted = client.post(
+        "/agent/model-runs",
+        headers={"Idempotency-Key": "durable-kimi-quota-001"},
+        json={
+            "goal": "Use the explicitly selected remote provider.",
+            "provider_mode": "remote",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 1,
+            "max_output_tokens": 64,
+        },
+    )
+    assert submitted.status_code == 202
+    workflow_id = submitted.json()["workflow_id"]
+
+    worker_result = run_worker_once()
+    assert worker_result is not None
+    assert worker_result.status.value == "succeeded"
+    assert provider_calls == {"health": 0, "generate": 0}
+
+    workflow = client.get(f"/agent/model-run-workflows/{workflow_id}")
+    assert workflow.status_code == 200
+    execution = workflow.json()["result"]["execution"]
+    assert execution["status"] == "budget_exhausted"
+    assert execution["error_code"] == "provider_rate_limited"
+    assert execution["retry_after_seconds"] == 31
+    assert execution["resource_usage"]["output_tokens_remaining"] == 4096
+    assert execution["resource_usage"]["output_tokens_unreported_reservation"] == 0
+
+    idempotency = IdempotencyRepository(get_settings().database_path).get(
+        "agent.model_run:local-owner", "durable-kimi-quota-001"
+    )
+    assert idempotency is not None
+    assert idempotency.status == "completed"
+
+    # A recorded quota rejection is a terminal, non-replayable result for this
+    # durable model/tool loop. A later worker poll must not send it again.
+    assert run_worker_once() is None
+    assert provider_calls == {"health": 0, "generate": 0}
 
 
 def test_queued_model_run_cancellation_is_owner_scoped_and_removes_request_ciphertext(monkeypatch):

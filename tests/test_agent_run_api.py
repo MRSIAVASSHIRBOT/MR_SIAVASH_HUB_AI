@@ -671,11 +671,92 @@ def test_agent_run_maps_remote_mode_to_registered_kimi_provider(monkeypatch):
     )
 
     assert response.status_code == 503
-    assert captured == {
-        "provider_mode": "kimi",
-        "include_stub": False,
-        "max_timeout_seconds": 30.0,
-    }
+    assert captured["provider_mode"] == "kimi"
+    assert captured["include_stub"] is False
+    assert captured["max_timeout_seconds"] == 30.0
+    assert callable(captured["before_generate"])
+
+
+
+
+def test_agent_run_stops_before_kimi_inference_when_owner_quota_is_exhausted(
+    monkeypatch,
+):
+    from mrhub.api.routes import models
+
+    client = authenticated_client()
+    captured = {}
+    provider_calls = []
+    health_calls = []
+
+    class MoonshotProvider:
+        descriptor = ModelDescriptor(
+            provider="moonshot",
+            model="quota-integration-test",
+            capability=ModelCapability(text=True),
+            available=True,
+            local=False,
+            priority=1,
+        )
+
+        def health(self, timeout_seconds=2.0):
+            health_calls.append(timeout_seconds)
+            return ProviderHealth(available=True, reason_code="ready")
+
+        def generate(self, request):
+            provider_calls.append(request)
+            return ProviderResponse(
+                provider="moonshot",
+                model="quota-integration-test",
+                output_text=json.dumps({"type": "final", "answer": "must not run"}),
+            )
+
+    class LimitedOwner:
+        def consume(self, owner_id):
+            assert owner_id == "local-owner"
+            return 42
+
+    monkeypatch.setattr(
+        models,
+        "_get_kimi_request_limiter",
+        lambda: LimitedOwner(),
+    )
+
+    def build_router(**kwargs):
+        captured.update(kwargs)
+        router = ModelRouter(before_generate=kwargs["before_generate"])
+        router.register_provider(MoonshotProvider())
+        return router
+
+    monkeypatch.setattr(
+        "mrhub.api.routes.agent_run.build_model_router",
+        build_router,
+    )
+
+    response = client.post(
+        "/agent/run",
+        json={
+            "goal": "Use the explicitly selected remote provider.",
+            "provider_mode": "remote",
+            "include_memory": False,
+            "include_knowledge": False,
+            "max_turns": 1,
+            "max_output_tokens": 64,
+            "max_total_output_tokens": 64,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    execution = body["execution"]
+    assert execution["status"] == "budget_exhausted"
+    assert execution["error_code"] == "provider_rate_limited"
+    assert execution["retry_after_seconds"] == 42
+    assert response.headers["Retry-After"] == "42"
+    assert provider_calls == []
+    assert health_calls == []
+    assert callable(captured["before_generate"])
+
 
 def test_agent_run_rejects_aggregate_output_budget_above_server_limit():
     client = authenticated_client()

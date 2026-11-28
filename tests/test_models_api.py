@@ -431,3 +431,47 @@ def test_build_model_router_rejects_invalid_global_timeout_caps(timeout):
 
     with pytest.raises(ValueError, match="Provider timeout cap"):
         build_model_router(max_timeout_seconds=timeout)
+
+
+def test_owner_kimi_request_gate_is_shared_per_owner_and_provider_specific(monkeypatch):
+    from mrhub.api.routes import models
+    from mrhub.providers.router import ModelSelection
+
+    class FakeLimiter:
+        def __init__(self):
+            self.calls = []
+
+        def consume(self, owner_id):
+            self.calls.append(owner_id)
+            return 23 if len(self.calls) == 2 else None
+
+    limiter = FakeLimiter()
+    monkeypatch.setattr(models, "_get_kimi_request_limiter", lambda: limiter)
+    gate = models.build_owner_scoped_kimi_request_gate("owner-quota-test")
+
+    gate(ModelSelection(
+        provider="ollama", model="local", local=True, rationale="local"
+    ))
+    assert limiter.calls == []
+
+    gate(ModelSelection(
+        provider="moonshot", model="kimi", local=False, rationale="remote"
+    ))
+    assert limiter.calls == ["owner-quota-test"]
+
+    with pytest.raises(models.ProviderRateLimitError) as captured:
+        gate(ModelSelection(
+            provider="moonshot", model="kimi", local=False, rationale="remote"
+        ))
+    assert captured.value.retry_after_seconds == 23
+    assert limiter.calls == ["owner-quota-test", "owner-quota-test"]
+
+
+def test_owner_kimi_request_gate_rejects_invalid_owner_id():
+    from mrhub.api.routes.models import build_owner_scoped_kimi_request_gate
+
+    with pytest.raises(ValueError, match="owner identifier"):
+        build_owner_scoped_kimi_request_gate("")
+
+
+

@@ -15,6 +15,7 @@ from mrhub.prompts.registry import DEFAULT_PROMPT_REGISTRY, PromptRegistry
 from mrhub.providers.base import (
     MAX_PROVIDER_INPUT_CHARS,
     ProviderError,
+    ProviderRateLimitError,
     ProviderRequest,
 )
 from mrhub.providers.router import ModelRequest, ModelRouter
@@ -309,6 +310,16 @@ class AgentOrchestrator:
                         max_output_tokens=reserved_output_tokens,
                     ),
                 )
+            except ProviderRateLimitError as exc:
+                # A quota gate rejected the request before provider inference. Refund
+                # the output reservation, but retain the attempted model-call count.
+                budget.settle_output(reserved_output_tokens, 0)
+                limited = finish(
+                    "budget_exhausted", transcript, selection, turn - 1, tool_calls,
+                    error_code=exc.code,
+                )
+                limited["retry_after_seconds"] = exc.retry_after_seconds
+                return limited
             except (LookupError, ProviderError, ValidationError):
                 budget.settle_output(reserved_output_tokens, None)
                 if should_cancel is not None and should_cancel():

@@ -3,6 +3,7 @@ import pytest
 from mrhub.providers.base import (
     ProviderContractError,
     ProviderHealth,
+    ProviderRateLimitError,
     ProviderRequest,
     ProviderResponse,
 )
@@ -298,3 +299,51 @@ def test_local_route_fails_closed_without_falling_back_to_registered_remote_prov
     assert local.generate_calls == 0
     assert remote.health_calls == 0
     assert remote.generate_calls == 0
+
+
+def test_router_provider_quota_gate_blocks_inference_and_preserves_retry_after():
+    class CountingMoonshotProvider:
+        descriptor = ModelDescriptor(
+            provider="moonshot",
+            model="quota-test",
+            capability=ModelCapability(text=True),
+            available=True,
+            local=False,
+            priority=1,
+        )
+
+        def __init__(self):
+            self.health_calls = 0
+            self.generate_calls = 0
+
+        def health(self, timeout_seconds=2.0):
+            self.health_calls += 1
+            return ProviderHealth(available=True, reason_code="ready")
+
+        def generate(self, request):
+            self.generate_calls += 1
+            return ProviderResponse(
+                provider="moonshot",
+                model="quota-test",
+                output_text='{"type":"final","answer":"must not run"}',
+            )
+
+    provider = CountingMoonshotProvider()
+    def reject_quota(selection):
+        if selection.provider == "moonshot":
+            raise ProviderRateLimitError(17)
+
+    router = ModelRouter(before_generate=reject_quota)
+    router.register_provider(provider)
+
+    with pytest.raises(ProviderRateLimitError) as captured:
+        router.generate(
+            ModelRequest(requires_text=True),
+            ProviderRequest(input_text="quota-protected inference"),
+        )
+
+    assert captured.value.code == "provider_rate_limited"
+    assert captured.value.retry_after_seconds == 17
+    assert provider.health_calls == 0
+    assert provider.generate_calls == 0
+
